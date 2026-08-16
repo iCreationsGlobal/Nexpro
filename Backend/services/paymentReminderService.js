@@ -158,7 +158,7 @@ class PaymentReminderService {
           const whatsappConfig = whatsappRule ? await whatsappService.getConfig(invoice.tenantId) : null;
           if (whatsappConfig && whatsappConfig.enabled && customerPhone) {
             const phoneNumber = whatsappService.validatePhoneNumber(customerPhone);
-            if (phoneNumber && whatsappService.checkRateLimit(invoice.tenantId)) {
+            if (phoneNumber) {
               const reminderCooldownHours = Math.max(1, Number(whatsappConfig.paymentReminderCooldownHours || 24));
               const recentWhatsAppReminder = await WhatsAppMessageEvent.findOne({
                 where: {

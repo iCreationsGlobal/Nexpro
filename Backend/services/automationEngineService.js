@@ -1766,10 +1766,14 @@ async function executeRule({
           return skipMessagingAction('send_whatsapp', reason, contactContext);
         }
         try {
+          const templateName = String(action.templateName || contactContext.templateName || '').trim();
+          if (!templateName) {
+            return skipMessagingAction('send_whatsapp', 'Missing WhatsApp template name', contactContext);
+          }
           const response = await whatsappService.sendMessage(
             tenantId,
             contactContext.phone,
-            action.templateName || contactContext.templateName || 'hello_world',
+            templateName,
             applyTemplateValues(Array.isArray(action.parameters) ? action.parameters : [], contactContext),
             action.language || 'en',
             {

@@ -182,21 +182,70 @@ class WhatsAppService {
   }
 
   /**
-   * Check rate limit
-   * @param {string} tenantId - Tenant ID
-   * @returns {boolean} - True if within rate limit
+   * Public webhook URL tenants paste into Meta (API_PUBLIC_URL preferred).
+   * @returns {string}
+   */
+  getPublicWebhookUrl() {
+    const base = (
+      process.env.API_PUBLIC_URL ||
+      process.env.BACKEND_PUBLIC_URL ||
+      process.env.APP_URL ||
+      ''
+    ).replace(/\/$/, '');
+    return base ? `${base}/api/webhooks/whatsapp` : '/api/webhooks/whatsapp';
+  }
+
+  /**
+   * Accept platform env token or a tenant-saved webhook verify token.
+   * @param {string} token
+   * @returns {Promise<boolean>}
+   */
+  async matchesWebhookVerifyToken(token) {
+    if (!token || typeof token !== 'string') return false;
+    const envToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+    if (envToken && token === envToken) return true;
+    const rows = await Setting.findAll({
+      where: { key: 'whatsapp' },
+      attributes: ['value'],
+      limit: 1000
+    }).catch(() => []);
+    return rows.some((row) => {
+      const stored = row.value?.webhookVerifyToken;
+      return typeof stored === 'string' && stored.length > 0 && stored === token;
+    });
+  }
+
+  /**
+   * @param {string} tenantId
+   * @returns {string}
+   */
+  rateLimitKey(tenantId) {
+    const today = new Date().toISOString().split('T')[0];
+    return `${tenantId}_${today}`;
+  }
+
+  /**
+   * True if tenant is still under the daily conversation cap (does not increment).
+   * @param {string} tenantId
+   * @returns {boolean}
+   */
+  peekRateLimit(tenantId) {
+    const count = this.rateLimitCache.get(this.rateLimitKey(tenantId)) || 0;
+    return count < this.maxConversationsPerDay;
+  }
+
+  incrementRateLimit(tenantId) {
+    const key = this.rateLimitKey(tenantId);
+    this.rateLimitCache.set(key, (this.rateLimitCache.get(key) || 0) + 1);
+  }
+
+  /**
+   * Check rate limit without reserving a slot. Prefer peekRateLimit + increment after a successful send.
+   * @param {string} tenantId
+   * @returns {boolean}
    */
   checkRateLimit(tenantId) {
-    const today = new Date().toISOString().split('T')[0];
-    const key = `${tenantId}_${today}`;
-    const count = this.rateLimitCache.get(key) || 0;
-    
-    if (count >= this.maxConversationsPerDay) {
-      return false;
-    }
-    
-    this.rateLimitCache.set(key, count + 1);
-    return true;
+    return this.peekRateLimit(tenantId);
   }
 
   async recordEvent(event) {
@@ -299,8 +348,15 @@ class WhatsAppService {
         };
       }
 
-      // Check rate limit
-      if (!this.checkRateLimit(tenantId)) {
+      if (!templateName || !String(templateName).trim()) {
+        return {
+          success: false,
+          error: 'WhatsApp template name is required'
+        };
+      }
+
+      // Check rate limit (increment only after a successful send)
+      if (!this.peekRateLimit(tenantId)) {
         return {
           success: false,
           error: 'Rate limit exceeded (1000 conversations per day)'
@@ -308,12 +364,14 @@ class WhatsAppService {
       }
 
       const url = `${this.baseUrl}/${config.phoneNumberId}/messages`;
-      const components = [
-        {
+      const bodyParameters = Array.isArray(parameters) ? parameters : [];
+      const components = [];
+      if (bodyParameters.length > 0) {
+        components.push({
           type: 'body',
-          parameters: parameters.map(toTemplateParameter)
-        }
-      ];
+          parameters: bodyParameters.map(toTemplateParameter)
+        });
+      }
 
       if (Array.isArray(options.buttonParameters) && options.buttonParameters.length > 0) {
         components.push({
@@ -361,6 +419,7 @@ class WhatsAppService {
         messageId: response.data?.messages?.[0]?.id,
         data: response.data
       };
+      this.incrementRateLimit(tenantId);
       await this.recordEvent({
         tenantId,
         phoneNumberId: config.phoneNumberId,
@@ -482,7 +541,7 @@ class WhatsAppService {
         };
       }
 
-      if (!this.checkRateLimit(tenantId)) {
+      if (!this.peekRateLimit(tenantId)) {
         return {
           success: false,
           error: 'Rate limit exceeded'
@@ -513,6 +572,7 @@ class WhatsAppService {
         messageId: response.data?.messages?.[0]?.id,
         data: response.data
       };
+      this.incrementRateLimit(tenantId);
       await this.recordEvent({
         tenantId,
         phoneNumberId: config.phoneNumberId,

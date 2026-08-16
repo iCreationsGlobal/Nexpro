@@ -115,12 +115,14 @@ Add to your `.env` file:
 
 ```env
 # WhatsApp Business API (Meta)
+WHATSAPP_CREDENTIALS_ENCRYPTION_KEY=your_64_hex_char_key
 WHATSAPP_ACCESS_TOKEN=your_access_token_here
 WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
 WHATSAPP_BUSINESS_ACCOUNT_ID=your_business_account_id
 WHATSAPP_WEBHOOK_VERIFY_TOKEN=your_verify_token
 WHATSAPP_APP_SECRET=your_app_secret  # For webhook signature verification
 WHATSAPP_API_VERSION=v21.0
+API_PUBLIC_URL=https://your-backend-domain.com
 ```
 
 ## Usage
@@ -221,9 +223,33 @@ Meta will send a GET request to verify your webhook:
 
 ### Frontend
 
-- Settings page: `/settings?tab=whatsapp`
+- Settings page: `/settings/whatsapp`
 
 ## Message Templates Reference
+
+Create UTILITY templates in Meta with these exact names (language `en`). Automations prefill the matching template when you add a WhatsApp action.
+
+| Template | Used for |
+|----------|----------|
+| invoice_notification | Invoice sent / high-value invoice |
+| quote_delivery | Quote sent |
+| quote_follow_up | Quote with no response |
+| order_confirmation | Job/order confirmed |
+| order_created | Order created |
+| sale_receipt | POS sale completed |
+| payment_reminder | Overdue invoice |
+| payment_received | Payment recorded |
+| review_request | Review request |
+| job_completed | Job completed |
+| birthday_greeting | Customer birthday |
+| win_back | Inactive customers |
+| low_stock_alert | Low stock |
+| welcome_customer | New customer |
+| new_lead_alert | New lead |
+| lead_follow_up | Lead with no contact |
+| prescription_refill | Pharmacy refill due |
+| low_profit_alert | Low margin sale |
+| daily_sales_summary | Daily sales recap |
 
 All templates use the `en` language code. To support other languages (French, Swahili, etc.), create additional templates with different language codes.
 

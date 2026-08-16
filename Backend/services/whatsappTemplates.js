@@ -95,6 +95,48 @@ const TEMPLATES = {
     description: 'Follow up on a quote with no response',
     parameters: ['customerName', 'quoteNumber', 'businessName'],
     example: 'Hi {{1}}, just checking in on quote {{2}} from {{3}}.'
+  },
+  welcome_customer: {
+    name: 'welcome_customer',
+    language: 'en',
+    description: 'Welcome a newly created customer',
+    parameters: ['customerName', 'businessName'],
+    example: 'Hi {{1}}, welcome to {{2}}! We look forward to serving you.'
+  },
+  new_lead_alert: {
+    name: 'new_lead_alert',
+    language: 'en',
+    description: 'Alert staff when a new lead is added',
+    parameters: ['leadName', 'leadSource', 'businessName'],
+    example: 'New lead: {{1}} from {{2}}. — {{3}}'
+  },
+  lead_follow_up: {
+    name: 'lead_follow_up',
+    language: 'en',
+    description: 'Follow up a lead with no recent contact',
+    parameters: ['leadName', 'noContactDays', 'businessName'],
+    example: 'Follow up {{1}} — no contact for {{2}} days. — {{3}}'
+  },
+  prescription_refill: {
+    name: 'prescription_refill',
+    language: 'en',
+    description: 'Remind a customer that a prescription refill is due',
+    parameters: ['customerName', 'prescriptionNumber', 'refillDueDate', 'businessName'],
+    example: 'Hi {{1}}, prescription {{2}} refill is due {{3}}. — {{4}}'
+  },
+  low_profit_alert: {
+    name: 'low_profit_alert',
+    language: 'en',
+    description: 'Alert staff when a sale has a low profit margin',
+    parameters: ['saleNumber', 'profitMarginFormatted', 'businessName'],
+    example: 'Low margin sale {{1}}: {{2}}. — {{3}}'
+  },
+  daily_sales_summary: {
+    name: 'daily_sales_summary',
+    language: 'en',
+    description: 'Daily sales recap for shop owners',
+    parameters: ['date', 'totalSalesFormatted', 'transactionCount', 'businessName'],
+    example: 'Daily sales ({{1}}): {{2}} from {{3}} transactions. — {{4}}'
   }
 };
 
@@ -214,6 +256,20 @@ function getTemplate(templateName) {
 }
 
 /**
+ * Catalog for Settings and Automations UI (Meta template names to create).
+ * @returns {Array<{ name: string, language: string, description: string, parameters: string[], example: string }>}
+ */
+function listTemplates() {
+  return Object.values(TEMPLATES).map((template) => ({
+    name: template.name,
+    language: template.language,
+    description: template.description,
+    parameters: [...template.parameters],
+    example: template.example
+  }));
+}
+
+/**
  * Validate template parameters
  * @param {string} templateName - Template name
  * @param {Array} parameters - Parameters to validate
@@ -237,5 +293,6 @@ module.exports = {
   prepareSaleReceipt,
   prepareOrderCreated,
   getTemplate,
-  validateParameters
+  validateParameters,
+  listTemplates
 };

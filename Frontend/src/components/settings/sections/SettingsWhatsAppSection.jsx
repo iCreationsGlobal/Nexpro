@@ -1,4 +1,5 @@
 import {
+  Copy,
   ExternalLink,
   HelpCircle,
   Loader2,
@@ -27,6 +28,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useSettingsWhatsApp } from '../../../hooks/useSettingsWhatsApp';
+import { showSuccess } from '../../../utils/toast';
+import { WHATSAPP_TEMPLATES } from '../../../constants/whatsappTemplates';
 
 /**
  * WhatsApp Business API configuration section.
@@ -46,6 +49,18 @@ const SettingsWhatsAppSection = () => {
     setWhatsappTemplateLearnMoreOpen,
     resetWhatsAppForm,
   } = useSettingsWhatsApp();
+
+  const webhookUrl = whatsappData?.data?.webhookUrl || '/api/webhooks/whatsapp';
+  const templateCatalog = Array.isArray(whatsappData?.data?.templates) && whatsappData.data.templates.length
+    ? whatsappData.data.templates
+    : WHATSAPP_TEMPLATES;
+
+  const copyWebhookUrl = () => {
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) return;
+    navigator.clipboard.writeText(webhookUrl).then(() => {
+      showSuccess('Webhook URL copied');
+    });
+  };
 
   if (!canManageOrganization) {
     return (
@@ -77,7 +92,7 @@ const SettingsWhatsAppSection = () => {
             <Alert className="mb-3 md:mb-6 py-2 px-3 md:py-4 md:px-4">
               <AlertTitle className="text-sm md:text-base">WhatsApp Integration</AlertTitle>
               <AlertDescription className="text-xs md:text-sm">
-                Configure WhatsApp Business API to send automated notifications to customers. You&apos;ll need to set up a WhatsApp Business Account in Meta Business Manager first.
+                Configure WhatsApp Business API to send automated notifications from Automations (invoices, receipts, reminders, and more). You&apos;ll need a WhatsApp Business Account in Meta Business Manager first.
               </AlertDescription>
             </Alert>
 
@@ -203,6 +218,20 @@ const SettingsWhatsAppSection = () => {
                   />
                 </div>
 
+                <div className="rounded-lg border border-gray-200 p-3 md:p-4 space-y-2">
+                  <FormLabel>Webhook URL</FormLabel>
+                  <p className="text-xs text-muted-foreground">
+                    Paste this in Meta → WhatsApp → Configuration. Subscribe to message_status (and messages if you want inbound events).
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input readOnly value={webhookUrl} className="font-mono text-xs" />
+                    <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={copyWebhookUrl}>
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap gap-2 justify-end mt-3 md:mt-0">
                   <Button type="button" variant="outline" size="sm" onClick={resetWhatsAppForm}>
                     Reset
@@ -226,13 +255,21 @@ const SettingsWhatsAppSection = () => {
             <Separator className="my-3 md:my-6">
               <span className="text-sm font-medium">Message Templates</span>
             </Separator>
-            <Alert variant="destructive" className="mt-2 md:mt-4 py-2 px-3 md:py-4 md:px-4">
-              <AlertTitle className="text-sm md:text-base">Template Setup Required</AlertTitle>
+            <Alert className="mt-2 md:mt-4 py-2 px-3 md:py-4 md:px-4 border-amber-200 bg-amber-50 text-amber-950">
+              <AlertTitle className="text-sm md:text-base">Template setup required</AlertTitle>
               <AlertDescription>
                 <div className="space-y-3">
                   <p>
-                    You need to create and approve the following message templates in Meta Business Manager before they can be used: invoice_notification, quote_delivery, order_confirmation, payment_reminder, low_stock_alert
+                    Meta only delivers template messages. Create these UTILITY templates (English) in Meta Business Manager, then pick the same names in Automations.
                   </p>
+                  <ul className="text-xs md:text-sm space-y-1 list-disc list-inside">
+                    {templateCatalog.map((template) => (
+                      <li key={template.name}>
+                        <span className="font-medium">{template.name}</span>
+                        {template.description ? ` — ${template.description}` : ''}
+                      </li>
+                    ))}
+                  </ul>
                   <Button
                     type="button"
                     variant="outline"
@@ -270,11 +307,12 @@ const SettingsWhatsAppSection = () => {
                   <div className="space-y-3">
                     <p className="text-sm font-medium">Template names</p>
                     <ul className="text-sm text-muted-foreground space-y-2">
-                      <li><strong>invoice_notification</strong> – Bill/receipt with Mobile Money link</li>
-                      <li><strong>quote_delivery</strong> – Quote/proposal</li>
-                      <li><strong>order_confirmation</strong> – Order confirmation for shop</li>
-                      <li><strong>payment_reminder</strong> – Reminder for overdue bills</li>
-                      <li><strong>low_stock_alert</strong> – Stock running low alert</li>
+                      {templateCatalog.map((template) => (
+                        <li key={template.name}>
+                          <strong>{template.name}</strong>
+                          {template.description ? ` – ${template.description}` : ''}
+                        </li>
+                      ))}
                     </ul>
                   </div>
                   <p className="text-sm text-muted-foreground">

@@ -99,6 +99,7 @@ import {
   CHANNEL_ORDER,
 } from '../utils/automationDelivery';
 import { handleApiError, showError, showSuccess, showWarning } from '../utils/toast';
+import { WHATSAPP_TEMPLATES, parametersTextFromTemplate } from '../constants/whatsappTemplates';
 import AutomationTestRecipientDialog from '../components/automations/AutomationTestRecipientDialog';
 import MessagePreview from '../components/automations/MessagePreview';
 import { useScopedWorkspaceName } from '../hooks/useScopedWorkspaceName';
@@ -2120,6 +2121,10 @@ function WhatsAppActionFields({ row, onPatch, placeholderHint }) {
   const whatsappConfigured = Boolean(
     whatsappSettings?.enabled && whatsappSettings?.phoneNumberId
   );
+  const templateCatalog = Array.isArray(whatsappSettings?.templates) && whatsappSettings.templates.length
+    ? whatsappSettings.templates
+    : WHATSAPP_TEMPLATES;
+  const selectedCatalogTemplate = templateCatalog.find((t) => t.name === templateName);
   const showConfigWarning =
     !dismissedConfigWarning &&
     whatsappSettingsQuery.isSuccess &&
@@ -2161,14 +2166,49 @@ function WhatsAppActionFields({ row, onPatch, placeholderHint }) {
         </Alert>
       )}
       <div className="space-y-1.5">
-        <Label htmlFor="auto-wa-template">Template name</Label>
-        <Input
-          id="auto-wa-template"
-          value={r.templateName ?? ''}
-          onChange={(e) => onPatch({ templateName: e.target.value })}
-          placeholder="hello_world"
-        />
+        <Label htmlFor="auto-wa-template-select">Approved Meta template</Label>
+        <Select
+          value={selectedCatalogTemplate ? templateName : (templateName ? '__custom' : undefined)}
+          onValueChange={(value) => {
+            if (value === '__custom') {
+              onPatch({ templateName: templateName && !templateCatalog.some((t) => t.name === templateName) ? templateName : '' });
+              return;
+            }
+            const picked = templateCatalog.find((t) => t.name === value);
+            onPatch({
+              templateName: value,
+              language: picked?.language || r.language || 'en',
+              parametersText: parametersTextFromTemplate(picked),
+            });
+          }}
+        >
+          <SelectTrigger id="auto-wa-template-select">
+            <SelectValue placeholder="Choose a template" />
+          </SelectTrigger>
+          <SelectContent>
+            {templateCatalog.map((template) => (
+              <SelectItem key={template.name} value={template.name}>
+                {template.name}
+              </SelectItem>
+            ))}
+            <SelectItem value="__custom">Custom template name</SelectItem>
+          </SelectContent>
+        </Select>
+        {selectedCatalogTemplate?.description ? (
+          <p className="text-xs text-muted-foreground">{selectedCatalogTemplate.description}</p>
+        ) : null}
       </div>
+      {(!selectedCatalogTemplate || !templateName) && (
+        <div className="space-y-1.5">
+          <Label htmlFor="auto-wa-template">Template name</Label>
+          <Input
+            id="auto-wa-template"
+            value={r.templateName ?? ''}
+            onChange={(e) => onPatch({ templateName: e.target.value })}
+            placeholder="invoice_notification"
+          />
+        </div>
+      )}
       <div className="space-y-1.5">
         <Label htmlFor="auto-wa-lang">Language code</Label>
         <Input

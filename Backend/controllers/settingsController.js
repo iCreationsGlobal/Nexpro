@@ -1024,11 +1024,16 @@ exports.getWhatsAppSettings = async (req, res, next) => {
       templateNamespace: ''
     });
 
+    const whatsappService = require('../services/whatsappService');
+    const whatsappTemplates = require('../services/whatsappTemplates');
+
     // Don't expose access token in response
     const safeSettings = {
       ...whatsappSettings,
       accessToken: whatsappSettings.accessToken ? '***' : '',
-      accessTokenConfigured: !!whatsappSettings.accessToken
+      accessTokenConfigured: !!whatsappSettings.accessToken,
+      webhookUrl: whatsappService.getPublicWebhookUrl(),
+      templates: whatsappTemplates.listTemplates()
     };
 
     res.status(200).json({

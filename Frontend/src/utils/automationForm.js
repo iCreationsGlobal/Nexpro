@@ -452,7 +452,7 @@ export const DEFAULT_ACTION_CONTENT = {
     send_whatsapp: {
       templateName: 'payment_reminder',
       language: 'en',
-      parametersText: '{{customerName}}, {{invoiceNumber}}, {{balance}}, {{dueDate}}',
+      parametersText: '{{invoiceNumber}}, {{balance}}, {{paymentLink}}',
     },
     send_email_platform: {
       subject: 'Invoice {{invoiceNumber}} due soon',
@@ -647,9 +647,9 @@ export const DEFAULT_ACTION_CONTENT = {
         'Daily sales ({{date}}): {{totalSalesFormatted}} from {{transactionCount}} transactions. Top: {{topProducts}}. — {{businessName}}',
     },
     send_whatsapp: {
-      templateName: 'sale_receipt',
+      templateName: 'daily_sales_summary',
       language: 'en',
-      parametersText: '{{businessName}}, {{date}}, {{totalSalesFormatted}}, {{businessName}}',
+      parametersText: '{{date}}, {{totalSalesFormatted}}, {{transactionCount}}, {{businessName}}',
     },
     send_email_platform: {
       subject: 'Daily sales summary — {{date}}',
@@ -665,7 +665,7 @@ export const DEFAULT_ACTION_CONTENT = {
   },
   new_lead: {
     send_sms: { body: 'New lead: {{leadName}} ({{leadSource}}). — {{businessName}}' },
-    send_whatsapp: { templateName: 'hello_world', language: 'en', parametersText: '{{leadName}}' },
+    send_whatsapp: { templateName: 'new_lead_alert', language: 'en', parametersText: '{{leadName}}, {{leadSource}}, {{businessName}}' },
     send_email_platform: {
       subject: 'New lead: {{leadName}}',
       body: 'New lead added:\n\nName: {{leadName}}\nCompany: {{leadCompany}}\nSource: {{leadSource}}\nPhone: {{phone}}\nEmail: {{email}}\n\n— {{businessName}}',
@@ -693,7 +693,7 @@ export const DEFAULT_ACTION_CONTENT = {
   },
   customer_created: {
     send_sms: { body: 'Welcome to {{businessName}}, {{customerName}}! We look forward to serving you.' },
-    send_whatsapp: { templateName: 'hello_world', language: 'en', parametersText: '{{customerName}}, {{businessName}}' },
+    send_whatsapp: { templateName: 'welcome_customer', language: 'en', parametersText: '{{customerName}}, {{businessName}}' },
     send_email_platform: {
       subject: 'Welcome to {{businessName}}, {{customerName}}!',
       body: 'Hi {{customerName}},\n\nWelcome to {{businessName}}! We are glad to have you.\n\n— {{businessName}}',
@@ -707,7 +707,7 @@ export const DEFAULT_ACTION_CONTENT = {
   },
   lead_no_contact_days: {
     send_sms: { body: 'Follow up lead {{leadName}} — no contact for {{noContactDays}} days. — {{businessName}}' },
-    send_whatsapp: { templateName: 'quote_follow_up', language: 'en', parametersText: '{{leadName}}, {{leadCompany}}, {{businessName}}' },
+    send_whatsapp: { templateName: 'lead_follow_up', language: 'en', parametersText: '{{leadName}}, {{noContactDays}}, {{businessName}}' },
     send_email_platform: {
       subject: 'Follow up lead {{leadName}}',
       body: 'Lead {{leadName}} ({{leadCompany}}) has had no contact for {{noContactDays}} days.\n\n— {{businessName}}',
@@ -825,7 +825,7 @@ export const DEFAULT_ACTION_CONTENT = {
   },
   prescription_refill_due: {
     send_sms: { body: 'Hi {{customerName}}, prescription {{prescriptionNumber}} refill due {{refillDueDate}}. — {{businessName}}' },
-    send_whatsapp: { templateName: 'hello_world', language: 'en', parametersText: '{{customerName}}, {{prescriptionNumber}}' },
+    send_whatsapp: { templateName: 'prescription_refill', language: 'en', parametersText: '{{customerName}}, {{prescriptionNumber}}, {{refillDueDate}}, {{businessName}}' },
     send_email_platform: {
       subject: 'Prescription refill — {{prescriptionNumber}}',
       body: 'Hi {{customerName}},\n\nYour prescription {{prescriptionNumber}} refill is due on {{refillDueDate}}.\n\n— {{businessName}}',
@@ -839,7 +839,7 @@ export const DEFAULT_ACTION_CONTENT = {
   },
   low_profit_margin: {
     send_sms: { body: 'Low margin sale {{saleNumber}}: {{profitMarginFormatted}}. — {{businessName}}' },
-    send_whatsapp: { templateName: 'hello_world', language: 'en', parametersText: '{{saleNumber}}, {{profitMarginFormatted}}' },
+    send_whatsapp: { templateName: 'low_profit_alert', language: 'en', parametersText: '{{saleNumber}}, {{profitMarginFormatted}}, {{businessName}}' },
     send_email_platform: {
       subject: 'Low margin alert — {{saleNumber}}',
       body: 'Sale {{saleNumber}} margin is {{profitMarginFormatted}} (threshold {{minMarginPercent}}%). Total: {{totalAmountFormatted}}.\n\n— {{businessName}}',
@@ -1696,7 +1696,7 @@ export function actionFormRowToPayload(row) {
       .filter(Boolean);
     const out = {
       type: 'send_whatsapp',
-      templateName: String(row.templateName || '').trim() || 'hello_world',
+      templateName: String(row.templateName || '').trim(),
       language: String(row.language || 'en').trim() || 'en',
       parameters: params.length ? params : Array.isArray(row.parameters) ? row.parameters : [],
     };

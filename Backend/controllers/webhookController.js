@@ -19,14 +19,12 @@ exports.handleWhatsAppWebhook = async (req, res) => {
   try {
     // Handle webhook verification (GET request)
     if (req.method === 'GET') {
-      const mode = req.query['hub.mode'];
-      const token = req.query['hub.verify_token'];
-      const challenge = req.query['hub.challenge'];
+      const hub = req.query?.hub && typeof req.query.hub === 'object' ? req.query.hub : {};
+      const mode = req.query['hub.mode'] || hub.mode;
+      const token = req.query['hub.verify_token'] || hub.verify_token;
+      const challenge = req.query['hub.challenge'] || hub.challenge;
 
-      // Get verify token from environment or tenant settings
-      const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
-      
-      if (mode === 'subscribe' && token === verifyToken) {
+      if (mode === 'subscribe' && await whatsappService.matchesWebhookVerifyToken(token)) {
         console.log('[WhatsApp Webhook] Verification successful');
         return res.status(200).send(challenge);
       }
@@ -39,7 +37,7 @@ exports.handleWhatsAppWebhook = async (req, res) => {
         return res.status(200).send('OK');
       }
 
-      console.error('[WhatsApp Webhook] Verification failed', { mode, token, verifyToken });
+      console.error('[WhatsApp Webhook] Verification failed', { mode, hasToken: Boolean(token) });
       return res.status(403).send('Forbidden');
     }
 

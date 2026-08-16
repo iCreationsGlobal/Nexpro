@@ -173,8 +173,25 @@ const sanitizeObject = (obj, parentKey = '') => {
  * Sanitization Middleware
  * Sanitizes req.body, req.query, and req.params
  */
+const isWebhookPath = (req) => {
+  const path = req.path || '';
+  const original = req.originalUrl || '';
+  return (
+    path.startsWith('/webhooks')
+    || path.startsWith('/api/webhooks')
+    || original.startsWith('/api/webhooks')
+    || original.startsWith('/webhooks')
+  );
+};
+
 const sanitizeInputs = (req, res, next) => {
   try {
+    // Meta webhook verification uses hub.verify_token in the query string.
+    // Do not XSS-escape it or the handshake fails even with the correct secret.
+    if (isWebhookPath(req)) {
+      return next();
+    }
+
     // Sanitize request body
     if (req.body && typeof req.body === 'object') {
       req.body = sanitizeObject(req.body);
