@@ -5,6 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 
 import { logger } from '@/utils/logger';
 import { STORAGE_KEYS } from '@/constants';
+import { parseJsonStrippingOversizedInlineDataUrls } from '@/utils/stripOversizedInlineDataUrls';
 
 // Extend AxiosRequestConfig to support metadata
 declare module 'axios' {
@@ -29,7 +30,7 @@ function normalizeApiBaseUrl(raw: string | undefined | null): string {
 const API_BASE_URL =
   normalizeApiBaseUrl(process.env.EXPO_PUBLIC_API_URL) ||
   normalizeApiBaseUrl(Constants.expoConfig?.extra?.apiUrl as string | undefined) ||
-  'http://localhost:5001';
+  'https://api.africanbusinesssuite.com';
 
 logger.info('API', 'Base URL:', API_BASE_URL);
 
@@ -46,6 +47,10 @@ const api = axios.create({
     Pragma: 'no-cache',
   },
   timeout: 30000,
+  // Parse JSON only after dropping multi-MB data:image payloads (device OOM on Profile/Products).
+  transformResponse: [
+    (data) => parseJsonStrippingOversizedInlineDataUrls(data),
+  ],
 });
 
 let cachedToken: string | null | undefined;

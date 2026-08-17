@@ -58,10 +58,13 @@ const findUserForAuthResponse = (userId, options = {}) =>
     },
   });
 
+const { attachSafeProfilePicture } = require('../utils/profilePictureResponse');
+
 const withAuthResponseFields = (userJson = {}) => {
   const isGoogleUser = Boolean(userJson.googleId);
+  const safeUser = attachSafeProfilePicture({ ...userJson }) || {};
   return {
-    ...userJson,
+    ...safeUser,
     authProvider: isGoogleUser ? 'google' : 'password',
     paymentVerificationMethod: isGoogleUser ? 'otp' : 'password',
   };

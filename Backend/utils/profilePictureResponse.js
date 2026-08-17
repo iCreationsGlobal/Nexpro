@@ -11,9 +11,18 @@ const MAX_INLINE_PROFILE_PICTURE_CHARS = 200_000;
  * @returns {string|null}
  */
 function sanitizeProfilePictureForClient(profilePicture) {
-  if (profilePicture == null) return null;
-  if (typeof profilePicture !== 'string') return null;
-  const trimmed = profilePicture.trim();
+  return sanitizeInlineDataUrlForClient(profilePicture);
+}
+
+/**
+ * Omit oversized data: URLs from API JSON (profile avatars, product images).
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+function sanitizeInlineDataUrlForClient(value) {
+  if (value == null) return null;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('data:') && trimmed.length > MAX_INLINE_PROFILE_PICTURE_CHARS) {
     return null;
@@ -35,5 +44,6 @@ function attachSafeProfilePicture(userJson) {
 module.exports = {
   MAX_INLINE_PROFILE_PICTURE_CHARS,
   sanitizeProfilePictureForClient,
+  sanitizeInlineDataUrlForClient,
   attachSafeProfilePicture,
 };

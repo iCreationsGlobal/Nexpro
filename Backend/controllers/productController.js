@@ -13,6 +13,7 @@ const {
   userCanAccessShopId,
 } = require('../utils/shopUtils');
 const { resolveCatalogProductCode } = require('../utils/documentLineItemUtils');
+const { sanitizeInlineDataUrlForClient } = require('../utils/profilePictureResponse');
 const {
   applyEffectiveProductQuantity,
   syncParentQuantityFromVariants,
@@ -148,12 +149,8 @@ const formatProductForList = (record, req) => {
   }
 
   // Oversized data-URL images OOM React Native Product grids (same class of crash as Profile avatars).
-  if (
-    typeof plain.imageUrl === 'string' &&
-    plain.imageUrl.startsWith('data:') &&
-    plain.imageUrl.length > 200_000
-  ) {
-    plain.imageUrl = null;
+  if (plain.imageUrl != null) {
+    plain.imageUrl = sanitizeInlineDataUrlForClient(plain.imageUrl);
   }
 
   return plain;
@@ -561,6 +558,10 @@ exports.getProduct = async (req, res, next) => {
       data = applyEffectiveProductQuantity(
         typeof data?.get === 'function' ? data.get({ plain: true }) : data
       );
+    }
+
+    if (data && typeof data === 'object' && data.imageUrl != null) {
+      data.imageUrl = sanitizeInlineDataUrlForClient(data.imageUrl);
     }
 
     res.status(200).json({

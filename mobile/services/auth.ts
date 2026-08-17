@@ -4,6 +4,10 @@ import { api, clearApiRequestContext, setApiAuthToken, setApiTenantContext } fro
 import { logger } from '@/utils/logger';
 import { STORAGE_KEYS } from '@/constants';
 import { membershipTenantId, normalizeMemberships } from '@/utils/membership';
+import {
+  parseJsonStrippingOversizedInlineDataUrls,
+  stripOversizedInlineDataUrlsFromJsonText,
+} from '@/utils/stripOversizedInlineDataUrls';
 
 const AUTH_STORAGE_KEYS = {
   token: 'token',
@@ -25,7 +29,11 @@ async function persistAuthPayload(payload: {
     await SecureStore.setItemAsync(AUTH_STORAGE_KEYS.token, token);
     setApiAuthToken(token);
   }
-  if (user) await AsyncStorage.setItem(AUTH_STORAGE_KEYS.user, JSON.stringify(user));
+  if (user) {
+    const raw = JSON.stringify(user);
+    const cleaned = stripOversizedInlineDataUrlsFromJsonText(raw);
+    await AsyncStorage.setItem(AUTH_STORAGE_KEYS.user, cleaned);
+  }
   await AsyncStorage.setItem(AUTH_STORAGE_KEYS.memberships, JSON.stringify(normalizedMemberships));
 
   const preferredTenantId =
@@ -145,7 +153,16 @@ export const authService = {
 
   getStoredUser: async () => {
     const raw = await AsyncStorage.getItem(AUTH_STORAGE_KEYS.user);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const cleaned = stripOversizedInlineDataUrlsFromJsonText(raw);
+    if (cleaned !== raw) {
+      await AsyncStorage.setItem(AUTH_STORAGE_KEYS.user, cleaned);
+    }
+    try {
+      return parseJsonStrippingOversizedInlineDataUrls(cleaned);
+    } catch {
+      return null;
+    }
   },
 
   getStoredMemberships: async () => {

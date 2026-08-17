@@ -4,6 +4,9 @@
  */
 
 import { API_BASE_URL } from '../services/api';
+import { MAX_INLINE_IMAGE_DATA_URL_LENGTH } from './stripOversizedInlineDataUrls';
+
+export { MAX_INLINE_IMAGE_DATA_URL_LENGTH } from './stripOversizedInlineDataUrls';
 
 /**
  * Decode HTML entities in URL (e.g. &#x2F; from backend sanitizer) so img src works.
@@ -41,10 +44,33 @@ export function resolveImageUrl(url: UrlLike): string {
   if (!decoded) return '';
   if (decoded.startsWith('data:')) return decoded;
   if (decoded.startsWith('blob:')) return decoded;
+  if (decoded.startsWith('file:')) return decoded;
+  if (decoded.startsWith('content:')) return decoded;
+  if (decoded.startsWith('ph://')) return decoded;
+  if (decoded.startsWith('assets-library:')) return decoded;
   if (decoded.startsWith('http://') || decoded.startsWith('https://')) return decoded;
   const path = decoded.startsWith('/') ? decoded : `/${decoded}`;
   if (API_BASE_URL) {
     return `${API_BASE_URL.replace(/\/$/, '')}${path}`;
   }
   return path;
+}
+
+/**
+ * Resolve an image URL that is safe to pass to Image on device.
+ * Oversized inline data URLs are rejected (empty string) so Profile/Account do not OOM.
+ * Local file/content/ph URIs and http(s)/relative paths are unaffected.
+ * @param url - Raw URL from API or local picker
+ * @returns Display URI, or '' when unsafe / empty
+ */
+export function resolveDisplayImageUrl(url: UrlLike): string {
+  const resolved = resolveImageUrl(url);
+  if (!resolved) return '';
+  if (
+    resolved.startsWith('data:') &&
+    resolved.length > MAX_INLINE_IMAGE_DATA_URL_LENGTH
+  ) {
+    return '';
+  }
+  return resolved;
 }

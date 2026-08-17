@@ -1,6 +1,7 @@
 const {
   attachSafeProfilePicture,
   sanitizeProfilePictureForClient,
+  sanitizeInlineDataUrlForClient,
   MAX_INLINE_PROFILE_PICTURE_CHARS,
 } = require('../../../utils/profilePictureResponse');
 
@@ -21,5 +22,11 @@ describe('profilePictureResponse', () => {
     const huge = `data:image/jpeg;base64,${'a'.repeat(MAX_INLINE_PROFILE_PICTURE_CHARS + 1)}`;
     expect(sanitizeProfilePictureForClient(huge)).toBeNull();
     expect(attachSafeProfilePicture({ id: '1', profilePicture: huge }).profilePicture).toBeNull();
+  });
+
+  it('omits oversized product image data URLs', () => {
+    const huge = `data:image/jpeg;base64,${'a'.repeat(MAX_INLINE_PROFILE_PICTURE_CHARS + 1)}`;
+    expect(sanitizeInlineDataUrlForClient(huge)).toBeNull();
+    expect(sanitizeInlineDataUrlForClient('/uploads/products/p.jpg')).toBe('/uploads/products/p.jpg');
   });
 });
