@@ -3651,6 +3651,9 @@ async function runInvoiceSentAutomations({
   actorUserId = null,
 }) {
   if (!tenantId || !invoice?.id) return { skipped: true, reason: 'missing_invoice' };
+  if (paymentStatusForInvoice(invoice) === 'paid') {
+    return { skipped: true, reason: 'invoice_already_paid' };
+  }
   return executeMatchingRules({
     tenantId,
     triggerType: 'invoice_sent',

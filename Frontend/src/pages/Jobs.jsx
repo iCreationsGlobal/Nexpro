@@ -86,6 +86,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
+import JobCreatePaymentFields from '../components/JobCreatePaymentFields';
+import {
+  JOB_CREATE_PAYMENT_DEFAULTS,
+  buildJobCreatePaymentPayload,
+} from '../utils/jobCreatePayment';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -171,6 +176,36 @@ const jobSchema = z.object({
   assignedTo: z.string().optional().nullable(),
   description: z.string().nullable().optional(),
   items: z.array(jobItemSchema).min(1, 'At least one item is required'),
+  paymentStatus: z.enum(['unpaid', 'deposit', 'paid']).default('unpaid'),
+  paymentAmount: z.union([z.number(), z.string(), z.literal('')]).optional(),
+  paymentMethod: z.string().optional().or(z.literal('')),
+  paymentReference: z.string().optional(),
+  paymentNotes: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.paymentStatus === 'unpaid') return;
+  if (!data.paymentMethod) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Payment method is required',
+      path: ['paymentMethod'],
+    });
+  }
+  if (data.paymentStatus !== 'deposit') return;
+  const amount = parseFloat(data.paymentAmount);
+  const total = calculateJobItemsPricing(data.items).grandTotal;
+  if (!(amount > 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Deposit amount must be greater than 0',
+      path: ['paymentAmount'],
+    });
+  } else if (total > 0 && amount >= total - 0.01) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Deposit must be less than the job total. Choose Paid in full instead.',
+      path: ['paymentAmount'],
+    });
+  }
 });
 
 const toJobMoneyNumber = (value, fallback = 0) => {
@@ -280,6 +315,7 @@ const Jobs = () => {
       assignedTo: null,
       description: '',
       items: [{ category: '', description: '', quantity: 1, unitPrice: 0, discountAmount: 0 }],
+      ...JOB_CREATE_PAYMENT_DEFAULTS,
     },
   });
 
@@ -892,6 +928,7 @@ useEffect(() => {
       assignedTo: null,
       description: '',
       items: [{ category: '', description: '', quantity: 1, unitPrice: 0, discountAmount: 0 }],
+      ...JOB_CREATE_PAYMENT_DEFAULTS,
     });
     setSelectedJobType(null);
     setSelectedCustomer(null);
@@ -1033,7 +1070,8 @@ useEffect(() => {
             quantity,
             discountAmount: roundJobMoney(explicitDiscount > 0 ? explicitDiscount : derivedDiscount),
           };
-        })
+        }),
+        ...JOB_CREATE_PAYMENT_DEFAULTS,
       };
       
         // Set form values
@@ -1696,6 +1734,7 @@ useEffect(() => {
         dueDate: formatDate(values.dueDate),
         finalPrice: calculatedTotal || values.finalPrice || 0,
         items: cleanedItems,
+        ...(!editingJobId ? buildJobCreatePaymentPayload(values) : {}),
       };
 
       // Log the data being sent for debugging
@@ -3116,6 +3155,10 @@ useEffect(() => {
                 </div>
               );
               })()}
+
+              {!editingJobId && (
+                <JobCreatePaymentFields form={form} grandTotal={jobPricingTotals.grandTotal} />
+              )}
 
               <FormField
                 control={form.control}

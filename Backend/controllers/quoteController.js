@@ -23,6 +23,7 @@ const {
   organizationToEmailCompany,
 } = require('../utils/documentOrganizationUtils');
 const { resolveQuoteItemCategory } = require('../utils/resolveQuoteItemCategory');
+const { resolveJobCreatePaymentIntent } = require('../utils/jobCreatePayment');
 const { v4: uuidv4 } = require('uuid');
 
 const QUOTE_ATTACHMENT_TYPES = new Set(['proposal', 'requirements', 'agreement', 'other']);
@@ -1406,6 +1407,17 @@ exports.convertQuoteToJob = async (req, res, next) => {
     // Optional job fields from request body (startDate, dueDate, assignedTo)
     const { startDate, dueDate, assignedTo } = req.body || {};
 
+    const paymentIntent = resolveJobCreatePaymentIntent(req.body || {}, {
+      jobTotal: quote.totalAmount,
+    });
+    if (!paymentIntent.ok) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: paymentIntent.error,
+      });
+    }
+
     // Normalize optional dates to Date objects if provided
     const parseDate = (value) => {
       if (!value) return null;
@@ -1584,11 +1596,20 @@ exports.convertQuoteToJob = async (req, res, next) => {
       const onAccept = workflowSetting?.value?.onAccept || 'record_only';
       if (onAccept === 'create_job_invoice_and_send') {
         const { createInvoiceFromJobInternal, sendInvoiceToCustomer } = require('./invoiceController');
+        const { applyJobCreatePaymentToInvoice } = require('./jobController');
         createdInvoice = await createInvoiceFromJobInternal(req.tenantId, jobWithDetails.id, req.user?.id || null);
         if (createdInvoice) {
+          const payResult = await applyJobCreatePaymentToInvoice({
+            tenantId: req.tenantId,
+            userId: req.user?.id || null,
+            invoice: createdInvoice,
+            paymentIntent,
+          });
+          createdInvoice = payResult.invoice || createdInvoice;
           await sendInvoiceToCustomer(req.tenantId, createdInvoice, {
             userId: req.user?.id || null,
-            deliverySource: 'quote_to_job_workflow'
+            deliverySource: 'quote_to_job_workflow',
+            skipPaidReceipt: payResult.skipPaidReceipt,
           });
         }
       }

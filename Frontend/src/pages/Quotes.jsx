@@ -117,6 +117,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import MobileFormDialog from '../components/MobileFormDialog';
+import JobCreatePaymentFields from '../components/JobCreatePaymentFields';
+import {
+  JOB_CREATE_PAYMENT_DEFAULTS,
+  buildJobCreatePaymentPayload,
+} from '../utils/jobCreatePayment';
 import FormFieldGrid from '../components/FormFieldGrid';
 import {
   Sheet,
@@ -218,6 +223,29 @@ const convertToJobSchema = z.object({
   startDate: z.date().optional().nullable(),
   dueDate: z.date().optional().nullable(),
   assignedTo: z.string().optional().nullable(),
+  paymentStatus: z.enum(['unpaid', 'deposit', 'paid']).default('unpaid'),
+  paymentAmount: z.union([z.number(), z.string(), z.literal('')]).optional(),
+  paymentMethod: z.string().optional().or(z.literal('')),
+  paymentReference: z.string().optional(),
+  paymentNotes: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.paymentStatus === 'unpaid') return;
+  if (!data.paymentMethod) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Payment method is required',
+      path: ['paymentMethod'],
+    });
+  }
+  if (data.paymentStatus !== 'deposit') return;
+  const amount = parseFloat(data.paymentAmount);
+  if (!(amount > 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Deposit amount must be greater than 0',
+      path: ['paymentAmount'],
+    });
+  }
 });
 
 const QUOTE_PRODUCT_PICKER_LIMIT = 100;
@@ -622,6 +650,7 @@ const Quotes = () => {
       startDate: null,
       dueDate: null,
       assignedTo: null,
+      ...JOB_CREATE_PAYMENT_DEFAULTS,
     },
   });
 
@@ -1150,6 +1179,7 @@ const Quotes = () => {
       startDate: null,
       dueDate: null,
       assignedTo: null,
+      ...JOB_CREATE_PAYMENT_DEFAULTS,
     });
     setConvertJobModalOpen(true);
   }, [convertJobForm]);
@@ -1158,10 +1188,21 @@ const Quotes = () => {
     if (!quoteToConvert) return;
     setConverting(true);
     try {
+      const quoteTotal = parseFloat(quoteToConvert.totalAmount) || 0;
+      if (values.paymentStatus === 'deposit') {
+        const amount = parseFloat(values.paymentAmount);
+        if (quoteTotal > 0 && amount >= quoteTotal - 0.01) {
+          convertJobForm.setError('paymentAmount', {
+            message: 'Deposit must be less than the quote total. Choose Paid in full instead.',
+          });
+          return;
+        }
+      }
       const payload = {
         assignedTo: values.assignedTo || null,
         startDate: values.startDate ? dayjs(values.startDate).format('YYYY-MM-DD') : null,
         dueDate: values.dueDate ? dayjs(values.dueDate).format('YYYY-MM-DD') : null,
+        ...buildJobCreatePaymentPayload(values),
       };
       const response = await quoteService.convertToJob(quoteToConvert.id, payload);
       const data = response?.data ?? response;
@@ -2525,7 +2566,7 @@ const Quotes = () => {
         open={convertJobModalOpen}
         onOpenChange={setConvertJobModalOpen}
         title="Convert Quote to Job"
-        description="Set job dates and assignment before creating the job."
+        description="Set job dates, assignment, and payment before creating the job."
         footer={
           <>
             <Button
@@ -2618,6 +2659,10 @@ const Quotes = () => {
                 )}
               />
             </div>
+            <JobCreatePaymentFields
+              form={convertJobForm}
+              grandTotal={parseFloat(quoteToConvert?.totalAmount) || 0}
+            />
           </form>
         </Form>
       </MobileFormDialog>

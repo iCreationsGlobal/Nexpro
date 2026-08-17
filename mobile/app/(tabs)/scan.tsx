@@ -36,6 +36,13 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useScanningEnabled } from '@/hooks/useScanningEnabled';
 import { resolveImageUrl } from '@/utils/fileUtils';
 import { refreshAfterJobChange, QUERY_STALE } from '@/utils/queryInvalidation';
+import {
+  JOB_CREATE_PAYMENT_DEFAULTS,
+  JOB_CREATE_PAYMENT_METHODS,
+  JOB_CREATE_PAYMENT_STATUSES,
+  buildJobCreatePaymentPayload,
+  validateJobCreatePayment,
+} from '@/utils/jobCreatePayment';
 import { OPEN_SCAN_CAMERA_EVENT } from '@/utils/scanTabEvents';
 import { getOutOfStockMessage, isProductOutOfStock } from '@/utils/productStock';
 import { deriveBarcodeSearchCandidates } from '@/utils/barcodeSearchCandidates';
@@ -106,6 +113,7 @@ export default function ScanScreen() {
     priority: 'medium',
     assignedTo: '',
     items: [createDefaultJobItem()],
+    ...JOB_CREATE_PAYMENT_DEFAULTS,
   });
 
   useEffect(() => {
@@ -213,25 +221,7 @@ export default function ScanScreen() {
   );
 
   const createJobMutation = useMutation({
-    mutationFn: (d: {
-      customerId: string;
-      title: string;
-      description?: string;
-      dueDate?: string;
-      status?: string;
-      priority?: string;
-      assignedTo?: string;
-      quotedPrice?: number;
-      finalPrice?: number;
-      jobType?: string;
-      quantity?: number;
-      items?: Array<{
-        category: string;
-        description?: string;
-        quantity: number;
-        unitPrice: number;
-      }>;
-    }) => jobService.createJob(d),
+    mutationFn: (d: Parameters<typeof jobService.createJob>[0]) => jobService.createJob(d),
     onSuccess: async () => {
       await refreshAfterJobChange(queryClient);
       setJobForm({
@@ -242,6 +232,7 @@ export default function ScanScreen() {
         priority: 'medium',
         assignedTo: '',
         items: [createDefaultJobItem()],
+        ...JOB_CREATE_PAYMENT_DEFAULTS,
       });
       Alert.alert('Success', 'Job created successfully');
     },
@@ -294,6 +285,11 @@ export default function ScanScreen() {
       Alert.alert('Error', 'Add at least one priced line item with category, quantity, and unit price');
       return;
     }
+    const paymentError = validateJobCreatePayment(jobForm, jobTotal);
+    if (paymentError) {
+      Alert.alert('Payment', paymentError);
+      return;
+    }
     createJobMutation.mutate({
       customerId: jobForm.customerId,
       title: jobForm.title.trim(),
@@ -307,6 +303,7 @@ export default function ScanScreen() {
       quotedPrice: jobTotal,
       finalPrice: jobTotal,
       items,
+      ...buildJobCreatePaymentPayload(jobForm),
     });
   }, [jobForm, createJobMutation, jobQuantity, jobTotal]);
 
@@ -639,6 +636,80 @@ export default function ScanScreen() {
               {CURRENCY.SYMBOL} {jobTotal.toFixed(CURRENCY.DECIMAL_PLACES)}
             </Text>
           </View>
+          <FormLabel>Payment</FormLabel>
+          <View style={styles.chipRow}>
+            {JOB_CREATE_PAYMENT_STATUSES.map((option) => {
+              const selected = jobForm.paymentStatus === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setJobForm((prev) => ({ ...prev, paymentStatus: option.value }))}
+                  style={[
+                    styles.customerChip,
+                    { borderColor },
+                    selected && { backgroundColor: colors.tint, borderColor: colors.tint },
+                  ]}
+                >
+                  <Text style={[styles.customerChipText, { color: selected ? '#fff' : textColor }]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {jobForm.paymentStatus !== 'unpaid' ? (
+            <>
+              {jobForm.paymentStatus === 'deposit' ? (
+                <>
+                  <FormLabel>Deposit amount</FormLabel>
+                  <FormInput
+                    value={jobForm.paymentAmount}
+                    onChangeText={(text) => setJobForm((prev) => ({ ...prev, paymentAmount: text }))}
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
+                  />
+                </>
+              ) : (
+                <Text style={[styles.hint, { color: mutedColor }]}>
+                  Amount: {CURRENCY.SYMBOL} {jobTotal.toFixed(CURRENCY.DECIMAL_PLACES)} (job total)
+                </Text>
+              )}
+              <FormLabel>Payment method</FormLabel>
+              <View style={styles.chipRow}>
+                {JOB_CREATE_PAYMENT_METHODS.map((option) => {
+                  const selected = jobForm.paymentMethod === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => setJobForm((prev) => ({ ...prev, paymentMethod: option.value }))}
+                      style={[
+                        styles.customerChip,
+                        { borderColor },
+                        selected && { backgroundColor: colors.tint, borderColor: colors.tint },
+                      ]}
+                    >
+                      <Text style={[styles.customerChipText, { color: selected ? '#fff' : textColor }]}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <FormLabel optional>Reference</FormLabel>
+              <FormInput
+                value={jobForm.paymentReference}
+                onChangeText={(text) => setJobForm((prev) => ({ ...prev, paymentReference: text }))}
+                placeholder="Receipt or transfer reference"
+              />
+              <FormLabel optional>Notes</FormLabel>
+              <FormInput
+                value={jobForm.paymentNotes}
+                onChangeText={(text) => setJobForm((prev) => ({ ...prev, paymentNotes: text }))}
+                placeholder="Optional note for this payment"
+                multiline
+              />
+            </>
+          ) : null}
           <Pressable
             onPress={handleCreateJob}
             disabled={createJobMutation.isPending}

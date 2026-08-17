@@ -40,6 +40,11 @@ export const jobService = {
       quantity: number;
       unitPrice: number;
     }>;
+    paymentStatus?: 'unpaid' | 'deposit' | 'paid';
+    amountPaid?: number;
+    paymentMethod?: string;
+    paymentReference?: string;
+    paymentNotes?: string;
   }) => {
     const query = await buildScopedQueryString({});
     const res = await api.post(query ? `/jobs?${query}` : '/jobs', data);

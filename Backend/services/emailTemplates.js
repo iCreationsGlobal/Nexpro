@@ -288,6 +288,7 @@ const invoiceNotification = (invoice, customer, paymentLink, company = {}) => {
   } = invoice;
 
   const amountDue = resolveInvoiceDisplayAmount(invoice, 'balance');
+  const isPaid = String(status || '').toLowerCase() === 'paid';
 
   const customerName = customer?.name || customer?.companyName || 'Valued Customer';
   const companyName = company.name || 'African Business Suite';
@@ -297,14 +298,13 @@ const invoiceNotification = (invoice, customer, paymentLink, company = {}) => {
 
   const statusBg = status === 'paid' ? '#d1fae5' : status === 'overdue' ? '#fee2e2' : '#fef3c7';
   const statusColor = status === 'paid' ? '#065f46' : status === 'overdue' ? '#991b1b' : '#92400e';
-
-  const inner = `
-    <h1 style="margin: 0 0 24px 0; font-size: ${d.headingSize}; font-weight: bold; color: ${d.headingColor}; line-height: 1.3;">Invoice ${invoiceNumber}</h1>
-    <p style="margin: 0 0 24px 0; font-size: ${d.bodySize}; line-height: 1.6; color: ${d.bodyColor}; text-align: center;">Hi ${customerName}, click the button below to view and pay online.</p>
-    <div style="background-color: ${statusBg}; padding: 24px; border-radius: ${d.borderRadius}; margin: 24px 0; text-align: center;">
-      <p style="margin: 0 0 8px 0; font-size: 14px; color: ${statusColor};">Amount Due</p>
-      <p style="margin: 0; font-size: 28px; font-weight: 700; color: ${statusColor};">${formatCurrency(amountDue, currency)}</p>
-    </div>
+  const intro = isPaid
+    ? `Hi ${customerName}, this invoice has been paid in full. Thank you.`
+    : `Hi ${customerName}, click the button below to view and pay online.`;
+  const amountLabel = isPaid ? 'Amount paid' : 'Amount Due';
+  const payCta = isPaid
+    ? ''
+    : `
     <table border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 24px auto 32px;">
       <tr>
         <td align="center" style="border-radius: ${d.buttonRadius}; background-color: ${primaryColor};">
@@ -313,12 +313,35 @@ const invoiceNotification = (invoice, customer, paymentLink, company = {}) => {
       </tr>
     </table>
     <p style="margin: 0 0 8px 0; font-size: ${d.smallSize}; color: ${d.mutedColor};">If the button does not work, copy this link into your browser:</p>
-    <p style="margin: 0 0 24px 0; font-size: ${d.smallSize}; word-break: break-all;"><a href="${paymentLink}" target="_blank" style="color: ${d.linkColor};">${paymentLink}</a></p>
+    <p style="margin: 0 0 24px 0; font-size: ${d.smallSize}; word-break: break-all;"><a href="${paymentLink}" target="_blank" style="color: ${d.linkColor};">${paymentLink}</a></p>`;
+
+  const inner = `
+    <h1 style="margin: 0 0 24px 0; font-size: ${d.headingSize}; font-weight: bold; color: ${d.headingColor}; line-height: 1.3;">Invoice ${invoiceNumber}</h1>
+    <p style="margin: 0 0 24px 0; font-size: ${d.bodySize}; line-height: 1.6; color: ${d.bodyColor}; text-align: center;">${intro}</p>
+    <div style="background-color: ${statusBg}; padding: 24px; border-radius: ${d.borderRadius}; margin: 24px 0; text-align: center;">
+      <p style="margin: 0 0 8px 0; font-size: 14px; color: ${statusColor};">${amountLabel}</p>
+      <p style="margin: 0; font-size: 28px; font-weight: 700; color: ${statusColor};">${formatCurrency(isPaid ? resolveInvoiceDisplayAmount(invoice, 'paid') : amountDue, currency)}</p>
+    </div>
+    ${payCta}
     <p style="margin: 0; font-size: ${d.footnoteSize}; color: ${d.footerColor};">If you have any questions about this invoice, please contact us.</p>
   `;
   const html = sellfyCardTemplate(inner, { companyName, primaryColor, logoUrl });
 
-  const text = `
+  const text = isPaid
+    ? `
+Invoice ${invoiceNumber}
+
+Hi ${customerName},
+
+This invoice has been paid in full. Thank you.
+
+Amount paid: ${formatCurrency(resolveInvoiceDisplayAmount(invoice, 'paid'), currency)}
+
+If you have any questions, please contact us.
+
+${companyName}
+  `.trim()
+    : `
 Invoice ${invoiceNumber}
 
 Hi ${customerName},
@@ -335,7 +358,9 @@ ${companyName}
   `.trim();
 
   return {
-    subject: `Invoice ${invoiceNumber} - ${formatCurrency(amountDue, currency)} Due`,
+    subject: isPaid
+      ? `Invoice ${invoiceNumber} — paid`
+      : `Invoice ${invoiceNumber} - ${formatCurrency(amountDue, currency)} Due`,
     html,
     text
   };

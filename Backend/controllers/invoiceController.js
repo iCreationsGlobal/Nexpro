@@ -49,6 +49,7 @@ const { getResolvedMtnConfigForTenant } = require('../services/tenantMomoCollect
 const { getResolvedHubtelConfigForTenant } = require('../services/tenantHubtelCollectionService');
 const { buildPublicPaymentOptions } = require('../services/paymentCollectionRouter');
 const { buildInvoicePaymentLink } = require('../utils/frontendUrl');
+const { isInvoiceFullyPaid } = require('../utils/jobCreatePayment');
 const {
   initiateDirectMoMoCharge,
   checkDirectMoMoStatus,
@@ -713,6 +714,7 @@ async function deliverInvoiceToCustomer({
   forceCustomerChannels = false,
   actorUserId = null,
   prefsSetting = null,
+  skipPaidReceipt = false,
 }) {
   const {
     TEMPLATE_KEYS,
@@ -748,6 +750,18 @@ async function deliverInvoiceToCustomer({
       reason: 'auto_send_disabled',
     });
     return { emailSent: false, smsSent: false, emailError: 'Auto-send invoice to customer is disabled' };
+  }
+
+  if (isInvoiceFullyPaid(updatedInvoice)) {
+    logInvoiceDelivery('invoice_send_decision', deliveryLogContext, {
+      decision: 'skip_pay_cta',
+      reason: 'invoice_already_paid',
+    });
+    if (skipPaidReceipt) {
+      return { emailSent: false, smsSent: false, emailError: null, skippedPaidReceipt: true };
+    }
+    await sendInvoicePaidConfirmationToCustomer(tenantId, updatedInvoice);
+    return { emailSent: false, smsSent: false, emailError: null, paidConfirmation: true };
   }
 
   const useAutomation = await shouldUseAutomationInsteadOfBuiltIn(tenantId, TEMPLATE_KEYS.INVOICE_SENT);
@@ -1666,6 +1680,158 @@ exports.deleteCancelledInvoice = async (req, res, next) => {
   }
 };
 
+/**
+ * Record an income payment against an invoice (no HTTP).
+ * Used by POST /invoices/:id/payment and job-create prepaid invoices.
+ *
+ * @param {object} params
+ * @returns {Promise<{ duplicate: boolean, invoice: object, payment: object|null, previousStatus: string }>}
+ */
+async function applyInvoicePaymentInternal({
+  tenantId,
+  userId = null,
+  invoice,
+  amount,
+  paymentMethod = 'cash',
+  paymentDate = null,
+  referenceNumber = '',
+  clientRequestId = '',
+  notes = null,
+  enqueueSideEffects = true,
+}) {
+  if (!invoice) {
+    const err = new Error('Invoice not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  if (invoice.status === 'cancelled') {
+    const err = new Error('Cannot record payment on cancelled invoice');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const paymentReference = normalizePaymentReference(referenceNumber, clientRequestId);
+  const existingPayment = await findExistingPaymentByReference({
+    tenantId,
+    referenceNumber: paymentReference,
+  });
+  if (existingPayment) {
+    const hydratedInvoice = await Invoice.findOne({
+      where: applyTenantFilter(tenantId, { id: invoice.id }),
+      include: invoiceResponseIncludes(),
+    });
+    return {
+      duplicate: true,
+      invoice: hydratedInvoice || invoice,
+      payment: existingPayment,
+      previousStatus: invoice.status,
+    };
+  }
+
+  const paymentAmount = parseFloat(amount);
+  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+    const err = new Error('Payment amount must be greater than 0');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const totalAmount = parseFloat(invoice.totalAmount || 0);
+  const newAmountPaid = parseFloat(invoice.amountPaid || 0) + paymentAmount;
+  const newBalance = Math.max(totalAmount - newAmountPaid, 0);
+
+  if (newAmountPaid > totalAmount + 0.01) {
+    const err = new Error('Payment amount exceeds invoice total');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const effectivePaymentDate = parsePaymentDateInput(paymentDate);
+  if (!effectivePaymentDate) {
+    const err = new Error('Payment date is invalid');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const previousStatus = invoice.status;
+  const updatePayload = {
+    amountPaid: Math.min(newAmountPaid, totalAmount),
+    balance: newBalance,
+  };
+
+  if (newBalance <= 0.01) {
+    updatePayload.status = 'paid';
+    updatePayload.paidDate = effectivePaymentDate;
+    updatePayload.balance = 0;
+  } else if (invoice.status === 'draft') {
+    updatePayload.status = 'sent';
+  }
+
+  await invoice.update(updatePayload);
+
+  const payment = await Payment.create({
+    paymentNumber: `PAY-${Date.now()}`,
+    type: 'income',
+    customerId: invoice.customerId,
+    jobId: invoice.jobId,
+    tenantId,
+    amount: paymentAmount,
+    paymentMethod: paymentMethod || 'cash',
+    paymentDate: effectivePaymentDate,
+    referenceNumber: paymentReference || referenceNumber || undefined,
+    status: 'completed',
+    description: `invoice:${invoice.id}`,
+    notes: notes || null,
+  });
+
+  try {
+    await maybeCreateCommissionForPayment({
+      tenantId,
+      paymentAmount,
+      paymentId: payment.id,
+      saleId: invoice.saleId || null,
+      invoiceId: invoice.id,
+      customerId: invoice.customerId || null,
+      jobId: invoice.jobId || null,
+    });
+  } catch (partnerErr) {
+    console.error('[InvoiceRecordPayment] Partner commission failed:', partnerErr?.message || partnerErr);
+  }
+
+  const updatedInvoice = await Invoice.findOne({
+    where: applyTenantFilter(tenantId, { id: invoice.id }),
+    include: invoiceResponseIncludes(),
+  });
+
+  invalidateAfterMutation(tenantId);
+  invalidateInvoiceListCache(tenantId);
+
+  if (enqueueSideEffects) {
+    enqueueInvoicePaymentSideEffects({
+      tenantId,
+      userId,
+      invoiceId: invoice.id,
+      customerId: invoice.customerId,
+      payment,
+      paymentAmount,
+      paymentDate: effectivePaymentDate,
+      paymentMethod: paymentMethod || 'cash',
+      referenceNumber: paymentReference || referenceNumber,
+      updatedInvoice,
+      wasFullyPaid: updatedInvoice?.status === 'paid',
+      wasAlreadyPaid: previousStatus === 'paid',
+    });
+  }
+
+  return {
+    duplicate: false,
+    invoice: updatedInvoice,
+    payment,
+    previousStatus,
+  };
+}
+
+exports.applyInvoicePaymentInternal = applyInvoicePaymentInternal;
+
 // @desc    Record payment on invoice
 // @route   POST /api/invoices/:id/payment
 // @access  Private
@@ -1674,7 +1840,6 @@ exports.recordPayment = async (req, res, next) => {
     const body = sanitizePayload(req.body);
     const { amount, paymentMethod, referenceNumber, clientRequestId, paymentDate } = body;
     const paymentNotes = resolvePaymentNotesFromBody(body);
-    const paymentReference = normalizePaymentReference(referenceNumber, clientRequestId);
 
     const invoice = await Invoice.findOne({
       where: invoiceReadWhere(req, { id: req.params.id })
@@ -1687,140 +1852,52 @@ exports.recordPayment = async (req, res, next) => {
       });
     }
 
-    if (invoice.status === 'cancelled') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot record payment on cancelled invoice'
+    let result;
+    try {
+      result = await applyInvoicePaymentInternal({
+        tenantId: req.tenantId,
+        userId: req.user?.id || null,
+        invoice,
+        amount,
+        paymentMethod: paymentMethod || 'cash',
+        paymentDate,
+        referenceNumber,
+        clientRequestId,
+        notes: paymentNotes,
       });
+    } catch (payErr) {
+      if (payErr.statusCode) {
+        return res.status(payErr.statusCode).json({
+          success: false,
+          message: payErr.message,
+        });
+      }
+      throw payErr;
     }
 
-    const existingPayment = await findExistingPaymentByReference({
-      tenantId: req.tenantId,
-      referenceNumber: paymentReference,
-    });
-    if (existingPayment) {
-      const hydratedInvoice = await Invoice.findOne({
-        where: applyTenantFilter(req.tenantId, { id: invoice.id }),
-        include: invoiceResponseIncludes()
-      });
-      const payload = await invoiceToResponsePayload(hydratedInvoice);
-      payload.payments = (await loadInvoicePayments(hydratedInvoice)).map((paymentRecord) => (
-        typeof paymentRecord.toJSON === 'function' ? paymentRecord.toJSON() : paymentRecord
-      ));
+    const hydratedInvoice = result.invoice;
+    const payload = await invoiceToResponsePayload(hydratedInvoice);
+    payload.payments = (await loadInvoicePayments(hydratedInvoice)).map((paymentRecord) => (
+      typeof paymentRecord.toJSON === 'function' ? paymentRecord.toJSON() : paymentRecord
+    ));
+    const paymentJson = result.payment && typeof result.payment.toJSON === 'function'
+      ? result.payment.toJSON()
+      : result.payment;
 
+    if (result.duplicate) {
       return res.status(200).json({
         success: true,
         message: 'Payment already recorded',
         data: payload,
-        payment: typeof existingPayment.toJSON === 'function' ? existingPayment.toJSON() : existingPayment,
+        payment: paymentJson,
         duplicate: true
       });
     }
 
-    const paymentAmount = parseFloat(amount);
-    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Payment amount must be greater than 0'
-      });
-    }
-
-    const totalAmount = parseFloat(invoice.totalAmount || 0);
-    const newAmountPaid = parseFloat(invoice.amountPaid || 0) + paymentAmount;
-    const newBalance = Math.max(totalAmount - newAmountPaid, 0);
-
-    if (newAmountPaid > totalAmount) {
-      return res.status(400).json({
-        success: false,
-        message: 'Payment amount exceeds invoice total'
-      });
-    }
-
-    // Update invoice
-    const effectivePaymentDate = parsePaymentDateInput(paymentDate);
-    if (!effectivePaymentDate) {
-      return res.status(400).json({
-        success: false,
-        message: 'Payment date is invalid'
-      });
-    }
-
-    const updatePayload = {
-      amountPaid: newAmountPaid,
-      balance: newBalance
-    };
-
-    if (newBalance <= 0) {
-      updatePayload.status = 'paid';
-      updatePayload.paidDate = effectivePaymentDate;
-    } else if (invoice.status === 'draft') {
-      updatePayload.status = 'sent';
-    }
-
-    await invoice.update(updatePayload);
-
-    // Create payment record
-    const paymentNumber = `PAY-${Date.now()}`;
-    const payment = await Payment.create({
-      paymentNumber,
-      type: 'income',
-      customerId: invoice.customerId,
-      jobId: invoice.jobId,
-      tenantId: req.tenantId,
-      amount: paymentAmount,
-      paymentMethod: paymentMethod || 'cash',
-      paymentDate: effectivePaymentDate,
-      referenceNumber: paymentReference || referenceNumber,
-      status: 'completed',
-      description: `invoice:${invoice.id}`,
-      notes: paymentNotes || null
-    });
-
-    try {
-      await maybeCreateCommissionForPayment({
-        tenantId: req.tenantId,
-        paymentAmount,
-        paymentId: payment.id,
-        saleId: invoice.saleId || null,
-        invoiceId: invoice.id,
-        customerId: invoice.customerId || null,
-        jobId: invoice.jobId || null,
-      });
-    } catch (partnerErr) {
-      console.error('[InvoiceRecordPayment] Partner commission failed:', partnerErr?.message || partnerErr);
-    }
-
-    const updatedInvoice = await Invoice.findOne({
-      where: applyTenantFilter(req.tenantId, { id: invoice.id }),
-      include: invoiceResponseIncludes()
-    });
-
-    invalidateAfterMutation(req.tenantId);
-    invalidateInvoiceListCache(req.tenantId);
-    const payload = await invoiceToResponsePayload(updatedInvoice);
-    payload.payments = (await loadInvoicePayments(updatedInvoice)).map((paymentRecord) => (
-      typeof paymentRecord.toJSON === 'function' ? paymentRecord.toJSON() : paymentRecord
-    ));
-
     res.status(200).json({
       success: true,
       data: payload,
-      payment: typeof payment.toJSON === 'function' ? payment.toJSON() : payment
-    });
-
-    enqueueInvoicePaymentSideEffects({
-      tenantId: req.tenantId,
-      userId: req.user?.id || null,
-      invoiceId: invoice.id,
-      customerId: invoice.customerId,
-      payment,
-      paymentAmount,
-      paymentDate: effectivePaymentDate,
-      paymentMethod: paymentMethod || 'cash',
-      referenceNumber: paymentReference || referenceNumber,
-      updatedInvoice,
-      wasFullyPaid: updatedInvoice.status === 'paid',
-      wasAlreadyPaid: invoice.status === 'paid',
+      payment: paymentJson
     });
   } catch (error) {
     next(error);
@@ -2292,7 +2369,12 @@ async function createInvoiceFromQuoteInternal(tenantId, quoteId, userId = null) 
  * @param {{ forceCustomerChannels?: boolean, userId?: string|null, deliverySource?: string }} [options] - If forceCustomerChannels, notify customer even when global auto-send invoice pref is off (e.g. job-creation auto-send).
  */
 async function sendInvoiceToCustomer(tenantId, invoice, options = {}) {
-  const { forceCustomerChannels = false, userId = null, deliverySource = 'internal_invoice_send' } = options || {};
+  const {
+    forceCustomerChannels = false,
+    userId = null,
+    deliverySource = 'internal_invoice_send',
+    skipPaidReceipt = false,
+  } = options || {};
   if (!invoice.paymentToken) {
     const crypto = require('crypto');
     await invoice.update({ paymentToken: crypto.randomBytes(32).toString('hex') });
@@ -2313,6 +2395,7 @@ async function sendInvoiceToCustomer(tenantId, invoice, options = {}) {
     deliverySource,
     forceCustomerChannels,
     actorUserId: userId,
+    skipPaidReceipt,
   });
 }
 

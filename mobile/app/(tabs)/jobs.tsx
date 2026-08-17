@@ -36,6 +36,13 @@ import { formatStatusLabel } from '@/utils/formatLabels';
 import { showListFilters } from '@/utils/listEmptyLayout';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { refreshAfterJobChange } from '@/utils/queryInvalidation';
+import {
+  JOB_CREATE_PAYMENT_DEFAULTS,
+  JOB_CREATE_PAYMENT_METHODS,
+  JOB_CREATE_PAYMENT_STATUSES,
+  buildJobCreatePaymentPayload,
+  validateJobCreatePayment,
+} from '@/utils/jobCreatePayment';
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -97,6 +104,7 @@ export default function JobsScreen() {
     category: '',
     quantity: '1',
     unitPrice: '',
+    ...JOB_CREATE_PAYMENT_DEFAULTS,
   });
 
   const resolvedType = resolveBusinessType(activeTenant?.businessType);
@@ -192,6 +200,7 @@ export default function JobsScreen() {
         category: '',
         quantity: '1',
         unitPrice: '',
+        ...JOB_CREATE_PAYMENT_DEFAULTS,
       });
       const payload = res?.data ?? res;
       const jobId = (payload as { id?: string })?.id ?? (payload as { job?: { id?: string } })?.job?.id;
@@ -220,6 +229,12 @@ export default function JobsScreen() {
       Alert.alert('Line item required', 'Add a category and price for the job.');
       return;
     }
+    const jobTotal = quantity * unitPrice;
+    const paymentError = validateJobCreatePayment(jobForm, jobTotal);
+    if (paymentError) {
+      Alert.alert('Payment', paymentError);
+      return;
+    }
     createJobMutation.mutate({
       customerId: jobForm.customerId,
       title,
@@ -229,8 +244,8 @@ export default function JobsScreen() {
       priority: 'medium',
       jobType: category,
       quantity,
-      quotedPrice: quantity * unitPrice,
-      finalPrice: quantity * unitPrice,
+      quotedPrice: jobTotal,
+      finalPrice: jobTotal,
       items: [
         {
           category,
@@ -239,6 +254,7 @@ export default function JobsScreen() {
           unitPrice,
         },
       ],
+      ...buildJobCreatePaymentPayload(jobForm),
     });
   }, [createJobMutation, jobForm]);
 
@@ -492,6 +508,84 @@ export default function JobsScreen() {
           keyboardType="decimal-pad"
           placeholderTextColor={mutedColor}
         />
+        <Text style={[styles.formLabel, { color: textColor }]}>Payment</Text>
+        <View style={styles.chipWrap}>
+          {JOB_CREATE_PAYMENT_STATUSES.map((option) => {
+            const selected = jobForm.paymentStatus === option.value;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => setJobForm((prev) => ({ ...prev, paymentStatus: option.value }))}
+                style={[
+                  styles.customerChip,
+                  { borderColor, backgroundColor: selected ? colors.tint : 'transparent' },
+                ]}
+              >
+                <Text style={[styles.customerChipText, { color: selected ? '#fff' : textColor }]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {jobForm.paymentStatus !== 'unpaid' ? (
+          <>
+            {jobForm.paymentStatus === 'deposit' ? (
+              <>
+                <Text style={[styles.formLabel, { color: textColor }]}>Deposit amount</Text>
+                <TextInput
+                  style={[styles.input, { color: textColor, borderColor, backgroundColor: inputBg }]}
+                  value={jobForm.paymentAmount}
+                  onChangeText={(text) => setJobForm((prev) => ({ ...prev, paymentAmount: text }))}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={mutedColor}
+                />
+              </>
+            ) : (
+              <Text style={[styles.paidHint, { color: mutedColor }]}>
+                Amount: {formatCurrency((Number(jobForm.quantity) || 1) * (Number(jobForm.unitPrice) || 0))} (job total)
+              </Text>
+            )}
+            <Text style={[styles.formLabel, { color: textColor }]}>Payment method</Text>
+            <View style={styles.chipWrap}>
+              {JOB_CREATE_PAYMENT_METHODS.map((option) => {
+                const selected = jobForm.paymentMethod === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setJobForm((prev) => ({ ...prev, paymentMethod: option.value }))}
+                    style={[
+                      styles.customerChip,
+                      { borderColor, backgroundColor: selected ? colors.tint : 'transparent' },
+                    ]}
+                  >
+                    <Text style={[styles.customerChipText, { color: selected ? '#fff' : textColor }]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={[styles.formLabel, { color: textColor }]}>Reference (optional)</Text>
+            <TextInput
+              style={[styles.input, { color: textColor, borderColor, backgroundColor: inputBg }]}
+              value={jobForm.paymentReference}
+              onChangeText={(text) => setJobForm((prev) => ({ ...prev, paymentReference: text }))}
+              placeholder="Receipt or transfer reference"
+              placeholderTextColor={mutedColor}
+            />
+            <Text style={[styles.formLabel, { color: textColor }]}>Notes (optional)</Text>
+            <TextInput
+              style={[styles.input, styles.textArea, { color: textColor, borderColor, backgroundColor: inputBg }]}
+              value={jobForm.paymentNotes}
+              onChangeText={(text) => setJobForm((prev) => ({ ...prev, paymentNotes: text }))}
+              placeholder="Optional note for this payment"
+              placeholderTextColor={mutedColor}
+              multiline
+            />
+          </>
+        ) : null}
       </FormSheetModal>
 
     </ScreenShell>
@@ -575,10 +669,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    minHeight: 44,
     marginRight: 8,
+    marginBottom: 8,
+    justifyContent: 'center',
   },
   customerChipText: { fontSize: 13, fontWeight: '600' },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 },
+  paidHint: { fontSize: 14, marginBottom: 12 },
   input: {
     borderWidth: 1,
     borderRadius: 10,
