@@ -17,6 +17,7 @@ export const useSettingsWhatsApp = () => {
   const canManageOrganization = Boolean(isManager);
   const savingToastDismissRef = useRef(null);
   const [whatsappTemplateLearnMoreOpen, setWhatsappTemplateLearnMoreOpen] = useState(false);
+  const [whatsappEditing, setWhatsappEditing] = useState(false);
 
   const whatsappForm = useForm({
     resolver: zodResolver(whatsappSchema),
@@ -61,6 +62,7 @@ export const useSettingsWhatsApp = () => {
     onSuccess: () => {
       dismissSavingToast();
       showSuccess('WhatsApp settings saved successfully');
+      setWhatsappEditing(false);
       queryClient.invalidateQueries({ queryKey: ['settings', 'whatsapp'] });
     },
     onError: (error) => {
@@ -141,6 +143,16 @@ export const useSettingsWhatsApp = () => {
     }
   }, [whatsappData, whatsappForm]);
 
+  const cancelWhatsAppEdit = useCallback(() => {
+    resetWhatsAppForm();
+    setWhatsappEditing(false);
+  }, [resetWhatsAppForm]);
+
+  const whatsappSaved = Boolean(
+    whatsappData?.data?.phoneNumberId || whatsappData?.data?.accessTokenConfigured
+  );
+  const showWhatsAppSummary = whatsappSaved && !whatsappEditing;
+
   return {
     canManageOrganization,
     whatsappForm,
@@ -154,5 +166,10 @@ export const useSettingsWhatsApp = () => {
     whatsappTemplateLearnMoreOpen,
     setWhatsappTemplateLearnMoreOpen,
     resetWhatsAppForm,
+    whatsappEditing,
+    setWhatsappEditing,
+    cancelWhatsAppEdit,
+    whatsappSaved,
+    showWhatsAppSummary,
   };
 };

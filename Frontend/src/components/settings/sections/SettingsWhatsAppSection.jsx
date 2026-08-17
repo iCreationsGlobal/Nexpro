@@ -6,10 +6,12 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import { Descriptions, DescriptionItem } from '@/components/ui/descriptions';
 import {
   Form,
   FormControl,
@@ -48,6 +50,10 @@ const SettingsWhatsAppSection = () => {
     whatsappTemplateLearnMoreOpen,
     setWhatsappTemplateLearnMoreOpen,
     resetWhatsAppForm,
+    whatsappEditing,
+    setWhatsappEditing,
+    cancelWhatsAppEdit,
+    showWhatsAppSummary,
   } = useSettingsWhatsApp();
 
   const webhookUrl = whatsappData?.data?.webhookUrl || '/api/webhooks/whatsapp';
@@ -80,7 +86,19 @@ const SettingsWhatsAppSection = () => {
   return (
     <Card className="border border-gray-200">
       <CardHeader>
-        <CardTitle className="text-base md:text-2xl">WhatsApp Business API Configuration</CardTitle>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <CardTitle className="text-base md:text-2xl">WhatsApp Business API Configuration</CardTitle>
+          {!loadingWhatsApp && showWhatsAppSummary && (
+            <Button
+              type="button"
+              size="sm"
+              className="shrink-0"
+              onClick={() => setWhatsappEditing(true)}
+            >
+              Edit
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {loadingWhatsApp ? (
@@ -96,6 +114,43 @@ const SettingsWhatsAppSection = () => {
               </AlertDescription>
             </Alert>
 
+            {showWhatsAppSummary ? (
+              <>
+                <Descriptions>
+                  <DescriptionItem label="Status">
+                    {whatsappData?.data?.enabled ? 'Enabled' : 'Disabled'}
+                  </DescriptionItem>
+                  <DescriptionItem label="Phone Number ID">
+                    {whatsappData?.data?.phoneNumberId || '—'}
+                  </DescriptionItem>
+                  <DescriptionItem label="Business Account ID">
+                    {whatsappData?.data?.businessAccountId || '—'}
+                  </DescriptionItem>
+                  <DescriptionItem label="Access Token">
+                    {whatsappData?.data?.accessTokenConfigured ? 'Stored securely' : '—'}
+                  </DescriptionItem>
+                  <DescriptionItem label="Webhook Verify Token">
+                    {whatsappData?.data?.webhookVerifyToken || '—'}
+                  </DescriptionItem>
+                  <DescriptionItem label="Template Namespace">
+                    {whatsappData?.data?.templateNamespace || '—'}
+                  </DescriptionItem>
+                </Descriptions>
+                <div className="mt-4 rounded-lg border border-gray-200 p-3 md:p-4 space-y-2">
+                  <Label>Webhook URL</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Paste this in Meta → WhatsApp → Configuration. Subscribe to messages.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input readOnly value={webhookUrl} className="font-mono text-xs" />
+                    <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={copyWebhookUrl}>
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : (
             <Form {...whatsappForm}>
               <form onSubmit={whatsappForm.handleSubmit(onWhatsAppSubmit)} className="space-y-3 md:space-y-4">
                 <FormField
@@ -219,7 +274,7 @@ const SettingsWhatsAppSection = () => {
                 </div>
 
                 <div className="rounded-lg border border-gray-200 p-3 md:p-4 space-y-2">
-                  <FormLabel>Webhook URL</FormLabel>
+                  <Label>Webhook URL</Label>
                   <p className="text-xs text-muted-foreground">
                     Paste this in Meta → WhatsApp → Configuration. Subscribe to message_status (and messages if you want inbound events).
                   </p>
@@ -233,9 +288,15 @@ const SettingsWhatsAppSection = () => {
                 </div>
 
                 <div className="flex flex-wrap gap-2 justify-end mt-3 md:mt-0">
-                  <Button type="button" variant="outline" size="sm" onClick={resetWhatsAppForm}>
-                    Reset
-                  </Button>
+                  {whatsappEditing ? (
+                    <Button type="button" variant="outline" size="sm" onClick={cancelWhatsAppEdit}>
+                      Cancel
+                    </Button>
+                  ) : (
+                    <Button type="button" variant="outline" size="sm" onClick={resetWhatsAppForm}>
+                      Reset
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
@@ -251,6 +312,7 @@ const SettingsWhatsAppSection = () => {
                 </div>
               </form>
             </Form>
+            )}
 
             <Separator className="my-3 md:my-6">
               <span className="text-sm font-medium">Message Templates</span>

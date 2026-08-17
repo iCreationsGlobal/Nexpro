@@ -22,7 +22,9 @@ import { useAuth } from '../context/AuthContext';
 import { useShopOptional } from '../context/ShopContext';
 import { useWorkspaceScope } from '../hooks/useWorkspaceScope';
 import { useSmartSearch } from '../context/SmartSearchContext';
+import { useCustomerEvat } from '../hooks/useCustomerEvat';
 import ActionColumn from '../components/ActionColumn';
+import CustomerEvatFields from '../components/CustomerEvatFields';
 import DetailsDrawer from '../components/DetailsDrawer';
 import DrawerSectionCard from '../components/DrawerSectionCard';
 import PhoneNumberInput from '../components/PhoneNumberInput';
@@ -119,6 +121,8 @@ const customerSchema = z.object({
   state: customerString,
   howDidYouHear: customerString,
   referralName: customerString,
+  taxId: customerString,
+  ghanaCardPin: customerString,
 }).superRefine((data, ctx) => {
   const hasMonth = Boolean(data.birthdayMonth);
   const hasDay = Boolean(data.birthdayDay);
@@ -148,8 +152,13 @@ const Customers = () => {
   const [importContactsOpen, setImportContactsOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
-  const { isManager, tenantRole, activeTenant, activeTenantId } = useAuth();
+  const { isManager, tenantRole, activeTenant, activeTenantId, hasFeature } = useAuth();
   const canManageCustomer = isManager || tenantRole === 'staff';
+  const customerEvat = useCustomerEvat({
+    featureEnabled: hasFeature('graEvat'),
+    tenantId: activeTenantId,
+    isManager,
+  });
   const shopContext = useShopOptional();
   const activeShopId = shopContext?.activeShopId ?? null;
   const { activeStudioLocationId, scopeReady } = useWorkspaceScope();
@@ -196,6 +205,8 @@ const Customers = () => {
       state: '',
       howDidYouHear: '',
       referralName: '',
+      taxId: '',
+      ghanaCardPin: '',
     },
   });
 
@@ -357,6 +368,8 @@ const Customers = () => {
         address: '',
         howDidYouHear: '',
         referralName: '',
+        taxId: '',
+        ghanaCardPin: '',
       });
       setShowReferralName(false);
       setShowCustomerSourceOtherInput(false);
@@ -394,6 +407,8 @@ const Customers = () => {
       address: '',
       howDidYouHear: '',
       referralName: '',
+      taxId: '',
+      ghanaCardPin: '',
     });
     setShowReferralName(false);
     setShowCustomerSourceOtherInput(false);
@@ -420,6 +435,8 @@ const Customers = () => {
       state: customer.state || '',
       howDidYouHear: customer.howDidYouHear || '',
       referralName: customer.referralName || '',
+      taxId: customer.taxId || '',
+      ghanaCardPin: customer.ghanaCardPin || '',
     });
     setShowReferralName(customer.howDidYouHear === 'Referral');
     setShowCustomerSourceOtherInput(false);
@@ -991,7 +1008,20 @@ const Customers = () => {
                   </FormItem>
                 )}
               />
-              <div className="space-y-2">
+            </FormFieldGrid>
+
+            {customerEvat.featureEnabled && (
+              <CustomerEvatFields
+                control={form.control}
+                evatEnabled={customerEvat.evatEnabled}
+                isLoading={customerEvat.isLoading}
+                isManager={customerEvat.isManager}
+                onTurnOn={customerEvat.turnOn}
+                turningOn={customerEvat.turningOn}
+              />
+            )}
+
+            <div className="space-y-2">
                 <Label>Birthday (optional)</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <FormField
@@ -1072,7 +1102,6 @@ const Customers = () => {
                 </div>
                 <p className="text-sm text-muted-foreground">Day and month only</p>
               </div>
-            </FormFieldGrid>
 
               <FormField
                 control={form.control}
@@ -1294,6 +1323,16 @@ const Customers = () => {
                     <DescriptionItem label="Phone">
                       <span className="text-foreground">{viewingCustomer.phone || '—'}</span>
                     </DescriptionItem>
+                    {customerEvat.featureEnabled && customerEvat.evatEnabled && (
+                      <>
+                        <DescriptionItem label="TIN">
+                          <span className="text-foreground">{viewingCustomer.taxId || '—'}</span>
+                        </DescriptionItem>
+                        <DescriptionItem label="Ghana Card PIN">
+                          <span className="text-foreground">{viewingCustomer.ghanaCardPin || '—'}</span>
+                        </DescriptionItem>
+                      </>
+                    )}
                     <DescriptionItem label="Birthday">
                       <span className="text-foreground">
                         {viewingCustomer.dateOfBirth ? formatBirthdayDisplay(viewingCustomer.dateOfBirth) : '—'}

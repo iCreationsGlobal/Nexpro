@@ -304,7 +304,7 @@ export default function ReportsOverviewDashboard({
           <RevenueByCategoryChart
             data={categoryData}
             totalRevenue={totalRevenue}
-            onViewFullReport={() => navigate('/reports/compliance')}
+            onViewFullReport={() => navigate('/compliance/statements')}
           />
         </div>
         <div className="lg:col-span-3">
@@ -376,11 +376,11 @@ export default function ReportsOverviewDashboard({
         <ProfitLossSummaryCard
           profitLoss={plData}
           showCogs={isRetail}
-          onViewFullReport={() => navigate('/reports/compliance')}
+          onViewFullReport={() => navigate('/compliance/statements')}
         />
         <CashFlowSummaryCard
           cashFlow={cashFlow}
-          onViewFullReport={() => navigate('/reports/compliance')}
+          onViewFullReport={() => navigate('/compliance/statements')}
         />
         <OutstandingPaymentsList
           invoices={overdueInvoices}

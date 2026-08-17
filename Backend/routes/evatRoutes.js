@@ -13,7 +13,7 @@ const router = express.Router();
 router.use(protect);
 router.use(tenantContext);
 
-router.get('/status', authorize('admin', 'manager'), getEvatStatus);
+router.get('/status', authorize('admin', 'manager', 'staff'), getEvatStatus);
 router.put('/settings', authorize('admin', 'manager'), updateEvatSettings);
 router.post('/test-stamp', authorize('admin', 'manager'), testStamp);
 router.post('/stamp', authorize('admin', 'manager', 'staff'), stampExisting);

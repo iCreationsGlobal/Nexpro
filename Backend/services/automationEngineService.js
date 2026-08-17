@@ -117,9 +117,17 @@ function getTemplates() {
       description: 'Email customers before an invoice is due.',
       triggerType: 'invoice_due_in_days',
       allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      defaultForBusiness: true,
       triggerConfig: { daysBeforeDue: 2 },
       actionConfig: {
-        actions: [{ type: 'send_email_platform', subject: 'Invoice due soon', body: 'Your invoice is due soon.' }]
+        actions: [{
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, invoice {{invoiceNumber}} for {{balance}} is due on {{dueDate}}. Pay here: {{paymentLink}} — {{businessName}}',
+        }, {
+          type: 'send_email_platform',
+          subject: 'Invoice {{invoiceNumber}} due soon',
+          body: 'Hi {{customerName}},\n\nThis is a friendly reminder that invoice {{invoiceNumber}} for {{balance}} is due on {{dueDate}}.\n\nPay online: {{paymentLink}}\n\nThank you,\n{{businessName}}',
+        }]
       }
     },
     {
@@ -153,9 +161,22 @@ function getTemplates() {
       description: 'Email customers after a period of inactivity.',
       triggerType: 'customer_inactive_days',
       allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      defaultForBusiness: true,
       triggerConfig: { inactiveDays: 30 },
       actionConfig: {
-        actions: [{ type: 'send_email_platform', subject: 'We miss you', body: 'Come back for a special offer.' }]
+        actions: [{
+          type: 'send_whatsapp',
+          templateName: 'win_back',
+          language: 'en',
+          parameters: ['{{customerName}}', '{{businessName}}'],
+        }, {
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, we miss you at {{businessName}}! It has been a while since your last visit. We would love to see you again.',
+        }, {
+          type: 'send_email_platform',
+          subject: 'We miss you, {{customerName}}',
+          body: 'Hi {{customerName}},\n\nWe have not seen you at {{businessName}} in a while and would love to welcome you back.\n\nWarm regards,\n{{businessName}}',
+        }]
       }
     },
     {
@@ -164,6 +185,7 @@ function getTemplates() {
       description: 'Send customers a birthday message on their birthday.',
       triggerType: 'customer_birthday',
       allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
         actions: [{
@@ -171,6 +193,13 @@ function getTemplates() {
           templateName: 'birthday_greeting',
           language: 'en',
           parameters: ['{{customerName}}']
+        }, {
+          type: 'send_sms',
+          body: 'Happy birthday {{customerName}}! Wishing you a wonderful day from everyone at {{businessName}}.',
+        }, {
+          type: 'send_email_platform',
+          subject: 'Happy birthday, {{customerName}}!',
+          body: 'Hi {{customerName}},\n\nHappy birthday from all of us at {{businessName}}! We hope you have a fantastic day.\n\nWarm wishes,\n{{businessName}}',
         }]
       }
     },
@@ -180,6 +209,7 @@ function getTemplates() {
       description: 'Send a payment reminder after an invoice is overdue.',
       triggerType: 'invoice_overdue',
       allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      defaultForBusiness: true,
       triggerConfig: { daysAfterDue: 1 },
       scheduleConfig: { frequency: 'weekly', cooldownHours: 168 },
       actionConfig: {
@@ -190,6 +220,13 @@ function getTemplates() {
           parameters: ['{{customerName}}', '{{invoiceNumber}}', '{{balanceFormatted}}', '{{dueDate}}'],
           buttonParameters: ['{{paymentPath}}'],
           buttonIndex: 0
+        }, {
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, invoice {{invoiceNumber}} is overdue ({{overdueDays}} days). Balance due: {{balance}}. Pay here: {{paymentLink}} — {{businessName}}',
+        }, {
+          type: 'send_email_platform',
+          subject: 'Overdue invoice {{invoiceNumber}}',
+          body: 'Hi {{customerName}},\n\nInvoice {{invoiceNumber}} is now {{overdueDays}} days overdue. Outstanding balance: {{balance}}.\n\nPlease pay as soon as possible: {{paymentLink}}\n\n{{businessName}}',
         }]
       }
     },
@@ -200,9 +237,13 @@ function getTemplates() {
       triggerType: 'quote_no_response',
       allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
       requiresQuotes: true,
+      defaultForBusiness: true,
       triggerConfig: { silentDays: 3 },
       actionConfig: {
         actions: [{
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, just checking in on quote {{quoteNumber}} from {{businessName}}. Reply if you have any questions or would like to proceed.',
+        }, {
           type: 'send_email_platform',
           subject: 'Following up on your quote',
           body: 'Hi, just checking whether you have any questions about your quote.'
@@ -215,6 +256,7 @@ function getTemplates() {
       description: 'Thank customers after a payment is recorded.',
       triggerType: 'payment_received',
       allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
         actions: [{
@@ -222,6 +264,9 @@ function getTemplates() {
           templateName: 'payment_received',
           language: 'en',
           parameters: ['{{customerName}}', '{{invoiceNumber}}', '{{amount}}', '{{businessName}}']
+        }, {
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, thank you! We received {{amount}} for invoice {{invoiceNumber}}. Balance: {{balance}}. — {{businessName}}',
         }, {
           type: 'send_email_platform',
           subject: 'Payment received — thank you',
@@ -235,6 +280,7 @@ function getTemplates() {
       description: 'Notify customers when a job is completed.',
       triggerType: 'job_completed',
       allowedBusinessTypes: ['studio'],
+      defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
         actions: [{
@@ -242,6 +288,9 @@ function getTemplates() {
           templateName: 'job_completed',
           language: 'en',
           parameters: ['{{customerName}}', '{{jobNumber}}', '{{businessName}}']
+        }, {
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, your job {{jobNumber}} is complete. {{trackingLinkLine}} — {{businessName}}',
         }, {
           type: 'send_email_platform',
           subject: 'Your job {{jobNumber}} is complete',
@@ -256,6 +305,7 @@ function getTemplates() {
       triggerType: 'daily_sales_summary',
       audience: 'internal',
       allowedBusinessTypes: ['shop'],
+      defaultForBusiness: true,
       triggerConfig: { summaryPeriod: 'yesterday' },
       conditionConfig: { runAfterTime: '06:00' },
       scheduleConfig: { cooldownHours: 20 },
@@ -348,6 +398,7 @@ function getTemplates() {
       triggerType: 'new_lead_staff',
       audience: 'internal',
       allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
         audience: 'internal',
@@ -393,15 +444,21 @@ function getTemplates() {
       description: 'Welcome new customers by email, SMS, or WhatsApp.',
       triggerType: 'customer_created',
       allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
         actions: [{
-          type: 'send_email_platform',
-          subject: 'Welcome to {{businessName}}, {{customerName}}!',
-          body: 'Hi {{customerName}},\n\nWelcome to {{businessName}}! We are glad to have you as a customer.\n\nWarm regards,\n{{businessName}}',
+          type: 'send_whatsapp',
+          templateName: 'welcome_customer',
+          language: 'en',
+          parameters: ['{{customerName}}', '{{businessName}}'],
         }, {
           type: 'send_sms',
           body: 'Hi {{customerName}}, welcome to {{businessName}}! We look forward to serving you.',
+        }, {
+          type: 'send_email_platform',
+          subject: 'Welcome to {{businessName}}, {{customerName}}!',
+          body: 'Hi {{customerName}},\n\nWelcome to {{businessName}}! We are glad to have you as a customer.\n\nWarm regards,\n{{businessName}}',
         }]
       }
     },
@@ -432,6 +489,7 @@ function getTemplates() {
       description: 'Notify the customer when an invoice is sent.',
       triggerType: 'invoice_sent',
       allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
         actions: [{
@@ -439,6 +497,9 @@ function getTemplates() {
           templateName: 'invoice_notification',
           language: 'en',
           parameters: ['{{customerName}}', '{{invoiceNumber}}', '{{totalAmountFormatted}}', '{{paymentLink}}'],
+        }, {
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, invoice {{invoiceNumber}} for {{totalAmountFormatted}} is ready. Pay: {{paymentLink}} — {{businessName}}',
         }, {
           type: 'send_email_platform',
           subject: 'Invoice {{invoiceNumber}} from {{businessName}}',
@@ -452,6 +513,7 @@ function getTemplates() {
       description: 'Send customers an order confirmation when a sale is completed.',
       triggerType: 'sale_completed',
       allowedBusinessTypes: ['shop'],
+      defaultForBusiness: true,
       // Transactional receipt: do not gate on smsConsent / marketingConsent.
       // Channel gaps (no email) soft-skip at send time; SMS/WhatsApp still send when reachable.
       triggerConfig: {},
@@ -461,6 +523,9 @@ function getTemplates() {
           templateName: 'sale_receipt',
           language: 'en',
           parameters: ['{{customerName}}', '{{saleNumber}}', '{{totalAmountFormatted}}', '{{businessName}}'],
+        }, {
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, thank you! Receipt {{saleNumber}}: {{totalAmountFormatted}}. — {{businessName}}',
         }, {
           type: 'send_email_platform',
           subject: 'Your receipt — {{saleNumber}}',
@@ -475,6 +540,7 @@ function getTemplates() {
       triggerType: 'low_stock_on_change',
       audience: 'internal',
       allowedBusinessTypes: ['shop'],
+      defaultForBusiness: true,
       triggerConfig: { thresholdMode: 'reorder_level' },
       actionConfig: {
         audience: 'internal',
@@ -534,6 +600,7 @@ function getTemplates() {
       triggerType: 'quote_sent',
       allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
       requiresQuotes: true,
+      defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
         actions: [{
@@ -541,6 +608,9 @@ function getTemplates() {
           templateName: 'quote_delivery',
           language: 'en',
           parameters: ['{{customerName}}', '{{quoteNumber}}', '{{quoteTitle}}', '{{quoteLink}}'],
+        }, {
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, quote {{quoteNumber}} ({{totalAmountFormatted}}) is ready: {{quoteLink}} — {{businessName}}',
         }, {
           type: 'send_email_platform',
           subject: 'Your quote {{quoteNumber}} from {{businessName}}',
@@ -555,6 +625,7 @@ function getTemplates() {
       triggerType: 'job_due_in_hours',
       audience: 'internal',
       allowedBusinessTypes: ['studio'],
+      defaultForBusiness: true,
       triggerConfig: { hoursBeforeDue: 24 },
       actionConfig: {
         audience: 'internal',
@@ -580,6 +651,7 @@ function getTemplates() {
       description: 'Remind pharmacy customers when a prescription refill is due.',
       triggerType: 'prescription_refill_due',
       allowedBusinessTypes: ['pharmacy'],
+      defaultForBusiness: true,
       triggerConfig: { daysBeforeDue: 3 },
       actionConfig: {
         actions: [{
@@ -594,14 +666,18 @@ function getTemplates() {
     },
     {
       key: 'job_created_tracking_email',
-      name: 'Job created — tracking email',
-      description: 'Email customers a tracking link when a job is created.',
+      name: 'Job created — tracking',
+      description: 'Notify customers with a tracking link when a job is created.',
       triggerType: 'job_created',
       allowedBusinessTypes: ['studio'],
-      triggerConfig: { channel: 'email' },
-      conditionConfig: { customerHasEmail: true },
+      defaultForBusiness: true,
+      triggerConfig: {},
+      conditionConfig: {},
       actionConfig: {
         actions: [{
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, {{businessName}} created job {{jobNumber}}. Track: {{trackingLink}}',
+        }, {
           type: 'send_email_platform',
           subject: 'Your job {{jobNumber}} has been created',
           body: 'Hi {{customerName}},\n\n{{businessName}} created job {{jobNumber}} ({{jobTitle}}).\n\nTrack your order: {{trackingLink}}\n\n— {{businessName}}',
@@ -639,6 +715,7 @@ function getTemplates() {
       triggerType: 'order_created',
       allowedBusinessTypes: ['shop'],
       requiresOrders: true,
+      defaultForBusiness: true,
       triggerConfig: {},
       conditionConfig: {},
       actionConfig: {
@@ -902,6 +979,14 @@ function getTemplates() {
 
 function getTemplateByKey(key) {
   return getTemplates().find((template) => template.key === key) || null;
+}
+
+/**
+ * Operational templates auto-applied for matching businesses.
+ * @returns {object[]}
+ */
+function getDefaultTemplates() {
+  return getTemplates().filter((template) => template.defaultForBusiness === true);
 }
 
 function normalizeActions(actionConfig) {
@@ -4156,6 +4241,7 @@ module.exports = {
   MAX_DELAYED_RUNS_PER_TICK,
   getTemplates,
   getTemplateByKey,
+  getDefaultTemplates,
   filterTemplatesForTenant,
   isTriggerAllowedForTenant,
   executeRule,

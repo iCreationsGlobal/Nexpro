@@ -55,6 +55,8 @@ const Quotes = lazy(() => import('./pages/Quotes'));
 const Expenses = lazy(() => import('./pages/Expenses'));
 const Pricing = lazy(() => import('./pages/Pricing'));
 const Reports = lazy(() => import('./pages/Reports'));
+const ComplianceEvat = lazy(() => import('./pages/compliance/ComplianceEvat'));
+const ComplianceVat = lazy(() => import('./pages/compliance/ComplianceVat'));
 const ExportData = lazy(() => import('./pages/ExportData'));
 const Materials = lazy(() => import('./pages/Materials'));
 const Equipment = lazy(() => import('./pages/Equipment'));
@@ -333,7 +335,14 @@ function AppContent() {
               <Route index element={<FeatureRoute featureKey="reports"><RequireWorkspaceManager><Navigate to="/reports/overview" replace /></RequireWorkspaceManager></FeatureRoute>} />
               <Route path="overview" element={<FeatureRoute featureKey="reports"><RequireWorkspaceManager><Reports /></RequireWorkspaceManager></FeatureRoute>} />
               <Route path="smart-report" element={<FeatureRoute featureKey="reports"><RequireWorkspaceManager><Reports /></RequireWorkspaceManager></FeatureRoute>} />
-              <Route path="compliance" element={<FeatureRoute featureKey="reports"><RequireWorkspaceManager><Reports /></RequireWorkspaceManager></FeatureRoute>} />
+              <Route path="compliance" element={<Navigate to="/compliance/statements" replace />} />
+            </Route>
+            <Route path="compliance">
+              <Route index element={<FeatureRoute featureKey="reports"><RequireWorkspaceManager><Navigate to="/compliance/statements" replace /></RequireWorkspaceManager></FeatureRoute>} />
+              <Route path="statements" element={<FeatureRoute featureKey="reports"><RequireWorkspaceManager><Reports /></RequireWorkspaceManager></FeatureRoute>} />
+              <Route path="vat" element={<FeatureRoute featureKey="reports"><RequireWorkspaceManager><ComplianceVat /></RequireWorkspaceManager></FeatureRoute>} />
+              <Route path="evat" element={<FeatureRoute featureKey="reports"><RequireWorkspaceManager><ComplianceEvat /></RequireWorkspaceManager></FeatureRoute>} />
+              <Route path="filing" element={<Navigate to="/compliance/vat" replace />} />
             </Route>
             <Route path="export-data" element={<FeatureRoute featureKey="advancedReporting"><RequireWorkspaceManager><ExportData /></RequireWorkspaceManager></FeatureRoute>} />
             <Route path="materials" element={<FeatureRoute featureKey="materials"><Materials /></FeatureRoute>} />

@@ -79,3 +79,32 @@ export const LEGACY_REPORT_TYPE_TO_TAB = {
   'inventory-status': 'inventory',
   performance: 'executive',
 };
+
+/** Create-modal generation modes. */
+export const SMART_REPORT_GENERATION_MODES = {
+  SECTIONS: 'sections',
+  FREE_TEXT: 'free_text',
+};
+
+/**
+ * Map assistant NLP period keys → Reports DateRangePicker preset keys.
+ * @type {Record<string, string>}
+ */
+export const ASSISTANT_PERIOD_TO_DATE_FILTER = {
+  today: 'today',
+  yesterday: 'yesterday',
+  week: 'thisWeek',
+  month: 'thisMonth',
+  year: 'thisYear',
+};
+
+/** Longer AI timeout for free-text custom questions (template path stays shorter). */
+export const SMART_REPORT_FREE_TEXT_AI_TIMEOUT_MS = 40000;
+
+/** Example chips for the Describe with AI create path. */
+export const SMART_REPORT_FREE_TEXT_EXAMPLE_PROMPTS = [
+  'How did we do this month vs last, and what should I fix first?',
+  'Where is cash getting stuck and what actions will free it up?',
+  'Which products or services drove profit this week, and what is at risk?',
+  'Give me a growth plan for this quarter based only on our numbers.',
+];

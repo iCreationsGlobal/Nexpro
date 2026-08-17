@@ -63,6 +63,8 @@ export const organizationSchema = z.object({
   tax: z.object({
     vatNumber: z.string().optional(),
     tin: z.string().optional(),
+    ghanaCardPin: z.string().max(32).optional(),
+    scheme: z.enum(['standard', 'flat', 'none']).optional(),
     enabled: z.boolean().optional(),
     defaultRatePercent: z.preprocess(
       (val) => {
@@ -75,6 +77,20 @@ export const organizationSchema = z.object({
     ),
     pricesAreTaxInclusive: z.boolean().optional(),
     displayLabel: z.string().max(80).optional(),
+    levies: z.array(z.object({
+      code: z.string().max(32),
+      label: z.string().max(80),
+      ratePercent: z.preprocess(
+        (val) => {
+          if (val === '' || val === undefined || val === null) return 0;
+          const n = typeof val === 'string' ? parseFloat(val.trim()) : Number(val);
+          if (!Number.isFinite(n)) return 0;
+          return Math.min(100, Math.max(0, n));
+        },
+        z.number().min(0).max(100)
+      ),
+      enabled: z.boolean().optional(),
+    })).optional(),
     otherCharges: z.object({
       enabled: z.boolean().optional(),
       label: z.string().max(80).optional(),

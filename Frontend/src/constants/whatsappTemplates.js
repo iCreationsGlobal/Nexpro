@@ -6,7 +6,7 @@ export const WHATSAPP_TEMPLATES = [
   { name: 'invoice_notification', description: 'Invoice with payment link', parameters: ['customerName', 'invoiceNumber', 'amount', 'paymentLink'] },
   { name: 'quote_delivery', description: 'Quote / proposal', parameters: ['customerName', 'quoteNumber', 'title', 'quoteLink'] },
   { name: 'order_confirmation', description: 'Order or job confirmation', parameters: ['customerName', 'orderNumber'] },
-  { name: 'payment_reminder', description: 'Overdue invoice reminder', parameters: ['invoiceNumber', 'amount', 'paymentLink'] },
+  { name: 'payment_reminder', description: 'Overdue invoice reminder (Pay now button)', parameters: ['customerName', 'invoiceNumber', 'balanceFormatted', 'dueDate'], buttonParameters: ['paymentPath'] },
   { name: 'payment_received', description: 'Thank you after payment', parameters: ['customerName', 'invoiceNumber', 'amount', 'businessName'] },
   { name: 'low_stock_alert', description: 'Low stock alert', parameters: ['productName', 'currentStock', 'reorderLevel'] },
   { name: 'sale_receipt', description: 'POS sale receipt', parameters: ['customerName', 'saleNumber', 'amount', 'businessName'] },
@@ -30,4 +30,12 @@ export const WHATSAPP_TEMPLATES = [
  */
 export function parametersTextFromTemplate(template) {
   return (template?.parameters || []).map((name) => `{{${name}}}`).join(', ');
+}
+
+/**
+ * @param {{ buttonParameters?: string[] }} template
+ * @returns {string}
+ */
+export function buttonParametersTextFromTemplate(template) {
+  return (template?.buttonParameters || []).map((name) => `{{${name}}}`).join(', ');
 }

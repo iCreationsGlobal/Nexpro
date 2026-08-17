@@ -52,7 +52,10 @@ export const CONFIGURABLE_SIDEBAR_KEYS = [
   'reports',
   '/reports/overview',
   '/reports/smart-report',
-  '/reports/compliance',
+  'compliance',
+  '/compliance/statements',
+  '/compliance/vat',
+  '/compliance/evat',
   '/export-data',
   '/users',
 ];
@@ -92,9 +95,14 @@ const ADVANCED_CHILD_KEYS = [
 const REPORTS_CHILD_KEYS = [
   '/reports/overview',
   '/reports/smart-report',
-  '/reports/compliance',
   '/export-data',
   '/users',
+];
+
+const COMPLIANCE_CHILD_KEYS = [
+  '/compliance/statements',
+  '/compliance/vat',
+  '/compliance/evat',
 ];
 
 /**
@@ -171,9 +179,18 @@ export const SIDEBAR_MENU_GROUPS = [
       { key: 'reports', label: 'Data & Reports section', description: 'Hide the entire reports menu group' },
       { key: '/reports/overview', label: 'Overview', managerOnly: true },
       { key: '/reports/smart-report', label: 'Smart report', managerOnly: true },
-      { key: '/reports/compliance', label: 'Compliance', managerOnly: true },
       { key: '/export-data', label: 'Export data', managerOnly: true },
       { key: '/users', label: 'Users', managerOnly: true },
+    ],
+  },
+  {
+    id: 'compliance',
+    label: 'Compliance',
+    items: [
+      { key: 'compliance', label: 'Compliance section', description: 'Hide the entire compliance menu group', managerOnly: true },
+      { key: '/compliance/statements', label: 'Statements', managerOnly: true },
+      { key: '/compliance/vat', label: 'VAT', managerOnly: true },
+      { key: '/compliance/evat', label: 'e-VAT', managerOnly: true },
     ],
   },
 ];
@@ -284,7 +301,14 @@ export const isConfigurableSidebarKeyForTenant = (key, ctx = {}) => {
       );
     case '/reports/overview':
     case '/reports/smart-report':
-    case '/reports/compliance':
+      return hasFeature('reports');
+    case 'compliance':
+      return COMPLIANCE_CHILD_KEYS.some((childKey) =>
+        isConfigurableSidebarKeyForTenant(childKey, ctx)
+      );
+    case '/compliance/statements':
+    case '/compliance/vat':
+    case '/compliance/evat':
       return hasFeature('reports');
     case '/export-data':
       return hasFeature('advancedReporting');

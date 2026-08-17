@@ -95,6 +95,9 @@ export const queryKeys = {
       detail: (id) => ['store', 'online-orders', id],
     },
   },
+  evat: {
+    status: (tenantId) => ['evat', 'status', tenantId],
+  },
   settings: {
     organization: (tenantId) => ['settings', 'organization', tenantId],
     notificationChannels: ['settings', 'notification-channels'],

@@ -13,6 +13,8 @@ export const createReportSchema = z.object({
   durationType: z.string().optional(),
   year: z.number().optional(),
   month: z.string().optional(),
+  /** Free-text “Describe with AI” prompt (optional; required only in free_text mode at submit). */
+  userPrompt: z.string().optional(),
 });
 
 /** Studio types that use Jobs (printing_press, mechanic, barber, salon) */

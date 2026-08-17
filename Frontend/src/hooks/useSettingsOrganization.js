@@ -81,10 +81,18 @@ export const useSettingsOrganization = () => {
       tax: {
         vatNumber: '',
         tin: '',
+        ghanaCardPin: '',
+        scheme: 'standard',
         enabled: false,
         defaultRatePercent: 0,
         pricesAreTaxInclusive: false,
         displayLabel: 'Tax',
+        levies: [
+          { code: 'vat', label: 'VAT', ratePercent: 0, enabled: true },
+          { code: 'nhil', label: 'NHIL', ratePercent: 0, enabled: true },
+          { code: 'getfund', label: 'GETFund', ratePercent: 0, enabled: true },
+          { code: 'covid', label: 'COVID-19 HRL', ratePercent: 0, enabled: true },
+        ],
         otherCharges: {
           enabled: false,
           label: 'Transaction charge',
@@ -141,10 +149,25 @@ export const useSettingsOrganization = () => {
         tax: {
           vatNumber: org.tax?.vatNumber || '',
           tin: org.tax?.tin || '',
+          ghanaCardPin: org.tax?.ghanaCardPin || '',
+          scheme: org.tax?.scheme || 'standard',
           enabled: org.tax?.enabled === true,
           defaultRatePercent: parseFloat(org.tax?.defaultRatePercent) || 0,
           pricesAreTaxInclusive: org.tax?.pricesAreTaxInclusive === true,
           displayLabel: org.tax?.displayLabel || 'Tax',
+          levies: Array.isArray(org.tax?.levies) && org.tax.levies.length
+            ? org.tax.levies.map((l) => ({
+              code: l.code || 'levy',
+              label: l.label || 'Levy',
+              ratePercent: parseFloat(l.ratePercent) || 0,
+              enabled: l.enabled !== false,
+            }))
+            : [
+              { code: 'vat', label: 'VAT', ratePercent: parseFloat(org.tax?.defaultRatePercent) || 0, enabled: true },
+              { code: 'nhil', label: 'NHIL', ratePercent: 0, enabled: true },
+              { code: 'getfund', label: 'GETFund', ratePercent: 0, enabled: true },
+              { code: 'covid', label: 'COVID-19 HRL', ratePercent: 0, enabled: true },
+            ],
           otherCharges: {
             enabled: org.tax?.otherCharges?.enabled === true,
             label: org.tax?.otherCharges?.label || 'Transaction charge',
@@ -214,10 +237,20 @@ export const useSettingsOrganization = () => {
       tax: {
         vatNumber: values.tax?.vatNumber || '',
         tin: values.tax?.tin || '',
+        ghanaCardPin: values.tax?.ghanaCardPin || '',
+        scheme: values.tax?.scheme || 'standard',
         enabled: values.tax?.enabled === true,
         defaultRatePercent: Number(values.tax?.defaultRatePercent) || 0,
         pricesAreTaxInclusive: values.tax?.pricesAreTaxInclusive === true,
         displayLabel: values.tax?.displayLabel || 'Tax',
+        levies: Array.isArray(values.tax?.levies)
+          ? values.tax.levies.map((l) => ({
+            code: l.code || 'levy',
+            label: l.label || 'Levy',
+            ratePercent: Number(l.ratePercent) || 0,
+            enabled: l.enabled !== false,
+          }))
+          : [],
         otherCharges: {
           enabled: values.tax?.otherCharges?.enabled === true,
           label: values.tax?.otherCharges?.label || 'Transaction charge',

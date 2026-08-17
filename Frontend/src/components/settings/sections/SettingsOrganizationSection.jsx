@@ -430,6 +430,67 @@ const SettingsOrganizationSection = () => {
           />
           <FormField
             control={organizationForm.control}
+            name="tax.ghanaCardPin"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Ghana Card PIN (optional)</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="For GRA e-VAT invoices" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <div className="md:col-span-2 rounded-lg border border-border p-3 space-y-3">
+            <div>
+              <p className="text-sm font-medium">Ghana levy components (optional)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Set VAT, NHIL, GETFund, and COVID-19 HRL rates for e-VAT-ready invoices. Combined rate is used when charging tax. Manage GRA connection under Compliance → e-VAT.
+              </p>
+            </div>
+            {(organizationForm.watch('tax.levies') || []).map((levy, index) => (
+              <div key={levy.code || index} className="grid grid-cols-[1fr_100px] gap-2 items-end">
+                <FormField
+                  control={organizationForm.control}
+                  name={`tax.levies.${index}.label`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">{levy.code?.toUpperCase() || 'Levy'}</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={organizationForm.control}
+                  name={`tax.levies.${index}.ratePercent`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Rate %</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          value={field.value === '' || field.value == null ? '' : String(field.value)}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === '' || /^\d*\.?\d*$/.test(raw)) field.onChange(raw === '' ? '' : raw);
+                          }}
+                          onBlur={() => {
+                            const n = parseFloat(String(field.value));
+                            field.onChange(Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0);
+                          }}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            ))}
+          </div>
+          <FormField
+            control={organizationForm.control}
             name="tax.enabled"
             render={({ field }) => (
               <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-3 md:col-span-2">
@@ -860,6 +921,7 @@ const SettingsOrganizationSection = () => {
         <ShadcnDescriptions>
         <DescriptionItem label="VAT Number">{organization.tax?.vatNumber || 'Not set'}</DescriptionItem>
         <DescriptionItem label="TIN">{organization.tax?.tin || 'Not set'}</DescriptionItem>
+        <DescriptionItem label="Ghana Card PIN">{organization.tax?.ghanaCardPin || 'Not set'}</DescriptionItem>
         <DescriptionItem label="Tax on sales">{organization.tax?.enabled ? 'Enabled' : 'Off'}</DescriptionItem>
         {organization.tax?.enabled && (
           <>

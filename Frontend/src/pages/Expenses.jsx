@@ -564,7 +564,6 @@ const Expenses = () => {
       await expenseService.archive(expense.id);
       showSuccess('Expense archived successfully');
       invalidateExpenses();
-      fetchStats();
       if (drawerVisible && viewingExpense?.id === expense.id) {
         setDrawerVisible(false);
         setViewingExpense(null);
@@ -608,13 +607,18 @@ const Expenses = () => {
         showSuccess('Expense updated successfully');
         setModalVisible(false);
         setEditingExpense(null);
+        // refreshAfterExpense already covers list + stats; don't wait on drawer refetch to clear submit.
         invalidateExpenses();
-        fetchStats();
-        // Refetch details and activities when the drawer is open for this expense so "Expense Updated" shows
         if (drawerVisible && viewingExpense?.id === editingExpense.id) {
-          const updated = await expenseService.getById(editingExpense.id);
-          setViewingExpense(updated?.data ?? updated);
-          await loadExpenseActivities(editingExpense.id);
+          void (async () => {
+            try {
+              const updated = await expenseService.getById(editingExpense.id);
+              setViewingExpense(updated?.data ?? updated);
+              await loadExpenseActivities(editingExpense.id);
+            } catch {
+              /* list invalidation still refreshes the table */
+            }
+          })();
         }
       } else if (multipleMode && values.expenses && Array.isArray(values.expenses)) {
         const resolvedExpenses = [];
@@ -665,7 +669,6 @@ const Expenses = () => {
         setModalVisible(false);
         setIsExpenseRequest(false);
         invalidateExpenses();
-        fetchStats();
       } else {
         let category = resolveOtherDropdownValue(values.category, categoryOtherInput);
         if (values.category === OTHER_DROPDOWN_VALUE) {
@@ -704,7 +707,6 @@ const Expenses = () => {
         setModalVisible(false);
         setIsExpenseRequest(false);
         invalidateExpenses();
-        fetchStats();
       }
     } catch (error) {
       const message = error?.response?.data?.message || error?.response?.data?.error || 'Failed to save expense(s)';
@@ -759,11 +761,10 @@ const Expenses = () => {
       await expenseService.approve(expenseId);
       showSuccess('Expense approved successfully');
       invalidateExpenses();
-      fetchStats();
       if (drawerVisible && viewingExpense?.id === expenseId) {
-        // Refresh the viewing expense
-        const response = await expenseService.getById(expenseId);
-        setViewingExpense(response.data || response);
+        void expenseService.getById(expenseId).then((response) => {
+          setViewingExpense(response.data || response);
+        }).catch(() => {});
       }
     } catch (error) {
       showError(null, 'Failed to approve expense');
@@ -778,11 +779,10 @@ const Expenses = () => {
       await expenseService.markPaid(expenseId);
       showSuccess('Expense marked as paid successfully');
       invalidateExpenses();
-      fetchStats();
       if (drawerVisible && viewingExpense?.id === expenseId) {
-        // Refresh the viewing expense
-        const response = await expenseService.getById(expenseId);
-        setViewingExpense(response.data || response);
+        void expenseService.getById(expenseId).then((response) => {
+          setViewingExpense(response.data || response);
+        }).catch(() => {});
       }
     } catch (error) {
       showError(null, 'Failed to mark expense as paid');

@@ -97,8 +97,19 @@ export async function markAfterSaleStale(queryClient) {
   ]);
 }
 
+/**
+ * Expense create/update/archive.
+ * Refetch list + stats once (skip categories). Mark dashboard stale without a forced refetch.
+ */
 export async function refreshAfterExpense(queryClient) {
-  await refreshRelatedQueries(queryClient, [queryKeys.expenses.all, queryKeys.expenses.detailRoot, queryKeys.dashboard.all]);
+  await Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.expenses.all,
+      predicate: (query) => query.queryKey[1] !== 'categories',
+    }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.expenses.detailRoot }),
+  ]);
+  await markPrefixesStale(queryClient, [queryKeys.dashboard.all]);
 }
 
 export async function refreshAfterInvoiceChange(queryClient) {

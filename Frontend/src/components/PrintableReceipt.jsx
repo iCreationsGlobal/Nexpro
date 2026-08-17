@@ -4,6 +4,7 @@ import { MapPin, Phone, Globe, Mail } from 'lucide-react';
 import { APP_LOGO_SRC } from '../config/appBrand';
 import { API_BASE_URL } from '../services/api';
 import { getSalePartyDetails } from '../utils/saleParty';
+import GraEvatStampBlock from './GraEvatStampBlock';
 
 const formatAddress = (address) => {
   if (!address) return '';
@@ -94,8 +95,10 @@ const PrintableReceipt = ({
     email: organization.email || '',
     location: formatAddress(organization.address),
     vatNumber: organization.tax?.vatNumber || '',
-    tin: organization.tax?.tin || ''
+    tin: organization.tax?.tin || '',
+    ghanaCardPin: organization.tax?.ghanaCardPin || ''
   };
+  const graStamp = sale?.metadata?.graStamp || null;
 
   const paymentMethodLabels = {
     cash: 'Cash',
@@ -500,6 +503,7 @@ const PrintableReceipt = ({
               {companyInfo.phone && <div>Tel: {companyInfo.phone}</div>}
               {companyInfo.vatNumber && <div>VAT: {companyInfo.vatNumber}</div>}
               {companyInfo.tin && <div>TIN: {companyInfo.tin}</div>}
+              {companyInfo.ghanaCardPin && <div>Ghana Card PIN: {companyInfo.ghanaCardPin}</div>}
             </div>
             <hr className="thermal-separator" />
             <div className="thermal-date-row">
@@ -549,6 +553,12 @@ const PrintableReceipt = ({
               <span>Total</span>
               <span>₵ {parseFloat(sale.total || 0).toFixed(2)}</span>
             </div>
+            {graStamp?.irn && (
+              <>
+                <hr className="thermal-separator" />
+                <GraEvatStampBlock stamp={graStamp} compact />
+              </>
+            )}
             <hr className="thermal-separator" />
             <div className="thermal-thanks text-center">THANK YOU</div>
             <div className="thermal-business-footer" style={{ fontSize: '9px', marginTop: '8px', lineHeight: 1.4 }}>
@@ -587,10 +597,11 @@ const PrintableReceipt = ({
                   <span>{companyInfo.email}</span>
                 </div>
               )}
-              {(companyInfo.vatNumber || companyInfo.tin) && (
+              {(companyInfo.vatNumber || companyInfo.tin || companyInfo.ghanaCardPin) && (
                 <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e5e7eb', fontSize: '11px', color: '#6b7280' }}>
                   {companyInfo.vatNumber && <div>VAT: {companyInfo.vatNumber}</div>}
                   {companyInfo.tin && <div>TIN: {companyInfo.tin}</div>}
+                  {companyInfo.ghanaCardPin && <div>Ghana Card PIN: {companyInfo.ghanaCardPin}</div>}
                 </div>
               )}
             </div>
@@ -724,6 +735,8 @@ const PrintableReceipt = ({
             <div style={{ fontSize: '11px', lineHeight: '1.6', color: 'var(--receipt-muted)' }}>{sale.notes}</div>
           </div>
         )}
+
+        <GraEvatStampBlock stamp={graStamp} />
 
         {/* Footer */}
         <div className="footer">

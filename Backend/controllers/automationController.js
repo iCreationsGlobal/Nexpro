@@ -420,6 +420,9 @@ exports.getTemplates = async (req, res, next) => {
 
 exports.listRules = async (req, res, next) => {
   try {
+    const { ensureDefaultAutomationsSafe } = require('../services/defaultAutomationService');
+    await ensureDefaultAutomationsSafe(req.tenantId, { tenant: req.tenant });
+
     const enabledOnly = parseBoolean(req.query.enabledOnly, false);
     let where = { tenantId: req.tenantId };
     if (enabledOnly) where.enabled = true;
@@ -535,11 +538,17 @@ exports.updateRule = async (req, res, next) => {
       rule.shopId = branchIds.shopId;
       rule.studioLocationId = branchIds.studioLocationId;
     }
+    const wasSystemDefault = Boolean(rule.metadata?.systemDefault);
     const allowedFields = ['name', 'triggerType', 'triggerConfig', 'conditionConfig', 'actionConfig', 'scheduleConfig', 'enabled', 'metadata'];
     for (const key of allowedFields) {
       if (Object.prototype.hasOwnProperty.call(body, key)) {
         rule[key] = key === 'enabled' ? parseBoolean(body[key], rule.enabled) : body[key];
       }
+    }
+    if (wasSystemDefault) {
+      const { markSystemDefaultUserModified } = require('../services/defaultAutomationService');
+      rule.metadata = { ...(rule.metadata || {}), systemDefault: true };
+      markSystemDefaultUserModified(rule);
     }
     rule.updatedBy = req.user?.id || null;
 
@@ -574,6 +583,8 @@ exports.toggleRule = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Rule not found' });
     }
     rule.enabled = !rule.enabled;
+    const { markSystemDefaultUserModified } = require('../services/defaultAutomationService');
+    markSystemDefaultUserModified(rule);
     rule.updatedBy = req.user?.id || null;
     await rule.save();
     res.status(200).json({ success: true, data: rule });
@@ -588,6 +599,8 @@ exports.deleteRule = async (req, res, next) => {
     if (!rule) {
       return res.status(404).json({ success: false, error: 'Rule not found' });
     }
+    const { recordSkippedDefaultTemplate } = require('../services/defaultAutomationService');
+    await recordSkippedDefaultTemplate(req.tenantId, rule);
     await rule.destroy();
     res.status(200).json({ success: true, message: 'Rule deleted' });
   } catch (error) {

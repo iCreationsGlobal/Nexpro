@@ -3,9 +3,19 @@
  * Used for POS display; server recomputes on sale create.
  */
 
+function getEffectiveTaxRatePercent(config = {}) {
+  const levies = Array.isArray(config.levies) ? config.levies : [];
+  const active = levies.filter((l) => l && l.enabled !== false && (parseFloat(l.ratePercent) || 0) > 0);
+  if (active.length > 0) {
+    return active.reduce((sum, l) => sum + (parseFloat(l.ratePercent) || 0), 0);
+  }
+  const rate = parseFloat(config.defaultRatePercent);
+  return Number.isFinite(rate) ? Math.min(100, Math.max(0, rate)) : 0;
+}
+
 function computeDocumentTax({ lines = [], cartDiscount = 0, config }) {
   const enabled = config?.enabled === true;
-  const rate = parseFloat(config?.defaultRatePercent) || 0;
+  const rate = enabled ? getEffectiveTaxRatePercent(config) : 0;
   const inclusive = config?.pricesAreTaxInclusive === true;
 
   const round2 = (x) => Math.round(parseFloat(x) * 100) / 100;
@@ -120,4 +130,4 @@ function computeDocumentTax({ lines = [], cartDiscount = 0, config }) {
   };
 }
 
-export { computeDocumentTax };
+export { computeDocumentTax, getEffectiveTaxRatePercent };

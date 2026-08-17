@@ -722,6 +722,14 @@ exports.completeOnboarding = async (req, res, next) => {
       .then((created) => { if (created) console.log(`✅ Seeded ${created} default equipment categories for tenant ${tenantId}`); })
       .catch((err) => console.error('Failed to seed equipment categories during onboarding (non-blocking):', err.message));
 
+    const { ensureDefaultAutomationsSafe } = require('../services/defaultAutomationService');
+    ensureDefaultAutomationsSafe(tenantId, { tenant })
+      .then((summary) => {
+        if (summary?.created) {
+          console.log(`[tenant] Seeded ${summary.created} default automations for tenant ${tenantId}`);
+        }
+      });
+
     setImmediate(() => {
       notifyTenantOnboarded({
         tenantName: tenant?.name,

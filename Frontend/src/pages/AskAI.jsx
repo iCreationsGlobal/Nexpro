@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  ChevronDown,
   ChevronRight,
   Loader2,
   Paperclip,
@@ -11,12 +10,6 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import assistantService from '@/services/assistantService';
@@ -36,13 +29,12 @@ import {
   getPagePrompts,
 } from '@/constants/assistantPrompts';
 import {
-  ASSISTANT_PERIOD_OPTIONS,
+  DEFAULT_ASSISTANT_PERIOD,
   inferAssistantPeriodKey,
   resolveAssistantPeriod,
+  resolveAssistantPeriodForMessage,
 } from '@/utils/assistantPeriod';
 import { IBIS_ASK_LABEL, IBIS_NAME } from '@/constants/ibis';
-
-const PERIOD_SELECTED = { backgroundColor: '#166534', color: '#fff', borderColor: '#166534' };
 
 /**
  * Time-of-day greeting for Ask AI empty state.
@@ -75,50 +67,6 @@ const isMarketingDraft = (content = '') => {
   if (!draft.subject) return false;
   return /promotional|campaign|offer|newsletter|email/i.test(text);
 };
-
-function PeriodFilterBar({ selectedPeriod, onSelect, disabled, onNewChat }) {
-  return (
-    <div
-      className="sticky top-0 z-10 -mx-1 flex items-center gap-2 px-1 py-2 bg-background"
-      role="group"
-      aria-label="Analysis period"
-    >
-      <div className="flex flex-1 gap-2 overflow-x-auto pb-0.5">
-        {ASSISTANT_PERIOD_OPTIONS.map((opt) => {
-          const selected = selectedPeriod === opt.key;
-          return (
-            <button
-              key={opt.key}
-              type="button"
-              disabled={disabled}
-              onClick={() => onSelect(opt.key)}
-              className={cn(
-                'shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                'disabled:opacity-50 disabled:pointer-events-none',
-                !selected && 'border-border bg-background text-foreground hover:bg-muted'
-              )}
-              style={selected ? PERIOD_SELECTED : undefined}
-              aria-pressed={selected}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-      {onNewChat ? (
-        <button
-          type="button"
-          onClick={onNewChat}
-          disabled={disabled}
-          className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-          aria-label="New chat"
-        >
-          New chat
-        </button>
-      ) : null}
-    </div>
-  );
-}
 
 function SuggestionCard({ card, onSelect, disabled }) {
   return (
@@ -165,9 +113,6 @@ export default function AskAI() {
   });
   const organization = organizationData?.data?.data || organizationData?.data || {};
 
-  const [selectedPeriod, setSelectedPeriod] = useState(() =>
-    inferAssistantPeriodKey(urlStartDate, urlEndDate, urlPeriodLabel)
-  );
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
@@ -178,10 +123,16 @@ export default function AskAI() {
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
 
-  const periodRange = useMemo(() => resolveAssistantPeriod(selectedPeriod), [selectedPeriod]);
-  const selectedPeriodLabel = useMemo(
-    () => ASSISTANT_PERIOD_OPTIONS.find((opt) => opt.key === selectedPeriod)?.label || 'Smart',
-    [selectedPeriod]
+  const defaultPeriodKey = useMemo(
+    () =>
+      urlStartDate || urlEndDate || urlPeriodLabel
+        ? inferAssistantPeriodKey(urlStartDate, urlEndDate, urlPeriodLabel)
+        : DEFAULT_ASSISTANT_PERIOD,
+    [urlStartDate, urlEndDate, urlPeriodLabel]
+  );
+  const defaultPeriodRange = useMemo(
+    () => resolveAssistantPeriod(defaultPeriodKey),
+    [defaultPeriodKey]
   );
 
   const promptSets = useMemo(
@@ -209,7 +160,7 @@ export default function AskAI() {
   const pagePrompts = useMemo(() => {
     if (!pageContext) return [];
     if (urlStartDate && urlEndDate && (pageContext === 'reports' || pageContext === 'dashboard')) {
-      const period = urlPeriodLabel || periodRange.periodLabel || 'this period';
+      const period = urlPeriodLabel || defaultPeriodRange.periodLabel || 'this period';
       return getPagePrompts(pageContext, {
         businessType,
         shopType,
@@ -228,7 +179,7 @@ export default function AskAI() {
     return getPagePrompts(pageContext, {
       businessType,
       shopType,
-      periodLabel: periodRange.periodLabel,
+      periodLabel: defaultPeriodRange.periodLabel,
     });
   }, [
     pageContext,
@@ -237,20 +188,9 @@ export default function AskAI() {
     urlPeriodLabel,
     businessType,
     shopType,
-    periodRange.periodLabel,
+    defaultPeriodRange.periodLabel,
     promptSets.kind,
   ]);
-
-  const assistantContextOptions = useMemo(
-    () => ({
-      pageContext,
-      period: periodRange.period,
-      startDate: periodRange.startDate,
-      endDate: periodRange.endDate,
-      periodLabel: periodRange.periodLabel,
-    }),
-    [pageContext, periodRange]
-  );
 
   const scrollToBottom = useCallback(() => {
     const viewport = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
@@ -275,7 +215,14 @@ export default function AskAI() {
       setLoading(true);
 
       try {
-        const res = await assistantService.chat(nextConversation, assistantContextOptions);
+        const periodRange = resolveAssistantPeriodForMessage(text, defaultPeriodKey);
+        const res = await assistantService.chat(nextConversation, {
+          pageContext,
+          period: periodRange.period,
+          startDate: periodRange.startDate,
+          endDate: periodRange.endDate,
+          periodLabel: periodRange.periodLabel,
+        });
         const content = res?.message || 'No response from assistant.';
         setMessages((prev) => [
           ...prev,
@@ -300,85 +247,7 @@ export default function AskAI() {
         setLoading(false);
       }
     },
-    [assistantContextOptions, loading, scrollToBottom]
-  );
-
-  const refreshLastAnalysis = useCallback(
-    async (range) => {
-      const current = messagesRef.current;
-      let lastAssistantIdx = -1;
-      for (let i = current.length - 1; i >= 0; i -= 1) {
-        if (
-          current[i].role === 'assistant' &&
-          (current[i].meta?.source === 'analysis_engine' || current[i].meta?.intent)
-        ) {
-          lastAssistantIdx = i;
-          break;
-        }
-      }
-      if (lastAssistantIdx < 0) return;
-
-      let lastUserQuestion = '';
-      for (let i = lastAssistantIdx - 1; i >= 0; i -= 1) {
-        if (current[i].role === 'user') {
-          lastUserQuestion = current[i].content;
-          break;
-        }
-      }
-      if (!lastUserQuestion) return;
-
-      const intent = current[lastAssistantIdx].meta?.intent || undefined;
-      setLoading(true);
-      try {
-        const res = await assistantService.askAnalysis(lastUserQuestion, {
-          intent,
-          period: range.period,
-          startDate: range.startDate,
-          endDate: range.endDate,
-          periodLabel: range.periodLabel,
-          pageContext,
-        });
-        const content = res?.message || res?.answerMarkdown || 'No response from assistant.';
-        const prefix = `For **${range.periodLabel}**:\n\n`;
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: content.startsWith('For **') ? content : `${prefix}${content}`,
-            meta: {
-              ...(res?.meta || {}),
-              source: 'analysis_engine',
-              intent: res?.intent || intent || res?.meta?.intent,
-              periodRefresh: true,
-              periodLabel: range.periodLabel,
-            },
-            insight: res?.insight || null,
-          },
-        ]);
-        requestAnimationFrame(scrollToBottom);
-      } catch (err) {
-        const aiMessage = getAiProviderErrorMessage(err);
-        if (aiMessage) {
-          setMessages((prev) => [...prev, { role: 'assistant', content: aiMessage }]);
-        } else {
-          showError(err, 'Failed to refresh for the selected period');
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [pageContext, scrollToBottom]
-  );
-
-  const handlePeriodSelect = useCallback(
-    (periodKey) => {
-      if (loading || periodKey === selectedPeriod) return;
-      const range = resolveAssistantPeriod(periodKey);
-      setSelectedPeriod(periodKey);
-      if (messagesRef.current.length === 0) return;
-      refreshLastAnalysis(range);
-    },
-    [loading, selectedPeriod, refreshLastAnalysis]
+    [defaultPeriodKey, loading, pageContext, scrollToBottom]
   );
 
   useEffect(() => {
@@ -434,7 +303,7 @@ export default function AskAI() {
       content,
       organization,
       question,
-      periodLabel: periodRange.periodLabel,
+      periodLabel: defaultPeriodRange.periodLabel,
       generatedAt: new Date(),
     });
 
@@ -449,7 +318,7 @@ export default function AskAI() {
     } finally {
       document.body.removeChild(printable);
     }
-  }, [organization, periodRange.periodLabel]);
+  }, [organization, defaultPeriodRange.periodLabel]);
 
   const handleComposerKeyDown = useCallback(
     (event) => {
@@ -479,42 +348,15 @@ export default function AskAI() {
         className="min-h-[72px] resize-none border-0 bg-transparent p-0 text-base shadow-none focus-visible:ring-0"
       />
       <div className="mt-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled
-            title="Attachments coming soon"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground opacity-60"
-            aria-label="Attach file (coming soon)"
-          >
-            <Paperclip className="h-4 w-4" />
-          </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9 rounded-full border-border px-3"
-                disabled={loading}
-              >
-                <Sparkles className="mr-1.5 h-3.5 w-3.5 text-[#166534]" />
-                {selectedPeriodLabel === 'Today' ? 'Smart' : selectedPeriodLabel}
-                <ChevronDown className="ml-1 h-3.5 w-3.5 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {ASSISTANT_PERIOD_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.key}
-                  onClick={() => handlePeriodSelect(opt.key)}
-                >
-                  {opt.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <button
+          type="button"
+          disabled
+          title="Attachments coming soon"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground opacity-60"
+          aria-label="Attach file (coming soon)"
+        >
+          <Paperclip className="h-4 w-4" />
+        </button>
         <Button
           type="button"
           size="icon"
@@ -616,12 +458,17 @@ export default function AskAI() {
         </div>
       ) : (
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-2 md:px-0">
-          <PeriodFilterBar
-            selectedPeriod={selectedPeriod}
-            onSelect={handlePeriodSelect}
-            disabled={loading}
-            onNewChat={handleNewChat}
-          />
+          <div className="sticky top-0 z-10 -mx-1 flex items-center justify-end gap-2 bg-background px-1 py-2">
+            <button
+              type="button"
+              onClick={handleNewChat}
+              disabled={loading}
+              className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+              aria-label="New chat"
+            >
+              New chat
+            </button>
+          </div>
 
           <ScrollArea ref={scrollRef} className="h-[min(58vh,640px)]">
             <div className="space-y-6 px-1 pb-4">

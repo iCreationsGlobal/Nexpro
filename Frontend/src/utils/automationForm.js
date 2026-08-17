@@ -279,10 +279,12 @@ export const TRIGGER_PLACEHOLDERS = {
     'businessName',
     'invoiceNumber',
     'balance',
+    'balanceFormatted',
     'amount',
     'totalAmount',
     'dueDate',
     'paymentLink',
+    'paymentPath',
     'email',
     'phone',
   ],
@@ -291,11 +293,13 @@ export const TRIGGER_PLACEHOLDERS = {
     'businessName',
     'invoiceNumber',
     'balance',
+    'balanceFormatted',
     'amount',
     'totalAmount',
     'dueDate',
     'overdueDays',
     'paymentLink',
+    'paymentPath',
     'email',
     'phone',
   ],
@@ -452,7 +456,8 @@ export const DEFAULT_ACTION_CONTENT = {
     send_whatsapp: {
       templateName: 'payment_reminder',
       language: 'en',
-      parametersText: '{{invoiceNumber}}, {{balance}}, {{paymentLink}}',
+      parametersText: '{{customerName}}, {{invoiceNumber}}, {{balanceFormatted}}, {{dueDate}}',
+      buttonParametersText: '{{paymentPath}}',
     },
     send_email_platform: {
       subject: 'Invoice {{invoiceNumber}} due soon',
@@ -474,7 +479,8 @@ export const DEFAULT_ACTION_CONTENT = {
     send_whatsapp: {
       templateName: 'payment_reminder',
       language: 'en',
-      parametersText: '{{invoiceNumber}}, {{balance}}, {{paymentLink}}',
+      parametersText: '{{customerName}}, {{invoiceNumber}}, {{balanceFormatted}}, {{dueDate}}',
+      buttonParametersText: '{{paymentPath}}',
     },
     send_email_platform: {
       subject: 'Overdue invoice {{invoiceNumber}}',
@@ -1647,6 +1653,7 @@ export function defaultActionFormRow(type = 'create_task', triggerType = null) {
         templateName: '',
         language: 'en',
         parametersText: '',
+        buttonParametersText: '',
         ...defaultRecipientFormForTrigger(triggerType),
       };
       break;
@@ -1694,12 +1701,25 @@ export function actionFormRowToPayload(row) {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
+    const buttonParams = String(row.buttonParametersText ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const templateName = String(row.templateName || '').trim();
     const out = {
       type: 'send_whatsapp',
-      templateName: String(row.templateName || '').trim(),
+      templateName,
       language: String(row.language || 'en').trim() || 'en',
       parameters: params.length ? params : Array.isArray(row.parameters) ? row.parameters : [],
     };
+    // Meta payment_overdue_2 requires a dynamic Pay now URL button.
+    if (buttonParams.length > 0) {
+      out.buttonParameters = buttonParams;
+      out.buttonIndex = 0;
+    } else if (templateName === 'payment_reminder') {
+      out.buttonParameters = ['{{paymentPath}}'];
+      out.buttonIndex = 0;
+    }
     attachRecipientToPayload(row, out);
     return out;
   }
@@ -1743,11 +1763,19 @@ export function actionRowsFromConfig(actionConfig) {
     }
     if (a.type === 'send_whatsapp') {
       const params = Array.isArray(a.parameters) ? a.parameters : [];
+      const buttonParams = Array.isArray(a.buttonParameters) ? a.buttonParameters : [];
+      const templateName = a.templateName ?? '';
       return {
         type: 'send_whatsapp',
-        templateName: a.templateName ?? '',
+        templateName,
         language: a.language ?? 'en',
         parametersText: params.length ? params.join(', ') : '',
+        buttonParametersText:
+          buttonParams.length > 0
+            ? buttonParams.join(', ')
+            : templateName === 'payment_reminder'
+              ? '{{paymentPath}}'
+              : '',
         ...recipientFormFromAction(a),
       };
     }
@@ -2030,6 +2058,8 @@ export function buildTestContextFromForm({ name, triggerType, triggerForm, condi
     totalSpend,
     dueDate: invoice.dueDate,
     paymentLink: 'http://localhost:3000/pay-invoice/test',
+    paymentPath: 'pay-invoice/test',
+    balanceFormatted: `GHS ${Number(balance).toFixed(2)}`,
     reviewLink: 'http://localhost:3000/review/sample-workspace',
     reviewUrl: 'http://localhost:3000/review/sample-workspace',
     jobNumber: 'JOB-TEST-0001',

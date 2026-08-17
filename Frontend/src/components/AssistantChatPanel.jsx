@@ -10,12 +10,10 @@ import { formatAssistantMessage } from '@/utils/assistantMessageFormatter';
 import { useAuth } from '@/context/AuthContext';
 import { getAssistantPromptSets } from '@/constants/assistantPrompts';
 import {
-  ASSISTANT_PERIOD_OPTIONS,
-  resolveAssistantPeriod,
+  DEFAULT_ASSISTANT_PERIOD,
+  resolveAssistantPeriodForMessage,
 } from '@/utils/assistantPeriod';
 import { IBIS_ASK_LABEL, IBIS_NAME } from '@/constants/ibis';
-
-const PERIOD_SELECTED = { backgroundColor: '#166534', color: '#fff', borderColor: '#166534' };
 
 /** Soft WhatsApp-style chat wallpaper (no external asset). */
 const CHAT_WALLPAPER = {
@@ -132,7 +130,6 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
   const businessType = activeTenant?.businessType || 'printing_press';
   const shopType = activeTenant?.metadata?.shopType || null;
 
-  const [selectedPeriod, setSelectedPeriod] = useState('today');
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
@@ -142,7 +139,6 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
   messagesRef.current = messages;
   const SEND_DEBOUNCE_MS = 800;
 
-  const periodRange = useMemo(() => resolveAssistantPeriod(selectedPeriod), [selectedPeriod]);
   const promptSets = useMemo(
     () => getAssistantPromptSets({ businessType, shopType }),
     [businessType, shopType]
@@ -171,17 +167,6 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
     }
   }, [open, onOpenChange]);
 
-  const contextOptions = useMemo(
-    () => ({
-      pageContext,
-      period: periodRange.period,
-      startDate: periodRange.startDate,
-      endDate: periodRange.endDate,
-      periodLabel: periodRange.periodLabel,
-    }),
-    [pageContext, periodRange]
-  );
-
   const handleSend = useCallback(
     async (text) => {
       const trimmed = (text || inputValue).trim();
@@ -199,7 +184,14 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
 
       try {
         const apiMessages = conversation.map(({ role, content }) => ({ role, content }));
-        const result = await assistantService.chat(apiMessages, contextOptions);
+        const periodRange = resolveAssistantPeriodForMessage(trimmed, DEFAULT_ASSISTANT_PERIOD);
+        const result = await assistantService.chat(apiMessages, {
+          pageContext,
+          period: periodRange.period,
+          startDate: periodRange.startDate,
+          endDate: periodRange.endDate,
+          periodLabel: periodRange.periodLabel,
+        });
         const assistantContent = result?.message ?? result?.error ?? 'No response from the assistant.';
         setMessages((prev) => [
           ...prev,
@@ -227,87 +219,7 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
         setLoading(false);
       }
     },
-    [inputValue, loading, contextOptions, scrollToBottom]
-  );
-
-  const refreshLastAnalysis = useCallback(
-    async (range) => {
-      const current = messagesRef.current;
-      let lastAssistantIdx = -1;
-      for (let i = current.length - 1; i >= 0; i -= 1) {
-        if (
-          current[i].role === 'assistant' &&
-          (current[i].meta?.source === 'analysis_engine' || current[i].meta?.intent)
-        ) {
-          lastAssistantIdx = i;
-          break;
-        }
-      }
-      if (lastAssistantIdx < 0) return;
-
-      let lastUserQuestion = '';
-      for (let i = lastAssistantIdx - 1; i >= 0; i -= 1) {
-        if (current[i].role === 'user') {
-          lastUserQuestion = current[i].content;
-          break;
-        }
-      }
-      if (!lastUserQuestion) return;
-
-      const intent = current[lastAssistantIdx].meta?.intent || undefined;
-      setLoading(true);
-      try {
-        const res = await assistantService.askAnalysis(lastUserQuestion, {
-          intent,
-          period: range.period,
-          startDate: range.startDate,
-          endDate: range.endDate,
-          periodLabel: range.periodLabel,
-          pageContext,
-        });
-        const content = res?.message || res?.answerMarkdown || 'No response from assistant.';
-        const prefix = `For **${range.periodLabel}**:\n\n`;
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: content.startsWith('For **') ? content : `${prefix}${content}`,
-            meta: {
-              ...(res?.meta || {}),
-              source: 'analysis_engine',
-              intent: res?.intent || intent || res?.meta?.intent,
-              periodRefresh: true,
-            },
-            createdAt: Date.now(),
-          },
-        ]);
-        scrollToBottom();
-      } catch (err) {
-        const aiMessage = getAiProviderErrorMessage(err);
-        if (aiMessage) {
-          setMessages((prev) => [
-            ...prev,
-            { role: 'assistant', content: aiMessage, createdAt: Date.now() },
-          ]);
-        } else {
-          showError(err, 'Failed to refresh for the selected period');
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [pageContext, scrollToBottom]
-  );
-
-  const handlePeriodSelect = useCallback(
-    (periodKey) => {
-      if (loading || periodKey === selectedPeriod) return;
-      const range = resolveAssistantPeriod(periodKey);
-      setSelectedPeriod(periodKey);
-      if (messagesRef.current.length === 0) return;
-      refreshLastAnalysis(range);
-    },
-    [loading, selectedPeriod, refreshLastAnalysis]
+    [inputValue, loading, pageContext, scrollToBottom]
   );
 
   const handleKeyDown = (e) => {
@@ -396,36 +308,6 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
             >
               <X className="h-4 w-4" />
             </Button>
-          </div>
-        </div>
-
-        {/* Period chips */}
-        <div
-          className="shrink-0 overflow-x-auto border-b border-[#e9edef] bg-white px-3 py-2"
-          role="group"
-          aria-label="Analysis period"
-        >
-          <div className="flex gap-2">
-            {ASSISTANT_PERIOD_OPTIONS.map((opt) => {
-              const selected = selectedPeriod === opt.key;
-              return (
-                <button
-                  key={opt.key}
-                  type="button"
-                  disabled={loading}
-                  onClick={() => handlePeriodSelect(opt.key)}
-                  className={cn(
-                    'shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium',
-                    'disabled:opacity-50',
-                    !selected && 'border-[#d1d7db] bg-white text-[#111b21]'
-                  )}
-                  style={selected ? PERIOD_SELECTED : undefined}
-                  aria-pressed={selected}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
           </div>
         </div>
 

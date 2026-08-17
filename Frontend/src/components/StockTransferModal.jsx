@@ -212,6 +212,7 @@ export default function StockTransferModal({
           productIds: selectedSourceProductIds,
           reason: reason.trim() || undefined,
           notes: notes.trim() || undefined,
+          sharedCatalog: true,
         };
 
         const response = await productService.createBulkStockTransfer(payload);
@@ -221,13 +222,14 @@ export default function StockTransferModal({
         );
       } else {
         await productService.createStockTransfer({
-          sourceShopId: sourceProduct.shopId || activeShopId,
+          sourceShopId: sourceShopId || sourceProduct.shopId || activeShopId,
           destinationShopId,
           sourceProductId: sourceProduct.id,
           sourceVariantId: sourceVariantId === EMPTY_VARIANT_VALUE ? undefined : sourceVariantId,
           quantity: parsedQty,
           reason: reason.trim() || undefined,
           notes: notes.trim() || undefined,
+          sharedCatalog: true,
         });
         showSuccess('Stock transferred successfully');
       }

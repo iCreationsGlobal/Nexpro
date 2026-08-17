@@ -123,6 +123,14 @@ const reportService = {
     return scopedGet('/reports/vat', params);
   },
 
+  /**
+   * AI narrative for Smart Report (Insights / Recommendations).
+   * Pass options.customQuestion for free-text “Describe with AI” steering.
+   * @param {Object} reportData
+   * @param {Object} [options]
+   * @param {string} [options.customQuestion]
+   * @param {Object} [requestConfig] - axios config (e.g. signal for abort)
+   */
   generateAIAnalysis: async (reportData, options = {}, requestConfig = {}) => {
     return api.post('/reports/ai-analysis', {
       reportData,

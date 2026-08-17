@@ -65,7 +65,8 @@ import {
   AlertTriangle,
   Check,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Sparkles,
 } from 'lucide-react';
 import reportService from '../services/reportService';
 import { useAuth } from '../context/AuthContext';
@@ -77,6 +78,7 @@ import { STUDIO_LIKE_TYPES } from '../constants/studioLikeTypes';
 import { getPreviousPeriod } from '../utils/periodComparison';
 import { calculateDateRange, getGroupByForFilter } from '../utils/dateRangePresets';
 import { formatPeriodLabel } from '../utils/formatPeriodLabel';
+import { detectAssistantPeriodKeyFromMessage } from '../utils/assistantPeriod';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getSearchNoResultsEmptyStateProps } from '../utils/searchEmptyState';
@@ -85,7 +87,15 @@ import dayjs from 'dayjs';
 import { RechartsModuleProvider, useRechartsModule } from '@/components/charts/RechartsModuleContext';
 import ReportsOverviewDashboard from './reports/overview/ReportsOverviewDashboard';
 import SmartReportDetail from './reports/smart-report/SmartReportDetail';
+import WelcomeSection from '../components/WelcomeSection';
+import ComplianceIntroBanner from './compliance/ComplianceIntroBanner';
 import { buildSmartReportSnapshot } from './reports/smart-report/buildSmartReportSnapshot';
+import {
+  ASSISTANT_PERIOD_TO_DATE_FILTER,
+  SMART_REPORT_FREE_TEXT_AI_TIMEOUT_MS,
+  SMART_REPORT_FREE_TEXT_EXAMPLE_PROMPTS,
+  SMART_REPORT_GENERATION_MODES,
+} from './reports/smart-report/smartReportConstants';
 import {
   getDefaultSmartReportTypeSelection,
   getSmartReportTabMeta,
@@ -290,9 +300,11 @@ function ReportsInner() {
   const emptyStateClassLarge = isRestaurant ? 'py-4 text-sm text-muted-foreground' : 'py-10 text-muted-foreground';
   const emptyStateClassXL = isRestaurant ? 'py-6 text-sm text-muted-foreground' : 'py-16 text-muted-foreground';
 
-  // Determine which view to show based on route (Overview, Smart Report, Compliance)
+  // Determine which view to show based on route (Overview, Smart Report, Compliance statements)
   const isSmartReport = location.pathname === '/reports/smart-report';
-  const isCompliance = location.pathname === '/reports/compliance';
+  const isCompliance =
+    location.pathname === '/reports/compliance'
+    || location.pathname === '/compliance/statements';
   const isOverview = !isSmartReport && !isCompliance;
   const showSmartReportList = isSmartReport && !generatedReport;
 
@@ -311,10 +323,12 @@ function ReportsInner() {
   const [overviewStats, setOverviewStats] = useState(null);
   const [overviewDownloading, setOverviewDownloading] = useState(false);
   const [createReportModalVisible, setCreateReportModalVisible] = useState(false);
+  const [createReportMode, setCreateReportMode] = useState(SMART_REPORT_GENERATION_MODES.SECTIONS);
   const reportConfigForm = useForm({
     resolver: zodResolver(createReportSchema),
     defaultValues: {
       reportTitle: getSmartReportTitleForPeriod('thisMonth', calculateDateRange('thisMonth')),
+      userPrompt: '',
     },
   });
   const [selectedReportTypes, setSelectedReportTypes] = useState(() =>
@@ -322,18 +336,22 @@ function ReportsInner() {
   );
   const [reportDateFilter, setReportDateFilter] = useState('last6months');
 
-  // Compliance view: statement type and data
+  // Compliance statements view
   const [complianceStatementType, setComplianceStatementType] = useState('income-expenditure');
   const [complianceData, setComplianceData] = useState(null);
   const [complianceSource, setComplianceSource] = useState(null);
   const [complianceLoading, setComplianceLoading] = useState(false);
   const [complianceError, setComplianceError] = useState(null);
   const compliancePrintRef = useRef(null);
-  
-  // VAT report data
-  const [vatData, setVatData] = useState(null);
-  const [vatLoading, setVatLoading] = useState(false);
 
+  useEffect(() => {
+    if (
+      location.pathname === '/compliance/statements'
+      || location.pathname === '/reports/compliance'
+    ) {
+      setComplianceStatementType((prev) => (prev === 'vat' ? 'income-expenditure' : prev));
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     setPageSearchConfig({ scope: 'reports', placeholder: SEARCH_PLACEHOLDERS.REPORTS });
@@ -497,35 +515,14 @@ function ReportsInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopeReady, dateRange, isSmartReport, isCompliance, dateFilter, activeShopId, activeStudioLocationId]);
 
-  // Fetch compliance report when on Compliance view and statement type or date changes
+  // Fetch compliance statements when statement type or date changes
   useEffect(() => {
     if (!scopeReady || !isCompliance || !dateRange?.[0] || !dateRange?.[1]) return;
+    if (complianceStatementType === 'vat') return;
     const startDate = dateRange[0].format('YYYY-MM-DD');
     const endDate = dateRange[1].format('YYYY-MM-DD');
     let cancelled = false;
-    
-    // Handle VAT report separately
-    if (complianceStatementType === 'vat') {
-      setVatLoading(true);
-      const fetchVat = async () => {
-        try {
-          const res = await reportService.getVatReport(startDate, endDate, 'month');
-          if (!cancelled && res?.data) {
-            setVatData(res.data);
-          }
-        } catch (err) {
-          if (!cancelled) {
-            setVatData(null);
-            showError(null, 'Failed to load VAT report');
-          }
-        } finally {
-          if (!cancelled) setVatLoading(false);
-        }
-      };
-      fetchVat();
-      return () => { cancelled = true; };
-    }
-    
+
     setComplianceLoading(true);
     setComplianceError(null);
     const fetchCompliance = async () => {
@@ -804,18 +801,52 @@ function ReportsInner() {
       : calculateDateRange(dateFilter || 'thisMonth', dayjs(), { specificMonth, specificYear });
     reportConfigForm.reset({
       reportTitle: getSmartReportTitleForPeriod(dateFilter || 'custom', selectedRange),
+      userPrompt: '',
     });
+    setAiPrompt('');
+    setCreateReportMode(SMART_REPORT_GENERATION_MODES.SECTIONS);
     setSelectedReportTypes(getDefaultSmartReportTypeSelection({ isShop, isPharmacy, isStudio }));
     setCreateReportModalVisible(true);
   };
 
+  /**
+   * Prefill DateRangePicker when the free-text prompt clearly mentions a relative period.
+   * User can still edit the picker afterward.
+   * @param {string} promptText
+   */
+  const applyPeriodFromFreeTextPrompt = useCallback((promptText) => {
+    const periodKey = detectAssistantPeriodKeyFromMessage(promptText);
+    if (!periodKey) return;
+    const filterKey = ASSISTANT_PERIOD_TO_DATE_FILTER[periodKey];
+    if (!filterKey) return;
+    setDateFilter(filterKey);
+    const nextRange = calculateDateRange(filterKey, dayjs(), { specificMonth, specificYear });
+    reportConfigForm.setValue(
+      'reportTitle',
+      getSmartReportTitleForPeriod(filterKey, nextRange),
+      { shouldDirty: true }
+    );
+  }, [reportConfigForm, specificMonth, specificYear]);
+
   const handleCreateReport = async (values) => {
     if (creatingReportRef.current) return;
 
-    if (selectedReportTypes.length === 0) {
+    const isFreeText = createReportMode === SMART_REPORT_GENERATION_MODES.FREE_TEXT;
+    const trimmedPrompt = String(values.userPrompt || aiPrompt || '').trim();
+
+    if (isFreeText) {
+      if (!trimmedPrompt) {
+        showError(null, 'Describe what you want the AI report to focus on.');
+        return;
+      }
+    } else if (selectedReportTypes.length === 0) {
       showError(null, 'Select at least one report section.');
       return;
     }
+
+    const reportTypesForRun = isFreeText
+      ? getDefaultSmartReportTypeSelection({ isShop, isPharmacy, isStudio })
+      : selectedReportTypes;
 
     creatingReportRef.current = true;
     setIsCreatingReport(true);
@@ -833,7 +864,7 @@ function ReportsInner() {
 
       const reportConfig = {
         ...values,
-        reportTypes: selectedReportTypes,
+        reportTypes: reportTypesForRun,
         generatedBy: user?.name || user?.first_name || 'System User',
         dateFilter: dateFilter || 'custom',
         periodType,
@@ -843,6 +874,10 @@ function ReportsInner() {
         comparisonStartDate: previousPeriod.startDate,
         comparisonEndDate: previousPeriod.endDate,
         comparisonLabel: previousPeriod.label,
+        generationMode: isFreeText
+          ? SMART_REPORT_GENERATION_MODES.FREE_TEXT
+          : SMART_REPORT_GENERATION_MODES.SECTIONS,
+        userPrompt: isFreeText ? trimmedPrompt : undefined,
       };
 
       // Create a temporary report entry with "processing" status (scoped to tenant and business type)
@@ -868,6 +903,8 @@ function ReportsInner() {
         comparisonStartDate: previousPeriod.startDate,
         comparisonEndDate: previousPeriod.endDate,
         comparisonLabel: previousPeriod.label,
+        generationMode: reportConfig.generationMode,
+        ...(isFreeText ? { userPrompt: trimmedPrompt } : {}),
       };
 
       // Add to saved reports immediately with processing status
@@ -887,7 +924,11 @@ function ReportsInner() {
       navigate('/reports/smart-report');
 
       // Show success message
-      showSuccess('Report generation started in the background');
+      showSuccess(
+        isFreeText
+          ? 'AI is building your report — this can take up to about 40 seconds'
+          : 'Report generation started in the background'
+      );
 
       // Generate the report in the background
       generateSmartReportInBackground(reportConfig, tempReport.id, tenantId);
@@ -1126,11 +1167,18 @@ function ReportsInner() {
 
       // Fetch AI analysis
       let aiAnalysis = null;
+      const isFreeTextGeneration = config.generationMode === SMART_REPORT_GENERATION_MODES.FREE_TEXT;
+      const customQuestion = isFreeTextGeneration
+        ? String(config.userPrompt || '').trim()
+        : '';
+      const aiTimeoutMs = isFreeTextGeneration
+        ? SMART_REPORT_FREE_TEXT_AI_TIMEOUT_MS
+        : SMART_REPORT_AI_TIMEOUT_MS;
       const aiAbortController = typeof AbortController !== 'undefined'
         ? new AbortController()
         : null;
       const aiTimeoutId = aiAbortController
-        ? window.setTimeout(() => aiAbortController.abort(), SMART_REPORT_AI_TIMEOUT_MS)
+        ? window.setTimeout(() => aiAbortController.abort(), aiTimeoutMs)
         : null;
       try {
         const aiResponse = await reportService.generateAIAnalysis(reportDataForAI, {
@@ -1143,6 +1191,7 @@ function ReportsInner() {
           comparisonStartDate: previousPeriodForComparison.startDate,
           comparisonEndDate: previousPeriodForComparison.endDate,
           comparisonLabel: previousPeriodForComparison.label,
+          ...(customQuestion ? { customQuestion } : {}),
         }, {
           ...(aiAbortController && { signal: aiAbortController.signal })
         });
@@ -1648,6 +1697,10 @@ function ReportsInner() {
         greeting: `Hello${user?.first_name ? ` ${user.first_name}` : ''}, here is a summary of your business performance for ${selectedPeriodLabel}.`,
         sections: [],
         insights: reportInsights,
+        generationMode: config.generationMode || SMART_REPORT_GENERATION_MODES.SECTIONS,
+        ...(config.userPrompt
+          ? { userPrompt: String(config.userPrompt).trim() }
+          : {}),
         snapshot: buildSmartReportSnapshot({
           revenueData: revenueData?.data || revenueData || {},
           expenseData: expenseData?.data || expenseData || {},
@@ -2412,9 +2465,8 @@ function ReportsInner() {
     const statementTabs = [
       { value: 'income-expenditure', label: 'Income and expenditure' },
       { value: 'profit-loss', label: 'Profit or loss' },
-      { value: 'financial-position', label: 'Statement of financial position' },
-      { value: 'cashflow', label: 'Statement of cash flows' },
-      { value: 'vat', label: 'VAT Summary' }
+      { value: 'financial-position', label: 'Financial position' },
+      { value: 'cashflow', label: 'Cash flows' },
     ];
 
     const handlePrint = () => {
@@ -2422,7 +2474,7 @@ function ReportsInner() {
         const printContent = compliancePrintRef.current.innerHTML;
         const win = window.open('', '_blank');
         win.document.write(`
-          <html><head><title>Compliance Report</title>
+          <html><head><title>Financial statements</title>
           <style>body{font-family:system-ui,sans-serif;padding:24px;} table{width:100%;border-collapse:collapse;} th,td{border:1px solid #e5e7eb;padding:8px 12px;text-align:left;} th{background:#f9fafb;}</style>
           </head><body>${printContent}</body></html>`);
         win.document.close();
@@ -2431,34 +2483,63 @@ function ReportsInner() {
       }
     };
 
+    const statementIsEmpty = (() => {
+      if (!complianceData || complianceLoading) return false;
+      if (complianceStatementType === 'income-expenditure') {
+        return (complianceData.income?.total ?? 0) === 0 && (complianceData.expenditure?.total ?? 0) === 0;
+      }
+      if (complianceStatementType === 'profit-loss') {
+        return (complianceData.revenue ?? 0) === 0 && (complianceData.expenses ?? 0) === 0;
+      }
+      if (complianceStatementType === 'cashflow') {
+        return (complianceData.operating?.cashReceivedFromCustomers ?? 0) === 0
+          && (complianceData.operating?.cashPaidToSuppliersAndExpenses ?? 0) === 0;
+      }
+      if (complianceStatementType === 'financial-position') {
+        const assets = complianceData.assets?.total ?? complianceData.totalAssets ?? 0;
+        const liabilities = complianceData.liabilities?.total ?? complianceData.totalLiabilities ?? 0;
+        return Number(assets) === 0 && Number(liabilities) === 0;
+      }
+      return false;
+    })();
+
     return (
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold">Compliance reports</h3>
-            <p className="text-sm text-muted-foreground">For submission to revenue centers and tax authorities. Prepared in accordance with International Accounting Standards (IAS) and International Financial Reporting Standards (IFRS).</p>
-          </div>
-          <div className="flex items-center gap-2">
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <WelcomeSection
+            welcomeMessage="Statements"
+            subText="IAS/IFRS-style statements from your accounting books for authorities and lenders."
+          />
+          <div className="flex flex-col sm:flex-row gap-2 shrink-0 sm:justify-end">
             <DateRangePicker
               range={dateRange?.[0] && dateRange?.[1] ? { from: dateRange[0].toDate(), to: dateRange[1].toDate() } : undefined}
               onSelect={handleComplianceDateRangeSelect}
               presets={DATE_RANGE_PRESET_OPTIONS}
               activePreset={dateFilter}
               onPresetSelect={handleCompliancePresetSelect}
-              className="w-auto min-w-[240px]"
+              className="w-full md:w-auto md:min-w-[240px] border-border bg-card"
             />
-            <ShadcnButton variant="outline" size="sm" onClick={handlePrint}>
+            <ShadcnButton variant="outline" onClick={handlePrint}>
               <FileText className="h-4 w-4 mr-2" />
               Print
             </ShadcnButton>
-            <ShadcnButton className="bg-brand hover:bg-brand-dark text-white" size="sm" onClick={handlePrint}>
+            <ShadcnButton className="bg-brand hover:bg-brand-dark text-white" onClick={handlePrint}>
               <Download className="h-4 w-4 mr-2" />
               Export
             </ShadcnButton>
           </div>
         </div>
+        <ComplianceIntroBanner
+          storageKey="statements"
+          title="About these statements"
+          bullets={[
+            'Figures come from posted journal entries in Accounting.',
+            'If totals are zero, post sales and expenses first, or widen the date range.',
+            'For period VAT and GRA filing packs, use Compliance → VAT.',
+          ]}
+        />
         <Tabs value={complianceStatementType} onValueChange={setComplianceStatementType}>
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
             {statementTabs.map((tab) => (
               <TabsTrigger key={tab.value} value={tab.value}>
                 {tab.label}
@@ -2466,18 +2547,9 @@ function ReportsInner() {
             ))}
           </TabsList>
           <div ref={compliancePrintRef} className="mt-4 border border-border rounded-lg p-4 md:p-6 bg-card">
-            {complianceSource === 'accounting' && complianceData && (
+            {complianceSource === 'accounting' && complianceData && !statementIsEmpty && (
               <p className="text-xs text-muted-foreground mb-2">
                 From Accounting — figures reflect posted journal entries and chart of accounts.
-                {complianceStatementType === 'income-expenditure' && (complianceData.income?.total ?? 0) === 0 && (complianceData.expenditure?.total ?? 0) === 0 && (
-                  <span className="block mt-1">No income or expenditure in this period. This report only includes revenue (income) and expense accounts. Post journal entries that affect those accounts to see figures here; asset/liability/equity movements (e.g. buying furniture) do not appear here.</span>
-                )}
-                {complianceStatementType === 'profit-loss' && (complianceData.revenue ?? 0) === 0 && (complianceData.expenses ?? 0) === 0 && (
-                  <span className="block mt-1">No revenue or expenses in this period. Post journal entries that affect income or expense accounts to see figures here.</span>
-                )}
-                {complianceStatementType === 'cashflow' && (complianceData.operating?.cashReceivedFromCustomers ?? 0) === 0 && (complianceData.operating?.cashPaidToSuppliersAndExpenses ?? 0) === 0 && (
-                  <span className="block mt-1">No operating cash in/out in this period from income or expense accounts. Post journal entries that affect those accounts to see figures here.</span>
-                )}
               </p>
             )}
             {complianceLoading && (
@@ -2490,7 +2562,7 @@ function ReportsInner() {
                 <AlertDescription>{complianceError}</AlertDescription>
               </Alert>
             )}
-            {!complianceLoading && !complianceError && complianceData && complianceStatementType === 'income-expenditure' && (
+            {!complianceLoading && !complianceError && complianceData && !statementIsEmpty && complianceStatementType === 'income-expenditure' && (
               <>
                 <h4 className="text-base font-semibold mb-3">Income and expenditure report (IAS/IFRS)</h4>
                 <p className="text-sm text-muted-foreground mb-4">
@@ -2540,7 +2612,7 @@ function ReportsInner() {
                 </div>
               </>
             )}
-            {!complianceLoading && !complianceError && complianceData && complianceStatementType === 'profit-loss' && (
+            {!complianceLoading && !complianceError && complianceData && !statementIsEmpty && complianceStatementType === 'profit-loss' && (
               <>
                 <h4 className="text-base font-semibold mb-3">Profit or loss (IAS 1)</h4>
                 <p className="text-sm text-muted-foreground mb-4">
@@ -2591,7 +2663,7 @@ function ReportsInner() {
                 </div>
               </>
             )}
-            {!complianceLoading && !complianceError && complianceData && complianceStatementType === 'financial-position' && (
+            {!complianceLoading && !complianceError && complianceData && !statementIsEmpty && complianceStatementType === 'financial-position' && (
               <>
                 <h4 className="text-base font-semibold mb-3">Statement of financial position (IAS 1)</h4>
                 <p className="text-sm text-muted-foreground mb-4">As at {complianceData.asAtDate || dateRange?.[1]?.format('YYYY-MM-DD')}</p>
@@ -2630,7 +2702,7 @@ function ReportsInner() {
                 </div>
               </>
             )}
-            {!complianceLoading && !complianceError && complianceData && complianceStatementType === 'cashflow' && (
+            {!complianceLoading && !complianceError && complianceData && !statementIsEmpty && complianceStatementType === 'cashflow' && (
               <>
                 <h4 className="text-base font-semibold mb-3">Statement of cash flows (IAS 7)</h4>
                 <p className="text-sm text-muted-foreground mb-4">
@@ -2663,118 +2735,25 @@ function ReportsInner() {
                 </div>
               </>
             )}
-            {complianceStatementType === 'vat' && vatLoading && (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
+            {!complianceLoading && !complianceError && statementIsEmpty && (
+              <EmptyState
+                icon="FileText"
+                title="No activity in this period"
+                description="These statements pull from posted journal entries. Post sales and expenses in Accounting, or choose a wider date range."
+                secondaryAction={{
+                  label: 'Change dates',
+                  onClick: () => {
+                    setDateFilter('thisYear');
+                    setDateRange(calculateDateRange('thisYear'));
+                  },
+                }}
+                primaryAction={{
+                  label: 'Open Accounting',
+                  onClick: () => navigate('/accounting'),
+                }}
+              />
             )}
-            {complianceStatementType === 'vat' && !vatLoading && vatData && (
-              <>
-                <h4 className="text-base font-semibold mb-3">VAT Summary Report</h4>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Period: {dateRange?.[0]?.format('DD MMM YYYY')} to {dateRange?.[1]?.format('DD MMM YYYY')}
-                </p>
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card>
-                      <CardContent className="pt-4">
-                        <p className="text-sm text-muted-foreground">Total VAT Collected</p>
-                        <p className="text-2xl font-bold text-primary">
-                          {formatComplianceCurrency(vatData.summary?.totalVatCollected ?? 0)}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          From {vatData.summary?.invoiceCount ?? 0} invoices + {vatData.summary?.saleCount ?? 0} sales
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardContent className="pt-4">
-                        <p className="text-sm text-muted-foreground">Taxable Amount</p>
-                        <p className="text-2xl font-bold">
-                          {formatComplianceCurrency(vatData.summary?.totalTaxableAmount ?? 0)}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">Total sales before tax</p>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardContent className="pt-4">
-                        <p className="text-sm text-muted-foreground">Effective Tax Rate</p>
-                        <p className="text-2xl font-bold">
-                          {vatData.summary?.effectiveTaxRate ?? 0}%
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">Average across all transactions</p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                  
-                  <div>
-                    <p className="font-medium mb-2">VAT Breakdown by Source</p>
-                    <ShadcnTable>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Source</TableHead>
-                          <TableHead className="text-right">Transactions</TableHead>
-                          <TableHead className="text-right">VAT Amount</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell>Invoices</TableCell>
-                          <TableCell className="text-right">{vatData.summary?.invoiceCount ?? 0}</TableCell>
-                          <TableCell className="text-right">{formatComplianceCurrency(vatData.summary?.invoiceVat ?? 0)}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>POS Sales</TableCell>
-                          <TableCell className="text-right">{vatData.summary?.saleCount ?? 0}</TableCell>
-                          <TableCell className="text-right">{formatComplianceCurrency(vatData.summary?.saleVat ?? 0)}</TableCell>
-                        </TableRow>
-                        <TableRow className="font-medium bg-muted/50">
-                          <TableCell>Total</TableCell>
-                          <TableCell className="text-right">{(vatData.summary?.invoiceCount ?? 0) + (vatData.summary?.saleCount ?? 0)}</TableCell>
-                          <TableCell className="text-right">{formatComplianceCurrency(vatData.summary?.totalVatCollected ?? 0)}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </ShadcnTable>
-                  </div>
-
-                  {vatData.byPeriod && vatData.byPeriod.length > 0 && (
-                    <div>
-                      <p className="font-medium mb-2">VAT by Period</p>
-                      <ShadcnTable>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Period</TableHead>
-                            <TableHead className="text-right">Invoice VAT</TableHead>
-                            <TableHead className="text-right">Sales VAT</TableHead>
-                            <TableHead className="text-right">Total VAT</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {vatData.byPeriod.map((row, i) => (
-                            <TableRow key={i}>
-                              <TableCell>{row.period}</TableCell>
-                              <TableCell className="text-right">{formatComplianceCurrency(row.invoiceVat ?? 0)}</TableCell>
-                              <TableCell className="text-right">{formatComplianceCurrency(row.saleVat ?? 0)}</TableCell>
-                              <TableCell className="text-right font-medium">{formatComplianceCurrency(row.totalVat ?? 0)}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </ShadcnTable>
-                    </div>
-                  )}
-
-                  <Alert>
-                    <AlertDescription>
-                      This VAT summary is for internal reporting purposes. For official tax filings, please verify all figures with your accountant and ensure compliance with local tax regulations.
-                    </AlertDescription>
-                  </Alert>
-                </div>
-              </>
-            )}
-            {complianceStatementType === 'vat' && !vatLoading && !vatData && (
-              <p className="text-sm text-muted-foreground">No VAT data available for the selected period.</p>
-            )}
-            {!complianceLoading && !complianceError && !complianceData && complianceStatementType !== 'vat' && (
+            {!complianceLoading && !complianceError && !complianceData && !statementIsEmpty && (
               <p className="text-sm text-muted-foreground">Select a statement type and date range to view the report.</p>
             )}
           </div>
@@ -2841,6 +2820,23 @@ function ReportsInner() {
       return report.status || 'ready';
     };
 
+    const isFreeTextReport = (report) =>
+      report?.generationMode === SMART_REPORT_GENERATION_MODES.FREE_TEXT;
+
+    const renderFreeTextBadge = (report) => {
+      if (!isFreeTextReport(report)) return null;
+      return (
+        <Badge
+          variant="secondary"
+          className="bg-primary/10 text-primary border border-primary/20 flex items-center gap-1 px-2 py-1 font-normal"
+          title={report.userPrompt || 'Described with AI'}
+        >
+          <Sparkles className="h-3 w-3" aria-hidden />
+          AI
+        </Badge>
+      );
+    };
+
     return (
       <div className={isMobile ? "space-y-4" : "space-y-6"}>
         {/* Loading State */}
@@ -2903,8 +2899,17 @@ function ReportsInner() {
                   <div key={report.id || report.generatedAt} className="border border-border rounded-lg p-4 bg-card">
                           <div className="flex justify-between items-start gap-2">
                             <div className="min-w-0 flex-1">
-                              <p className="font-medium text-sm truncate">{report.title}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium text-sm truncate">{report.title}</p>
+                                {renderFreeTextBadge(report)}
+                              </div>
                               <p className="text-muted-foreground text-xs mt-0.5">{dayjs(report.generatedAt).format('D/MM/YYYY')}</p>
+                              {status === 'processing' && isFreeTextReport(report) ? (
+                                <p className="text-xs text-orange-700 mt-1 flex items-center gap-1.5">
+                                  <Loader2 className="h-3 w-3 animate-spin shrink-0" aria-hidden />
+                                  AI is analyzing your question…
+                                </p>
+                              ) : null}
                             </div>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -3009,7 +3014,18 @@ function ReportsInner() {
                       const status = getReportStatus(report);
                       return (
                         <TableRow key={report.id || report.generatedAt} className="border-b border-border hover:bg-muted/50">
-                          <TableCell className="font-medium py-4 px-6">{report.title}</TableCell>
+                          <TableCell className="font-medium py-4 px-6">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span>{report.title}</span>
+                              {renderFreeTextBadge(report)}
+                            </div>
+                            {status === 'processing' && isFreeTextReport(report) ? (
+                              <p className="text-xs text-orange-700 mt-1 flex items-center gap-1.5 font-normal">
+                                <Loader2 className="h-3 w-3 animate-spin shrink-0" aria-hidden />
+                                AI is analyzing your question…
+                              </p>
+                            ) : null}
+                          </TableCell>
                           <TableCell className="text-muted-foreground py-4 px-6">
                             {dayjs(report.generatedAt).format('D/MM/YYYY')}
                           </TableCell>
@@ -3975,7 +3991,7 @@ function ReportsInner() {
     <>
       {/* Create Report Modal - shadcn Dialog + Form */}
       <Dialog open={createReportModalVisible} onOpenChange={setCreateReportModalVisible}>
-        <DialogContent className="sm:max-w-[600px] p-0 gap-0">
+        <DialogContent className="sm:max-w-[640px] p-0 gap-0">
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle className="text-lg font-semibold">Create report</DialogTitle>
           </DialogHeader>
@@ -4007,8 +4023,91 @@ function ReportsInner() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Smart Report uses this selected range and compares it with the previous equivalent period.
+                  {createReportMode === SMART_REPORT_GENERATION_MODES.FREE_TEXT
+                    ? ' Mentioning today, yesterday, this week, this month, or this year in your prompt can prefill the range.'
+                    : ''}
                 </p>
               </div>
+
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">How do you want to build it?</Label>
+                <Tabs
+                  value={createReportMode}
+                  onValueChange={(value) => {
+                    setCreateReportMode(value);
+                    if (value === SMART_REPORT_GENERATION_MODES.FREE_TEXT) {
+                      setSelectedReportTypes(
+                        getDefaultSmartReportTypeSelection({ isShop, isPharmacy, isStudio })
+                      );
+                    }
+                  }}
+                >
+                  <TabsList className="grid w-full grid-cols-2 h-11 p-1 bg-muted border border-border">
+                    <TabsTrigger
+                      value={SMART_REPORT_GENERATION_MODES.SECTIONS}
+                      className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
+                      Sections
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value={SMART_REPORT_GENERATION_MODES.FREE_TEXT}
+                      className="gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                      Describe with AI
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              {createReportMode === SMART_REPORT_GENERATION_MODES.FREE_TEXT ? (
+                <div className="space-y-3 pt-1">
+                  <FormField
+                    control={reportConfigForm.control}
+                    name="userPrompt"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>What should AI focus on?</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            {...field}
+                            value={field.value || ''}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              field.onChange(next);
+                              setAiPrompt(next);
+                              applyPeriodFromFreeTextPrompt(next);
+                            }}
+                            placeholder="e.g. How profitable were we this month, and what should I cut or push next?"
+                            className="min-h-[120px] resize-y text-sm leading-relaxed"
+                            maxLength={1200}
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          Metric tabs stay numbers-first. Your prompt steers AI Insights and Recommendations across a full report for your business type.
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    {SMART_REPORT_FREE_TEXT_EXAMPLE_PROMPTS.map((example) => (
+                      <button
+                        key={example}
+                        type="button"
+                        onClick={() => {
+                          reportConfigForm.setValue('userPrompt', example, { shouldDirty: true });
+                          setAiPrompt(example);
+                          applyPeriodFromFreeTextPrompt(example);
+                        }}
+                        className="rounded-md border border-border bg-background px-2.5 py-1.5 text-left text-xs text-muted-foreground hover:border-primary hover:text-foreground transition-colors"
+                      >
+                        {example}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
               <div className="space-y-4 pt-1">
                 <Label className="text-sm font-medium">Report sections</Label>
                 <p className="text-xs text-muted-foreground">Selected sections appear as tabs in your Smart Report.</p>
@@ -4066,13 +4165,16 @@ function ReportsInner() {
                   ))}
                 </div>
               </div>
+              )}
               </div>
               <DialogFooter className="gap-2 pt-4 pb-6 px-6 flex-shrink-0 border-t border-border mt-0">
                 <ShadcnButton type="button" variant="outline" size="lg" onClick={() => setCreateReportModalVisible(false)}>
                   Cancel
                 </ShadcnButton>
                 <ShadcnButton type="submit" size="lg" disabled={isCreatingReport || aiLoading} className="bg-brand hover:bg-brand-dark">
-                  {isCreatingReport || aiLoading ? 'Creating...' : 'Create'}
+                  {isCreatingReport || aiLoading
+                    ? (createReportMode === SMART_REPORT_GENERATION_MODES.FREE_TEXT ? 'Starting AI…' : 'Creating...')
+                    : (createReportMode === SMART_REPORT_GENERATION_MODES.FREE_TEXT ? 'Generate with AI' : 'Create')}
                 </ShadcnButton>
               </DialogFooter>
             </form>
@@ -4179,14 +4281,12 @@ function ReportsInner() {
                 />
           ) : null}
         </div>
+      ) : isCompliance ? (
+        renderComplianceView()
       ) : (
         <Card className="rounded-lg border border-border">
           <CardContent className="p-0">
-          {isCompliance ? (
-            <div className="p-4 md:p-6">
-              {renderComplianceView()}
-            </div>
-          ) : isSmartReport && generatedReport ? (
+          {isSmartReport && generatedReport ? (
             <SmartReportDetail
               report={generatedReport}
               onBack={() => setGeneratedReport(null)}

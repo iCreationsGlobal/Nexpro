@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ArrowLeft, Download, MoreVertical, Share2, Sparkles } from 'lucide-react';
+import { SMART_REPORT_GENERATION_MODES } from './smartReportConstants';
 
 /**
  * Smart Report page header matching product mockup.
@@ -19,6 +20,8 @@ export default function SmartReportHeader({
   downloading = false,
 }) {
   const periodLabel = report?.periodLabel || report?.period || 'Report period';
+  const isFreeText = report?.generationMode === SMART_REPORT_GENERATION_MODES.FREE_TEXT;
+  const userPrompt = typeof report?.userPrompt === 'string' ? report.userPrompt.trim() : '';
 
   return (
     <div className="mb-4 md:mb-6 space-y-4">
@@ -28,10 +31,18 @@ export default function SmartReportHeader({
             <h1 className="text-xl md:text-2xl font-semibold text-foreground">Smart Report</h1>
             <Badge className="bg-primary/10 text-primary border border-primary/20 hover:bg-primary/10 gap-1 font-normal">
               <Sparkles className="h-3 w-3" aria-hidden />
-              AI Generated
+              {isFreeText ? 'Described with AI' : 'AI Generated'}
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">{periodLabel}</p>
+          {userPrompt ? (
+            <div className="mt-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5 max-w-3xl">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                Your question
+              </p>
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{userPrompt}</p>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

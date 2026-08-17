@@ -5,7 +5,7 @@ import quarterOfYear from 'dayjs/plugin/quarterOfYear';
 dayjs.extend(isoWeek);
 dayjs.extend(quarterOfYear);
 
-/** Ask AI period chips — keys align with analysis API `period`. */
+/** Ask AI period keys — align with analysis API `period`. Default is this month. */
 export const ASSISTANT_PERIOD_OPTIONS = [
   { key: 'today', label: 'Today' },
   { key: 'week', label: 'This week' },
@@ -14,17 +14,40 @@ export const ASSISTANT_PERIOD_OPTIONS = [
   { key: 'year', label: 'This year' },
 ];
 
+export const DEFAULT_ASSISTANT_PERIOD = 'month';
+
 /**
- * Map period chip key to Dashboard-aligned date range (ISO week, calendar quarter).
- * @param {'today'|'week'|'month'|'quarter'|'year'} periodKey
+ * Detect a clear relative period in the user message for this request only.
+ * Returns null when nothing clear is mentioned (caller keeps the default).
+ * @param {string} message
+ * @returns {'today'|'yesterday'|'week'|'month'|'year'|null}
+ */
+export function detectAssistantPeriodKeyFromMessage(message) {
+  const text = String(message || '');
+  if (/\byesterday\b/i.test(text)) return 'yesterday';
+  if (/\btoday\b/i.test(text)) return 'today';
+  if (/\bthis week\b/i.test(text)) return 'week';
+  if (/\bthis month\b/i.test(text)) return 'month';
+  if (/\bthis year\b/i.test(text)) return 'year';
+  return null;
+}
+
+/**
+ * Map period key to Dashboard-aligned date range (ISO week, calendar quarter).
+ * @param {'today'|'yesterday'|'week'|'month'|'quarter'|'year'} periodKey
  * @param {import('dayjs').Dayjs} [now]
  * @returns {{ period: string, startDate: string, endDate: string, periodLabel: string }}
  */
-export function resolveAssistantPeriod(periodKey = 'today', now = dayjs()) {
-  const key = ASSISTANT_PERIOD_OPTIONS.some((o) => o.key === periodKey) ? periodKey : 'today';
+export function resolveAssistantPeriod(periodKey = DEFAULT_ASSISTANT_PERIOD, now = dayjs()) {
+  const knownChip = ASSISTANT_PERIOD_OPTIONS.some((o) => o.key === periodKey);
+  const key = knownChip || periodKey === 'yesterday' ? periodKey : DEFAULT_ASSISTANT_PERIOD;
   let start;
   let end;
   switch (key) {
+    case 'yesterday':
+      start = now.subtract(1, 'day').startOf('day');
+      end = now.subtract(1, 'day').endOf('day');
+      break;
     case 'week':
       start = now.startOf('isoWeek');
       end = now.endOf('isoWeek');
@@ -52,12 +75,27 @@ export function resolveAssistantPeriod(periodKey = 'today', now = dayjs()) {
     period: key,
     startDate: start.format('YYYY-MM-DD'),
     endDate: end.format('YYYY-MM-DD'),
-    periodLabel: option?.label || 'Today',
+    periodLabel: key === 'yesterday' ? 'Yesterday' : option?.label || 'This month',
   };
 }
 
 /**
- * Infer chip key from URL/dashboard dates when possible; default Today.
+ * Resolve period for one chat request: NLP mention overrides default for that call only.
+ * @param {string} message
+ * @param {'today'|'week'|'month'|'quarter'|'year'} [defaultKey]
+ * @param {import('dayjs').Dayjs} [now]
+ */
+export function resolveAssistantPeriodForMessage(
+  message,
+  defaultKey = DEFAULT_ASSISTANT_PERIOD,
+  now = dayjs()
+) {
+  const mentioned = detectAssistantPeriodKeyFromMessage(message);
+  return resolveAssistantPeriod(mentioned || defaultKey, now);
+}
+
+/**
+ * Infer chip key from URL/dashboard dates when possible; default this month.
  * @param {string|undefined} startDate
  * @param {string|undefined} endDate
  * @param {string|undefined} periodLabel
@@ -84,5 +122,5 @@ export function inferAssistantPeriodKey(startDate, endDate, periodLabel) {
     const year = resolveAssistantPeriod('year');
     if (startDate === year.startDate && endDate === year.endDate) return 'year';
   }
-  return 'today';
+  return DEFAULT_ASSISTANT_PERIOD;
 }

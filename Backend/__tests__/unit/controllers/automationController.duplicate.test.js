@@ -37,6 +37,11 @@ jest.mock('../../../utils/shopUtils', () => ({
 
 jest.mock('../../../services/automationSchedulerService', () => ({}));
 jest.mock('../../../services/openaiService', () => ({}));
+jest.mock('../../../services/defaultAutomationService', () => ({
+  ensureDefaultAutomationsSafe: jest.fn().mockResolvedValue({ created: 0, updated: 0, skipped: 0 }),
+  markSystemDefaultUserModified: jest.fn((rule) => rule),
+  recordSkippedDefaultTemplate: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('../../../utils/paginationUtils', () => ({
   getPagination: jest.fn(() => ({ page: 1, limit: 20, offset: 0 })),
 }));

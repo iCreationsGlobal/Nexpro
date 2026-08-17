@@ -147,6 +147,15 @@ const formatProductForList = (record, req) => {
     delete plain.metadata;
   }
 
+  // Oversized data-URL images OOM React Native Product grids (same class of crash as Profile avatars).
+  if (
+    typeof plain.imageUrl === 'string' &&
+    plain.imageUrl.startsWith('data:') &&
+    plain.imageUrl.length > 200_000
+  ) {
+    plain.imageUrl = null;
+  }
+
   return plain;
 };
 

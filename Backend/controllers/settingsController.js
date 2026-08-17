@@ -1173,6 +1173,9 @@ exports.updateWhatsAppSettings = async (req, res, next) => {
       console.warn('[Settings][whatsapp] marketing verification update:', verifyErr?.message || verifyErr);
     }
 
+    const { ensureDefaultAutomationsSafe } = require('../services/defaultAutomationService');
+    await ensureDefaultAutomationsSafe(req.tenantId, { tenant: req.tenant });
+
     res.status(200).json({
       success: true,
       message: 'WhatsApp settings updated successfully',
@@ -1451,6 +1454,9 @@ exports.updateSMSSettings = async (req, res, next) => {
     } catch (verifyErr) {
       console.warn('[Settings][sms] marketing verification update:', verifyErr?.message || verifyErr);
     }
+
+    const { ensureDefaultAutomationsSafe } = require('../services/defaultAutomationService');
+    await ensureDefaultAutomationsSafe(req.tenantId, { tenant: req.tenant });
 
     res.status(200).json({
       success: true,

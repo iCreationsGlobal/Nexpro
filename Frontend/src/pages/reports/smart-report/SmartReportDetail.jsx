@@ -13,12 +13,26 @@ import SmartReportInventoryTab from './SmartReportInventoryTab';
 import SmartReportRecommendationsTab from './SmartReportRecommendationsTab';
 import SmartReportGenericTab from './SmartReportGenericTab';
 import { resolveSmartReportTabs } from './smartReportTypeUtils';
+import { SMART_REPORT_GENERATION_MODES } from './smartReportConstants';
 import {
   formatSmartReportPeriodLabel,
   getSmartReportSnapshot,
   getTabAiSummary,
   getTabFooterLink,
 } from './smartReportUtils';
+
+/**
+ * Prefer AI Insights for free-text reports when that tab exists; otherwise first tab.
+ * @param {Array<{ id: string }>} tabs
+ * @param {Object} report
+ */
+function getInitialSmartReportTab(tabs, report) {
+  const preferAi =
+    report?.generationMode === SMART_REPORT_GENERATION_MODES.FREE_TEXT
+    && tabs.some((tab) => tab.id === 'ai-insights');
+  if (preferAi) return 'ai-insights';
+  return tabs[0]?.id || 'executive';
+}
 
 /**
  * Full Smart Report detail view with tabbed mockup layout.
@@ -35,16 +49,25 @@ export default function SmartReportDetail({
     [report, isShop, isPharmacy, isStudio]
   );
 
-  const [activeTab, setActiveTab] = useState(() => visibleTabs[0]?.id || 'executive');
+  const [activeTab, setActiveTab] = useState(() => getInitialSmartReportTab(visibleTabs, report));
   const [feedback, setFeedback] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const contentRef = useRef(null);
+  const initializedReportIdRef = useRef(report?.id);
 
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.id === activeTab)) {
-      setActiveTab(visibleTabs[0]?.id || 'executive');
+      setActiveTab(getInitialSmartReportTab(visibleTabs, report));
     }
-  }, [visibleTabs, activeTab]);
+  }, [visibleTabs, activeTab, report]);
+
+  useEffect(() => {
+    const reportId = report?.id;
+    if (reportId && reportId !== initializedReportIdRef.current) {
+      initializedReportIdRef.current = reportId;
+      setActiveTab(getInitialSmartReportTab(visibleTabs, report));
+    }
+  }, [report, visibleTabs]);
 
   const snapshot = useMemo(() => getSmartReportSnapshot(report), [report]);
   const periodLabel = useMemo(() => formatSmartReportPeriodLabel(report), [report]);

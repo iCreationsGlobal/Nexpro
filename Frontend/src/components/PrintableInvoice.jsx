@@ -4,6 +4,7 @@ import { MapPin, Phone, Globe, Mail } from 'lucide-react';
 import { API_BASE_URL } from '../services/api';
 import { getInvoiceTaxDisplay } from '../utils/invoiceTaxDisplay';
 import { formatLineItemQuantity } from '../utils/documentLineItems';
+import GraEvatStampBlock from './GraEvatStampBlock';
 
 const DEFAULT_TERMS_TEXT =
   'Payment is due within the specified payment terms. Late payments may incur additional charges.';
@@ -110,8 +111,10 @@ const PrintableInvoice = ({
     paymentDetailsEnabled: organization.paymentDetailsEnabled === true,
     vatNumber: organization.tax?.vatNumber || '',
     tin: organization.tax?.tin || '',
+    ghanaCardPin: organization.tax?.ghanaCardPin || '',
     taxDisplayLabel: organization.tax?.displayLabel || 'Tax'
   };
+  const graStamp = invoice?.metadata?.graStamp || invoice?.sale?.metadata?.graStamp || null;
   const taxDisplay = getInvoiceTaxDisplay(invoice, organization);
   const taxLabel = taxDisplay.isTaxInclusive
     ? taxDisplay.taxLabel
@@ -697,6 +700,7 @@ const PrintableInvoice = ({
               {companyInfo.phone && <div>Tel: {companyInfo.phone}</div>}
               {companyInfo.vatNumber && <div>VAT: {companyInfo.vatNumber}</div>}
               {companyInfo.tin && <div>TIN: {companyInfo.tin}</div>}
+              {companyInfo.ghanaCardPin && <div>Ghana Card PIN: {companyInfo.ghanaCardPin}</div>}
             </div>
             <hr className="thermal-separator" />
             <div className="thermal-date-row">
@@ -747,6 +751,12 @@ const PrintableInvoice = ({
               <span>Total</span>
               <span>{amountDisplay(invoice.totalAmount)}</span>
             </div>
+            {graStamp?.irn && (
+              <>
+                <hr className="thermal-separator" />
+                <GraEvatStampBlock stamp={graStamp} compact />
+              </>
+            )}
             <hr className="thermal-separator" />
             {(companyInfo.invoiceFooter || companyInfo.name) && (
               <div className="thermal-thanks text-center" style={{ whiteSpace: 'pre-line' }}>
@@ -807,10 +817,11 @@ const PrintableInvoice = ({
                   </div>
                 </>
               )}
-              {(companyInfo.vatNumber || companyInfo.tin) && (
+              {(companyInfo.vatNumber || companyInfo.tin || companyInfo.ghanaCardPin) && (
                 <div className="company-tax-line">
                   {companyInfo.vatNumber && <div>VAT: {companyInfo.vatNumber}</div>}
                   {companyInfo.tin && <div>TIN: {companyInfo.tin}</div>}
+                  {companyInfo.ghanaCardPin && <div>Ghana Card PIN: {companyInfo.ghanaCardPin}</div>}
                 </div>
               )}
             </div>
@@ -1020,6 +1031,8 @@ const PrintableInvoice = ({
             </div>
           </div>
         )}
+
+        <GraEvatStampBlock stamp={graStamp} className="notes-section" />
 
         {/* Footer */}
         {!isReceipt && (

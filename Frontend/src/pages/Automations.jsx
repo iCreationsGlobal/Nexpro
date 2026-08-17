@@ -99,7 +99,7 @@ import {
   CHANNEL_ORDER,
 } from '../utils/automationDelivery';
 import { handleApiError, showError, showSuccess, showWarning } from '../utils/toast';
-import { WHATSAPP_TEMPLATES, parametersTextFromTemplate } from '../constants/whatsappTemplates';
+import { WHATSAPP_TEMPLATES, parametersTextFromTemplate, buttonParametersTextFromTemplate } from '../constants/whatsappTemplates';
 import AutomationTestRecipientDialog from '../components/automations/AutomationTestRecipientDialog';
 import MessagePreview from '../components/automations/MessagePreview';
 import { useScopedWorkspaceName } from '../hooks/useScopedWorkspaceName';
@@ -863,6 +863,10 @@ function getRuleDescription(rule) {
   return `Runs ${primaryAction || 'workflow'} when ${triggerLabel(rule?.triggerType).toLowerCase()}.`;
 }
 
+function isSystemDefaultRule(rule) {
+  return Boolean(rule?.metadata?.systemDefault);
+}
+
 function getRuleAiSource(rule) {
   const metadata = rule?.metadata || {};
   const source = String(metadata.source || metadata.createdFrom || metadata.origin || '').toLowerCase();
@@ -876,6 +880,7 @@ function getRuleAiSource(rule) {
   ) {
     return 'AI generated';
   }
+  if (isSystemDefaultRule(rule)) return 'Default';
   return 'Rule';
 }
 
@@ -2179,6 +2184,7 @@ function WhatsAppActionFields({ row, onPatch, placeholderHint }) {
               templateName: value,
               language: picked?.language || r.language || 'en',
               parametersText: parametersTextFromTemplate(picked),
+              buttonParametersText: buttonParametersTextFromTemplate(picked),
             });
           }}
         >
@@ -2230,6 +2236,20 @@ function WhatsAppActionFields({ row, onPatch, placeholderHint }) {
           <p className="text-xs text-muted-foreground">Available placeholders: {placeholderHint}</p>
         ) : null}
       </div>
+      {(r.buttonParametersText || selectedCatalogTemplate?.buttonParameters?.length > 0) ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="auto-wa-button-params">URL button parameters (optional)</Label>
+          <Input
+            id="auto-wa-button-params"
+            value={r.buttonParametersText ?? ''}
+            onChange={(e) => onPatch({ buttonParametersText: e.target.value })}
+            placeholder="{{paymentPath}}"
+          />
+          <p className="text-xs text-muted-foreground">
+            Dynamic path after your Meta button base URL (e.g. pay-invoice/TOKEN).
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3381,6 +3401,11 @@ function AutomationRuleDetailsDrawer({
                   <span className="rounded-full border border-border bg-muted/30 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                     {rule.enabled ? 'Enabled' : 'Paused'}
                   </span>
+                  {isSystemDefaultRule(rule) ? (
+                    <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-[#166534]">
+                      Default
+                    </span>
+                  ) : null}
                   {rule.branchLabel && (
                     <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/30 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                       <MapPin className="h-3 w-3" aria-hidden />
@@ -5124,7 +5149,7 @@ export default function Automations() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">Automations</h1>
             <p className="mt-2 max-w-3xl text-sm text-muted-foreground md:text-base">
-              Create, manage and monitor rules that run your business automatically
+              Standard follow-ups are already on. Edit or turn off what you do not need, or create a custom rule.
             </p>
           </div>
         </div>
@@ -5248,7 +5273,7 @@ export default function Automations() {
                     </div>
                   )}
                   {!rulesQuery.isLoading && topAutomations.length === 0 && (
-                    <p className="text-sm text-muted-foreground">Create rules to see performance here.</p>
+                    <p className="text-sm text-muted-foreground">Performance appears after your automations have run.</p>
                   )}
                   {!rulesQuery.isLoading &&
                     topAutomations.map((item) => (
@@ -5634,7 +5659,7 @@ export default function Automations() {
                   <div className="mx-4 mb-4 rounded-md border border-dashed border-border bg-muted/30 px-4 py-8 text-center">
                     <p className="text-sm font-medium text-foreground">No automation rules found</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Create a blank rule, use a template, or adjust your filters.
+                      Standard defaults were turned off or removed. Create a custom rule, or adjust your filters.
                     </p>
                   </div>
                 )}
@@ -5667,6 +5692,11 @@ export default function Automations() {
                                   </div>
                                   <div className="min-w-0">
                                     <p className="font-medium text-foreground">{rule.name}</p>
+                                    {isSystemDefaultRule(rule) ? (
+                                      <span className="mt-1 inline-flex rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-[#166534]">
+                                        Default
+                                      </span>
+                                    ) : null}
                                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{rule.description}</p>
                                     {!rule.businessTypeCompatible && (
                                       <p className="mt-1 text-xs font-medium text-amber-700">Not for your business type</p>

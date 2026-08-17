@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '../hooks/useDebounce';
 import { useResponsive } from '../hooks/useResponsive';
 import { useSmartSearch } from '../context/SmartSearchContext';
@@ -123,6 +124,15 @@ import WorkspaceRoleDescription from '../components/WorkspaceRoleDescription';
 import StatusChip from '../components/StatusChip';
 import { resolveImageUrl } from '../utils/fileUtils';
 
+const ADMIN_LIKE_ROLES = ['owner', 'admin'];
+
+const getMemberRole = (record) => {
+  const membership = Array.isArray(record?.tenantMemberships) ? record.tenantMemberships[0] : null;
+  return membership?.role || record?.role || '';
+};
+
+const isAdminLikeRole = (role) => ADMIN_LIKE_ROLES.includes(role);
+
 const Users = () => {
   const navigate = useNavigate();
   const { searchValue, setSearchValue, setPageSearchConfig } = useSmartSearch();
@@ -153,7 +163,7 @@ const Users = () => {
   const [pendingInvites, setPendingInvites] = useState([]);
   const [loadingInvites, setLoadingInvites] = useState(false);
   const [revokingInviteId, setRevokingInviteId] = useState(null);
-  const [deletingUserId, setDeletingUserId] = useState(null);
+  const [memberToRemove, setMemberToRemove] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [submittingInvite, setSubmittingInvite] = useState(false);
   const [inviteShops, setInviteShops] = useState([]);
@@ -167,6 +177,7 @@ const Users = () => {
   const [refreshingUsers, setRefreshingUsers] = useState(false);
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
   const { user, isAdmin, isManager, activeTenantId, activeTenant, hasFeature } = useAuth();
+  const queryClient = useQueryClient();
   const studioLocationCtx = useStudioLocationOptional();
   const shopCtx = useShopOptional();
   const isStudioWorkspace = STUDIO_LIKE_TYPES.includes(activeTenant?.businessType);
@@ -487,19 +498,61 @@ const Users = () => {
     setViewingUser(null);
   }, []);
 
-  const handleDelete = useCallback(async (id) => {
+  const adminLikeCountOnPage = useMemo(
+    () => users.filter((member) => isAdminLikeRole(getMemberRole(member))).length,
+    [users]
+  );
+
+  const canRemoveMember = useCallback((record) => {
+    if (!isAdmin || !record?.id) return false;
+    if (user?.id && String(record.id) === String(user.id)) return false;
+    const role = getMemberRole(record);
+    const fullListLoaded = pagination.total === users.length;
+    if (isAdminLikeRole(role) && fullListLoaded && adminLikeCountOnPage <= 1) {
+      return false;
+    }
+    return true;
+  }, [isAdmin, user?.id, pagination.total, users.length, adminLikeCountOnPage]);
+
+  const cannotRemoveReason = useCallback((record) => {
+    if (!record?.id) return '';
+    if (user?.id && String(record.id) === String(user.id)) {
+      return 'You cannot remove yourself from this workspace.';
+    }
+    const role = getMemberRole(record);
+    const fullListLoaded = pagination.total === users.length;
+    if (isAdminLikeRole(role) && fullListLoaded && adminLikeCountOnPage <= 1) {
+      return 'This is the last remaining owner or admin. Assign another admin before removing them.';
+    }
+    return '';
+  }, [user?.id, pagination.total, users.length, adminLikeCountOnPage]);
+
+  const openRemoveMemberDialog = useCallback((record) => {
+    if (!canRemoveMember(record)) return;
+    setMemberToRemove(record);
+    setDeleteDialogOpen(true);
+  }, [canRemoveMember]);
+
+  const handleDelete = useCallback(async () => {
+    if (!memberToRemove?.id) return;
     try {
       setDeletingUser(true);
-      await userService.delete(id);
-      showSuccess('User deleted successfully');
+      await userService.delete(memberToRemove.id);
+      showSuccess('Team member removed from this workspace');
+      setDeleteDialogOpen(false);
+      setMemberToRemove(null);
+      if (viewingUser?.id === memberToRemove.id) {
+        handleCloseDrawer();
+      }
       await fetchUsers();
       void fetchSeatUsage();
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
     } catch (error) {
-      handleApiError(error, { context: 'delete user' });
+      handleApiError(error, { context: 'remove team member' });
     } finally {
       setDeletingUser(false);
     }
-  }, [fetchSeatUsage]);
+  }, [memberToRemove, viewingUser?.id, fetchSeatUsage, handleCloseDrawer, queryClient]);
 
   const handleToggleStatus = useCallback(async (id) => {
     try {
@@ -674,18 +727,45 @@ const Users = () => {
     {
       key: 'actions',
       label: 'Actions',
-      render: (_, record) => (
-        <div className="flex items-center gap-2">
-          <SecondaryButton
-            size="sm"
-            onClick={() => handleView(record)}
-          >
-            View
-          </SecondaryButton>
-        </div>
-      )
+      render: (_, record) => {
+        const blockedReason = cannotRemoveReason(record);
+        const showRemove = isAdmin;
+        const removeDisabled = !canRemoveMember(record);
+        return (
+          <div className="flex items-center gap-2">
+            <SecondaryButton
+              size="sm"
+              onClick={() => handleView(record)}
+            >
+              View
+            </SecondaryButton>
+            {showRemove && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={removeDisabled}
+                      onClick={() => openRemoveMemberDialog(record)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Remove
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {removeDisabled && blockedReason ? (
+                  <TooltipContent>{blockedReason}</TooltipContent>
+                ) : (
+                  <TooltipContent>Remove this person from the workspace</TooltipContent>
+                )}
+              </Tooltip>
+            )}
+          </div>
+        );
+      }
     }
-  ], [isAdmin, user, handleView, handleToggleStatus]);
+  ], [isAdmin, user, handleView, handleToggleStatus, canRemoveMember, cannotRemoveReason, openRemoveMemberDialog]);
 
   const roleOptions = useMemo(() => {
     const roleIcons = {
@@ -1037,36 +1117,63 @@ const Users = () => {
         </SheetContent>
       </Sheet>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete User</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this user? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {
-              setDeleteDialogOpen(false);
-              setDeletingUserId(null);
-            }}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+      {/* Remove team member confirmation */}
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (deletingUser) return;
+          setDeleteDialogOpen(open);
+          if (!open) setMemberToRemove(null);
+        }}
+      >
+        <DialogContent className="sm:w-[var(--modal-w)] sm:min-h-0">
+          <DialogHeader>
+            <DialogTitle>Remove team member</DialogTitle>
+            <DialogDescription>
+              This permanently removes them from this workspace. They will lose access to this business, including shops and studio locations assigned here. Their account is not deleted if they belong to other workspaces.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <p className="text-sm text-foreground">
+              Remove{' '}
+              <span className="font-medium">
+                {memberToRemove?.name || memberToRemove?.email || 'this team member'}
+              </span>
+              {memberToRemove?.email && memberToRemove?.name ? (
+                <span className="text-muted-foreground"> ({memberToRemove.email})</span>
+              ) : null}
+              {' '}from this workspace?
+            </p>
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => {
-                if (deletingUserId) {
-                  handleDelete(deletingUserId);
-                  setDeleteDialogOpen(false);
-                  setDeletingUserId(null);
-                }
+                if (deletingUser) return;
+                setDeleteDialogOpen(false);
+                setMemberToRemove(null);
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              loading={deletingUser}
+              disabled={deletingUser}
             >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deletingUser}
+            >
+              {deletingUser ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
               Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* User Details Drawer */}
       <DetailsDrawer
@@ -1076,8 +1183,19 @@ const Users = () => {
         width={720}
         onEdit={null}
         onDelete={null}
-        deleteConfirmText="Are you sure you want to delete this user?"
-        extraActions={[]}
+        deleteConfirmText="Are you sure you want to remove this team member from the workspace?"
+        extraActions={
+          isAdmin && viewingUser
+            ? [{
+                key: 'remove-member',
+                label: 'Remove from workspace',
+                icon: <Trash2 className="h-4 w-4" />,
+                variant: 'destructive',
+                disabled: !canRemoveMember(viewingUser),
+                onClick: () => openRemoveMemberDialog(viewingUser),
+              }]
+            : []
+        }
         fields={viewingUser ? [
           { 
             label: 'Avatar', 

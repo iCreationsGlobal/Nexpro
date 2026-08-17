@@ -157,7 +157,7 @@ async function updateEvatSettings(tenantId, patch = {}, opts = {}) {
     apiKeyEncrypted: prev.apiKeyEncrypted,
   };
 
-  if (patch.acceptConsent === true) {
+  if (patch.acceptConsent === true || patch.consentAccepted === true) {
     nextEvat.consentAcceptedAt = new Date().toISOString();
     nextEvat.consentAcceptedBy = opts.userId || null;
   }

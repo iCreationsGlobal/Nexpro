@@ -6,7 +6,8 @@ import {
   FileText, 
   FilePlus, 
   Users, 
-  BarChart3, 
+  BarChart3,
+  ShieldCheck,
   Settings, 
   UserCog,
   Package,
@@ -301,13 +302,12 @@ const getMenuItems = (
     children: advancedChildren,
   });
 
-  // Data & Reports section with children
+  // Data & Reports section with children (analytics only — Compliance is a separate parent)
   const reportsChildren = [
     ...(hasFeature('reports')
       ? [
           { key: '/reports/overview', label: 'Overview', tooltip: MENU_HINTS['/reports'] },
           { key: '/reports/smart-report', label: 'Smart report', tooltip: 'Generate and view smart reports' },
-          { key: '/reports/compliance', label: 'Compliance', tooltip: 'Reports for submission to revenue centers and tax authorities' },
         ]
       : []),
     ...(hasFeature('advancedReporting')
@@ -323,6 +323,25 @@ const getMenuItems = (
       tooltip: MENU_HINTS['/reports'],
       managerOnly: true,
       children: reportsChildren
+    });
+  }
+
+  const complianceChildren = hasFeature('reports')
+    ? [
+        { key: '/compliance/statements', label: 'Statements', tooltip: 'Financial statements for authorities and lenders' },
+        { key: '/compliance/vat', label: 'VAT', tooltip: 'Period VAT and filing pack' },
+        { key: '/compliance/evat', label: 'e-VAT', tooltip: 'GRA certified invoicing setup' },
+      ]
+    : [];
+
+  if (complianceChildren.length > 0) {
+    baseItems.push({
+      key: 'compliance',
+      icon: ShieldCheck,
+      label: 'Compliance',
+      tooltip: 'Tax, e-VAT, and statutory reports',
+      managerOnly: true,
+      children: complianceChildren,
     });
   }
   if (hasFeature('roleManagement')) {
@@ -483,7 +502,9 @@ export function Sidebar({ collapsed, onCollapse }) {
     '/pricing': () => import('../../pages/Pricing'),
     '/reports/overview': () => import('../../pages/Reports'),
     '/export-data': () => import('../../pages/ExportData'),
-    '/reports/compliance': () => import('../../pages/Reports'),
+    '/compliance/statements': () => import('../../pages/Reports'),
+    '/compliance/vat': () => import('../../pages/compliance/ComplianceVat'),
+    '/compliance/evat': () => import('../../pages/compliance/ComplianceEvat'),
     '/materials': () => import('../../pages/Materials'),
     '/equipment': () => import('../../pages/Equipment'),
     '/merchandise': () => import('../../pages/Merchandise'),
@@ -912,7 +933,9 @@ export function MobileSidebar() {
     '/pricing': () => import('../../pages/Pricing'),
     '/reports/overview': () => import('../../pages/Reports'),
     '/export-data': () => import('../../pages/ExportData'),
-    '/reports/compliance': () => import('../../pages/Reports'),
+    '/compliance/statements': () => import('../../pages/Reports'),
+    '/compliance/vat': () => import('../../pages/compliance/ComplianceVat'),
+    '/compliance/evat': () => import('../../pages/compliance/ComplianceEvat'),
     '/materials': () => import('../../pages/Materials'),
     '/equipment': () => import('../../pages/Equipment'),
     '/merchandise': () => import('../../pages/Merchandise'),

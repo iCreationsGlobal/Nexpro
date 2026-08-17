@@ -1,6 +1,6 @@
 /**
- * ReceiveStockModal – Receive stock into products via QR code, barcode scan, or search.
- * Flow: Scan/search product → if variants, select variant → enter qty → add to stock.
+ * ReceiveStockModal – Receive stock into products via QR code, barcode scan, search, or catalog pick.
+ * Flow: Scan/search/select product → if variants, select variant → enter qty → add to stock.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -16,7 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Barcode, Loader2, Package, Search } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Barcode, ChevronDown, Loader2, Package, Search } from 'lucide-react';
 import productService from '../services/productService';
 import { parseProductQRPayload } from '../utils/productQR';
 import { showSuccess, showError } from '../utils/toast';
@@ -51,6 +52,16 @@ const productHasVariants = (product) => {
 };
 
 /**
+ * Sort products by name A–Z (case-insensitive).
+ * @param {Object[]} list
+ * @returns {Object[]}
+ */
+const sortProductsByName = (list) =>
+  [...(list || [])].sort((a, b) =>
+    String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { sensitivity: 'base' })
+  );
+
+/**
  * @param {boolean} open
  * @param {() => void} onClose
  * @param {Object} [initialProduct] – When provided, starts on the confirm step for this product.
@@ -73,6 +84,10 @@ export default function ReceiveStockModal({ open, onClose, onSuccess, initialPro
   const [searching, setSearching] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [barcodeLookupLoading, setBarcodeLookupLoading] = useState(false);
+  const [productOptions, setProductOptions] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [catalogFilter, setCatalogFilter] = useState('');
 
   const resetToScan = useCallback(() => {
     setStep('scan');
@@ -84,6 +99,8 @@ export default function ReceiveStockModal({ open, onClose, onSuccess, initialPro
     setSearchQuery('');
     setSearchResults([]);
     setBarcodeInput('');
+    setProductPickerOpen(false);
+    setCatalogFilter('');
   }, []);
 
   /**
@@ -179,6 +196,62 @@ export default function ReceiveStockModal({ open, onClose, onSuccess, initialPro
 
     resetToScan();
   }, [open, initialProduct, resetToScan, openProductConfirm]);
+
+  /**
+   * Load all active products A–Z for the catalog dropdown (paginated).
+   */
+  const loadProductCatalog = useCallback(async () => {
+    setLoadingProducts(true);
+    try {
+      const pageSize = 100;
+      const allProducts = [];
+      let page = 1;
+      let totalPages = 1;
+
+      do {
+        const response = await productService.getProducts({
+          isActive: true,
+          page,
+          limit: pageSize,
+          sort: 'name_asc',
+        });
+        const list = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.products)
+            ? response.products
+            : [];
+        allProducts.push(...list);
+        totalPages = Number(response?.pagination?.totalPages || totalPages);
+        if (list.length < pageSize && !response?.pagination?.totalPages) break;
+        page += 1;
+      } while (page <= totalPages);
+
+      setProductOptions(sortProductsByName(allProducts));
+    } catch (error) {
+      showError(error, 'Failed to load products');
+      setProductOptions([]);
+    } finally {
+      setLoadingProducts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open || step !== 'scan' || initialProduct?.id) return;
+    loadProductCatalog();
+  }, [open, step, initialProduct?.id, loadProductCatalog]);
+
+  const filteredCatalogProducts = useMemo(() => {
+    const query = catalogFilter.trim().toLowerCase();
+    const stockTracked = productOptions.filter((p) => p?.trackStock !== false);
+    if (!query) return stockTracked;
+    return stockTracked.filter((p) => {
+      const haystack = [p.name, p.sku, p.barcode, p.category?.name]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [productOptions, catalogFilter]);
 
   useEffect(() => {
     if (!open || step !== 'scan' || !scanningEnabled) return;
@@ -315,6 +388,8 @@ export default function ReceiveStockModal({ open, onClose, onSuccess, initialPro
     openProductConfirm(p);
     setSearchQuery('');
     setSearchResults([]);
+    setProductPickerOpen(false);
+    setCatalogFilter('');
   }, [openProductConfirm]);
 
   const variants = useMemo(
@@ -459,7 +534,7 @@ export default function ReceiveStockModal({ open, onClose, onSuccess, initialPro
                     </div>
                   )}
                   <p className="text-sm text-gray-500 text-center">
-                    Scan product or variant QR/barcode, or enter barcode / search below.
+                    Scan product or variant QR/barcode, or select / search below.
                   </p>
                 </>
               )
@@ -467,11 +542,88 @@ export default function ReceiveStockModal({ open, onClose, onSuccess, initialPro
 
             {!scanningEnabled && (
               <p className="text-sm text-gray-500 text-center">
-                Camera scanning is disabled for this workspace. Enter a barcode or search for a product below.
+                Camera scanning is disabled for this workspace. Select a product from the list, enter a barcode, or search below.
               </p>
             )}
 
             <div className={`border-t border-gray-200 pt-4 space-y-3${scanningEnabled ? '' : ' border-t-0 pt-0'}`}>
+                  <div className="space-y-2">
+                    <Label>Select product</Label>
+                    <Popover open={productPickerOpen} onOpenChange={setProductPickerOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full justify-between font-normal"
+                        >
+                          <span className="truncate text-muted-foreground">
+                            {loadingProducts
+                              ? 'Loading products…'
+                              : 'Choose from product list (A–Z)'}
+                          </span>
+                          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-60" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-3rem)] p-0"
+                        align="start"
+                      >
+                        <div className="border-b border-border p-3">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                              value={catalogFilter}
+                              onChange={(e) => setCatalogFilter(e.target.value)}
+                              placeholder="Filter list…"
+                              className="pl-9"
+                              autoFocus
+                            />
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {loadingProducts
+                              ? 'Loading products…'
+                              : `${filteredCatalogProducts.length} product${filteredCatalogProducts.length === 1 ? '' : 's'} (A–Z)`}
+                          </p>
+                        </div>
+                        <div className="max-h-72 overflow-y-auto p-1">
+                          {loadingProducts ? (
+                            <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Loading products
+                            </div>
+                          ) : filteredCatalogProducts.length > 0 ? (
+                            filteredCatalogProducts.map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+                                onClick={() => selectProduct(p)}
+                              >
+                                <span className="block truncate font-medium">{p.name}</span>
+                                <span className="block truncate text-xs text-muted-foreground">
+                                  {p.sku ? `SKU: ${p.sku}` : null}
+                                  {p.sku && (p.barcode || p.quantityOnHand != null) ? ' · ' : null}
+                                  {p.barcode ? p.barcode : null}
+                                  {p.barcode && p.quantityOnHand != null ? ' · ' : null}
+                                  {p.quantityOnHand != null
+                                    ? `Stock ${formatInteger(p.quantityOnHand)} ${p.unit || 'pcs'}`
+                                    : null}
+                                  {(p.hasVariants || (Array.isArray(p.variants) && p.variants.length > 0))
+                                    ? ' · Has variants'
+                                    : null}
+                                </span>
+                              </button>
+                            ))
+                          ) : (
+                            <p className="py-8 text-center text-sm text-muted-foreground">
+                              No products found.
+                            </p>
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
                   <div className="space-y-2">
                     <Label className="flex items-center gap-1.5">
                       <Barcode className="h-4 w-4" />
