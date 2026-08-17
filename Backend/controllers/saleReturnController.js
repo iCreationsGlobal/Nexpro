@@ -21,6 +21,7 @@ const {
   attachShopToPayload,
   assertShopRecordAccess,
 } = require('../utils/shopUtils');
+const { applyStockChange, getShopStockQuantity } = require('../utils/productStockUtils');
 
 const RETURN_REASON_CODES = new Set([
   'customer_changed_mind',
@@ -174,12 +175,31 @@ const assertSaleEligibleForReturn = (sale) => {
  * Increment product/variant stock for restocked return lines.
  * @param {Array<{ productId?: string, productVariantId?: string, qtyReturned: number }>} items
  * @param {import('sequelize').Transaction} transaction
+ * @param {{ tenantId?: string, shopId?: string|null, userId?: string|null, reference?: string|null }} [ctx]
  */
-const restockReturnItems = async (items, transaction) => {
+const restockReturnItems = async (items, transaction, ctx = {}) => {
+  const { tenantId, shopId = null, userId = null, reference = null } = ctx;
   for (const item of items) {
     if (item.disposition !== 'restock') continue;
     const qty = parseFloat(item.qtyReturned) || 0;
     if (qty <= 0) continue;
+
+    if (shopId && tenantId && item.productId) {
+      await applyStockChange({
+        tenantId,
+        productId: item.productId,
+        productVariantId: item.productVariantId || null,
+        shopId,
+        delta: qty,
+        type: 'return',
+        reason: 'Sale return restock',
+        reference,
+        userId,
+        metadata: { source: 'saleReturn' },
+        transaction,
+      });
+      continue;
+    }
 
     if (item.productVariantId) {
       const variant = await ProductVariant.findByPk(item.productVariantId, { transaction });
@@ -208,11 +228,45 @@ const restockReturnItems = async (items, transaction) => {
  * @param {Array<object>} exchangeItems
  * @param {string} tenantId
  * @param {import('sequelize').Transaction} transaction
+ * @param {{ shopId?: string|null, userId?: string|null, reference?: string|null }} [ctx]
  */
-const decrementExchangeStock = async (exchangeItems, tenantId, transaction) => {
+const decrementExchangeStock = async (exchangeItems, tenantId, transaction, ctx = {}) => {
+  const { shopId = null, userId = null, reference = null } = ctx;
   for (const item of exchangeItems) {
     const qty = parseFloat(item.quantity) || 0;
     if (qty <= 0) continue;
+
+    if (shopId && item.productId) {
+      const onHand = await getShopStockQuantity({
+        tenantId,
+        productId: item.productId,
+        productVariantId: item.productVariantId || null,
+        shopId,
+        transaction,
+      });
+      if (onHand < qty) {
+        throw httpError(
+          400,
+          `Insufficient stock for exchange item "${item.name || item.productId}" (have ${onHand}, need ${qty})`,
+          'EXCHANGE_INSUFFICIENT_STOCK'
+        );
+      }
+      await applyStockChange({
+        tenantId,
+        productId: item.productId,
+        productVariantId: item.productVariantId || null,
+        shopId,
+        delta: -qty,
+        type: 'sale',
+        reason: 'Sale return exchange',
+        reference,
+        userId,
+        metadata: { source: 'saleReturnExchange' },
+        transaction,
+        allowNegative: false,
+      });
+      continue;
+    }
 
     if (item.productVariantId) {
       const variant = await ProductVariant.findByPk(item.productVariantId, {
@@ -548,9 +602,15 @@ exports.createSaleReturn = async (req, res, next) => {
       ? (PAYMENT_METHODS.has(body.collectMethod) ? body.collectMethod : (body.refundMethod && PAYMENT_METHODS.has(body.refundMethod) ? body.refundMethod : 'cash'))
       : null;
 
-    await restockReturnItems(preparedItems, transaction);
+    const stockCtx = {
+      tenantId: req.tenantId,
+      shopId: sale.shopId || null,
+      userId: req.user?.id || null,
+      reference: `sale:${sale.id}`,
+    };
+    await restockReturnItems(preparedItems, transaction, stockCtx);
     if (preparedExchange.length > 0) {
-      await decrementExchangeStock(preparedExchange, req.tenantId, transaction);
+      await decrementExchangeStock(preparedExchange, req.tenantId, transaction, stockCtx);
     }
 
     const shopPayload = attachShopToPayload(req, { shopId: sale.shopId });

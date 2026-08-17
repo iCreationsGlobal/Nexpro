@@ -55,7 +55,7 @@ const {
   buildMobileMoneyRefMeta
 } = require('../services/directMoMoChargeService');
 const { sequelize } = require('../config/database');
-const { getTaxConfigForTenant } = require('../utils/taxConfig');
+const { getTaxConfigForTenant, getEffectiveTaxRatePercent } = require('../utils/taxConfig');
 const { convertLineItemsFromTaxInclusive } = require('../utils/taxCalculation');
 const { getTenantLogoUrl } = require('../utils/tenantLogo');
 const {
@@ -1174,7 +1174,7 @@ exports.createInvoice = async (req, res, next) => {
     const taxConfig = await getTaxConfigForTenant(req.tenantId);
     const taxRate =
       taxConfig.enabled
-        ? parseFloat(bodyTaxRate) || taxConfig.defaultRatePercent || 0
+        ? parseFloat(bodyTaxRate) || getEffectiveTaxRatePercent(taxConfig) || 0
         : 0;
 
     const isJobLinked = !!jobId;
@@ -1448,6 +1448,7 @@ exports.createInvoice = async (req, res, next) => {
 
     const customerIdForBalance = invoice.customerId;
     const actorUserId = req.user?.id || null;
+    const tenantIdForStamp = req.tenantId;
     setImmediate(async () => {
       try {
         await updateCustomerBalance(customerIdForBalance);
@@ -1458,6 +1459,29 @@ exports.createInvoice = async (req, res, next) => {
         await createInvoiceRevenueJournal(createdInvoice, actorUserId);
       } catch (journalError) {
         console.error('Failed to create accounting revenue entry for invoice', journalError);
+      }
+      try {
+        const evatService = require('../services/evatService');
+        const plain = typeof createdInvoice.get === 'function'
+          ? createdInvoice.get({ plain: true })
+          : createdInvoice;
+        plain.documentType = 'tax_invoice';
+        const metadata = await evatService.stampDocumentIfEnabled(
+          tenantIdForStamp,
+          plain,
+          plain.metadata || {}
+        );
+        if (metadata) {
+          await Invoice.update(
+            { metadata },
+            { where: { id: createdInvoice.id, tenantId: tenantIdForStamp } }
+          );
+          if (metadata.graStampQueue?.lastError) {
+            console.warn('[CreateInvoice] e-VAT stamp queued:', metadata.graStampQueue.lastError);
+          }
+        }
+      } catch (stampErr) {
+        console.warn('[CreateInvoice] e-VAT stamp skipped/failed:', stampErr?.message || stampErr);
       }
     });
   } catch (error) {
@@ -1514,6 +1538,32 @@ exports.updateInvoice = async (req, res, next) => {
       success: true,
       data: await invoiceToResponsePayload(updatedInvoice)
     });
+
+    if (!updatedInvoice.metadata?.graStamp?.irn) {
+      const tenantIdForStamp = req.tenantId;
+      setImmediate(async () => {
+        try {
+          const evatService = require('../services/evatService');
+          const plain = typeof updatedInvoice.get === 'function'
+            ? updatedInvoice.get({ plain: true })
+            : updatedInvoice;
+          plain.documentType = 'tax_invoice';
+          const metadata = await evatService.stampDocumentIfEnabled(
+            tenantIdForStamp,
+            plain,
+            plain.metadata || {}
+          );
+          if (metadata) {
+            await Invoice.update(
+              { metadata },
+              { where: { id: updatedInvoice.id, tenantId: tenantIdForStamp } }
+            );
+          }
+        } catch (stampErr) {
+          console.warn('[UpdateInvoice] e-VAT stamp skipped/failed:', stampErr?.message || stampErr);
+        }
+      });
+    }
   } catch (error) {
     next(error);
   }

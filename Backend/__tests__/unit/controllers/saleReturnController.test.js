@@ -35,6 +35,11 @@ jest.mock('../../../models', () => ({
   ProductVariant: {
     findByPk: jest.fn(),
   },
+  ProductShopStock: {
+    findOne: jest.fn(),
+    create: jest.fn(),
+    findByPk: jest.fn(),
+  },
   Customer: {},
   Shop: {},
   User: {},
@@ -49,6 +54,16 @@ jest.mock('../../../utils/shopUtils', () => ({
   applyShopFilter: jest.fn((req, where) => where),
   attachShopToPayload: jest.fn((req, body) => body),
   assertShopRecordAccess: jest.fn(),
+}));
+
+jest.mock('../../../utils/productStockUtils', () => ({
+  applyStockChange: jest.fn().mockResolvedValue({
+    skipped: false,
+    previousQuantity: 10,
+    newQuantity: 11,
+    quantityDelta: 1,
+  }),
+  getShopStockQuantity: jest.fn().mockResolvedValue(10),
 }));
 
 jest.mock('../../../middleware/auth', () => ({
@@ -71,6 +86,7 @@ const {
   ProductVariant,
 } = require('../../../models');
 const { assertShopRecordAccess } = require('../../../utils/shopUtils');
+const { applyStockChange, getShopStockQuantity } = require('../../../utils/productStockUtils');
 const saleReturnController = require('../../../controllers/saleReturnController');
 
 describe('saleReturnController', () => {
@@ -222,17 +238,9 @@ describe('saleReturnController', () => {
     });
 
     it('records partial refund and restocks stock', async () => {
-      const productUpdate = jest.fn().mockResolvedValue(undefined);
       const sale = buildSale();
       Sale.findOne.mockResolvedValue(sale);
       SaleReturnItem.findAll.mockResolvedValue([]);
-      Product.findByPk.mockResolvedValue({
-        id: 'prod-1',
-        tenantId: 'tenant-1',
-        trackStock: true,
-        quantityOnHand: 10,
-        update: productUpdate,
-      });
       SaleReturn.findOne
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce({ id: 'ret-1', returnNumber: 'RET-20260715-0001', items: [], exchangeItems: [] });
@@ -254,9 +262,13 @@ describe('saleReturnController', () => {
       const res = buildRes();
       await saleReturnController.createSaleReturn(req, res, jest.fn());
 
-      expect(productUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({ quantityOnHand: 11 }),
-        expect.anything()
+      expect(applyStockChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          productId: 'prod-1',
+          shopId: 'shop-1',
+          delta: 1,
+          type: 'return',
+        })
       );
       expect(sale.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -279,17 +291,9 @@ describe('saleReturnController', () => {
     });
 
     it('write_off disposition does not restock', async () => {
-      const productUpdate = jest.fn().mockResolvedValue(undefined);
       const sale = buildSale();
       Sale.findOne.mockResolvedValue(sale);
       SaleReturnItem.findAll.mockResolvedValue([]);
-      Product.findByPk.mockResolvedValue({
-        id: 'prod-1',
-        tenantId: 'tenant-1',
-        trackStock: true,
-        quantityOnHand: 10,
-        update: productUpdate,
-      });
       SaleReturn.findOne
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce({ id: 'ret-1', returnNumber: 'RET-20260715-0001', items: [], exchangeItems: [] });
@@ -310,7 +314,7 @@ describe('saleReturnController', () => {
       const res = buildRes();
       await saleReturnController.createSaleReturn(req, res, jest.fn());
 
-      expect(productUpdate).not.toHaveBeenCalled();
+      expect(applyStockChange).not.toHaveBeenCalled();
       expect(transaction.commit).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(201);
     });
@@ -339,25 +343,18 @@ describe('saleReturnController', () => {
       const sale = buildSale();
       Sale.findOne.mockResolvedValue(sale);
       SaleReturnItem.findAll.mockResolvedValue([]);
-      Product.findByPk.mockImplementation(async (id) => {
-        if (id === 'prod-1') {
-          return {
-            id: 'prod-1',
-            tenantId: 'tenant-1',
-            trackStock: true,
-            quantityOnHand: 10,
-            update: jest.fn(),
-          };
-        }
-        return {
-          id: 'prod-x',
-          tenantId: 'tenant-1',
-          name: 'Exchange SKU',
-          trackStock: true,
-          quantityOnHand: 1,
-          update: jest.fn(),
-        };
-      });
+      Product.findByPk.mockImplementation(async (id) => ({
+        id,
+        tenantId: 'tenant-1',
+        name: id === 'prod-x' ? 'Exchange SKU' : 'Widget',
+        sku: 'SKU',
+        trackStock: true,
+        quantityOnHand: id === 'prod-x' ? 1 : 10,
+        update: jest.fn(),
+      }));
+      getShopStockQuantity.mockImplementation(async ({ productId }) => (
+        productId === 'prod-x' ? 1 : 10
+      ));
 
       const req = {
         params: { id: 'sale-1' },

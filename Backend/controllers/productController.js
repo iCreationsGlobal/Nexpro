@@ -19,6 +19,9 @@ const {
   parseQuantity,
   recordProductStockMovement,
   resolveStockMovementType,
+  applyStockChange,
+  attachShopStockToProducts,
+  shopCatalogVisibilityLiteral,
 } = require('../utils/productStockUtils');
 
 const PRODUCT_STAFF_SENSITIVE_FIELDS = [
@@ -150,6 +153,33 @@ const formatProductForList = (record, req) => {
 const formatProductListResponse = (records, req) => {
   if (!Array.isArray(records)) return records;
   return records.map((record) => formatProductForList(record, req));
+};
+
+/**
+ * Scope product queries to a shop using shared-catalog visibility
+ * (home shopId, null shopId, or product_shop_stocks row).
+ * @param {object} req
+ * @param {object} where
+ * @param {string|null|undefined} shopIdQuery
+ * @returns {{ where: object, effectiveShopId: string|null }}
+ */
+const applyProductShopScope = (req, where, shopIdQuery) => {
+  const effectiveShopId = shopIdQuery || (req.shopScoped ? req.shopFilterId : null) || null;
+
+  if (effectiveShopId) {
+    const next = { ...where };
+    next[Op.and] = [
+      ...(Array.isArray(where[Op.and]) ? where[Op.and] : where[Op.and] ? [where[Op.and]] : []),
+      shopCatalogVisibilityLiteral(effectiveShopId),
+    ];
+    return { where: next, effectiveShopId };
+  }
+
+  if (req.shopScoped) {
+    return { where: applyShopReadFilter(req, where), effectiveShopId: null };
+  }
+
+  return { where, effectiveShopId: null };
 };
 
 const stripStaffProductWritePayload = (payload, req) => {
@@ -298,11 +328,9 @@ exports.getProducts = async (req, res, next) => {
     const { order } = resolveProductListSort(req.query.sort || req.query.sortBy);
 
     let where = applyTenantFilter(req.tenantId, {});
-    if (req.shopScoped) {
-      where = applyShopReadFilter(req, where);
-    } else if (shopId) {
-      where.shopId = shopId;
-    }
+    const scoped = applyProductShopScope(req, where, shopId);
+    where = scoped.where;
+    const effectiveShopId = scoped.effectiveShopId;
     if (categoryId) {
       where.categoryId = categoryId;
     }
@@ -387,6 +415,15 @@ exports.getProducts = async (req, res, next) => {
       order,
     });
 
+    let listData = formatProductListResponse(rows, req);
+    if (effectiveShopId) {
+      listData = await attachShopStockToProducts(listData, {
+        tenantId: req.tenantId,
+        shopId: effectiveShopId,
+      });
+      listData = listData.map((p) => applyEffectiveProductQuantity(p));
+    }
+
     res.status(200).json({
       success: true,
       count,
@@ -395,7 +432,7 @@ exports.getProducts = async (req, res, next) => {
         limit,
         totalPages: Math.ceil(count / limit)
       },
-      data: formatProductListResponse(rows, req)
+      data: listData
     });
   } catch (error) {
     next(error);
@@ -413,11 +450,8 @@ exports.getProductStats = async (req, res, next) => {
     const shopId = req.query.shopId;
 
     let where = applyTenantFilter(req.tenantId, {});
-    if (req.shopScoped) {
-      where = applyShopReadFilter(req, where);
-    } else if (shopId) {
-      where.shopId = shopId;
-    }
+    const scoped = applyProductShopScope(req, where, shopId);
+    where = scoped.where;
 
     const trackingWhere = {
       ...where,
@@ -506,9 +540,23 @@ exports.getProduct = async (req, res, next) => {
       throw accessErr;
     }
 
+    let data = stripSensitiveProductFields(product, req);
+    const effectiveShopId = req.query.shopId || req.shopFilterId || product.shopId || null;
+    if (effectiveShopId) {
+      const [withShopQty] = await attachShopStockToProducts(
+        [typeof data?.get === 'function' ? data.get({ plain: true }) : data],
+        { tenantId: req.tenantId, shopId: effectiveShopId }
+      );
+      data = applyEffectiveProductQuantity(withShopQty || data);
+    } else {
+      data = applyEffectiveProductQuantity(
+        typeof data?.get === 'function' ? data.get({ plain: true }) : data
+      );
+    }
+
     res.status(200).json({
       success: true,
-      data: stripSensitiveProductFields(product, req)
+      data
     });
   } catch (error) {
     next(error);
@@ -565,7 +613,22 @@ exports.getProductSales = async (req, res, next) => {
       }),
     ]);
 
-    const saleRows = saleItems.map((item) => {
+    const saleLedgerRefs = new Set();
+    for (const row of stockMovements) {
+      const plain = typeof row.get === 'function' ? row.get({ plain: true }) : row;
+      if ((plain.type === 'sale' || plain.type === 'sale_void') && plain.reference) {
+        saleLedgerRefs.add(String(plain.reference));
+      }
+    }
+
+    const saleRows = saleItems
+      .filter((item) => {
+        const plain = typeof item.get === 'function' ? item.get({ plain: true }) : item;
+        const saleId = plain.sale?.id;
+        if (saleId && saleLedgerRefs.has(`sale:${saleId}`)) return false;
+        return true;
+      })
+      .map((item) => {
       const plain = typeof item.get === 'function' ? item.get({ plain: true }) : item;
       const qty = parseQuantity(plain.quantity);
       return {
@@ -596,6 +659,12 @@ exports.getProductSales = async (req, res, next) => {
         transfer_in: 'Transfer in',
         transfer_out: 'Transfer out',
         return: 'Return / restock',
+        sale: 'Sale',
+        sale_void: 'Sale cancelled / void',
+        count_adjustment: 'Stock count adjustment',
+        opening: 'Opening stock',
+        import: 'Import',
+        damage: 'Damage / write-off',
       };
       return {
         id: plain.id,
@@ -681,6 +750,7 @@ exports.adjustProductStock = async (req, res, next) => {
       reason = '',
       type,
       variantId = null,
+      shopId: bodyShopId = null,
     } = req.body || {};
 
     const qtyInput = parseQuantity(quantity);
@@ -693,10 +763,22 @@ exports.adjustProductStock = async (req, res, next) => {
       });
     }
 
-    let previousQuantity;
-    let newQuantity;
-    let targetVariant = null;
+    const shopId = bodyShopId || product.shopId || req.shopFilterId || req.defaultShopId || null;
+    if (!shopId) {
+      await transaction.rollback();
+      transactionFinished = true;
+      return res.status(400).json({
+        success: false,
+        message: 'shopId is required to adjust stock',
+      });
+    }
+    if (!userCanAccessShopId(req, shopId)) {
+      await transaction.rollback();
+      transactionFinished = true;
+      return res.status(403).json({ success: false, message: 'You do not have access to this shop' });
+    }
 
+    let targetVariant = null;
     if (variantId) {
       targetVariant = await ProductVariant.findOne({
         where: { id: variantId, productId: product.id },
@@ -710,52 +792,37 @@ exports.adjustProductStock = async (req, res, next) => {
           message: 'Variant not found for this product',
         });
       }
-      previousQuantity = parseQuantity(targetVariant.quantityOnHand);
-      newQuantity = mode === 'set'
-        ? Math.max(0, qtyInput)
-        : Math.max(0, previousQuantity + qtyInput);
-      await targetVariant.update({ quantityOnHand: newQuantity }, { transaction });
-      await syncParentQuantityFromVariants(product.id, transaction);
-    } else {
-      if (product.hasVariants) {
-        await transaction.rollback();
-        transactionFinished = true;
-        return res.status(400).json({
-          success: false,
-          message: 'This product has variants. Provide variantId to adjust stock.',
-        });
-      }
-      previousQuantity = parseQuantity(product.quantityOnHand);
-      newQuantity = mode === 'set'
-        ? Math.max(0, qtyInput)
-        : Math.max(0, previousQuantity + qtyInput);
-      await product.update({ quantityOnHand: newQuantity }, { transaction });
+    } else if (product.hasVariants) {
+      await transaction.rollback();
+      transactionFinished = true;
+      return res.status(400).json({
+        success: false,
+        message: 'This product has variants. Provide variantId to adjust stock.',
+      });
     }
 
-    const quantityDelta = newQuantity - previousQuantity;
     const movementType = resolveStockMovementType({
       type,
       reason,
-      quantityDelta,
+      quantityDelta: mode === 'set' ? null : qtyInput,
     });
 
-    let movement = null;
-    if (quantityDelta !== 0) {
-      movement = await recordProductStockMovement({
-        tenantId: req.tenantId,
-        productId: product.id,
-        productVariantId: targetVariant?.id || null,
-        shopId: product.shopId || null,
-        type: movementType,
-        quantityDelta,
-        previousQuantity,
-        newQuantity,
-        reason: reason || null,
-        createdBy: req.user?.id || null,
-        metadata: { mode },
-        transaction,
-      });
-    }
+    const result = await applyStockChange({
+      tenantId: req.tenantId,
+      productId: product.id,
+      productVariantId: targetVariant?.id || null,
+      shopId,
+      ...(mode === 'set' ? { setTo: Math.max(0, qtyInput) } : { delta: qtyInput }),
+      type: movementType,
+      reason: reason || null,
+      userId: req.user?.id || null,
+      metadata: { mode, source: 'adjustProductStock' },
+      transaction,
+    });
+
+    const movement = result.movement || null;
+    const previousQuantity = result.previousQuantity;
+    const newQuantity = result.newQuantity;
 
     await transaction.commit();
     transactionFinished = true;
@@ -771,12 +838,25 @@ exports.adjustProductStock = async (req, res, next) => {
       ],
     });
 
+    let responseProduct = stripSensitiveProductFields(refreshed, req);
+    const [withShopQty] = await attachShopStockToProducts(
+      [typeof responseProduct?.get === 'function' ? responseProduct.get({ plain: true }) : responseProduct],
+      { tenantId: req.tenantId, shopId }
+    );
+    responseProduct = applyEffectiveProductQuantity(withShopQty || responseProduct);
+
     res.status(200).json({
       success: true,
-      data: stripSensitiveProductFields(refreshed, req),
+      data: responseProduct,
       movement: movement
         ? (typeof movement.get === 'function' ? movement.get({ plain: true }) : movement)
         : null,
+      stock: {
+        shopId,
+        previousQuantity,
+        newQuantity,
+        quantityDelta: result.quantityDelta,
+      },
     });
   } catch (error) {
     if (!transactionFinished) {
@@ -1007,8 +1087,19 @@ exports.createProduct = async (req, res, next) => {
       });
     }
     const { hasAliasPayload, aliases } = extractProductAliasBarcodes(payload);
+    const openingQty = parseQuantity(payload.quantityOnHand);
+    const openingShopId = payload.shopId || req.shopFilterId || req.defaultShopId || null;
+    const shouldRecordOpening = Boolean(
+      openingShopId
+      && openingQty > 0
+      && payload.hasVariants !== true
+      && payload.trackStock !== false
+    );
+
     const product = await Product.create({
       ...payload,
+      // Defer qty onto shop stock + opening ledger when we can record it cleanly
+      quantityOnHand: shouldRecordOpening ? 0 : (payload.quantityOnHand ?? 0),
       tenantId: req.tenantId
     }, { transaction });
 
@@ -1027,6 +1118,21 @@ exports.createProduct = async (req, res, next) => {
         ],
         transaction
       });
+    }
+
+    if (shouldRecordOpening) {
+      await applyStockChange({
+        tenantId: req.tenantId,
+        productId: product.id,
+        shopId: openingShopId,
+        setTo: openingQty,
+        type: 'opening',
+        reason: 'Opening stock on product create',
+        userId: req.user?.id || null,
+        metadata: { source: 'createProduct' },
+        transaction,
+      });
+      await product.reload({ transaction });
     }
 
     await transaction.commit();
@@ -1104,8 +1210,14 @@ exports.updateProduct = async (req, res, next) => {
       ? parseQuantity(payload.quantityOnHand)
       : oldQuantity;
     const reorderLevel = parseFloat(product.reorderLevel || 0);
-    
-    await product.update(payload, { transaction });
+    const stockShopId = payload.shopId || product.shopId || req.shopFilterId || req.defaultShopId || null;
+
+    const updatePayload = { ...payload };
+    if (hasQtyPayload && !product.hasVariants && stockShopId) {
+      delete updatePayload.quantityOnHand;
+    }
+
+    await product.update(updatePayload, { transaction });
     if (hasAliasPayload) {
       await syncProductAliasBarcodes({
         product,
@@ -1115,31 +1227,51 @@ exports.updateProduct = async (req, res, next) => {
       });
     }
 
-    // Log stock change when quantityOnHand is updated via product edit (skip if adjust-stock handles it)
     const quantityDelta = newQuantity - oldQuantity;
     if (hasQtyPayload && quantityDelta !== 0 && !product.hasVariants) {
       const metaReason = payload.metadata?.lastStockAdjustment?.reason
         || payload.metadata?.stockAdjustmentReason
         || null;
-      await recordProductStockMovement({
-        tenantId: req.tenantId,
-        productId: product.id,
-        shopId: product.shopId || payload.shopId || null,
-        type: resolveStockMovementType({
+      if (stockShopId) {
+        await applyStockChange({
+          tenantId: req.tenantId,
+          productId: product.id,
+          shopId: stockShopId,
+          setTo: newQuantity,
+          type: resolveStockMovementType({
+            reason: metaReason,
+            quantityDelta,
+          }),
           reason: metaReason,
+          userId: req.user?.id || null,
+          metadata: {
+            source: 'updateProduct',
+            ...(payload.metadata?.lastStockAdjustment || {}),
+          },
+          transaction,
+        });
+      } else {
+        await product.update({ quantityOnHand: newQuantity }, { transaction });
+        await recordProductStockMovement({
+          tenantId: req.tenantId,
+          productId: product.id,
+          shopId: null,
+          type: resolveStockMovementType({
+            reason: metaReason,
+            quantityDelta,
+          }),
           quantityDelta,
-        }),
-        quantityDelta,
-        previousQuantity: oldQuantity,
-        newQuantity,
-        reason: metaReason,
-        createdBy: req.user?.id || null,
-        metadata: {
-          source: 'updateProduct',
-          ...(payload.metadata?.lastStockAdjustment || {}),
-        },
-        transaction,
-      });
+          previousQuantity: oldQuantity,
+          newQuantity,
+          reason: metaReason,
+          createdBy: req.user?.id || null,
+          metadata: {
+            source: 'updateProduct',
+            ...(payload.metadata?.lastStockAdjustment || {}),
+          },
+          transaction,
+        });
+      }
     }
 
     invalidateProductListCache(req.tenantId);
@@ -1945,7 +2077,7 @@ exports.bulkUpdateStock = async (req, res, next) => {
 
     for (const item of items) {
       try {
-        const { productId, adjustment, type = 'adjustment' } = item;
+        const { productId, adjustment: adjustmentRaw, type = 'adjustment' } = item;
         
         const product = await Product.findOne({
           where: applyTenantFilter(req.tenantId, { id: productId }),
@@ -1958,29 +2090,32 @@ exports.bulkUpdateStock = async (req, res, next) => {
         }
 
         const oldQuantity = parseFloat(product.quantityOnHand) || 0;
-        const newQuantity = oldQuantity + parseFloat(adjustment);
-
-        await product.update({ quantityOnHand: newQuantity }, { transaction });
-        const quantityDelta = newQuantity - oldQuantity;
-        if (quantityDelta !== 0) {
-          await recordProductStockMovement({
-            tenantId: req.tenantId,
-            productId: product.id,
-            shopId: product.shopId || null,
-            type: resolveStockMovementType({
-              type: type === 'receive' ? 'receive' : 'adjustment',
-              quantityDelta,
-            }),
-            quantityDelta,
-            previousQuantity: oldQuantity,
-            newQuantity,
-            reason: item.reason || null,
-            createdBy: req.user?.id || null,
-            metadata: { source: 'bulkUpdateStock', type },
-            transaction,
-          });
+        const adjustment = parseFloat(adjustmentRaw);
+        const shopId = item.shopId || product.shopId || req.shopFilterId || req.defaultShopId || null;
+        if (!shopId) {
+          errors.push({ productId, error: 'shopId is required for stock update' });
+          continue;
         }
-        updated.push({ productId, oldQuantity, newQuantity, adjustment });
+
+        const result = await applyStockChange({
+          tenantId: req.tenantId,
+          productId: product.id,
+          shopId,
+          delta: adjustment,
+          type: type === 'receive' ? 'receive' : 'adjustment',
+          reason: item.reason || null,
+          userId: req.user?.id || null,
+          metadata: { source: 'bulkUpdateStock', type },
+          transaction,
+        });
+
+        updated.push({
+          productId,
+          oldQuantity: result.previousQuantity ?? oldQuantity,
+          newQuantity: result.newQuantity,
+          adjustment,
+          shopId,
+        });
       } catch (error) {
         errors.push({ productId: item.productId, error: error.message });
       }

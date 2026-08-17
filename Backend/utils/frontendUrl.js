@@ -86,9 +86,28 @@ const buildInvoicePaymentLink = (invoice, req) => {
   return `${base}/invoices`;
 };
 
+/**
+ * Path suffix for WhatsApp dynamic URL buttons.
+ * Meta template base URL should be the app origin ending with `/`
+ * (e.g. https://myapp.africanbusinesssuite.com/), and {{1}} is this path.
+ *
+ * @param {{ paymentToken?: string|null, invoiceId?: string|null, id?: string|null }} invoice
+ * @returns {string|null}
+ */
+const buildInvoicePaymentPathParam = (invoice) => {
+  if (invoice?.paymentToken) {
+    return `pay-invoice/${encodeURIComponent(String(invoice.paymentToken))}`;
+  }
+  if (invoice?.invoiceId || invoice?.id) {
+    return `invoices/${encodeURIComponent(String(invoice.invoiceId || invoice.id))}`;
+  }
+  return null;
+};
+
 module.exports = {
   getFrontendBaseUrl,
   getFrontendBaseUrlFromEnv,
   buildInvoicePaymentLink,
+  buildInvoicePaymentPathParam,
   PRODUCTION_FRONTEND_DEFAULT,
 };

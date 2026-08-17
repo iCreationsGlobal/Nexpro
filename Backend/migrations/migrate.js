@@ -79,6 +79,8 @@ const addPaymentTokenToInvoices = require('./add-payment-token-to-invoices');
 const addAdminLeadIdToJobs = require('./add-admin-lead-id-to-jobs');
 const createSaleActivitiesTable = require('./create-sale-activities-table');
 const createProductStockMovementsTable = require('./create-product-stock-movements-table');
+const createProductShopStocksAndExpandMovements = require('./create-product-shop-stocks-and-expand-movements');
+const addEvatComplianceFields = require('./add-evat-compliance-fields');
 const createExpenseActivitiesTable = require('./create-expense-activities-table');
 const createCustomerActivitiesTable = require('./create-customer-activities-table');
 const createEquipmentTables = require('./create-equipment-tables');
@@ -305,6 +307,12 @@ const migrate = async () => {
 
     // Product stock movement ledger (receive / adjust / transfer)
     await createProductStockMovementsTable();
+
+    // Per-shop stock balances + expanded movement types + backfill
+    await createProductShopStocksAndExpandMovements();
+
+    // GRA e-VAT: invoice.metadata + customer ghanaCardPin
+    await addEvatComplianceFields({ closeConnection: false });
 
     // Expense activity log (notes, approvals, payments on expenses)
     await createExpenseActivitiesTable();

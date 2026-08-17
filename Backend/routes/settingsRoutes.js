@@ -75,10 +75,11 @@ const generateTenantSettingsKey = (req) => {
 
 // Use memory storage for images since we store base64 in database
 const multer = require('multer');
+// Keep avatars small — large base64-in-DB payloads crash React Native Profile.
 const profileUploader = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: parseInt(process.env.UPLOAD_MAX_SIZE_MB || '10', 10) * 1024 * 1024 // 10MB for images
+    fileSize: 1.5 * 1024 * 1024, // 1.5MB
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {

@@ -33,6 +33,7 @@ const {
   recordHeldPaymentForSale,
   recordDirectPaidPaymentForSale,
 } = require('../services/tradeAssuranceService');
+const { applyStockChange } = require('../utils/productStockUtils');
 const {
   buildEligibilityResponse,
   createOrUpdateVerifiedReview,
@@ -2221,6 +2222,22 @@ const createPendingStorefrontSaleFromCheckout = async ({ shopper, body, transact
 
   for (const item of saleItems) {
     if (!item.availability.trackStock) continue;
+    const shopId = store.shopId || item.listing?.shopId || item.availability?.product?.shopId || null;
+    if (shopId && store.tenantId && item.productId) {
+      await applyStockChange({
+        tenantId: store.tenantId,
+        productId: item.productId,
+        productVariantId: item.productVariantId || null,
+        shopId,
+        delta: -item.quantity,
+        type: 'sale',
+        reason: sale.saleNumber ? `Storefront sale ${sale.saleNumber}` : 'Storefront sale',
+        reference: `sale:${sale.id}`,
+        metadata: { source: 'storefrontCheckout' },
+        transaction,
+      });
+      continue;
+    }
     const nextQuantity = Math.max(0, item.availability.quantityOnHand - item.quantity);
     await item.availability.target.update({ quantityOnHand: nextQuantity }, { transaction });
   }

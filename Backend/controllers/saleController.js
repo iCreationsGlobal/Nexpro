@@ -48,6 +48,11 @@ const {
   hasCustomerConfirmedDelivery,
 } = require('../utils/marketplaceOrderStatus');
 const { getEffectiveRole } = require('../middleware/auth');
+const {
+  applyStockChange,
+  applyStockChanges,
+  parseQuantity: parseStockQuantity,
+} = require('../utils/productStockUtils');
 
 /** Throttle check-Paystack calls per sale (avoid hitting Paystack every poll) */
 const paystackCheckLastBySaleId = new Map();
@@ -767,6 +772,7 @@ const buildLightweightSaleResponse = (sale, items = []) => {
 };
 
 const bulkDecrementStock = async ({ tableName, quantityById, transaction }) => {
+  // Legacy SQL bulk path kept for tests that spy on it; prefer applySaleStockDecrements.
   const ids = [...quantityById.keys()].filter(Boolean);
   if (ids.length === 0) return 0;
 
@@ -808,6 +814,79 @@ const bulkDecrementStock = async ({ tableName, quantityById, transaction }) => {
   );
 
   return ids.length;
+};
+
+/**
+ * Decrement shop stock + write sale ledger rows for resolved sale lines.
+ * @param {object} params
+ * @returns {Promise<object[]>}
+ */
+const applySaleStockDecrements = async ({
+  tenantId,
+  shopId,
+  resolvedItems,
+  saleId,
+  saleNumber,
+  userId,
+  transaction,
+}) => {
+  if (!shopId) {
+    // Fallback: legacy product-row decrement when sale has no shop
+    const productQuantityById = new Map();
+    const variantQuantityById = new Map();
+    for (const item of resolvedItems) {
+      const quantity = parseFloat(item.quantity || 0);
+      if (item.productId && !item.productVariantId) {
+        productQuantityById.set(
+          item.productId,
+          (productQuantityById.get(item.productId) || 0) + quantity
+        );
+      }
+      if (item.productVariantId) {
+        variantQuantityById.set(
+          item.productVariantId,
+          (variantQuantityById.get(item.productVariantId) || 0) + quantity
+        );
+      }
+    }
+    await bulkDecrementStock({
+      tableName: 'products',
+      quantityById: productQuantityById,
+      transaction,
+    });
+    await bulkDecrementStock({
+      tableName: 'product_variants',
+      quantityById: variantQuantityById,
+      transaction,
+    });
+    return [];
+  }
+
+  const items = [];
+  for (const item of resolvedItems) {
+    const quantity = parseStockQuantity(item.quantity);
+    if (!item.productId || quantity <= 0) continue;
+    items.push({
+      productId: item.productId,
+      productVariantId: item.productVariantId || null,
+      delta: -quantity,
+      metadata: {
+        saleItemName: item.name || null,
+      },
+    });
+  }
+
+  return applyStockChanges({
+    tenantId,
+    shopId,
+    items,
+    type: 'sale',
+    reason: saleNumber ? `Sale ${saleNumber}` : 'Sale',
+    reference: saleId ? `sale:${saleId}` : (saleNumber || null),
+    userId,
+    metadata: { source: 'createSale' },
+    transaction,
+  });
 };
 
 const runPostSaleAutomation = async ({ sale, items, tenantId, userId, isRestaurant, timer = null }) => {
@@ -1381,10 +1460,14 @@ const createSaleCore = async (transaction, tenantId, userId, body, clientId = nu
         dealerSettlement: priorMeta.dealerSettlement || (dealerChargeToAccount >= total ? 'account' : amountPaid <= 0 ? 'account' : 'split'),
       } : {}),
       taxDetail: {
-        ratePercent: taxConfig.enabled ? taxConfig.defaultRatePercent : 0,
+        ratePercent: taxConfig.enabled
+          ? (computed.appliedRatePercent ?? taxConfig.defaultRatePercent)
+          : 0,
         pricesAreTaxInclusive: taxConfig.pricesAreTaxInclusive,
         taxableExclusive: computed.netTaxable,
-        taxAmount: totalTax
+        taxAmount: totalTax,
+        levies: computed.levies || [],
+        scheme: taxConfig.scheme || 'standard',
       },
       delivery: deliveryResult.snapshot
     }
@@ -1392,25 +1475,10 @@ const createSaleCore = async (transaction, tenantId, userId, body, clientId = nu
   timer?.mark('sale-insert:end', { saleId: sale.id });
 
   timer?.mark('items-and-stock:start', { itemCount: resolvedItems.length });
-  const productQuantityById = new Map();
-  const variantQuantityById = new Map();
   const saleItemRows = resolvedItems.map((item, index) => {
     const lr = computed.lineResults[index] || { exclusive: 0, tax: 0, gross: 0 };
     const lineSub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
     const lineItemTotal = Math.round((lr.exclusive + lr.tax) * 100) / 100;
-    const quantity = parseFloat(item.quantity || 0);
-    if (item.productId && !item.productVariantId) {
-      productQuantityById.set(
-        item.productId,
-        (productQuantityById.get(item.productId) || 0) + quantity
-      );
-    }
-    if (item.productVariantId) {
-      variantQuantityById.set(
-        item.productVariantId,
-        (variantQuantityById.get(item.productVariantId) || 0) + quantity
-      );
-    }
     return {
       saleId: sale.id,
       productId: item.productId,
@@ -1438,21 +1506,20 @@ const createSaleCore = async (transaction, tenantId, userId, body, clientId = nu
   const createdItems = await SaleItem.bulkCreate(saleItemRows, { transaction, returning: true });
   timer?.mark('sale-items-bulk:end', { itemCount: createdItems.length });
 
-  timer?.mark('stock-products-update:start', { productCount: productQuantityById.size });
-  const updatedProductCount = await bulkDecrementStock({
-    tableName: 'products',
-    quantityById: productQuantityById,
-    transaction
+  const saleShopId = sale.shopId || saleData.shopId || null;
+  timer?.mark('stock-products-update:start', { itemCount: resolvedItems.length });
+  const stockResults = await applySaleStockDecrements({
+    tenantId,
+    shopId: saleShopId,
+    resolvedItems,
+    saleId: sale.id,
+    saleNumber,
+    userId,
+    transaction,
   });
-  timer?.mark('stock-products-update:end', { productCount: updatedProductCount });
-
-  timer?.mark('stock-variants-update:start', { variantCount: variantQuantityById.size });
-  const updatedVariantCount = await bulkDecrementStock({
-    tableName: 'product_variants',
-    quantityById: variantQuantityById,
-    transaction
-  });
-  timer?.mark('stock-variants-update:end', { variantCount: updatedVariantCount });
+  timer?.mark('stock-products-update:end', { productCount: stockResults.length });
+  timer?.mark('stock-variants-update:start', { variantCount: 0 });
+  timer?.mark('stock-variants-update:end', { variantCount: 0 });
   timer?.mark('items-and-stock:end', { itemCount: resolvedItems.length });
 
   if (isDealerChannel && dealerChargeToAccount > 0) {
@@ -1581,14 +1648,42 @@ exports.createSale = async (req, res, next) => {
 
     setImmediate(() => {
       timer.mark('background:start');
-      runPostSaleAutomation({
-        sale,
-        items,
-        tenantId: req.tenantId,
-        userId: req.user?.id,
-        isRestaurant,
-        timer
-      }).finally(() => timer.mark('background:end'));
+      const stampPromise = (async () => {
+        try {
+          const evatService = require('../services/evatService');
+          const plain = typeof sale.get === 'function' ? sale.get({ plain: true }) : sale;
+          plain.items = items;
+          plain.documentType = 'sale_receipt';
+          const metadata = await evatService.stampDocumentIfEnabled(
+            req.tenantId,
+            plain,
+            plain.metadata || {}
+          );
+          if (metadata) {
+            await Sale.update(
+              { metadata },
+              { where: { id: sale.id, tenantId: req.tenantId } }
+            );
+            if (metadata.graStampQueue?.lastError) {
+              console.warn('[CreateSale] e-VAT stamp queued:', metadata.graStampQueue.lastError);
+            }
+          }
+        } catch (err) {
+          console.warn('[CreateSale] e-VAT stamp skipped/failed:', err?.message || err);
+        }
+      })();
+
+      Promise.all([
+        stampPromise,
+        runPostSaleAutomation({
+          sale,
+          items,
+          tenantId: req.tenantId,
+          userId: req.user?.id,
+          isRestaurant,
+          timer
+        }),
+      ]).finally(() => timer.mark('background:end'));
     });
   } catch (error) {
     timer.mark('error', { message: error?.message });
@@ -2276,10 +2371,28 @@ exports.cancelSale = async (req, res, next) => {
     }
 
     // Restore product stock (skip when trackStock is false - made-to-order)
+    const restoreShopId = sale.shopId || null;
     for (const item of sale.items) {
       if (!item.productId && !item.productVariantId) {
         continue;
       }
+      if (restoreShopId && item.productId) {
+        await applyStockChange({
+          tenantId: req.tenantId,
+          productId: item.productId,
+          productVariantId: item.productVariantId || null,
+          shopId: restoreShopId,
+          delta: parseStockQuantity(item.quantity),
+          type: 'sale_void',
+          reason: sale.saleNumber ? `Sale ${sale.saleNumber} cancelled` : 'Sale cancelled',
+          reference: `sale:${sale.id}`,
+          userId: req.user?.id || null,
+          metadata: { source: 'cancelSale' },
+          transaction,
+        });
+        continue;
+      }
+
       const product = await Product.findByPk(item.productId, { transaction });
       if (!item.productVariantId && product && product.trackStock !== false) {
         const newQuantity = parseFloat(product.quantityOnHand || 0) + parseFloat(item.quantity);

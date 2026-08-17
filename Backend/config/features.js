@@ -238,6 +238,18 @@ const FEATURE_CATALOG = [
     }
   },
   {
+    key: 'graEvat',
+    name: 'GRA e-VAT & Compliance Hub',
+    description: 'Compliance menu, Ghana multi-levy tax, and GRA e-VAT invoice stamping',
+    category: 'analytics',
+    routes: ['/compliance', '/compliance/statements', '/compliance/vat', '/compliance/evat', '/compliance/filing'],
+    requiredForModules: [],
+    marketingCopy: {
+      highlight: 'GRA e-VAT ready invoicing and compliance',
+      perk: 'Certified invoicing & compliance hub'
+    }
+  },
+  {
     key: 'notifications',
     name: 'In-app Notifications & Alerts',
     description: 'Real-time notifications and automated reminders',
@@ -473,6 +485,7 @@ const PLAN_FEATURE_KEYS = {
     'expenses',
     'materials',
     'reports',
+    'graEvat',
     'leadPipeline',
     'roleManagement',
     'accounting',
@@ -498,6 +511,7 @@ const PLAN_FEATURE_KEYS = {
     'pharmacyOps',
     'materials',
     'reports',
+    'graEvat',
     'notifications',
     'leadPipeline',
     'roleManagement',

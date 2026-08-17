@@ -8,8 +8,30 @@ const taxConfigCache = new NodeCache({
   useClones: false
 });
 
+/** @typedef {{ code: string, label: string, ratePercent: number, enabled: boolean }} TaxLevy */
 /** @typedef {{ enabled: boolean, label: string, ratePercent: number, customerBears: boolean, appliesTo: string }} NormalizedOtherChargeConfig */
-/** @typedef {{ enabled: boolean, defaultRatePercent: number, pricesAreTaxInclusive: boolean, displayLabel: string, vatNumber: string, tin: string, otherCharges: NormalizedOtherChargeConfig }} NormalizedTaxConfig */
+/**
+ * @typedef {{
+ *   enabled: boolean,
+ *   defaultRatePercent: number,
+ *   pricesAreTaxInclusive: boolean,
+ *   displayLabel: string,
+ *   vatNumber: string,
+ *   tin: string,
+ *   ghanaCardPin: string,
+ *   scheme: 'standard'|'flat'|'none',
+ *   levies: TaxLevy[],
+ *   eVat: object,
+ *   otherCharges: NormalizedOtherChargeConfig
+ * }} NormalizedTaxConfig
+ */
+
+const DEFAULT_GHANA_LEVIES = [
+  { code: 'vat', label: 'VAT', ratePercent: 0, enabled: true },
+  { code: 'nhil', label: 'NHIL', ratePercent: 0, enabled: true },
+  { code: 'getfund', label: 'GETFund', ratePercent: 0, enabled: true },
+  { code: 'covid', label: 'COVID-19 HRL', ratePercent: 0, enabled: true },
+];
 
 const DEFAULT_TAX_FIELDS = {
   enabled: false,
@@ -18,6 +40,19 @@ const DEFAULT_TAX_FIELDS = {
   displayLabel: 'Tax',
   vatNumber: '',
   tin: '',
+  ghanaCardPin: '',
+  scheme: 'standard',
+  levies: DEFAULT_GHANA_LEVIES.map((l) => ({ ...l })),
+  eVat: {
+    enabled: false,
+    mode: 'sandbox',
+    apiBaseUrl: '',
+    consentAcceptedAt: null,
+    consentAcceptedBy: null,
+    lastTestStampAt: null,
+    lastTestStampOk: false,
+    apiKeyEncrypted: '',
+  },
   otherCharges: {
     enabled: false,
     label: 'Transaction charge',
@@ -26,6 +61,46 @@ const DEFAULT_TAX_FIELDS = {
     appliesTo: 'online_payments'
   }
 };
+
+/**
+ * @param {unknown} rawLevies
+ * @returns {TaxLevy[]}
+ */
+function normalizeLevies(rawLevies) {
+  if (!Array.isArray(rawLevies) || rawLevies.length === 0) {
+    return DEFAULT_GHANA_LEVIES.map((l) => ({ ...l }));
+  }
+  return rawLevies
+    .filter((l) => l && typeof l === 'object')
+    .map((l) => {
+      const rate = parseFloat(l.ratePercent);
+      return {
+        code: typeof l.code === 'string' && l.code.trim()
+          ? l.code.trim().toLowerCase().slice(0, 32)
+          : 'levy',
+        label: typeof l.label === 'string' && l.label.trim()
+          ? l.label.trim().slice(0, 80)
+          : 'Levy',
+        ratePercent: Number.isFinite(rate) ? Math.min(100, Math.max(0, rate)) : 0,
+        enabled: l.enabled !== false,
+      };
+    });
+}
+
+/**
+ * Effective combined tax rate from enabled levies, or legacy defaultRatePercent.
+ * @param {NormalizedTaxConfig|object} config
+ * @returns {number}
+ */
+function getEffectiveTaxRatePercent(config = {}) {
+  const levies = Array.isArray(config.levies) ? config.levies : [];
+  const active = levies.filter((l) => l && l.enabled !== false && (parseFloat(l.ratePercent) || 0) > 0);
+  if (active.length > 0) {
+    return active.reduce((sum, l) => sum + (parseFloat(l.ratePercent) || 0), 0);
+  }
+  const rate = parseFloat(config.defaultRatePercent);
+  return Number.isFinite(rate) ? Math.min(100, Math.max(0, rate)) : 0;
+}
 
 /**
  * Merge raw organization.tax with defaults (registration fields preserved).
@@ -41,9 +116,21 @@ function normalizeTaxConfig(raw = {}) {
   const appliesTo = rawAppliesTo === 'online_payments' || rawAppliesTo === 'all_payments'
     ? rawAppliesTo
     : DEFAULT_TAX_FIELDS.otherCharges.appliesTo;
+  const schemeRaw = typeof raw.scheme === 'string' ? raw.scheme.trim() : '';
+  const scheme = ['standard', 'flat', 'none'].includes(schemeRaw) ? schemeRaw : 'standard';
+  const levies = normalizeLevies(raw.levies);
+  const rawEvat = raw.eVat && typeof raw.eVat === 'object' ? raw.eVat : {};
+
+  // If levies all zero but defaultRate set, mirror into vat levy for Ghana UX.
+  const levySum = levies.reduce((s, l) => s + (l.enabled === false ? 0 : l.ratePercent), 0);
+  if (levySum === 0 && safeRate > 0) {
+    const vatIdx = levies.findIndex((l) => l.code === 'vat');
+    if (vatIdx >= 0) levies[vatIdx] = { ...levies[vatIdx], ratePercent: safeRate, enabled: true };
+  }
+
   return {
     enabled: raw.enabled === true,
-    defaultRatePercent: safeRate,
+    defaultRatePercent: safeRate > 0 ? safeRate : getEffectiveTaxRatePercent({ levies, defaultRatePercent: 0 }),
     pricesAreTaxInclusive: raw.pricesAreTaxInclusive === true,
     displayLabel:
       typeof raw.displayLabel === 'string' && raw.displayLabel.trim()
@@ -51,6 +138,19 @@ function normalizeTaxConfig(raw = {}) {
         : DEFAULT_TAX_FIELDS.displayLabel,
     vatNumber: typeof raw.vatNumber === 'string' ? raw.vatNumber : '',
     tin: typeof raw.tin === 'string' ? raw.tin : '',
+    ghanaCardPin: typeof raw.ghanaCardPin === 'string' ? raw.ghanaCardPin : '',
+    scheme,
+    levies,
+    eVat: {
+      enabled: rawEvat.enabled === true,
+      mode: rawEvat.mode === 'live' ? 'live' : 'sandbox',
+      apiBaseUrl: typeof rawEvat.apiBaseUrl === 'string' ? rawEvat.apiBaseUrl : '',
+      consentAcceptedAt: rawEvat.consentAcceptedAt || null,
+      consentAcceptedBy: rawEvat.consentAcceptedBy || null,
+      lastTestStampAt: rawEvat.lastTestStampAt || null,
+      lastTestStampOk: rawEvat.lastTestStampOk === true,
+      apiKeyEncrypted: typeof rawEvat.apiKeyEncrypted === 'string' ? rawEvat.apiKeyEncrypted : '',
+    },
     otherCharges: {
       enabled: raw?.otherCharges?.enabled === true,
       label:
@@ -65,22 +165,35 @@ function normalizeTaxConfig(raw = {}) {
 }
 
 /**
- * Tax slice for API responses (organization settings).
- * @param {Record<string, unknown>} organizationValue - full organization setting object
- * @returns {NormalizedTaxConfig}
+ * Tax slice for API responses (organization settings) — strips encrypted API key.
+ * @param {Record<string, unknown>} organizationValue
+ * @returns {object}
  */
 function getTaxFromOrganizationSettings(organizationValue = {}) {
-  return normalizeTaxConfig(organizationValue.tax || {});
+  const config = normalizeTaxConfig(organizationValue.tax || {});
+  return {
+    ...config,
+    eVat: {
+      enabled: config.eVat.enabled,
+      mode: config.eVat.mode,
+      apiBaseUrl: config.eVat.apiBaseUrl,
+      consentAcceptedAt: config.eVat.consentAcceptedAt,
+      consentAcceptedBy: config.eVat.consentAcceptedBy,
+      lastTestStampAt: config.eVat.lastTestStampAt,
+      lastTestStampOk: config.eVat.lastTestStampOk,
+      hasApiKey: Boolean(config.eVat.apiKeyEncrypted),
+    },
+  };
 }
 
 /**
- * Load normalized tax config for a tenant from settings.
+ * Full normalized tax including secrets (internal services only).
  * @param {string} tenantId
  * @returns {Promise<NormalizedTaxConfig>}
  */
 async function getTaxConfigForTenant(tenantId) {
   if (!tenantId) {
-    return getTaxFromOrganizationSettings({});
+    return normalizeTaxConfig({});
   }
   if (taxConfigCache.has(tenantId)) {
     return taxConfigCache.get(tenantId);
@@ -90,14 +203,13 @@ async function getTaxConfigForTenant(tenantId) {
     where: { tenantId, key: 'organization' },
     attributes: ['value']
   });
-  const config = getTaxFromOrganizationSettings(row?.value || {});
+  const config = normalizeTaxConfig(row?.value?.tax || {});
   taxConfigCache.set(tenantId, config);
   return config;
 }
 
 /**
- * Clear cached tax config after organization settings change.
- * @param {string} [tenantId] - Tenant ID; omit to flush all tenants
+ * @param {string} [tenantId]
  */
 function invalidateTaxConfigCache(tenantId) {
   if (tenantId) {
@@ -108,18 +220,16 @@ function invalidateTaxConfigCache(tenantId) {
 }
 
 /**
- * Populate tax cache from organization settings already loaded (no extra DB query).
  * @param {string} tenantId
  * @param {Record<string, unknown>} organizationValue
  */
 function warmTaxConfigCache(tenantId, organizationValue = {}) {
   if (!tenantId) return;
-  const config = getTaxFromOrganizationSettings(organizationValue);
+  const config = normalizeTaxConfig(organizationValue.tax || {});
   taxConfigCache.set(tenantId, config);
 }
 
 /**
- * Check whether a tenant tax config is already cached.
  * @param {string} tenantId
  * @returns {boolean}
  */
@@ -128,8 +238,7 @@ function hasTaxConfigCache(tenantId) {
 }
 
 /**
- * Validate tax fields from a partial update; returns error message or null.
- * @param {Record<string, unknown>} taxPayload - merged tax object after patch
+ * @param {Record<string, unknown>} taxPayload
  * @returns {string|null}
  */
 function validateMergedTaxPayload(taxPayload) {
@@ -148,6 +257,37 @@ function validateMergedTaxPayload(taxPayload) {
     if (taxPayload.displayLabel.length > 80) {
       return 'Tax display label is too long';
     }
+  }
+  if (taxPayload.ghanaCardPin !== undefined && taxPayload.ghanaCardPin !== null) {
+    if (typeof taxPayload.ghanaCardPin !== 'string') {
+      return 'Ghana Card PIN must be a string';
+    }
+    if (taxPayload.ghanaCardPin.length > 32) {
+      return 'Ghana Card PIN is too long';
+    }
+  }
+  if (taxPayload.scheme !== undefined && taxPayload.scheme !== null) {
+    if (!['standard', 'flat', 'none'].includes(String(taxPayload.scheme))) {
+      return 'Tax scheme is invalid';
+    }
+  }
+  if (taxPayload.levies !== undefined && taxPayload.levies !== null) {
+    if (!Array.isArray(taxPayload.levies)) return 'Levies must be an array';
+    for (const levy of taxPayload.levies) {
+      if (!levy || typeof levy !== 'object') return 'Each levy must be an object';
+      const lr = levy.ratePercent;
+      if (lr !== undefined && lr !== null && lr !== '') {
+        const n = parseFloat(lr);
+        if (!Number.isFinite(n) || n < 0 || n > 100) {
+          return 'Each levy rate must be between 0 and 100';
+        }
+      }
+    }
+    const sum = taxPayload.levies.reduce((s, l) => {
+      if (l?.enabled === false) return s;
+      return s + (parseFloat(l?.ratePercent) || 0);
+    }, 0);
+    if (sum > 100) return 'Combined levy rates cannot exceed 100';
   }
   if (taxPayload.otherCharges !== undefined && taxPayload.otherCharges !== null) {
     if (typeof taxPayload.otherCharges !== 'object' || Array.isArray(taxPayload.otherCharges)) {
@@ -177,7 +317,10 @@ function validateMergedTaxPayload(taxPayload) {
 
 module.exports = {
   DEFAULT_TAX_FIELDS,
+  DEFAULT_GHANA_LEVIES,
   normalizeTaxConfig,
+  normalizeLevies,
+  getEffectiveTaxRatePercent,
   getTaxFromOrganizationSettings,
   getTaxConfigForTenant,
   invalidateTaxConfigCache,

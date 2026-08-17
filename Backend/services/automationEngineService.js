@@ -187,7 +187,9 @@ function getTemplates() {
           type: 'send_whatsapp',
           templateName: 'payment_reminder',
           language: 'en',
-          parameters: ['{{invoiceNumber}}', '{{balance}}', '{{paymentLink}}']
+          parameters: ['{{customerName}}', '{{invoiceNumber}}', '{{balanceFormatted}}', '{{dueDate}}'],
+          buttonParameters: ['{{paymentPath}}'],
+          buttonIndex: 0
         }]
       }
     },
@@ -1770,11 +1772,40 @@ async function executeRule({
           if (!templateName) {
             return skipMessagingAction('send_whatsapp', 'Missing WhatsApp template name', contactContext);
           }
+
+          let parameters = applyTemplateValues(
+            Array.isArray(action.parameters) ? action.parameters : [],
+            contactContext
+          );
+          let buttonParameters = Array.isArray(action.buttonParameters)
+            ? applyTemplateValues(action.buttonParameters, contactContext).filter((value) => String(value || '').trim())
+            : undefined;
+
+          // Meta payment_overdue_2 shape: body [name, account, amount, dueDate] + Pay now URL button.
+          // Rebuild from context so older automation configs still send a valid payload.
+          if (templateName === 'payment_reminder') {
+            const hasInvoiceContext = Boolean(
+              contactContext?.invoiceNumber || contactContext?.customerName || contactContext?.paymentPath
+            );
+            if (hasInvoiceContext) {
+              parameters = [
+                contactContext.customerName || 'Customer',
+                contactContext.invoiceNumber || 'N/A',
+                contactContext.balanceFormatted
+                  || whatsappTemplates.formatCurrency(contactContext.balance ?? contactContext.amount),
+                contactContext.dueDate || 'N/A',
+              ];
+              if ((!buttonParameters || buttonParameters.length === 0) && contactContext.paymentPath) {
+                buttonParameters = [String(contactContext.paymentPath)];
+              }
+            }
+          }
+
           const response = await whatsappService.sendMessage(
             tenantId,
             contactContext.phone,
             templateName,
-            applyTemplateValues(Array.isArray(action.parameters) ? action.parameters : [], contactContext),
+            parameters,
             action.language || 'en',
             {
               category: action.category || action.messageCategory || 'transactional',
@@ -1783,7 +1814,7 @@ async function executeRule({
                 triggerType: rule.triggerType,
                 subjectKey
               },
-              buttonParameters: Array.isArray(action.buttonParameters) ? action.buttonParameters : undefined,
+              buttonParameters: buttonParameters && buttonParameters.length > 0 ? buttonParameters : undefined,
               buttonIndex: action.buttonIndex
             }
           );
@@ -1928,6 +1959,11 @@ function paymentLinkForInvoice(invoice) {
   return buildInvoicePaymentLink(invoice);
 }
 
+function paymentPathForInvoice(invoice) {
+  const { buildInvoicePaymentPathParam } = require('../utils/frontendUrl');
+  return buildInvoicePaymentPathParam(invoice);
+}
+
 function reviewLinkForTenant(slug) {
   const normalized = String(slug || '').trim();
   if (!normalized) return null;
@@ -2029,6 +2065,7 @@ function buildPaymentReceivedTriggerContext({
 function invoiceContext(invoice, rule, kind, now = new Date(), extras = {}) {
   const customer = invoice.customer || {};
   const paymentLink = paymentLinkForInvoice(invoice);
+  const paymentPath = paymentPathForInvoice(invoice);
   const balance = toNumber(invoice.balance || invoice.totalAmount, 0);
   const overdueDays = invoice.dueDate && balance > 0 && new Date(invoice.dueDate) < now
     ? daysBetween(invoice.dueDate, now)
@@ -2043,6 +2080,7 @@ function invoiceContext(invoice, rule, kind, now = new Date(), extras = {}) {
     phone: customer.phone || null,
     amount: balance,
     balance,
+    balanceFormatted: whatsappTemplates.formatCurrency(balance),
     totalAmount: toNumber(invoice.totalAmount, balance),
     invoiceStatus: invoice.status || null,
     paymentStatus: paymentStatusForInvoice(invoice),
@@ -2050,6 +2088,7 @@ function invoiceContext(invoice, rule, kind, now = new Date(), extras = {}) {
     hasOverdueInvoices: extras.hasOverdueInvoices ?? (overdueDays > 0),
     dueDate: formatAutomationDate(invoice.dueDate),
     paymentLink,
+    paymentPath,
     customerHasPhone: Boolean(customer.phone),
     customerHasEmail: Boolean(customer.email),
     whatsappConsent: customer.whatsappConsent === true,

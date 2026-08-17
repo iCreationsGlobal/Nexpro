@@ -1,24 +1,58 @@
+const { getEffectiveTaxRatePercent } = require('./taxConfig');
+
+/**
+ * Split a tax total across enabled levies by rate share.
+ * @param {number} taxAmount
+ * @param {Array<{ code: string, label: string, ratePercent: number, enabled?: boolean }>} levies
+ * @param {number} rate
+ * @returns {Array<{ code: string, label: string, ratePercent: number, amount: number }>}
+ */
+function allocateLevyAmounts(taxAmount, levies, rate) {
+  const round2 = (x) => Math.round(parseFloat(x) * 100) / 100;
+  const active = (Array.isArray(levies) ? levies : []).filter(
+    (l) => l && l.enabled !== false && (parseFloat(l.ratePercent) || 0) > 0
+  );
+  if (active.length === 0 || taxAmount <= 0 || rate <= 0) {
+    return active.map((l) => ({
+      code: l.code,
+      label: l.label,
+      ratePercent: parseFloat(l.ratePercent) || 0,
+      amount: 0,
+    }));
+  }
+  let allocated = 0;
+  return active.map((l, idx) => {
+    const levyRate = parseFloat(l.ratePercent) || 0;
+    let amount;
+    if (idx === active.length - 1) {
+      amount = round2(taxAmount - allocated);
+    } else {
+      amount = round2(taxAmount * (levyRate / rate));
+      allocated += amount;
+    }
+    return {
+      code: l.code,
+      label: l.label,
+      ratePercent: levyRate,
+      amount,
+    };
+  });
+}
+
 /**
  * Tenant tax math — discount before tax.
  *
- * - Line amount (after line discount): L_i = max(0, qty*unitPrice - lineDiscount)
- * - Sum lines: S = Σ L_i
- * - Apply cart discount: net = max(0, S - cartDiscount)
- * - Exclusive prices: tax = round(net * rate/100, 2), total = net + tax
- * - Inclusive prices: net includes tax; exclusive = round(net / (1+rate/100), 2), tax = round(net - exclusive, 2), total = net
- *
- * Per-line tax display (POS receipts): for exclusive, allocate tax by line share of pre-cart net;
- * for inclusive, split each line before cart, then scale for cart (proportional).
+ * Supports Ghana multi-levy via config.levies (summed into effective rate).
  *
  * @param {object} params
  * @param {Array<{ quantity: number, unitPrice: number, discount?: number }>} params.lines
  * @param {number} [params.cartDiscount]
- * @param {{ enabled: boolean, defaultRatePercent: number, pricesAreTaxInclusive: boolean }} params.config
- * @returns {{ subtotal: number, discount: number, lineDiscountSum: number, cartDiscount: number, netTaxable: number, taxAmount: number, total: number, lineResults: Array<{ exclusive: number, tax: number, gross: number }> }}
+ * @param {{ enabled: boolean, defaultRatePercent: number, pricesAreTaxInclusive: boolean, levies?: Array }} params.config
+ * @returns {{ subtotal: number, discount: number, lineDiscountSum: number, cartDiscount: number, netTaxable: number, taxAmount: number, total: number, appliedRatePercent: number, levies: Array, lineResults: Array<{ exclusive: number, tax: number, gross: number }> }}
  */
 function computeDocumentTax({ lines = [], cartDiscount = 0, config }) {
   const enabled = config?.enabled === true;
-  const rate = parseFloat(config?.defaultRatePercent) || 0;
+  const rate = enabled ? getEffectiveTaxRatePercent(config) : 0;
   const inclusive = config?.pricesAreTaxInclusive === true;
 
   const round2 = (x) => Math.round(parseFloat(x) * 100) / 100;
@@ -55,6 +89,8 @@ function computeDocumentTax({ lines = [], cartDiscount = 0, config }) {
       netTaxable: netAfterCart,
       taxAmount: 0,
       total: netAfterCart,
+      appliedRatePercent: 0,
+      levies: [],
       lineResults
     };
   }
@@ -89,6 +125,8 @@ function computeDocumentTax({ lines = [], cartDiscount = 0, config }) {
       netTaxable: netAfterCart,
       taxAmount,
       total,
+      appliedRatePercent: rate,
+      levies: allocateLevyAmounts(taxAmount, config.levies, rate),
       lineResults
     };
   }
@@ -132,6 +170,8 @@ function computeDocumentTax({ lines = [], cartDiscount = 0, config }) {
     netTaxable: netTaxableExclusive,
     taxAmount,
     total: netAfterCart,
+    appliedRatePercent: rate,
+    levies: allocateLevyAmounts(taxAmount, config.levies, rate),
     lineResults
   };
 }
@@ -247,5 +287,6 @@ module.exports = {
   computeDocumentTax,
   computeTotalsFromSubtotalAndDiscount,
   computeQuoteTaxSummary,
-  convertLineItemsFromTaxInclusive
+  convertLineItemsFromTaxInclusive,
+  allocateLevyAmounts,
 };

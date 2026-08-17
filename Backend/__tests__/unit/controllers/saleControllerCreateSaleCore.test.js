@@ -1,7 +1,17 @@
 jest.mock('../../../config/database', () => ({
   sequelize: {
-    query: jest.fn().mockResolvedValue([[], {}])
+    query: jest.fn().mockResolvedValue([[], {}]),
+    literal: jest.fn((sql) => ({ literal: sql })),
   }
+}));
+
+jest.mock('../../../utils/productStockUtils', () => ({
+  applyStockChange: jest.fn().mockResolvedValue({ skipped: false, previousQuantity: 10, newQuantity: 9, quantityDelta: -1 }),
+  applyStockChanges: jest.fn().mockResolvedValue([]),
+  parseQuantity: (value) => {
+    const qty = Number.parseFloat(value);
+    return Number.isFinite(qty) ? qty : 0;
+  },
 }));
 
 jest.mock('../../../models', () => ({
@@ -18,6 +28,15 @@ jest.mock('../../../models', () => ({
   },
   ProductVariant: {
     findAll: jest.fn()
+  },
+  ProductShopStock: {
+    findOne: jest.fn(),
+    create: jest.fn(),
+    findByPk: jest.fn(),
+    findAll: jest.fn(),
+  },
+  ProductStockMovement: {
+    create: jest.fn(),
   },
   Barcode: {},
   Customer: {},

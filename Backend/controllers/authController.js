@@ -777,8 +777,15 @@ exports.login = async (req, res, next) => {
  */
 exports.googleAuth = async (req, res, next) => {
   try {
-    const googleClientId = process.env.GOOGLE_CLIENT_ID;
-    if (!googleClientId) {
+    const googleAudiences = [
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_IOS_CLIENT_ID,
+      process.env.GOOGLE_ANDROID_CLIENT_ID,
+    ]
+      .map((id) => (typeof id === 'string' ? id.trim() : ''))
+      .filter(Boolean);
+
+    if (googleAudiences.length === 0) {
       return res.status(503).json({
         success: false,
         message: 'Google sign-in is not configured',
@@ -816,10 +823,10 @@ exports.googleAuth = async (req, res, next) => {
       }
     }
 
-    const client = new OAuth2Client(googleClientId);
+    const client = new OAuth2Client(googleAudiences[0]);
     let payload;
     try {
-      const ticket = await client.verifyIdToken({ idToken, audience: googleClientId });
+      const ticket = await client.verifyIdToken({ idToken, audience: googleAudiences });
       payload = ticket.getPayload();
     } catch (verifyErr) {
       return res.status(401).json({
@@ -1100,6 +1107,8 @@ exports.googleAuth = async (req, res, next) => {
 exports.getPublicConfig = async (req, res, next) => {
   try {
     const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
+    const googleIosClientId = process.env.GOOGLE_IOS_CLIENT_ID || '';
+    const googleAndroidClientId = process.env.GOOGLE_ANDROID_CLIENT_ID || '';
     const masked = googleClientId ? `${googleClientId.substring(0, 15)}...` : '(empty)';
     console.log('[getPublicConfig] GET /api/auth/config -> GOOGLE_CLIENT_ID:', masked, 'length=', googleClientId.length);
 
@@ -1122,6 +1131,8 @@ exports.getPublicConfig = async (req, res, next) => {
 
     res.status(200).json({
       googleClientId,
+      googleIosClientId,
+      googleAndroidClientId,
       selfSignupEnabled
     });
   } catch (error) {

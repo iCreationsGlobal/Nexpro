@@ -10,11 +10,11 @@ const { applyTenantFilter } = require('../utils/tenantUtils');
 const { getPagination } = require('../utils/paginationUtils');
 const { userCanAccessShopId } = require('../utils/shopUtils');
 const { invalidateProductListCache } = require('../middleware/cache');
-
-const parseQuantity = (value) => {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : NaN;
-};
+const {
+  applyStockChange,
+  getShopStockQuantity,
+  parseQuantity,
+} = require('../utils/productStockUtils');
 
 const includeGraph = [
   { model: Shop, as: 'sourceShop', attributes: ['id', 'name'] },
@@ -60,6 +60,10 @@ const validateShops = async ({ req, sourceShopId, destinationShopId, transaction
   return { sourceShop, destinationShop };
 };
 
+/**
+ * Legacy: find or clone a destination product for shop-scoped catalogs.
+ * Prefer shared-catalog transfers (same productId) when possible.
+ */
 const findDestinationProduct = async ({ sourceProduct, destinationShopId, tenantId, transaction }) => {
   const sourceMetadata = sourceProduct.metadata || {};
   const lookup = {
@@ -209,13 +213,20 @@ const createTransferRecord = async ({
     notes: notes || null,
     createdBy: req.user?.id || null,
     metadata: {
-      autoCreatedDestinationProduct: destinationProduct.sku === null,
+      autoCreatedDestinationProduct: destinationProduct.id !== sourceProduct.id
+        && destinationProduct.sku === null,
       sourceProductName: sourceProduct.name,
+      sharedCatalog: destinationProduct.id === sourceProduct.id,
       ...metadata,
     },
   }, { transaction });
 };
 
+/**
+ * Prefer shared-catalog transfer (same productId, two shop balances).
+ * Fall back to legacy clone path when source product is shop-scoped and
+ * a distinct destination clone already exists or must be created for old data.
+ */
 const transferProductStock = async ({
   req,
   sourceShopId,
@@ -227,23 +238,13 @@ const transferProductStock = async ({
   notes = '',
   allowPartial = false,
   transaction,
+  preferSharedCatalog = true,
 }) => {
   if (!sourceProduct || sourceProduct.trackStock === false || sourceProduct.isActive === false) {
     return { skipped: true, reason: 'Product is inactive or does not track stock' };
   }
 
-  const destinationProduct = await findDestinationProduct({
-    sourceProduct,
-    destinationShopId,
-    tenantId: req.tenantId,
-    transaction,
-  });
-
-  let sourceTrackable = sourceProduct;
-  let destinationTrackable = destinationProduct;
-  let destinationVariant = null;
   let sourceVariant = null;
-
   if (sourceVariantId) {
     sourceVariant = await ProductVariant.findOne({
       where: {
@@ -258,20 +259,145 @@ const transferProductStock = async ({
     if (sourceVariant.trackStock === false || sourceVariant.isActive === false) {
       return { skipped: true, reason: 'Source variant is inactive or does not track stock' };
     }
+  } else if (sourceProduct.hasVariants) {
+    return { skipped: true, reason: 'This product has variants. Provide sourceVariantId.' };
+  }
 
+  const useShared = preferSharedCatalog === true;
+
+  if (useShared) {
+    const sourceBefore = await getShopStockQuantity({
+      tenantId: req.tenantId,
+      productId: sourceProduct.id,
+      productVariantId: sourceVariant?.id || null,
+      shopId: sourceShopId,
+      product: sourceProduct,
+      variant: sourceVariant,
+      transaction,
+    });
+
+    if (!Number.isFinite(sourceBefore) || sourceBefore <= 0) {
+      return { skipped: true, reason: 'No stock available in source location' };
+    }
+
+    const quantityToTransfer = allowPartial
+      ? Math.min(requestedQuantity, sourceBefore)
+      : requestedQuantity;
+
+    if (!Number.isFinite(quantityToTransfer) || quantityToTransfer <= 0) {
+      return { skipped: true, reason: 'Invalid transfer quantity' };
+    }
+
+    if (!allowPartial && sourceBefore < quantityToTransfer) {
+      return { skipped: true, reason: 'Insufficient stock in source location' };
+    }
+
+    const outResult = await applyStockChange({
+      tenantId: req.tenantId,
+      productId: sourceProduct.id,
+      productVariantId: sourceVariant?.id || null,
+      shopId: sourceShopId,
+      delta: -quantityToTransfer,
+      type: 'transfer_out',
+      reason: reason || 'Stock transfer out',
+      reference: null,
+      userId: req.user?.id || null,
+      metadata: {
+        source: 'stockTransfer',
+        destinationShopId,
+        sharedCatalog: true,
+      },
+      transaction,
+    });
+
+    const inResult = await applyStockChange({
+      tenantId: req.tenantId,
+      productId: sourceProduct.id,
+      productVariantId: sourceVariant?.id || null,
+      shopId: destinationShopId,
+      delta: quantityToTransfer,
+      type: 'transfer_in',
+      reason: reason || 'Stock transfer in',
+      reference: null,
+      userId: req.user?.id || null,
+      metadata: {
+        source: 'stockTransfer',
+        sourceShopId,
+        sharedCatalog: true,
+      },
+      transaction,
+    });
+
+    const created = await createTransferRecord({
+      req,
+      sourceShopId,
+      destinationShopId,
+      sourceProduct,
+      destinationProduct: sourceProduct,
+      sourceVariant,
+      destinationVariant: sourceVariant,
+      transferQty: quantityToTransfer,
+      sourceBefore: outResult.previousQuantity,
+      sourceAfter: outResult.newQuantity,
+      destinationBefore: inResult.previousQuantity,
+      destinationAfter: inResult.newQuantity,
+      reason,
+      notes,
+      transaction,
+      metadata: {
+        partialQuantityApplied: quantityToTransfer < requestedQuantity,
+        requestedQuantity,
+        sharedCatalog: true,
+        transferOutMovementId: outResult.movement?.id || null,
+        transferInMovementId: inResult.movement?.id || null,
+      },
+    });
+
+    if (outResult.movement && created?.id) {
+      await outResult.movement.update({ reference: `transfer:${created.id}` }, { transaction });
+    }
+    if (inResult.movement && created?.id) {
+      await inResult.movement.update({ reference: `transfer:${created.id}` }, { transaction });
+    }
+
+    return {
+      skipped: false,
+      created,
+      quantityTransferred: quantityToTransfer,
+      sourceBefore: outResult.previousQuantity,
+      sourceAfter: outResult.newQuantity,
+      sharedCatalog: true,
+    };
+  }
+
+  // Legacy clone path
+  const destinationProduct = await findDestinationProduct({
+    sourceProduct,
+    destinationShopId,
+    tenantId: req.tenantId,
+    transaction,
+  });
+
+  let destinationVariant = null;
+  if (sourceVariant) {
     destinationVariant = await findDestinationVariant({
       sourceVariant,
       destinationProductId: destinationProduct.id,
       tenantId: req.tenantId,
       transaction,
     });
-
-    sourceTrackable = sourceVariant;
-    destinationTrackable = destinationVariant;
   }
 
-  const sourceBefore = parseQuantity(sourceTrackable.quantityOnHand);
-  const destinationBefore = parseQuantity(destinationTrackable.quantityOnHand);
+  const sourceBefore = await getShopStockQuantity({
+    tenantId: req.tenantId,
+    productId: sourceProduct.id,
+    productVariantId: sourceVariant?.id || null,
+    shopId: sourceShopId,
+    product: sourceProduct,
+    variant: sourceVariant,
+    transaction,
+  });
+
   if (!Number.isFinite(sourceBefore) || sourceBefore <= 0) {
     return { skipped: true, reason: 'No stock available in source location' };
   }
@@ -288,12 +414,31 @@ const transferProductStock = async ({
     return { skipped: true, reason: 'Insufficient stock in source location' };
   }
 
-  const sourceAfter = sourceBefore - quantityToTransfer;
-  const safeDestinationBefore = Number.isFinite(destinationBefore) ? destinationBefore : 0;
-  const destinationAfter = safeDestinationBefore + quantityToTransfer;
+  const outResult = await applyStockChange({
+    tenantId: req.tenantId,
+    productId: sourceProduct.id,
+    productVariantId: sourceVariant?.id || null,
+    shopId: sourceShopId,
+    delta: -quantityToTransfer,
+    type: 'transfer_out',
+    reason: reason || 'Stock transfer out',
+    userId: req.user?.id || null,
+    metadata: { source: 'stockTransfer', destinationShopId, sharedCatalog: false },
+    transaction,
+  });
 
-  await sourceTrackable.update({ quantityOnHand: sourceAfter }, { transaction });
-  await destinationTrackable.update({ quantityOnHand: destinationAfter }, { transaction });
+  const inResult = await applyStockChange({
+    tenantId: req.tenantId,
+    productId: destinationProduct.id,
+    productVariantId: destinationVariant?.id || null,
+    shopId: destinationShopId,
+    delta: quantityToTransfer,
+    type: 'transfer_in',
+    reason: reason || 'Stock transfer in',
+    userId: req.user?.id || null,
+    metadata: { source: 'stockTransfer', sourceShopId, sharedCatalog: false },
+    transaction,
+  });
 
   const created = await createTransferRecord({
     req,
@@ -304,16 +449,17 @@ const transferProductStock = async ({
     sourceVariant,
     destinationVariant,
     transferQty: quantityToTransfer,
-    sourceBefore,
-    sourceAfter,
-    destinationBefore: safeDestinationBefore,
-    destinationAfter,
+    sourceBefore: outResult.previousQuantity,
+    sourceAfter: outResult.newQuantity,
+    destinationBefore: inResult.previousQuantity,
+    destinationAfter: inResult.newQuantity,
     reason,
     notes,
     transaction,
     metadata: {
       partialQuantityApplied: quantityToTransfer < requestedQuantity,
       requestedQuantity,
+      sharedCatalog: false,
     },
   });
 
@@ -321,8 +467,9 @@ const transferProductStock = async ({
     skipped: false,
     created,
     quantityTransferred: quantityToTransfer,
-    sourceBefore,
-    sourceAfter,
+    sourceBefore: outResult.previousQuantity,
+    sourceAfter: outResult.newQuantity,
+    sharedCatalog: false,
   };
 };
 
@@ -383,6 +530,7 @@ exports.createStockTransfer = async (req, res, next) => {
       quantity,
       reason = '',
       notes = '',
+      sharedCatalog,
     } = req.body || {};
 
     if (!sourceProductId) {
@@ -398,17 +546,17 @@ exports.createStockTransfer = async (req, res, next) => {
 
     await validateShops({ req, sourceShopId, destinationShopId, transaction });
 
-    const sourceProduct = await Product.findOne({
-      where: applyTenantFilter(req.tenantId, {
-        id: sourceProductId,
-        shopId: sourceShopId,
-      }),
+    // Shared catalog: product belongs to tenant (any home shop). Legacy: match source shopId.
+    let sourceProduct = await Product.findOne({
+      where: applyTenantFilter(req.tenantId, { id: sourceProductId }),
       transaction,
     });
     if (!sourceProduct) {
       await transaction.rollback();
-      return res.status(404).json({ success: false, message: 'Source product not found in selected source shop' });
+      return res.status(404).json({ success: false, message: 'Source product not found' });
     }
+
+    const preferShared = sharedCatalog !== false;
 
     const transferResult = await transferProductStock({
       req,
@@ -421,6 +569,7 @@ exports.createStockTransfer = async (req, res, next) => {
       notes,
       allowPartial: false,
       transaction,
+      preferSharedCatalog: preferShared,
     });
 
     if (transferResult.skipped) {
@@ -453,6 +602,7 @@ exports.createBulkStockTransfer = async (req, res, next) => {
       productIds = [],
       reason = '',
       notes = '',
+      sharedCatalog,
     } = req.body || {};
 
     const transferQty = parseQuantity(quantity);
@@ -468,6 +618,7 @@ exports.createBulkStockTransfer = async (req, res, next) => {
 
     await validateShops({ req, sourceShopId, destinationShopId, transaction });
 
+    const preferShared = sharedCatalog !== false;
     let sourceProducts = [];
     if (mode === 'selected') {
       const uniqueIds = [...new Set((Array.isArray(productIds) ? productIds : []).filter(Boolean))];
@@ -477,18 +628,27 @@ exports.createBulkStockTransfer = async (req, res, next) => {
       }
       sourceProducts = await Product.findAll({
         where: applyTenantFilter(req.tenantId, {
-          shopId: sourceShopId,
           id: { [Op.in]: uniqueIds },
         }),
         transaction,
       });
     } else {
+      // Products with stock at source shop (shop stocks or legacy home shop qty)
       sourceProducts = await Product.findAll({
         where: applyTenantFilter(req.tenantId, {
-          shopId: sourceShopId,
           isActive: true,
           trackStock: { [Op.ne]: false },
-          quantityOnHand: { [Op.gt]: 0 },
+          [Op.or]: [
+            { shopId: sourceShopId, quantityOnHand: { [Op.gt]: 0 } },
+            sequelize.literal(`EXISTS (
+              SELECT 1 FROM product_shop_stocks pss
+              WHERE pss."productId" = "Product"."id"
+                AND pss."tenantId" = "Product"."tenantId"
+                AND pss."shopId" = '${String(sourceShopId).replace(/'/g, "''")}'
+                AND pss."quantityOnHand" > 0
+                AND pss."productVariantId" IS NULL
+            )`),
+          ],
         }),
         transaction,
       });
@@ -514,6 +674,7 @@ exports.createBulkStockTransfer = async (req, res, next) => {
         notes,
         allowPartial: true,
         transaction,
+        preferSharedCatalog: preferShared,
       });
 
       if (result.skipped) {

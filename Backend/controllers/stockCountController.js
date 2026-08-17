@@ -7,6 +7,7 @@ const {
 } = require('../utils/shopUtils');
 const { getPagination } = require('../utils/paginationUtils');
 const { sequelize } = require('../config/database');
+const { applyStockChange } = require('../utils/productStockUtils');
 
 /**
  * Generate unique count number
@@ -384,11 +385,31 @@ exports.approveStockCount = async (req, res) => {
       });
 
       for (const item of items) {
-        // Update product quantity to counted quantity
-        await Product.update(
-          { quantityOnHand: item.countedQuantity },
-          { where: { id: item.productId }, transaction }
-        );
+        const product = await Product.findByPk(item.productId, { transaction });
+        const shopId = stockCount.shopId || product?.shopId || null;
+        if (shopId && product) {
+          await applyStockChange({
+            tenantId,
+            productId: item.productId,
+            shopId,
+            setTo: parseFloat(item.countedQuantity) || 0,
+            type: 'count_adjustment',
+            reason: `Stock count ${stockCount.countNumber || id}`,
+            reference: `stock_count:${id}`,
+            userId,
+            metadata: {
+              source: 'approveStockCount',
+              varianceType: item.varianceType,
+              systemQuantity: item.systemQuantity,
+            },
+            transaction,
+          });
+        } else {
+          await Product.update(
+            { quantityOnHand: item.countedQuantity },
+            { where: { id: item.productId }, transaction }
+          );
+        }
 
         await item.update({ adjustmentApplied: true }, { transaction });
       }

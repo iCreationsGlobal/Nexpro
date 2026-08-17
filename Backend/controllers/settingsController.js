@@ -13,10 +13,12 @@ const SUBSCRIPTION_PLAN_ALIASES = {
 const normalizeSubscriptionPlanId = (plan = '') =>
   SUBSCRIPTION_PLAN_ALIASES[String(plan).trim().toLowerCase()] || String(plan).trim().toLowerCase();
 const { baseUploadDir } = require('../middleware/upload');
+const { attachSafeProfilePicture } = require('../utils/profilePictureResponse');
 const { seedDefaultCategories } = require('../utils/categorySeeder');
 const { sanitizePayload } = require('../utils/tenantUtils');
 const {
   normalizeTaxConfig,
+  getTaxFromOrganizationSettings,
   validateMergedTaxPayload,
   warmTaxConfigCache
 } = require('../utils/taxConfig');
@@ -39,6 +41,7 @@ const {
   invalidateAuthBootstrapCache,
   invalidateCache,
   invalidateTenantMembershipCache,
+  invalidateUserCache,
 } = require('../middleware/cache');
 
 /** In-memory cache for payment integration OTP (best-effort); source of truth is DB for serverless safety. */
@@ -201,7 +204,7 @@ const buildOrganizationPayload = (organizationSettings = {}, tenant = null) => {
     defaultTermsAndConditions: organizationSettings.defaultTermsAndConditions || '',
     supportEmail: organizationSettings.supportEmail || '',
     address: organizationSettings.address || {},
-    tax: normalizeTaxConfig(organizationSettings.tax || {}),
+    tax: getTaxFromOrganizationSettings(organizationSettings),
     taskAutomation: normalizeTaskAutomation(organizationSettings.taskAutomation || {}),
     businessType: tenant?.businessType || 'shop',
     shopType: tenant?.businessType === 'shop' ? (tenantMetadata.shopType || DEFAULT_SHOP_TYPE) : '',
@@ -292,7 +295,7 @@ exports.getProfile = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    const userJson = user.toJSON();
+    const userJson = attachSafeProfilePicture(user.toJSON());
     userJson.notificationPreferences = mergeNotificationPreferences(user.notificationPreferences);
     res.status(200).json({ success: true, data: userJson });
   } catch (error) {
@@ -319,6 +322,16 @@ exports.updateProfile = async (req, res, next) => {
       if (!profilePicture && user.profilePicture) {
         await deleteFileIfExists(user.profilePicture);
       }
+      if (
+        typeof profilePicture === 'string' &&
+        profilePicture.startsWith('data:') &&
+        profilePicture.length > 200_000
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: 'Profile picture is too large. Upload via the avatar endpoint instead.',
+        });
+      }
       user.profilePicture = profilePicture;
     }
 
@@ -336,9 +349,11 @@ exports.updateProfile = async (req, res, next) => {
     }
 
     await user.save();
+    invalidateUserCache(user.id);
 
     const { mergeNotificationPreferences } = require('../services/notificationPreferenceHelper');
-    const userJson = user.toJSON();
+    const userJson = attachSafeProfilePicture(user.toJSON());
+    delete userJson.password;
     userJson.notificationPreferences = mergeNotificationPreferences(user.notificationPreferences);
     res.status(200).json({ success: true, data: userJson });
   } catch (error) {
@@ -400,7 +415,10 @@ exports.requestDataDeletion = async (req, res, next) => {
 exports.uploadProfilePicture = async (req, res, next) => {
   try {
     console.log('[Profile Picture Upload] Starting upload...');
-    const user = await User.findByPk(req.user.id);
+    // defaultScope excludes profilePicture; unscoped so we can replace/cleanup and return it.
+    const user = await User.unscoped().findByPk(req.user.id, {
+      attributes: { exclude: ['password', 'failedLoginAttempts', 'lockoutUntil'] },
+    });
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -417,44 +435,58 @@ exports.uploadProfilePicture = async (req, res, next) => {
       hasPath: !!req.file.path
     });
 
-    // Convert image to base64 and store in database
-    let base64Image;
-    const mimeType = req.file.mimetype || 'image/png';
-    
+    const mimeType = req.file.mimetype || 'image/jpeg';
+    const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+    /** Prefer disk URLs so mobile clients never receive multi-MB data URLs. */
+    let storedPicture;
+
     try {
+      let fileBuffer;
       if (req.file.buffer) {
-        console.log('[Profile Picture Upload] File is in memory, converting to base64...');
-        const base64String = req.file.buffer.toString('base64');
-        base64Image = `data:${mimeType};base64,${base64String}`;
-        console.log('[Profile Picture Upload] ✅ Base64 conversion complete. Length:', base64Image.length);
+        fileBuffer = req.file.buffer;
       } else if (req.file.path) {
-        console.log('[Profile Picture Upload] File is on disk, reading from path:', req.file.path);
-        const fs = require('fs');
-        
         if (!fs.existsSync(req.file.path)) {
-          console.log('[Profile Picture Upload] ❌ File path does not exist');
           return res.status(400).json({ success: false, message: 'Uploaded file not found on server' });
         }
-        
-        const fileBuffer = fs.readFileSync(req.file.path);
-        const base64String = fileBuffer.toString('base64');
-        base64Image = `data:${mimeType};base64,${base64String}`;
-        console.log('[Profile Picture Upload] ✅ Base64 conversion complete. Length:', base64Image.length);
-        
-        // Delete the temporary file since we're storing in DB
+        fileBuffer = fs.readFileSync(req.file.path);
         try {
           fs.unlinkSync(req.file.path);
-          console.log('[Profile Picture Upload] ✅ Temporary file deleted');
         } catch (unlinkError) {
-          console.log('[Profile Picture Upload] ⚠️  Warning: Could not delete temporary file:', unlinkError.message);
+          console.log('[Profile Picture Upload] ⚠️  Could not delete temp file:', unlinkError.message);
         }
       } else {
-        console.log('[Profile Picture Upload] ❌ File has neither buffer nor path');
         return res.status(400).json({ success: false, message: 'Unable to process uploaded file' });
+      }
+
+      // Cap raw upload (~1.5MB) so even serverless base64 fallback stays under RN-safe limits.
+      const MAX_AVATAR_BYTES = 1.5 * 1024 * 1024;
+      if (fileBuffer.length > MAX_AVATAR_BYTES) {
+        return res.status(400).json({
+          success: false,
+          message: 'Profile picture is too large. Use an image under 1.5 MB.',
+        });
+      }
+
+      if (isServerless) {
+        storedPicture = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+      } else {
+        const extFromMime = (mimeType.split('/')[1] || 'jpeg').replace(/[^a-z0-9]/gi, '') || 'jpg';
+        const avatarsDir = path.join(baseUploadDir, 'avatars');
+        if (!fs.existsSync(avatarsDir)) {
+          fs.mkdirSync(avatarsDir, { recursive: true });
+        }
+        const filename = `${user.id}-${Date.now()}.${extFromMime}`;
+        fs.writeFileSync(path.join(avatarsDir, filename), fileBuffer);
+        storedPicture = buildPublicUrl(path.join('avatars', filename));
+        console.log('[Profile Picture Upload] ✅ Saved to disk:', storedPicture);
       }
     } catch (processingError) {
       console.error('[Profile Picture Upload] ❌ Error processing file:', processingError);
-      return res.status(500).json({ success: false, message: 'Error processing uploaded file', error: processingError.message });
+      return res.status(500).json({
+        success: false,
+        message: 'Error processing uploaded file',
+        error: processingError.message,
+      });
     }
 
     // Delete old image if it was a file path (not base64)
@@ -462,11 +494,15 @@ exports.uploadProfilePicture = async (req, res, next) => {
       await deleteFileIfExists(user.profilePicture);
     }
 
-    user.profilePicture = base64Image;
+    user.profilePicture = storedPicture;
     await user.save();
+    invalidateUserCache(user.id);
+
+    const userJson = attachSafeProfilePicture(user.toJSON());
+    delete userJson.password;
 
     console.log('[Profile Picture Upload] ✅ Upload completed successfully');
-    res.status(200).json({ success: true, data: user });
+    res.status(200).json({ success: true, data: userJson });
   } catch (error) {
     console.error('[Profile Picture Upload] ❌ Error:', error);
     next(error);
@@ -578,7 +614,20 @@ exports.updateOrganizationSettings = async (req, res, next) => {
       },
       tax: {
         ...(existing.tax || {}),
-        ...(incoming.tax || {})
+        ...(incoming.tax || {}),
+        otherCharges: {
+          ...(existing.tax?.otherCharges || {}),
+          ...(incoming.tax?.otherCharges || {}),
+        },
+        eVat: {
+          ...(existing.tax?.eVat || {}),
+          ...(incoming.tax?.eVat || {}),
+          // Never wipe encrypted key unless explicitly replaced via e-VAT settings API
+          apiKeyEncrypted:
+            incoming.tax?.eVat?.apiKeyEncrypted !== undefined
+              ? incoming.tax.eVat.apiKeyEncrypted
+              : (existing.tax?.eVat?.apiKeyEncrypted || ''),
+        },
       },
       taskAutomation: {
         ...(existing.taskAutomation || {}),
@@ -741,7 +790,7 @@ exports.updateOrganizationSettings = async (req, res, next) => {
       defaultTermsAndConditions: (updated && updated.hasOwnProperty('defaultTermsAndConditions')) ? updated.defaultTermsAndConditions : '',
       supportEmail: (updated && updated.hasOwnProperty('supportEmail')) ? updated.supportEmail : '',
       address: (updated && updated.address) ? updated.address : {},
-      tax: normalizeTaxConfig(updated?.tax || {}),
+      tax: getTaxFromOrganizationSettings(updated || {}),
       taskAutomation: normalizeTaskAutomation(updated?.taskAutomation || {}),
       businessType: tenant?.businessType || 'shop',
       shopType: tenant?.businessType === 'shop'

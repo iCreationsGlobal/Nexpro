@@ -2,6 +2,7 @@ const {
   getFrontendBaseUrlFromEnv,
   getFrontendBaseUrl,
   buildInvoicePaymentLink,
+  buildInvoicePaymentPathParam,
   PRODUCTION_FRONTEND_DEFAULT,
 } = require('../../../utils/frontendUrl');
 
@@ -52,5 +53,11 @@ describe('frontendUrl', () => {
     expect(buildInvoicePaymentLink({ paymentToken: 'abc123' })).toBe(
       `${PRODUCTION_FRONTEND_DEFAULT}/pay-invoice/abc123`
     );
+  });
+
+  it('builds WhatsApp Pay now path param from paymentToken', () => {
+    expect(buildInvoicePaymentPathParam({ paymentToken: 'abc123' })).toBe('pay-invoice/abc123');
+    expect(buildInvoicePaymentPathParam({ id: 'inv-1' })).toBe('invoices/inv-1');
+    expect(buildInvoicePaymentPathParam({})).toBeNull();
   });
 });

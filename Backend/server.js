@@ -207,6 +207,8 @@ app.use((req, res, next) => {
 
 // Webhook routes (before auth middleware - uses API key authentication)
 app.use('/api/webhooks', webhookLimiter, require('./routes/webhookRoutes'));
+app.use('/api/partner/v1', webhookLimiter, require('./routes/partnerV1Routes'));
+app.use('/api/evat', require('./routes/evatRoutes'));
 
 // SSO route at root level (before auth routes)
 const { sabitoSSOGet } = require('./controllers/authController');

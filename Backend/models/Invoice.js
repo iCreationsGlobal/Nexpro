@@ -149,6 +149,11 @@ const Invoice = sequelize.define('Invoice', {
     defaultValue: [],
     comment: 'Line items from the job'
   },
+  metadata: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: {}
+  },
   notes: {
     type: DataTypes.TEXT
   },

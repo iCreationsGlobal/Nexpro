@@ -77,14 +77,26 @@ You need to create and approve the following templates in Meta Business Manager:
   - {{1}} - Customer name
   - {{2}} - Order number
 
-#### 4. payment_reminder
+#### 4. payment_reminder (Meta library: payment_overdue_2)
 - **Language**: English
 - **Category**: UTILITY
-- **Body**: `Reminder: Invoice {{1}} for {{2}} is overdue. Please pay: {{3}}`
+- **Body**:
+  ```
+  Hi {{1}}, you have a payment overdue:
+  Account: {{2}}
+  Amount due: {{3}}
+  Due date: {{4}}
+  Use the button below to complete payment via our website. Please ignore this message if you've already paid.
+  ```
 - **Parameters**:
-  - {{1}} - Invoice number
-  - {{2}} - Amount
-  - {{3}} - Payment link
+  - {{1}} - Customer name
+  - {{2}} - Invoice / account number
+  - {{3}} - Amount due
+  - {{4}} - Due date
+- **Button**: Pay now (URL, Dynamic)
+  - Website URL base: `https://myapp.africanbusinesssuite.com/` (your ABS frontend origin + trailing slash)
+  - Dynamic suffix `{{1}}`: `pay-invoice/{paymentToken}`
+  - Sample URL example: `https://myapp.africanbusinesssuite.com/pay-invoice/sample-token`
 
 #### 5. low_stock_alert
 - **Language**: English
@@ -237,7 +249,7 @@ Create UTILITY templates in Meta with these exact names (language `en`). Automat
 | order_confirmation | Job/order confirmed |
 | order_created | Order created |
 | sale_receipt | POS sale completed |
-| payment_reminder | Overdue invoice |
+| payment_reminder | Overdue invoice (payment_overdue_2: name, account, amount, due date + Pay now button) |
 | payment_received | Payment recorded |
 | review_request | Review request |
 | job_completed | Job completed |

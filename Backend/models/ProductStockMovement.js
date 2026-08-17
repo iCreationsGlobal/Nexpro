@@ -2,8 +2,8 @@ const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
 
 /**
- * Ledger of retail product stock changes (receive, adjustment, transfer).
- * Sales continue to be read from sale_items; this table covers non-sale moves.
+ * Ledger of retail product stock changes (every qty change including sales).
+ * Per-shop balances live in product_shop_stocks; this table is the audit trail.
  */
 const ProductStockMovement = sequelize.define('ProductStockMovement', {
   id: {
@@ -44,7 +44,19 @@ const ProductStockMovement = sequelize.define('ProductStockMovement', {
     },
   },
   type: {
-    type: DataTypes.ENUM('receive', 'adjustment', 'transfer_in', 'transfer_out', 'return'),
+    type: DataTypes.ENUM(
+      'receive',
+      'adjustment',
+      'transfer_in',
+      'transfer_out',
+      'return',
+      'sale',
+      'sale_void',
+      'count_adjustment',
+      'opening',
+      'import',
+      'damage'
+    ),
     allowNull: false,
     defaultValue: 'adjustment',
   },

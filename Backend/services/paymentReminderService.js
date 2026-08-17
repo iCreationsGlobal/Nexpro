@@ -171,14 +171,19 @@ class PaymentReminderService {
                 }
               });
               if (!recentWhatsAppReminder) {
-                const parameters = whatsappTemplates.preparePaymentReminder(invoice, paymentLink);
+                const parameters = whatsappTemplates.preparePaymentReminder(invoice, invoice.customer);
+                const buttonParameters = whatsappTemplates.preparePaymentReminderButtonParameters(invoice);
                 const result = await whatsappService.sendMessage(
                   invoice.tenantId,
                   phoneNumber,
                   'payment_reminder',
                   parameters,
                   'en',
-                  { category: 'transactional', metadata: { source: 'payment_reminder', invoiceId: invoice.id } }
+                  {
+                    category: 'transactional',
+                    metadata: { source: 'payment_reminder', invoiceId: invoice.id },
+                    ...(buttonParameters.length > 0 ? { buttonParameters, buttonIndex: 0 } : {}),
+                  }
                 );
                 if (result.success) {
                   reminderSent = true;

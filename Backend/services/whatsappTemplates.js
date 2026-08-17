@@ -29,9 +29,16 @@ const TEMPLATES = {
   payment_reminder: {
     name: 'payment_reminder',
     language: 'en',
-    description: 'Remind customer about overdue payment',
-    parameters: ['invoiceNumber', 'amount', 'paymentLink'],
-    example: 'Reminder: Invoice {{1}} for {{2}} is overdue. Please pay: {{3}}'
+    description: 'Overdue invoice reminder with Pay now button (Meta payment_overdue_2)',
+    parameters: ['customerName', 'invoiceNumber', 'balanceFormatted', 'dueDate'],
+    buttonParameters: ['paymentPath'],
+    /**
+     * Meta library: payment_overdue_2
+     * Body: Hi {{1}}, Account {{2}}, Amount {{3}}, Due date {{4}}
+     * Button: Pay now → {FRONTEND_URL}/{{1}} where {{1}} is paymentPath (pay-invoice/TOKEN)
+     */
+    example:
+      'Hi {{1}}, you have a payment overdue: Account: {{2}}. Amount due: {{3}}. Due date: {{4}}. Use the Pay now button to complete payment.'
   },
   payment_received: {
     name: 'payment_received',
@@ -198,17 +205,42 @@ function prepareOrderConfirmation(order, customer) {
 }
 
 /**
- * Prepare template parameters for payment reminder
- * @param {Object} invoice - Invoice object
- * @param {string} paymentLink - Payment link URL
- * @returns {Array} - Template parameters array
+ * Format invoice due date for WhatsApp body (Meta {{date}} as text).
+ * @param {Date|string|null|undefined} dueDate
+ * @returns {string}
  */
-function preparePaymentReminder(invoice, paymentLink) {
+function formatDueDate(dueDate) {
+  if (!dueDate) return 'N/A';
+  const parsed = new Date(dueDate);
+  if (Number.isNaN(parsed.getTime())) return String(dueDate);
+  return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/**
+ * Prepare body parameters for payment_reminder (Meta payment_overdue_2).
+ * @param {Object} invoice - Invoice object
+ * @param {Object} [customer] - Customer object (falls back to invoice.customer)
+ * @returns {string[]} - [customerName, invoiceNumber, balanceFormatted, dueDate]
+ */
+function preparePaymentReminder(invoice, customer = null) {
+  const cust = customer || invoice?.customer || {};
   return [
-    invoice.invoiceNumber || 'N/A',
-    formatCurrency(invoice.balance || invoice.totalAmount),
-    paymentLink
+    cust.name || cust.company || 'Customer',
+    invoice?.invoiceNumber || 'N/A',
+    formatCurrency(invoice?.balance || invoice?.totalAmount),
+    formatDueDate(invoice?.dueDate)
   ];
+}
+
+/**
+ * Dynamic URL button suffix for payment_reminder Pay now button.
+ * @param {Object} invoice - Invoice with paymentToken
+ * @returns {string[]} - Empty if no path; otherwise [paymentPath]
+ */
+function preparePaymentReminderButtonParameters(invoice) {
+  const { buildInvoicePaymentPathParam } = require('../utils/frontendUrl');
+  const path = buildInvoicePaymentPathParam(invoice);
+  return path ? [path] : [];
 }
 
 /**
@@ -265,6 +297,7 @@ function listTemplates() {
     language: template.language,
     description: template.description,
     parameters: [...template.parameters],
+    buttonParameters: Array.isArray(template.buttonParameters) ? [...template.buttonParameters] : [],
     example: template.example
   }));
 }
@@ -289,6 +322,7 @@ module.exports = {
   prepareQuoteDelivery,
   prepareOrderConfirmation,
   preparePaymentReminder,
+  preparePaymentReminderButtonParameters,
   prepareLowStockAlert,
   prepareSaleReceipt,
   prepareOrderCreated,

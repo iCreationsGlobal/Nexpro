@@ -41,7 +41,12 @@ const csrfProtection = (req, res, next) => {
   // Skip for webhook routes (they have their own authentication).
   // req.path can be '/webhooks/...' when middleware is mounted at '/api',
   // or '/api/webhooks/...' in other execution contexts.
-  if (req.path.startsWith('/webhooks') || req.path.startsWith('/api/webhooks')) {
+  if (
+    req.path.startsWith('/webhooks')
+    || req.path.startsWith('/api/webhooks')
+    || req.path.startsWith('/partner')
+    || req.path.startsWith('/api/partner')
+  ) {
     return next();
   }
   

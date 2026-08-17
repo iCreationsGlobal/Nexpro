@@ -73,6 +73,7 @@ const {
   paymentStatusForMarketplaceOrder,
 } = require('../utils/marketplaceOrderStatus');
 const { startHotPathTimer } = require('../utils/performanceLogger');
+const { applyStockChange } = require('../utils/productStockUtils');
 
 const DEFAULT_PRIMARY_COLOR = '#166534';
 const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
@@ -2223,17 +2224,38 @@ const appendDeliveryTrackingMetadata = (metadata, action, actorUserId = null, ex
 };
 
 const restoreSaleItemStock = async (saleId, transaction) => {
+  const sale = await Sale.findByPk(saleId, { transaction, attributes: ['id', 'tenantId', 'shopId', 'saleNumber'] });
   const items = await SaleItem.findAll({ where: { saleId }, transaction });
+  const shopId = sale?.shopId || null;
+
   for (const item of items) {
-    const product = item.productId ? await Product.findByPk(item.productId, { transaction }) : null;
-    if (product && product.trackStock !== false) {
+    if (!item.productId) continue;
+
+    if (shopId && sale?.tenantId) {
+      await applyStockChange({
+        tenantId: sale.tenantId,
+        productId: item.productId,
+        productVariantId: item.productVariantId || null,
+        shopId,
+        delta: Number.parseFloat(item.quantity || 0),
+        type: 'sale_void',
+        reason: sale.saleNumber ? `Online order ${sale.saleNumber} cancelled` : 'Online order cancelled',
+        reference: `sale:${saleId}`,
+        metadata: { source: 'restoreSaleItemStock' },
+        transaction,
+      });
+      continue;
+    }
+
+    const product = await Product.findByPk(item.productId, { transaction });
+    if (product && product.trackStock !== false && !item.productVariantId) {
       const quantityOnHand = Number.parseFloat(product.quantityOnHand || 0) + Number.parseFloat(item.quantity || 0);
       await product.update({ quantityOnHand }, { transaction });
     }
 
     if (item.productVariantId) {
       const variant = await ProductVariant.findByPk(item.productVariantId, { transaction });
-      const parent = product || (item.productId ? await Product.findByPk(item.productId, { transaction }) : null);
+      const parent = product || await Product.findByPk(item.productId, { transaction });
       if (variant && parent?.trackStock !== false && variant.trackStock !== false) {
         const quantityOnHand = Number.parseFloat(variant.quantityOnHand || 0) + Number.parseFloat(item.quantity || 0);
         await variant.update({ quantityOnHand }, { transaction });

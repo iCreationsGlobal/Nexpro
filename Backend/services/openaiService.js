@@ -347,8 +347,19 @@ const analyzeReportData = async (reportData, options = {}) => {
       studioMetrics: reportData.studioMetrics || null
     };
 
+    const hasCustomQuestion = Boolean(customQuestion && String(customQuestion).trim());
+    const dataBoundaryRules = hasCustomQuestion
+      ? `
+
+CRITICAL DATA BOUNDARY (free-text / custom question):
+- Only cite figures, counts, percentages, and trends that appear in the Business Data Summary below (reportData).
+- Do not invent, estimate beyond the given numbers, or pull in external knowledge as if it were this business's data.
+- If the user asks for information that is not present in the summary (e.g. foot traffic, payroll, specific SKUs not listed, competitor data), say clearly that this report does not include that data and answer with what is available instead.
+- Still fill all required JSON keys; address the user's question primarily in keyFindings, performanceAnalysis, and recommendations.`
+      : '';
+
     // Create comprehensive prompt for AI analysis
-    const systemPrompt = `You are an expert business analyst specializing in ${displayName} operations. Analyze the provided business data and generate actionable insights, recommendations, and strategic suggestions. Be specific, data-driven, and practical.`;
+    const systemPrompt = `You are an expert business analyst specializing in ${displayName} operations. Analyze the provided business data and generate actionable insights, recommendations, and strategic suggestions. Be specific, data-driven, and practical.${dataBoundaryRules}`;
 
     const userPrompt = `Analyze the following business report data for a ${displayName} business and provide:
 
@@ -386,7 +397,7 @@ Use collected revenue for financial profitability and booked job value for studi
 ${dataSummary.expenseBreakdown.length > 0 ? `Expense Breakdown: ${dataSummary.expenseBreakdown.map(exp => `${exp.category}: GHS ${formatDecimal(exp.amount)}`).join(', ')}` : ''}
 
 ${dataSummary.materials ? `Materials Status: ${dataSummary.materials.totalStocks} total items, ${dataSummary.materials.stockAvailabilityRate}% availability rate` : ''}
-${customQuestion ? `\nThe user also asked: "${customQuestion}". Address this question specifically in your analysis.` : ''}
+${hasCustomQuestion ? `\nThe user also asked: "${String(customQuestion).trim()}". Address this question specifically in your analysis, while obeying the CRITICAL DATA BOUNDARY rules above.` : ''}
 
 Provide your analysis in a structured JSON format with the following keys:
 - keyFindings: array of strings
@@ -535,7 +546,7 @@ Rules:
 - Do not claim ABS menu steps unless you are sure; for product how-tos, say they can ask "How do I…" in Ask iBIS.
 - Keep replies concise and practical. If you lack local market data, say so and give general best practices.
 ${context.dateFilter?.active
-  ? `- Live numbers in the JSON are for "${context.dateFilter.periodLabel}" only (${context.dateFilter.startDate} to ${context.dateFilter.endDate}). If the user asks about a different timeframe (e.g. this year while the filter is this quarter), say that clearly, answer with selectedPeriod for the active filter, and tell them to switch the period chip for the other timeframe. Never pretend you lack all sales visibility when selectedPeriod is present.`
+  ? `- Live numbers in the JSON are for "${context.dateFilter.periodLabel}" only (${context.dateFilter.startDate} to ${context.dateFilter.endDate}). If the user asks about a different timeframe (e.g. this year while the filter is this quarter), say that clearly, answer with selectedPeriod for the active filter, and invite them to ask again naming the timeframe (today / this week / this month / this year). Never pretend you lack all sales visibility when selectedPeriod is present.`
   : ''}`;
     } else {
       const supportGuide = getAssistantSupportGuide(businessType);
@@ -548,7 +559,7 @@ Your roles (detect from the user's message):
 
 ${pageHint ? `Current screen context: ${pageHint}\n` : ''}
 ${context.dateFilter?.active
-  ? `IMPORTANT: The user selected the date filter "${context.dateFilter.periodLabel || 'Selected period'}" (${context.dateFilter.startDate} to ${context.dateFilter.endDate}). For revenue, expenses, profit, sales, and customer counts, use selectedPeriod in the JSON below—not thisMonth or today. If they ask about a different timeframe than this filter, say so in the first sentence, still answer with selectedPeriod for the active filter, and tell them to switch the period chip (Today / This week / This month / This quarter / This year) for the other range. Do not say you have no sales visibility when selectedPeriod is present.\n`
+  ? `IMPORTANT: The active date filter is "${context.dateFilter.periodLabel || 'Selected period'}" (${context.dateFilter.startDate} to ${context.dateFilter.endDate}). For revenue, expenses, profit, sales, and customer counts, use selectedPeriod in the JSON below—not thisMonth or today. If they ask about a different timeframe than this filter, say so in the first sentence, still answer with selectedPeriod for the active filter, and invite them to ask again naming the timeframe (today / yesterday / this week / this month / this year). Do not say you have no sales visibility when selectedPeriod is present.\n`
   : ''}
 Current business data (GHS; never invent numbers not in this JSON):
 ${contextBlob}
@@ -626,7 +637,7 @@ Return JSON with this exact shape:
 }
 
 For sticky triggers (invoice_overdue, invoice_due_in_days, quote_no_response, lead_no_contact_days, customer_inactive_days, low_stock_*, job_due_in_hours), set scheduleConfig.frequency to one of: once, daily, every_n_days, weekly, monthly. Prefer weekly for invoice_overdue. For every_n_days also set intervalDays. Derive cooldownHours (daily=24, weekly=168, monthly=720, every_n_days=N*24); for once set maxSends: 1.
-For WhatsApp actions, use template messages only and set "category" to "transactional" unless the user clearly asks for marketing. Use placeholder values like "{{customerName}}", "{{invoiceNumber}}", "{{paymentLink}}" in parameters when appropriate.`;
+For WhatsApp actions, use template messages only and set "category" to "transactional" unless the user clearly asks for marketing. Use placeholder values like "{{customerName}}", "{{invoiceNumber}}", "{{balanceFormatted}}", "{{dueDate}}", "{{paymentPath}}" in parameters when appropriate. For payment_reminder, body params are customerName, invoiceNumber, balanceFormatted, dueDate and buttonParameters should include "{{paymentPath}}".`;
 
   const anthropic = await requireAnthropic({ tenantId });
   const completion = await anthropic.messages.create({

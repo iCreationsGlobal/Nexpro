@@ -82,6 +82,10 @@ const Customer = sequelize.define('Customer', {
   taxId: {
     type: DataTypes.STRING
   },
+  ghanaCardPin: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   creditLimit: {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0

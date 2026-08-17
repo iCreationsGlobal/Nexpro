@@ -31,6 +31,7 @@ const { tenantContext } = require('../middleware/tenant');
 const { shopContext } = require('../middleware/shopContext');
 const { studioLocationContext } = require('../middleware/studioLocationContext');
 const { cacheMiddleware, generateReportCacheKey } = require('../middleware/cache');
+const { exportLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
@@ -75,7 +76,7 @@ router.get('/materials-movements', reportCache, getMaterialsMovements);
 router.get('/fastest-moving-items', reportCache, getFastestMovingItems);
 router.get('/revenue-by-channel', reportCache, getRevenueByChannel);
 router.get('/vat', reportCache, getVatReport);
-router.post('/ai-analysis', generateAIAnalysis); // No cache for POST requests
+router.post('/ai-analysis', exportLimiter, generateAIAnalysis); // Rate-limited; no cache for POST
 
 module.exports = router;
 
