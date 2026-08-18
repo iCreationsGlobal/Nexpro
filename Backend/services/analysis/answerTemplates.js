@@ -161,9 +161,8 @@ function templateReceivables(metrics, { focusDebtors = false } = {}) {
   const outstanding = metrics.totalOutstanding || 0;
   const overdue = metrics.overdueOutstanding || 0;
   const count = metrics.outstandingInvoiceCount || 0;
-  // Receivables are point-in-time outstanding, not filtered by the period chip range.
-  const asOfNote =
-    'As of today (open balances — not filtered by the period chip):';
+  // Receivables are point-in-time outstanding (open balances as of today).
+  const asOfNote = 'As of today:';
 
   if (outstanding <= 0) {
     return focusDebtors

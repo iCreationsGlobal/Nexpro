@@ -1,6 +1,7 @@
 /**
- * Ask AI period chips — keys align with analysis API `period`.
+ * Ask AI period helpers — keys align with analysis API `period`.
  * Uses local calendar days (ISO week Mon–Sun), matching Dashboard / backend.
+ * Default analysis window is this month; optional NLP can override per message.
  */
 
 export const ASSISTANT_PERIOD_OPTIONS = [
@@ -12,6 +13,11 @@ export const ASSISTANT_PERIOD_OPTIONS = [
 ] as const;
 
 export type AssistantPeriodKey = (typeof ASSISTANT_PERIOD_OPTIONS)[number]['key'];
+
+/** Resolvable keys including NLP-only `yesterday` (not a chip option). */
+export type AssistantResolvablePeriodKey = AssistantPeriodKey | 'yesterday';
+
+export const DEFAULT_ASSISTANT_PERIOD: AssistantPeriodKey = 'month';
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
@@ -34,20 +40,49 @@ function endOfDay(d: Date) {
 }
 
 /**
- * Map period chip key to Dashboard-aligned date range.
+ * Detect a clear relative period in the user message for this request only.
+ * Returns null when nothing clear is mentioned (caller keeps the default).
+ */
+export function detectAssistantPeriodKeyFromMessage(
+  message: string
+): AssistantResolvablePeriodKey | null {
+  const text = String(message || '');
+  if (/\byesterday\b/i.test(text)) return 'yesterday';
+  if (/\btoday\b/i.test(text)) return 'today';
+  if (/\bthis week\b/i.test(text)) return 'week';
+  if (/\bthis month\b/i.test(text)) return 'month';
+  if (/\bthis year\b/i.test(text)) return 'year';
+  return null;
+}
+
+/**
+ * Map period key to Dashboard-aligned date range.
  */
 export function resolveAssistantPeriod(
-  periodKey: AssistantPeriodKey | string = 'today',
+  periodKey: AssistantResolvablePeriodKey | string = DEFAULT_ASSISTANT_PERIOD,
   now = new Date()
-): { period: AssistantPeriodKey; startDate: string; endDate: string; periodLabel: string } {
-  const key = (ASSISTANT_PERIOD_OPTIONS.some((o) => o.key === periodKey)
+): {
+  period: AssistantResolvablePeriodKey;
+  startDate: string;
+  endDate: string;
+  periodLabel: string;
+} {
+  const knownChip = ASSISTANT_PERIOD_OPTIONS.some((o) => o.key === periodKey);
+  const key = (knownChip || periodKey === 'yesterday'
     ? periodKey
-    : 'today') as AssistantPeriodKey;
+    : DEFAULT_ASSISTANT_PERIOD) as AssistantResolvablePeriodKey;
 
   let start: Date;
   let end: Date;
 
   switch (key) {
+    case 'yesterday': {
+      const d = startOfDay(now);
+      d.setDate(d.getDate() - 1);
+      start = d;
+      end = endOfDay(d);
+      break;
+    }
     case 'week': {
       const d = startOfDay(now);
       const day = d.getDay();
@@ -83,10 +118,23 @@ export function resolveAssistantPeriod(
   }
 
   const option = ASSISTANT_PERIOD_OPTIONS.find((o) => o.key === key);
+  const periodLabel = key === 'yesterday' ? 'Yesterday' : option?.label || 'This month';
   return {
     period: key,
     startDate: formatYmd(start),
     endDate: formatYmd(end),
-    periodLabel: option?.label || 'Today',
+    periodLabel,
   };
+}
+
+/**
+ * Resolve period for one chat request: NLP mention overrides default for that call only.
+ */
+export function resolveAssistantPeriodForMessage(
+  message: string,
+  defaultKey: AssistantPeriodKey = DEFAULT_ASSISTANT_PERIOD,
+  now = new Date()
+) {
+  const mentioned = detectAssistantPeriodKeyFromMessage(message);
+  return resolveAssistantPeriod(mentioned || defaultKey, now);
 }

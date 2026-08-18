@@ -91,7 +91,7 @@ async function getReceivables(ctx) {
         ? Number(((overdueOutstanding / totalOutstanding) * 100).toFixed(2))
         : 0,
     topDebtors,
-    // Point-in-time: period chips do not date-filter open balances
+    // Point-in-time: open balances are as of today, not a date range
     periodSemantics: 'point_in_time',
     asOfLabel: 'today',
     selectedPeriodLabel: ctx.periodLabel || null,

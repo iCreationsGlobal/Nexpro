@@ -1,19 +1,19 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { CheckCheck, Loader2, MessageSquarePlus, Send, Smile, Sparkles, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CheckCheck, Loader2, Send, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import assistantService from '@/services/assistantService';
 import { showError } from '@/utils/toast';
-import { getAiProviderErrorMessage } from '@/utils/aiProviderErrors';
+import { getAiProviderErrorMessage, AI_SETTINGS_PATH } from '@/utils/aiProviderErrors';
 import { cn } from '@/lib/utils';
 import { formatAssistantMessage } from '@/utils/assistantMessageFormatter';
 import { useAuth } from '@/context/AuthContext';
 import { getAssistantPromptSets } from '@/constants/assistantPrompts';
-import {
-  DEFAULT_ASSISTANT_PERIOD,
-  resolveAssistantPeriodForMessage,
-} from '@/utils/assistantPeriod';
+import { resolveAssistantPeriodForMessage } from '@/utils/assistantPeriod';
 import { IBIS_ASK_LABEL, IBIS_NAME } from '@/constants/ibis';
+import { IbisMoreMenu } from '@/components/IbisMoreMenu';
+import { useIbisChatPreferences } from '@/hooks/useIbisChatPreferences';
 
 /** Soft WhatsApp-style chat wallpaper (no external asset). */
 const CHAT_WALLPAPER = {
@@ -126,7 +126,14 @@ function ChatBubble({ role, content, createdAt, isHtml }) {
  * Floating iBIS chat panel (web) — WhatsApp-style layout.
  */
 export default function AssistantChatPanel({ open, onOpenChange, pageContext }) {
-  const { activeTenant } = useAuth();
+  const navigate = useNavigate();
+  const { activeTenant, isManager } = useAuth();
+  const {
+    defaultPeriod,
+    showSuggestionChips,
+    setDefaultPeriod,
+    setShowSuggestionChips,
+  } = useIbisChatPreferences();
   const businessType = activeTenant?.businessType || 'printing_press';
   const shopType = activeTenant?.metadata?.shopType || null;
 
@@ -184,7 +191,7 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
 
       try {
         const apiMessages = conversation.map(({ role, content }) => ({ role, content }));
-        const periodRange = resolveAssistantPeriodForMessage(trimmed, DEFAULT_ASSISTANT_PERIOD);
+        const periodRange = resolveAssistantPeriodForMessage(trimmed, defaultPeriod);
         const result = await assistantService.chat(apiMessages, {
           pageContext,
           period: periodRange.period,
@@ -219,7 +226,7 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
         setLoading(false);
       }
     },
-    [inputValue, loading, pageContext, scrollToBottom]
+    [inputValue, loading, pageContext, scrollToBottom, defaultPeriod]
   );
 
   const handleKeyDown = (e) => {
@@ -284,20 +291,20 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
             <h2 className="truncate text-[15px] font-semibold text-[#111b21]">{IBIS_NAME}</h2>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
-            {messages.length > 0 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label="New chat"
-                className="h-8 px-2 text-xs text-[#54656f]"
-                onClick={handleNewChat}
-                disabled={loading}
-              >
-                <MessageSquarePlus className="mr-1 h-3.5 w-3.5" />
-                New chat
-              </Button>
-            )}
+            <IbisMoreMenu
+              loading={loading}
+              onNewChat={handleNewChat}
+              defaultPeriod={defaultPeriod}
+              onDefaultPeriodChange={setDefaultPeriod}
+              showSuggestionChips={showSuggestionChips}
+              onShowSuggestionChipsChange={setShowSuggestionChips}
+              showAiSettings={Boolean(isManager)}
+              onOpenAiSettings={() => {
+                onOpenChange(false);
+                navigate(AI_SETTINGS_PATH);
+              }}
+              triggerClassName="h-8 w-8 text-[#54656f]"
+            />
             <Button
               type="button"
               variant="ghost"
@@ -318,24 +325,28 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
               <div className="mx-auto max-w-[92%] rounded-2xl bg-white/90 px-3 py-2 text-center text-xs text-[#667781]">
                 Say hi or ask about today’s sales, collections, stock or jobs, ABS how-tos, and drafts.
               </div>
-              <PromptList
-                title="Business insights"
-                prompts={promptSets.business.slice(0, 4)}
-                onSelect={handleSuggestionClick}
-                loading={loading}
-              />
-              <PromptList
-                title="ABS support"
-                prompts={promptSets.support.slice(0, 3)}
-                onSelect={handleSuggestionClick}
-                loading={loading}
-              />
-              <PromptList
-                title="Draft messages"
-                prompts={promptSets.draft.slice(0, 2)}
-                onSelect={handleSuggestionClick}
-                loading={loading}
-              />
+              {showSuggestionChips ? (
+                <>
+                  <PromptList
+                    title="Business insights"
+                    prompts={promptSets.business.slice(0, 4)}
+                    onSelect={handleSuggestionClick}
+                    loading={loading}
+                  />
+                  <PromptList
+                    title="ABS support"
+                    prompts={promptSets.support.slice(0, 3)}
+                    onSelect={handleSuggestionClick}
+                    loading={loading}
+                  />
+                  <PromptList
+                    title="Draft messages"
+                    prompts={promptSets.draft.slice(0, 2)}
+                    onSelect={handleSuggestionClick}
+                    loading={loading}
+                  />
+                </>
+              ) : null}
             </div>
           ) : (
             <div className="space-y-2 px-3 py-3 pb-4">
@@ -370,15 +381,6 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
         {/* Composer */}
         <div className="shrink-0 border-t border-[#e9edef] bg-[#f0f2f5] px-2.5 py-2">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled
-              title="Coming soon"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] opacity-60"
-              aria-label="Emoji (coming soon)"
-            >
-              <Smile className="h-5 w-5" />
-            </button>
             <input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}

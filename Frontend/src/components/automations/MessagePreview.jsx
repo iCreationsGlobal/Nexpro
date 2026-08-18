@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { Mail, MessageSquare, Send } from 'lucide-react';
+import { Mail, MessageSquare } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/ui/WhatsAppIcon';
 import { useDebounce } from '../../hooks/useDebounce';
 import { DEBOUNCE_DELAYS } from '../../constants';
 import { MESSAGING_ACTION_TYPES, isInternalStaffTrigger } from '../../utils/automationForm';
@@ -12,7 +13,7 @@ import {
 const PREVIEW_META = {
   send_sms: { label: 'SMS', Icon: MessageSquare },
   send_email_platform: { label: 'Email', Icon: Mail },
-  send_whatsapp: { label: 'WhatsApp', Icon: Send },
+  send_whatsapp: { label: 'WhatsApp', Icon: WhatsAppIcon },
 };
 
 /**
@@ -116,7 +117,7 @@ export default function MessagePreview({ builder, businessName, tenantSlug }) {
           return (
             <div key={preview.key} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3">
               <div className="mb-2 flex items-center gap-2">
-                <Icon className="h-4 w-4 text-slate-500" aria-hidden />
+                <Icon className={`h-4 w-4 ${preview.type === 'send_whatsapp' ? 'text-green-700' : 'text-slate-500'}`} aria-hidden />
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{preview.label}</p>
               </div>
               {preview.type === 'send_email_platform' ? (

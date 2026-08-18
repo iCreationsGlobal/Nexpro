@@ -43,6 +43,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/ui/WhatsAppIcon';
 import { useAuth } from '../context/AuthContext';
 import { useShopOptional } from '../context/ShopContext';
 import { useStudioLocationOptional } from '../context/StudioLocationContext';
@@ -239,7 +240,7 @@ const AI_BUILDER_EXAMPLES = [
     description: 'Send WhatsApp reminder when invoice is overdue.',
     prompt: 'Send a WhatsApp reminder when an invoice is overdue by 3 days and create a task for follow up.',
     tag: 'Popular',
-    Icon: MessageSquare,
+    Icon: WhatsAppIcon,
     accent: 'green',
   },
   {
@@ -380,7 +381,7 @@ const actionMetaByType = {
   create_task: { label: 'Create task', Icon: ClipboardList, color: 'text-blue-700', bg: 'bg-blue-50' },
   send_email_platform: { label: 'Email', Icon: Mail, color: 'text-purple-700', bg: 'bg-purple-50' },
   send_sms: { label: 'SMS', Icon: MessageSquare, color: 'text-slate-700', bg: 'bg-slate-100' },
-  send_whatsapp: { label: 'WhatsApp', Icon: Send, color: 'text-green-700', bg: 'bg-green-50' },
+  send_whatsapp: { label: 'WhatsApp', Icon: WhatsAppIcon, color: 'text-green-700', bg: 'bg-green-50' },
 };
 
 const AUTOMATION_CREATION_STEPS = [
@@ -1091,7 +1092,7 @@ const TEMPLATE_METADATA = {
     category: 'finance_payments',
     title: 'Invoice overdue reminder',
     description: 'Send payment reminders when invoices are overdue.',
-    Icon: MessageSquare,
+    Icon: WhatsAppIcon,
     accent: 'green',
     channels: ['whatsapp'],
     difficulty: 'easy',
@@ -1620,7 +1621,7 @@ function actionChannel(action) {
 }
 
 function channelMeta(channel) {
-  if (channel === 'whatsapp') return { label: 'WhatsApp', Icon: MessageSquare, className: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
+  if (channel === 'whatsapp') return { label: 'WhatsApp', Icon: WhatsAppIcon, className: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
   if (channel === 'email') return { label: 'Email', Icon: Mail, className: 'bg-violet-50 text-violet-700 border-violet-100' };
   if (channel === 'sms') return { label: 'SMS', Icon: Send, className: 'bg-blue-50 text-blue-700 border-blue-100' };
   if (channel === 'task') return { label: 'Task', Icon: ClipboardList, className: 'bg-amber-50 text-amber-700 border-amber-100' };
@@ -1721,7 +1722,16 @@ function channelLabel(channel) {
 }
 
 function TemplateChannelIcon({ channel }) {
-  const Icon = channel === 'email' ? Mail : channel === 'task' ? ClipboardList : channel === 'sms' ? Send : MessageSquare;
+  const Icon =
+    channel === 'email'
+      ? Mail
+      : channel === 'task'
+        ? ClipboardList
+        : channel === 'sms'
+          ? Send
+          : channel === 'whatsapp'
+            ? WhatsAppIcon
+            : MessageSquare;
   const className =
     channel === 'email'
       ? 'bg-violet-50 text-violet-700'
@@ -1817,7 +1827,7 @@ function ActivityGlyph({ type, status }) {
     Icon = AlertTriangle;
     className = 'bg-red-50 text-red-700 border-red-100';
   } else if (type === 'send_whatsapp' || type === 'whatsapp') {
-    Icon = MessageSquare;
+    Icon = WhatsAppIcon;
     className = 'bg-emerald-50 text-emerald-700 border-emerald-100';
   } else if (type === 'create_task' || type === 'task') {
     Icon = ClipboardList;
@@ -2156,7 +2166,7 @@ function WhatsAppActionFields({ row, onPatch, placeholderHint }) {
       )}
       {showMetaTip && (
         <Alert className="relative border-sky-200 bg-sky-50 pr-10 text-sky-950">
-          <MessageSquare className="h-4 w-4 text-sky-700" aria-hidden />
+          <WhatsAppIcon className="h-4 w-4 text-sky-700" aria-hidden />
           <AlertDescription className="text-xs leading-5 text-sky-900">
             This Meta template must be approved: <span className="font-medium">{templateName}</span>
           </AlertDescription>
@@ -2888,7 +2898,7 @@ function AutomationCreationModal({
                       <CardContent className="flex items-center justify-between gap-3 p-4">
                         <div className="flex items-center gap-3">
                           <span className="rounded-xl border border-violet-100 bg-violet-50 p-2 text-violet-700">
-                            <MessageSquare className="h-4 w-4" aria-hidden />
+                            <WhatsAppIcon className="h-4 w-4" aria-hidden />
                           </span>
                           <div>
                             <p className="text-sm font-semibold">Using WhatsApp?</p>

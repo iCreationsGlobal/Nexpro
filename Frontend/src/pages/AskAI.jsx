@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import {
   ChevronRight,
   Loader2,
-  Paperclip,
   Send,
   Shield,
   Sparkles,
@@ -29,12 +28,13 @@ import {
   getPagePrompts,
 } from '@/constants/assistantPrompts';
 import {
-  DEFAULT_ASSISTANT_PERIOD,
   inferAssistantPeriodKey,
   resolveAssistantPeriod,
   resolveAssistantPeriodForMessage,
 } from '@/utils/assistantPeriod';
 import { IBIS_ASK_LABEL, IBIS_NAME } from '@/constants/ibis';
+import { IbisMoreMenu } from '@/components/IbisMoreMenu';
+import { useIbisChatPreferences } from '@/hooks/useIbisChatPreferences';
 
 /**
  * Time-of-day greeting for Ask AI empty state.
@@ -92,7 +92,7 @@ function SuggestionCard({ card, onSelect, disabled }) {
  */
 export default function AskAI() {
   const navigate = useNavigate();
-  const { activeTenant, user } = useAuth();
+  const { activeTenant, user, isManager } = useAuth();
   const [searchParams] = useSearchParams();
   const pageContext = searchParams.get('from') || searchParams.get('pageContext') || undefined;
   const initialPrompt = searchParams.get('prompt') || undefined;
@@ -123,12 +123,19 @@ export default function AskAI() {
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
 
+  const {
+    defaultPeriod: preferredPeriod,
+    showSuggestionChips,
+    setDefaultPeriod,
+    setShowSuggestionChips,
+  } = useIbisChatPreferences();
+
   const defaultPeriodKey = useMemo(
     () =>
       urlStartDate || urlEndDate || urlPeriodLabel
         ? inferAssistantPeriodKey(urlStartDate, urlEndDate, urlPeriodLabel)
-        : DEFAULT_ASSISTANT_PERIOD,
-    [urlStartDate, urlEndDate, urlPeriodLabel]
+        : preferredPeriod,
+    [urlStartDate, urlEndDate, urlPeriodLabel, preferredPeriod]
   );
   const defaultPeriodRange = useMemo(
     () => resolveAssistantPeriod(defaultPeriodKey),
@@ -347,16 +354,7 @@ export default function AskAI() {
         rows={emptyState ? 3 : 2}
         className="min-h-[72px] resize-none border-0 bg-transparent p-0 text-base shadow-none focus-visible:ring-0"
       />
-      <div className="mt-3 flex items-center justify-between gap-2">
-        <button
-          type="button"
-          disabled
-          title="Attachments coming soon"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground opacity-60"
-          aria-label="Attach file (coming soon)"
-        >
-          <Paperclip className="h-4 w-4" />
-        </button>
+      <div className="mt-3 flex items-center justify-end gap-2">
         <Button
           type="button"
           size="icon"
@@ -371,8 +369,22 @@ export default function AskAI() {
     </div>
   );
 
+  const moreMenu = (
+    <IbisMoreMenu
+      loading={loading}
+      onNewChat={handleNewChat}
+      defaultPeriod={preferredPeriod}
+      onDefaultPeriodChange={setDefaultPeriod}
+      showSuggestionChips={showSuggestionChips}
+      onShowSuggestionChipsChange={setShowSuggestionChips}
+      showAiSettings={Boolean(isManager)}
+      onOpenAiSettings={() => navigate(AI_SETTINGS_PATH)}
+    />
+  );
+
   return (
-    <div className={cn('w-full', emptyState ? 'min-h-[calc(100vh-8rem)]' : 'space-y-4')}>
+    <div className={cn('relative w-full', emptyState ? 'min-h-[calc(100vh-8rem)]' : 'space-y-4')}>
+      <div className="flex justify-end">{moreMenu}</div>
       {emptyState ? (
         <div className="flex min-h-[calc(100vh-8rem)] flex-col items-center justify-center px-4 py-8">
           <div className="flex flex-col items-center">
@@ -395,7 +407,7 @@ export default function AskAI() {
 
           <div className="mt-8 w-full">{composer}</div>
 
-          {pagePrompts.length > 0 ? (
+          {showSuggestionChips && pagePrompts.length > 0 ? (
             <div className="mt-6 flex max-w-3xl flex-wrap justify-center gap-2">
               {pagePrompts.slice(0, 3).map((prompt) => (
                 <Button
@@ -413,33 +425,35 @@ export default function AskAI() {
             </div>
           ) : null}
 
-          <div className="mt-8 w-full max-w-5xl">
-            <div className="relative">
-              <div
-                ref={cardsScrollRef}
-                className="flex justify-start gap-3 overflow-x-auto pb-1 md:justify-center [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              >
-                {suggestionCards.map((card) => (
-                  <SuggestionCard
-                    key={card.id}
-                    card={card}
-                    onSelect={sendMessage}
-                    disabled={loading}
-                  />
-                ))}
-              </div>
-              {suggestionCards.length > 4 ? (
-                <button
-                  type="button"
-                  onClick={() => scrollCards(1)}
-                  className="absolute right-0 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-white text-foreground md:hidden"
-                  aria-label="Show more suggestions"
+          {showSuggestionChips ? (
+            <div className="mt-8 w-full max-w-5xl">
+              <div className="relative">
+                <div
+                  ref={cardsScrollRef}
+                  className="flex justify-start gap-3 overflow-x-auto pb-1 md:justify-center [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              ) : null}
+                  {suggestionCards.map((card) => (
+                    <SuggestionCard
+                      key={card.id}
+                      card={card}
+                      onSelect={sendMessage}
+                      disabled={loading}
+                    />
+                  ))}
+                </div>
+                {suggestionCards.length > 4 ? (
+                  <button
+                    type="button"
+                    onClick={() => scrollCards(1)}
+                    className="absolute right-0 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-white text-foreground md:hidden"
+                    aria-label="Show more suggestions"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <p className="mt-10 flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
             <Shield className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -458,18 +472,6 @@ export default function AskAI() {
         </div>
       ) : (
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-2 md:px-0">
-          <div className="sticky top-0 z-10 -mx-1 flex items-center justify-end gap-2 bg-background px-1 py-2">
-            <button
-              type="button"
-              onClick={handleNewChat}
-              disabled={loading}
-              className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-              aria-label="New chat"
-            >
-              New chat
-            </button>
-          </div>
-
           <ScrollArea ref={scrollRef} className="h-[min(58vh,640px)]">
             <div className="space-y-6 px-1 pb-4">
               {messages.map((msg, i) => {
