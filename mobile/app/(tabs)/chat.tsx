@@ -27,7 +27,7 @@ import {
   getPagePrompts,
 } from '@/constants/assistantPrompts';
 import { resolveAssistantPeriodForMessage } from '@/utils/assistantPeriod';
-import { IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY } from '@/constants/ibis';
+import { IBIS_NAME, IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY } from '@/constants/ibis';
 
 type Message = {
   id: string;
@@ -405,7 +405,7 @@ export default function ChatScreen() {
 
         <View style={styles.headerTextBlock}>
           <Text style={[styles.headerTitle, { color: theme.headerText }]} numberOfLines={1}>
-            iBIS
+            {IBIS_NAME}
           </Text>
           <Text style={[styles.headerStatus, { color: theme.headerMuted }]} numberOfLines={1}>
             {statusLabel}
@@ -416,7 +416,7 @@ export default function ChatScreen() {
           onPress={() => setMoreOpen(true)}
           style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="iBIS settings"
+          accessibilityLabel={`${IBIS_NAME} settings`}
         >
           <AppIcon name="ellipsis-v" size={20} color={theme.headerText} />
         </Pressable>

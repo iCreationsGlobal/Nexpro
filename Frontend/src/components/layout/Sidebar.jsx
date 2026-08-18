@@ -95,7 +95,7 @@ const MENU_HINTS = {
   '/invoices': 'Bills you send to customers',
   '/expenses': 'Money you spent on business',
   '/reports': 'Reports and data analysis',
-  '/ask-ai': 'Ask iBIS about your business data',
+  '/ask-ai': 'Ask Ayebia about your business data',
   '/data-analysis': 'Reports and data analysis',
   '/export-data': 'Download data as CSV or Excel',
   '/settings': 'Change app settings',

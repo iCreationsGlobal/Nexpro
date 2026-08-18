@@ -173,7 +173,14 @@ export default function TabLayout() {
       <Tabs.Screen name="store-services" options={{ href: null, title: 'Studio Services' }} />
       <Tabs.Screen name="products" options={{ href: null }} />
       <Tabs.Screen name="jobs" options={{ href: null }} />
-      <Tabs.Screen name="chat" options={{ href: null }} />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          href: null,
+          headerShown: false,
+          title: 'Ayebia',
+        }}
+      />
       <Tabs.Screen name="cart" options={{ href: null }} />
       <Tabs.Screen name="expenses" options={{ href: null }} />
       <Tabs.Screen name="quotes" options={{ href: null }} />

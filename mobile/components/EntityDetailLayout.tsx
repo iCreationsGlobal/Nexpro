@@ -161,7 +161,9 @@ export function DetailHeroCard({
       <View style={styles.heroMetrics}>
         <View style={styles.heroMetricBlock}>
           <Text style={styles.heroMetricLabel}>{metricLabel}</Text>
-          <Text style={styles.heroAmount}>{metricValue}</Text>
+          <Text style={styles.heroAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+            {metricValue}
+          </Text>
         </View>
         {secondaryLabel || secondaryValue ? (
           <>
@@ -449,24 +451,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 8,
   },
-  heroDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.16)', marginTop: 18, marginBottom: 14 },
+  heroDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.16)', marginTop: 14, marginBottom: 12 },
   heroMetrics: { flexDirection: 'row', alignItems: 'center' },
-  heroMetricBlock: { flex: 1 },
+  heroMetricBlock: { flex: 1.35, minWidth: 0, paddingRight: 8 },
   heroMetricLabel: {
     color: '#d1fae5',
     fontFamily: FontFamily.semiBold,
     fontSize: FontSize.xs,
     fontWeight: '600',
-    marginBottom: 5,
+    marginBottom: 4,
   },
   heroAmount: {
     color: '#fff',
     fontFamily: FontFamily.bold,
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: FontSize.xl,
+    lineHeight: 26,
     fontWeight: '700',
   },
-  heroMetricDivider: { width: 1, height: 54, backgroundColor: 'rgba(255,255,255,0.15)', marginHorizontal: 22 },
+  heroMetricDivider: { width: 1, height: 44, backgroundColor: 'rgba(255,255,255,0.15)', marginHorizontal: 12 },
   heroSecondaryBlock: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   heroSecondaryTextBlock: { flex: 1 },
   heroSecondaryLabel: {

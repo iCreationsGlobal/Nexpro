@@ -118,6 +118,10 @@ export default function QuotesScreen() {
     []
   );
 
+  const handleNewQuote = useCallback(() => {
+    router.push('/quotes-new');
+  }, [router]);
+
   if (!quotesFeatureOk) {
     return <FeatureAccessDenied message="Quotes are not enabled for this workspace." />;
   }
@@ -169,10 +173,6 @@ export default function QuotesScreen() {
       </Pressable>
     );
   };
-
-  const handleNewQuote = useCallback(() => {
-    router.push('/quotes-new');
-  }, [router]);
 
   return (
     <ScreenShell style={styles.container}>

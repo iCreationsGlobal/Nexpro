@@ -34,7 +34,7 @@ export function IbisMoreMenu({
           type="button"
           variant="ghost"
           size="icon"
-          aria-label="iBIS settings"
+          aria-label="Ayebia settings"
           className={triggerClassName}
         >
           <MoreVertical className="h-4 w-4" />
@@ -64,7 +64,7 @@ export function IbisMoreMenu({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => onOpenAiSettings?.()}>
-              Open iBIS / AI settings
+              Open Ayebia / AI settings
             </DropdownMenuItem>
           </>
         ) : null}

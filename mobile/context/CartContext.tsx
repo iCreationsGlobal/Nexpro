@@ -2,11 +2,12 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/context/AuthContext';
 import { STORAGE_KEYS } from '@/constants';
-import { isProductOutOfStock } from '@/utils/productStock';
+import { getVariantLabel, isProductOutOfStock, isVariantOutOfStock } from '@/utils/productStock';
 
-type CartItem = {
+export type CartItem = {
   id: string;
   productId: string;
+  productVariantId?: string | null;
   name: string;
   unitPrice: number;
   quantity: number;
@@ -19,27 +20,55 @@ type CartItem = {
   quantityOnHand?: number | null;
 };
 
-type CartContextType = {
-  items: CartItem[];
-  addItem: (product: {
-    id: string;
-    name: string;
-    sellingPrice?: number;
-    price?: number;
-    costPrice?: number;
-    imageUrl?: string;
+export type AddCartProductInput = {
+  id: string;
+  name: string;
+  sellingPrice?: number;
+  price?: number;
+  costPrice?: number;
+  imageUrl?: string;
+  sku?: string;
+  barcode?: string;
+  productCode?: string;
+  alternateBarcode?: string;
+  barcodeAliases?: string[];
+  barcodes?: Array<{ barcode?: string; isActive?: boolean }>;
+  trackStock?: boolean;
+  quantityOnHand?: number | null;
+  hasVariants?: boolean;
+  variants?: Array<{
+    id?: string;
+    name?: string;
     sku?: string;
     barcode?: string;
-    productCode?: string;
-    alternateBarcode?: string;
-    barcodeAliases?: string[];
-    barcodes?: Array<{ barcode?: string; isActive?: boolean }>;
-    trackStock?: boolean;
+    sellingPrice?: number | null;
     quantityOnHand?: number | null;
-  }) => boolean;
+    trackStock?: boolean | null;
+    isActive?: boolean;
+    attributes?: Record<string, string | undefined> | null;
+  }>;
+  productVariantId?: string | null;
+  variantName?: string;
+  selectedVariant?: {
+    id?: string;
+    name?: string;
+    sku?: string;
+    barcode?: string;
+    sellingPrice?: number | null;
+    quantityOnHand?: number | null;
+    trackStock?: boolean | null;
+    isActive?: boolean;
+    attributes?: Record<string, string | undefined> | null;
+  } | null;
+};
+
+type CartContextType = {
+  items: CartItem[];
+  addItem: (product: AddCartProductInput) => boolean;
   removeItem: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   updateDiscount: (itemId: string, discount: number) => void;
+  updateUnitPrice: (itemId: string, unitPrice: number) => void;
   clearCart: () => void;
   getTotal: () => number;
   getSubtotal: () => number;
@@ -51,6 +80,14 @@ const CartContext = createContext<CartContextType | null>(null);
 
 const getCartStorageKey = (tenantId: string | null) =>
   tenantId ? `${STORAGE_KEYS.CART_PREFIX}${tenantId}` : null;
+
+const resolveProductCode = (product: AddCartProductInput, variantBarcode?: string | null) =>
+  variantBarcode
+  || product.productCode
+  || product.alternateBarcode
+  || product.barcodeAliases?.[0]
+  || product.barcodes?.find((barcode) => barcode?.isActive !== false)?.barcode
+  || '';
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { activeTenantId } = useAuth();
@@ -72,6 +109,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const parsed = JSON.parse(stored) as CartItem[];
           const normalized = parsed.map((item) => ({
             ...item,
+            productVariantId: item.productVariantId || null,
             unitPrice: Number(item.unitPrice) || Number((item as any).price) || Number((item as any).sellingPrice) || 0,
           }));
           setItems(normalized);
@@ -103,59 +141,67 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearTimeout(timeoutId);
   }, [items, activeTenantId]);
 
-  const addItem = useCallback(
-    (product: {
-      id: string;
-      name: string;
-      sellingPrice?: number;
-      price?: number;
-      costPrice?: number;
-      imageUrl?: string;
-      sku?: string;
-      barcode?: string;
-      productCode?: string;
-      alternateBarcode?: string;
-      barcodeAliases?: string[];
-      barcodes?: Array<{ barcode?: string; isActive?: boolean }>;
-      trackStock?: boolean;
-      quantityOnHand?: number | null;
-    }): boolean => {
-      if (isProductOutOfStock(product)) {
+  const addItem = useCallback((product: AddCartProductInput): boolean => {
+    const variant = product.selectedVariant?.id
+      ? product.selectedVariant
+      : product.productVariantId
+        ? {
+            id: product.productVariantId,
+            name: product.variantName,
+            sku: product.sku,
+            barcode: product.barcode,
+            sellingPrice: product.sellingPrice,
+            quantityOnHand: product.quantityOnHand,
+            trackStock: product.trackStock,
+          }
+        : null;
+
+    if (variant?.id) {
+      if (isVariantOutOfStock(product, variant)) {
         return false;
       }
-      setItems((prev) => {
-        const unitPrice = product.sellingPrice ?? product.price ?? product.costPrice ?? 0;
-        const existingItem = prev.find((item) => item.productId === product.id);
-        if (existingItem) {
-          return prev.map((item) =>
-            item.id === existingItem.id ? { ...item, quantity: item.quantity + 1 } : item
-          );
-        }
-        const productCode = product.productCode
-          || product.alternateBarcode
-          || product.barcodeAliases?.[0]
-          || product.barcodes?.find((barcode) => barcode?.isActive !== false)?.barcode
-          || '';
-        const newItem: CartItem = {
-          id: `cart_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          productId: product.id,
-          name: product.name,
-          unitPrice,
-          quantity: 1,
-          discount: 0,
-          imageUrl: product.imageUrl,
-          sku: product.sku,
-          barcode: product.barcode,
-          productCode,
-          trackStock: product.trackStock,
-          quantityOnHand: product.quantityOnHand,
-        };
-        return [...prev, newItem];
-      });
-      return true;
-    },
-    []
-  );
+    } else if (isProductOutOfStock(product)) {
+      return false;
+    }
+
+    setItems((prev) => {
+      const variantId = variant?.id || null;
+      const unitPrice = Number(
+        variant?.sellingPrice ?? product.sellingPrice ?? product.price ?? product.costPrice ?? 0
+      ) || 0;
+      const existingItem = prev.find(
+        (item) => item.productId === product.id && (item.productVariantId || null) === variantId
+      );
+      if (existingItem) {
+        return prev.map((item) =>
+          item.id === existingItem.id ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      }
+
+      const variantLabel = getVariantLabel(variant) || product.variantName || '';
+      const displayName = variantId && variantLabel
+        ? `${product.name} - ${variantLabel}`
+        : product.name;
+
+      const newItem: CartItem = {
+        id: `cart_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        productId: product.id,
+        productVariantId: variantId,
+        name: displayName,
+        unitPrice,
+        quantity: 1,
+        discount: 0,
+        imageUrl: product.imageUrl,
+        sku: variant?.sku || product.sku,
+        barcode: variant?.barcode || product.barcode,
+        productCode: resolveProductCode(product, variant?.barcode),
+        trackStock: variant?.trackStock ?? product.trackStock,
+        quantityOnHand: variant?.quantityOnHand ?? product.quantityOnHand,
+      };
+      return [...prev, newItem];
+    });
+    return true;
+  }, []);
 
   const removeItem = useCallback((itemId: string) => {
     setItems((prev) => prev.filter((item) => item.id !== itemId));
@@ -174,6 +220,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateDiscount = useCallback((itemId: string, discount: number) => {
     setItems((prev) =>
       prev.map((item) => (item.id === itemId ? { ...item, discount: Math.max(0, discount) } : item))
+    );
+  }, []);
+
+  const updateUnitPrice = useCallback((itemId: string, unitPrice: number) => {
+    const next = Math.max(0, Number(unitPrice) || 0);
+    setItems((prev) =>
+      prev.map((item) => (item.id === itemId ? { ...item, unitPrice: next } : item))
     );
   }, []);
 
@@ -211,13 +264,26 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       removeItem,
       updateQuantity,
       updateDiscount,
+      updateUnitPrice,
       clearCart,
       getTotal,
       getSubtotal,
       getTotalDiscount,
       getItemCount,
     }),
-    [items, addItem, removeItem, updateQuantity, updateDiscount, clearCart, getTotal, getSubtotal, getTotalDiscount, getItemCount]
+    [
+      items,
+      addItem,
+      removeItem,
+      updateQuantity,
+      updateDiscount,
+      updateUnitPrice,
+      clearCart,
+      getTotal,
+      getSubtotal,
+      getTotalDiscount,
+      getItemCount,
+    ]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

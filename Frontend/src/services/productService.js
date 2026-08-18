@@ -150,7 +150,7 @@ const productService = {
       search: query,
       limit: options.limit || 50,
       isActive: options.isActive ?? true,
-      includeVariants: options.includeVariants ?? true,
+      ...(options.includeVariants ? { includeVariants: true } : {}),
       ...(options.shopId ? { shopId: options.shopId } : {}),
     });
     Object.entries(scoped).forEach(([key, value]) => {
@@ -161,12 +161,16 @@ const productService = {
   },
 
   /**
-   * Get all active products for POS
+   * Get all active products for POS.
+   * Do not send includeVariants/forPOS: the API then attaches variants:[] on
+   * simple SKUs and older overlay code sums that to 0 (every tile Out of Stock)
+   * while the Products table, which omits variants, still shows real qty.
+   * Load variants on click for hasVariants products.
    * @returns {Promise<Array>} - Array of products
    */
   getAllActiveProducts: async () => {
     const params = new URLSearchParams();
-    const scoped = withActiveShopScope({ isActive: true, includeVariants: true, forPOS: true, limit: 1000 });
+    const scoped = withActiveShopScope({ isActive: true, limit: 1000 });
     Object.entries(scoped).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
       params.append(key, value);

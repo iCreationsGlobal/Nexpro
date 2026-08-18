@@ -1,0 +1,88 @@
+{
+  "cli": {
+    "version": ">= 5.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "development",
+        "API_URL": "https://api.sabito.app",
+        "SUPPORT_CONTENT_URL": "https://sabito.app/api/support/support-content.json",
+        "PAYSTACK_PUBLIC_KEY": "pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "GOOGLE_IOS_CLIENT_ID": "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com",
+        "GOOGLE_ANDROID_CLIENT_ID": "YOUR_ANDROID_OR_WEB_CLIENT_ID.apps.googleusercontent.com",
+        "GOOGLE_WEB_CLIENT_ID": "YOUR_ANDROID_OR_WEB_CLIENT_ID.apps.googleusercontent.com",
+        "ENABLE_DARK_MODE": "true",
+        "ENABLE_BIOMETRIC_AUTH": "false",
+        "ENABLE_PUSH_NOTIFICATIONS": "true",
+        "DEBUG_MODE": "true",
+        "LOG_LEVEL": "verbose",
+        "SENTRY_DSN": "YOUR_SENTRY_DSN"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "preview",
+        "API_URL": "https://staging-api.sabito.com",
+        "SUPPORT_CONTENT_URL": "https://staging.sabito.com/api/support/support-content.json",
+        "PAYSTACK_PUBLIC_KEY": "pk_test_xxxxxxxxxxxxxxxxxx",
+        "ENABLE_DARK_MODE": "true",
+        "ENABLE_BIOMETRIC_AUTH": "false",
+        "ENABLE_PUSH_NOTIFICATIONS": "true",
+        "DEBUG_MODE": "true",
+        "LOG_LEVEL": "verbose"
+      }
+    },
+    "production": {
+      "env": {
+        "APP_ENV": "production",
+        "API_URL": "https://api.sabito.app",
+        "SUPPORT_CONTENT_URL": "https://sabito.app/api/support/support-content.json",
+        "PAYSTACK_PUBLIC_KEY": "pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "GOOGLE_IOS_CLIENT_ID": "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com",
+        "GOOGLE_ANDROID_CLIENT_ID": "YOUR_ANDROID_OR_WEB_CLIENT_ID.apps.googleusercontent.com",
+        "GOOGLE_WEB_CLIENT_ID": "YOUR_ANDROID_OR_WEB_CLIENT_ID.apps.googleusercontent.com",
+        "ENABLE_DARK_MODE": "true",
+        "ENABLE_BIOMETRIC_AUTH": "false",
+        "ENABLE_PUSH_NOTIFICATIONS": "true",
+        "SUPPORT_CONTENT_CACHE_HOURS": "24",
+        "SESSION_TIMEOUT_MINUTES": "30",
+        "DEBUG_MODE": "false",
+        "LOG_LEVEL": "error",
+        "SENTRY_DSN": "$SENTRY_DSN"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "eamankyim@gmail.com",
+        "ascAppId": "1234567890",
+        "appleTeamId": "2GP52ZDJYZ"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "production"
+      }
+    }
+  }
+}
+

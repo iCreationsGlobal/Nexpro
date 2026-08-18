@@ -15,6 +15,7 @@ import { Image } from 'expo-image';
 
 import { AppIcon } from '@/components/AppIcon';
 import { FormSheetModal } from '@/components/FormSheetModal';
+import { ProductVariantPickerSheet } from '@/components/ProductVariantPickerSheet';
 import { RestockProductSheet } from '@/components/RestockProductSheet';
 import {
   DetailHeroCard,
@@ -33,12 +34,21 @@ import { ScreenShell } from '@/components/ScreenShell';
 import { FORM_LABELS } from '@/constants/formLabels';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
+import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
 import { productService } from '@/services/productService';
-import { resolveImageUrl } from '@/utils/fileUtils';
+import { resolveDisplayImageUrl } from '@/utils/fileUtils';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { getApiErrorMessage, parseApiEntity } from '@/utils/parseApiListResponse';
 import { refreshAfterInventoryChange } from '@/utils/queryInvalidation';
-import { getOutOfStockMessage, isProductOutOfStock } from '@/utils/productStock';
+import {
+  getOutOfStockMessage,
+  getProductStockQuantity,
+  getVariantLabel,
+  isProductOutOfStock,
+  isVariantOutOfStock,
+  productRequiresVariantSelection,
+  type ProductVariantStockInput,
+} from '@/utils/productStock';
 
 type ProductVariant = {
   id: string;
@@ -48,6 +58,7 @@ type ProductVariant = {
   sellingPrice?: number;
   costPrice?: number;
   quantityOnHand?: number;
+  trackStock?: boolean | null;
   attributes?: {
     size?: string;
     color?: string;
@@ -90,14 +101,18 @@ export default function ProductDetailScreen() {
   const queryClient = useQueryClient();
   const { addItem } = useCart();
   const { isManager, tenantRole } = useAuth();
+  const { activeShopId } = useWorkspaceScope();
   const canDeleteProduct = isManager || tenantRole === 'staff';
   const { colors, bg, cardBg, borderColor, textColor, mutedColor } = useEntityDetailTheme();
   const inputBg = bg === '#f9fafb' ? '#f9fafb' : '#18181b';
 
   const [editOpen, setEditOpen] = useState(false);
   const [restockOpen, setRestockOpen] = useState(false);
+  const [restockVariantId, setRestockVariantId] = useState<string | null>(null);
   const [variantDetailOpen, setVariantDetailOpen] = useState(false);
   const [variantEditOpen, setVariantEditOpen] = useState(false);
+  const [variantPickerOpen, setVariantPickerOpen] = useState(false);
+  const [isCreatingVariant, setIsCreatingVariant] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [variantEditForm, setVariantEditForm] = useState({
     size: '',
@@ -127,6 +142,21 @@ export default function ProductDetailScreen() {
 
   const product = useMemo(() => parseApiEntity<ProductDetail>(data), [data]);
   const variants = useMemo(() => product?.variants ?? [], [product?.variants]);
+  const totalStock = useMemo(() => getProductStockQuantity(product), [product]);
+
+  const buildEmptyVariantForm = useCallback(
+    () => ({
+      size: '',
+      color: '',
+      model: '',
+      sku: '',
+      barcode: '',
+      sellingPrice: product?.sellingPrice?.toString() || '',
+      costPrice: product?.costPrice?.toString() || '',
+      quantityOnHand: '0',
+    }),
+    [product?.costPrice, product?.sellingPrice]
+  );
 
   const openVariantDetail = useCallback((variant: ProductVariant) => {
     setSelectedVariant(variant);
@@ -138,7 +168,16 @@ export default function ProductDetailScreen() {
     setSelectedVariant(null);
   }, []);
 
+  const openVariantCreate = useCallback(() => {
+    setIsCreatingVariant(true);
+    setSelectedVariant(null);
+    setVariantEditForm(buildEmptyVariantForm());
+    setVariantDetailOpen(false);
+    setVariantEditOpen(true);
+  }, [buildEmptyVariantForm]);
+
   const openVariantEdit = useCallback((variant: ProductVariant) => {
+    setIsCreatingVariant(false);
     setSelectedVariant(variant);
     setVariantEditForm({
       size: variant.attributes?.size || '',
@@ -156,6 +195,7 @@ export default function ProductDetailScreen() {
 
   const closeVariantEdit = useCallback(() => {
     setVariantEditOpen(false);
+    setIsCreatingVariant(false);
     setSelectedVariant(null);
   }, []);
 
@@ -172,6 +212,34 @@ export default function ProductDetailScreen() {
     });
     setEditOpen(true);
   }, [product]);
+
+  const buildVariantPayload = useCallback(() => {
+    const variantName =
+      variantEditForm.model.trim() ||
+      variantEditForm.size.trim() ||
+      variantEditForm.color.trim() ||
+      selectedVariant?.name ||
+      '';
+    const attributes: Record<string, string> = {};
+    if (variantEditForm.size.trim()) attributes.size = variantEditForm.size.trim();
+    if (variantEditForm.color.trim()) attributes.color = variantEditForm.color.trim();
+    if (variantEditForm.model.trim()) attributes.model = variantEditForm.model.trim();
+    return {
+      name: variantName,
+      sku: variantEditForm.sku.trim() || undefined,
+      barcode: variantEditForm.barcode.trim() || undefined,
+      sellingPrice: variantEditForm.sellingPrice.trim()
+        ? parseFloat(variantEditForm.sellingPrice)
+        : undefined,
+      costPrice: variantEditForm.costPrice.trim()
+        ? parseFloat(variantEditForm.costPrice)
+        : undefined,
+      quantityOnHand: variantEditForm.quantityOnHand
+        ? parseFloat(variantEditForm.quantityOnHand)
+        : 0,
+      attributes,
+    };
+  }, [selectedVariant?.name, variantEditForm]);
 
   const updateMutation = useMutation({
     mutationFn: () =>
@@ -206,31 +274,29 @@ export default function ProductDetailScreen() {
     },
   });
 
+  const createVariantMutation = useMutation({
+    mutationFn: () => {
+      const payload = buildVariantPayload();
+      if (!payload.name) throw new Error('Variant name is required');
+      return productService.createProductVariant(String(id), payload);
+    },
+    onSuccess: async () => {
+      await refreshAfterInventoryChange(queryClient);
+      await queryClient.invalidateQueries({ queryKey: ['product', id] });
+      closeVariantEdit();
+      Alert.alert('Success', 'Variant added successfully');
+    },
+    onError: (err: unknown) => {
+      Alert.alert('Error', getApiErrorMessage(err, 'Failed to add variant'));
+    },
+  });
+
   const updateVariantMutation = useMutation({
     mutationFn: () => {
       if (!selectedVariant) throw new Error('No variant selected');
-      const variantName =
-        variantEditForm.model.trim() ||
-        variantEditForm.size.trim() ||
-        variantEditForm.color.trim() ||
-        selectedVariant.name;
-      const attributes: Record<string, string> = {};
-      if (variantEditForm.size.trim()) attributes.size = variantEditForm.size.trim();
-      if (variantEditForm.color.trim()) attributes.color = variantEditForm.color.trim();
-      if (variantEditForm.model.trim()) attributes.model = variantEditForm.model.trim();
-      return productService.updateProductVariant(selectedVariant.id, {
-        name: variantName,
-        sku: variantEditForm.sku.trim() || undefined,
-        barcode: variantEditForm.barcode.trim() || undefined,
-        sellingPrice: variantEditForm.sellingPrice.trim()
-          ? parseFloat(variantEditForm.sellingPrice)
-          : undefined,
-        costPrice: variantEditForm.costPrice.trim()
-          ? parseFloat(variantEditForm.costPrice)
-          : undefined,
-        quantityOnHand: variantEditForm.quantityOnHand ? parseFloat(variantEditForm.quantityOnHand) : 0,
-        attributes,
-      });
+      const payload = buildVariantPayload();
+      if (!payload.name) throw new Error('Variant name is required');
+      return productService.updateProductVariant(selectedVariant.id, payload);
     },
     onSuccess: async () => {
       await refreshAfterInventoryChange(queryClient);
@@ -261,44 +327,100 @@ export default function ProductDetailScreen() {
   });
 
   const restockMutation = useMutation({
-    mutationFn: (quantity: number) =>
-      productService.adjustStock(String(id), quantity, 'delta', 'Receive stock'),
-    onSuccess: async (_, quantity) => {
+    mutationFn: ({
+      quantity,
+      variantId,
+    }: {
+      quantity: number;
+      variantId?: string;
+      variantName?: string;
+    }) =>
+      productService.adjustStock(String(id), quantity, 'delta', 'Receive stock', {
+        variantId,
+        type: 'receive',
+        shopId: (product as { shopId?: string } | undefined)?.shopId || activeShopId || undefined,
+      }),
+    onSuccess: async (_, variables) => {
       await refreshAfterInventoryChange(queryClient);
+      await queryClient.invalidateQueries({ queryKey: ['product', id] });
       setRestockOpen(false);
-      Alert.alert('Success', `Added ${quantity} to ${product?.name || 'product'}`);
+      setRestockVariantId(null);
+      const label = variables.variantName
+        ? `${product?.name || 'product'} — ${variables.variantName}`
+        : product?.name || 'product';
+      Alert.alert('Success', `Added ${variables.quantity} to ${label}`);
     },
     onError: (err: unknown) => {
       Alert.alert('Error', getApiErrorMessage(err, 'Failed to restock product'));
     },
   });
 
+  const addProductToCart = useCallback(
+    (variant?: ProductVariantStockInput | null) => {
+      if (!product) return;
+      if (variant?.id) {
+        if (isVariantOutOfStock(product, variant)) {
+          Alert.alert('Out of stock', getOutOfStockMessage(`${product.name} — ${getVariantLabel(variant)}`));
+          return;
+        }
+        const added = addItem({
+          id: product.id,
+          name: product.name,
+          sellingPrice: variant.sellingPrice ?? product.sellingPrice,
+          imageUrl: product.imageUrl ?? undefined,
+          sku: variant.sku || product.sku,
+          barcode: variant.barcode || product.barcode,
+          productCode: getAlternateBarcode(product) || undefined,
+          trackStock: variant.trackStock ?? product.trackStock,
+          quantityOnHand: variant.quantityOnHand ?? product.quantityOnHand,
+          selectedVariant: variant,
+        });
+        if (!added) {
+          Alert.alert('Out of stock', getOutOfStockMessage(`${product.name} — ${getVariantLabel(variant)}`));
+          return;
+        }
+        Alert.alert('Success', `${product.name} — ${getVariantLabel(variant)} added to cart`);
+        return;
+      }
+
+      if (isProductOutOfStock(product)) {
+        Alert.alert('Out of stock', getOutOfStockMessage(product.name));
+        return;
+      }
+      const added = addItem({
+        id: product.id,
+        name: product.name,
+        sellingPrice: product.sellingPrice,
+        imageUrl: product.imageUrl ?? undefined,
+        sku: product.sku ?? undefined,
+        barcode: product.barcode ?? undefined,
+        productCode: getAlternateBarcode(product) || undefined,
+        trackStock: product.trackStock,
+        quantityOnHand: product.quantityOnHand,
+        hasVariants: product.hasVariants,
+        variants,
+      });
+      if (!added) {
+        Alert.alert('Out of stock', getOutOfStockMessage(product.name));
+        return;
+      }
+      Alert.alert('Success', `${product.name} added to cart`);
+    },
+    [addItem, product, variants]
+  );
+
   const handleAddToCart = useCallback(() => {
     if (!product) return;
-    if (isProductOutOfStock(product)) {
-      Alert.alert('Out of stock', getOutOfStockMessage(product.name));
+    if (productRequiresVariantSelection(product)) {
+      setVariantPickerOpen(true);
       return;
     }
-    const added = addItem({
-      id: product.id,
-      name: product.name,
-      sellingPrice: product.sellingPrice,
-      imageUrl: product.imageUrl ?? undefined,
-      sku: product.sku ?? undefined,
-      barcode: product.barcode ?? undefined,
-      productCode: getAlternateBarcode(product) || undefined,
-      trackStock: product.trackStock,
-      quantityOnHand: product.quantityOnHand,
-    });
-    if (!added) {
-      Alert.alert('Out of stock', getOutOfStockMessage(product.name));
-      return;
-    }
-    Alert.alert('Success', `${product.name} added to cart`);
-  }, [addItem, product]);
+    addProductToCart(null);
+  }, [addProductToCart, product]);
 
-  const handleOpenRestock = useCallback(() => {
+  const handleOpenRestock = useCallback((variantId?: string | null) => {
     if (!product || product.trackStock === false) return;
+    setRestockVariantId(variantId || null);
     setRestockOpen(true);
   }, [product]);
 
@@ -353,8 +475,12 @@ export default function ProductDetailScreen() {
       Alert.alert('Error', 'At least one of size, color, or model is required');
       return;
     }
+    if (isCreatingVariant) {
+      createVariantMutation.mutate();
+      return;
+    }
     updateVariantMutation.mutate();
-  }, [updateVariantMutation, variantEditForm]);
+  }, [createVariantMutation, isCreatingVariant, updateVariantMutation, variantEditForm]);
 
   if (isLoading) return <DetailLoading title="Product" />;
   if (!product) return <DetailNotFound title="Product" entityLabel="Product" />;
@@ -362,9 +488,9 @@ export default function ProductDetailScreen() {
   const stockColor =
     product.trackStock === false
       ? mutedColor
-      : product.quantityOnHand === 0
+      : totalStock === 0
         ? '#ef4444'
-        : (product.quantityOnHand ?? 0) < 10
+        : totalStock < 10
           ? '#f59e0b'
           : '#10b981';
   const outOfStock = isProductOutOfStock(product);
@@ -377,10 +503,16 @@ export default function ProductDetailScreen() {
             key: 'restock',
             label: 'Restock',
             icon: 'download' as const,
-            onPress: handleOpenRestock,
+            onPress: () => handleOpenRestock(),
             loading: restockMutation.isPending,
           },
         ]),
+    {
+      key: 'add-variant',
+      label: 'Add variant',
+      icon: 'plus',
+      onPress: openVariantCreate,
+    },
     {
       key: 'edit',
       label: 'Edit',
@@ -405,15 +537,15 @@ export default function ProductDetailScreen() {
             secondaryValue={
               product.trackStock === false
                 ? 'Made to order'
-                : `${product.quantityOnHand ?? 0} Units`
+                : `${totalStock} Units`
             }
             showCheck={!outOfStock && product.isActive !== false}
           />
 
-          {product.imageUrl ? (
+          {resolveDisplayImageUrl(product.imageUrl) ? (
             <DetailSectionCard title="Product Image" icon="image">
               <Image
-                source={{ uri: resolveImageUrl(product.imageUrl) }}
+                source={{ uri: resolveDisplayImageUrl(product.imageUrl) }}
                 style={[styles.heroImage, { borderColor }]}
                 contentFit="cover"
               />
@@ -434,12 +566,12 @@ export default function ProductDetailScreen() {
               value={formatCurrency(product.sellingPrice)}
               valueColor={colors.tint}
             />
-            {(product.trackStock === false || product.quantityOnHand !== undefined) && (
+            {(product.trackStock === false || product.quantityOnHand !== undefined || product.hasVariants) && (
               <DetailInfoRow icon="archive" label="Stock">
                 <Text style={[styles.stockValue, { color: stockColor }]}>
                   {product.trackStock === false
                     ? 'Made to order'
-                    : `${product.quantityOnHand} units`}
+                    : `${totalStock} units`}
                 </Text>
               </DetailInfoRow>
             )}
@@ -448,9 +580,20 @@ export default function ProductDetailScreen() {
             ) : null}
           </DetailSectionCard>
 
-          {variants.length > 0 ? (
-            <DetailSectionCard title={`Variants (${variants.length})`} icon="list">
-              {variants.map((variant) => (
+          <DetailSectionCard title={`Variants (${variants.length})`} icon="list">
+            <Pressable
+              onPress={openVariantCreate}
+              style={[styles.addVariantBtn, { borderColor: colors.tint }]}
+              accessibilityRole="button"
+              accessibilityLabel="Add variant"
+            >
+              <AppIcon name="plus" size={16} color={colors.tint} />
+              <Text style={[styles.addVariantText, { color: colors.tint }]}>
+                {FORM_LABELS.variant.create}
+              </Text>
+            </Pressable>
+            {variants.length > 0 ? (
+              variants.map((variant) => (
                 <Pressable
                   key={variant.id}
                   onPress={() => openVariantDetail(variant)}
@@ -474,16 +617,20 @@ export default function ProductDetailScreen() {
                   </View>
                   <AppIcon name="chevron-right" size={16} color={mutedColor} />
                 </Pressable>
-              ))}
-            </DetailSectionCard>
-          ) : null}
+              ))
+            ) : (
+              <Text style={[styles.variantEmpty, { color: mutedColor }]}>
+                {FORM_LABELS.variant.emptyHint}
+              </Text>
+            )}
+          </DetailSectionCard>
         </ScrollView>
         <DetailFooter>
           <DetailActionButton
             label={outOfStock ? 'Restock' : 'Add to Cart'}
             icon={outOfStock ? 'download' : 'shopping-cart'}
             variant="primary"
-            onPress={outOfStock ? handleOpenRestock : handleAddToCart}
+            onPress={outOfStock ? () => handleOpenRestock() : handleAddToCart}
           />
           <DetailMoreActions actions={productMoreActions} />
         </DetailFooter>
@@ -591,10 +738,14 @@ export default function ProductDetailScreen() {
       <RestockProductSheet
         visible={restockOpen}
         product={product}
+        initialVariantId={restockVariantId}
         onClose={() => {
-          if (!restockMutation.isPending) setRestockOpen(false);
+          if (!restockMutation.isPending) {
+            setRestockOpen(false);
+            setRestockVariantId(null);
+          }
         }}
-        onSubmit={(quantity) => restockMutation.mutate(quantity)}
+        onSubmit={(payload) => restockMutation.mutate(payload)}
         isSubmitting={restockMutation.isPending}
         cardBg={cardBg}
         borderColor={borderColor}
@@ -614,6 +765,28 @@ export default function ProductDetailScreen() {
         mutedColor={mutedColor}
         footer={
           <View style={styles.editFooter}>
+            {product.trackStock !== false ? (
+              <Pressable
+                onPress={() => {
+                  if (!selectedVariant) return;
+                  closeVariantDetail();
+                  handleOpenRestock(selectedVariant.id);
+                }}
+                style={[styles.editBtn, styles.deleteBtn, { borderColor: colors.tint }]}
+              >
+                <Text style={[styles.saveText, { color: colors.tint }]}>Restock</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={() => {
+                if (!selectedVariant) return;
+                closeVariantDetail();
+                addProductToCart(selectedVariant);
+              }}
+              style={[styles.editBtn, styles.deleteBtn, { borderColor: colors.tint }]}
+            >
+              <Text style={[styles.saveText, { color: colors.tint }]}>Add to Cart</Text>
+            </Pressable>
             <Pressable
               onPress={handleDeleteVariant}
               disabled={deleteVariantMutation.isPending}
@@ -667,7 +840,7 @@ export default function ProductDetailScreen() {
 
       <FormSheetModal
         visible={variantEditOpen}
-        title={FORM_LABELS.variant.editTitle}
+        title={isCreatingVariant ? FORM_LABELS.variant.addTitle : FORM_LABELS.variant.editTitle}
         onClose={closeVariantEdit}
         cardBg={cardBg}
         borderColor={borderColor}
@@ -675,26 +848,30 @@ export default function ProductDetailScreen() {
         mutedColor={mutedColor}
         footer={
           <View style={styles.editFooter}>
-            <Pressable
-              onPress={handleDeleteVariant}
-              disabled={deleteVariantMutation.isPending}
-              style={[styles.editBtn, styles.deleteBtn, { borderColor: '#ef4444' }]}
-            >
-              {deleteVariantMutation.isPending ? (
-                <ActivityIndicator color="#ef4444" />
-              ) : (
-                <Text style={styles.deleteText}>{FORM_LABELS.variant.delete}</Text>
-              )}
-            </Pressable>
+            {!isCreatingVariant ? (
+              <Pressable
+                onPress={handleDeleteVariant}
+                disabled={deleteVariantMutation.isPending}
+                style={[styles.editBtn, styles.deleteBtn, { borderColor: '#ef4444' }]}
+              >
+                {deleteVariantMutation.isPending ? (
+                  <ActivityIndicator color="#ef4444" />
+                ) : (
+                  <Text style={styles.deleteText}>{FORM_LABELS.variant.delete}</Text>
+                )}
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={handleSaveVariant}
-              disabled={updateVariantMutation.isPending}
+              disabled={createVariantMutation.isPending || updateVariantMutation.isPending}
               style={[styles.editBtn, { backgroundColor: colors.tint, borderColor: colors.tint }]}
             >
-              {updateVariantMutation.isPending ? (
+              {createVariantMutation.isPending || updateVariantMutation.isPending ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.saveText}>{FORM_LABELS.variant.save}</Text>
+                <Text style={styles.saveText}>
+                  {isCreatingVariant ? FORM_LABELS.variant.create : FORM_LABELS.variant.save}
+                </Text>
               )}
             </Pressable>
           </View>
@@ -770,6 +947,22 @@ export default function ProductDetailScreen() {
           />
         </View>
       </FormSheetModal>
+
+      <ProductVariantPickerSheet
+        visible={variantPickerOpen}
+        product={product}
+        onClose={() => setVariantPickerOpen(false)}
+        onSelect={(variant) => {
+          setVariantPickerOpen(false);
+          addProductToCart(variant);
+        }}
+        cardBg={cardBg}
+        borderColor={borderColor}
+        textColor={textColor}
+        mutedColor={mutedColor}
+        inputBg={inputBg}
+        tintColor={colors.tint}
+      />
     </>
   );
 }
@@ -779,9 +972,10 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 24 },
   heroImage: { width: '100%', height: 220, borderRadius: 12, marginBottom: 16 },
   stockValue: { fontSize: 16, fontWeight: '600' },
-  editFooter: { flexDirection: 'row', gap: 10 },
+  editFooter: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   editBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 100,
     height: 48,
     borderRadius: 12,
     borderWidth: 1,
@@ -813,4 +1007,16 @@ const styles = StyleSheet.create({
   variantName: { fontSize: 15, fontWeight: '600' },
   variantPrice: { fontSize: 14, fontWeight: '600' },
   variantMeta: { fontSize: 12, marginTop: 2 },
+  variantEmpty: { fontSize: 13, lineHeight: 18, marginTop: 8 },
+  addVariantBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  addVariantText: { fontSize: 14, fontWeight: '600' },
 });

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
@@ -6,6 +7,11 @@ import { Platform } from 'react-native';
 import { STORAGE_KEYS } from '@/constants';
 import { notificationService } from '@/services/notificationService';
 import { resolveNotificationDeepLink, type NotificationDeepLinkRoute } from '@/utils/notificationDeepLinks';
+
+const EAS_PROJECT_ID =
+  Constants.easConfig?.projectId ||
+  Constants.expoConfig?.extra?.eas?.projectId ||
+  '8dff9445-6979-427f-b84e-aae48f077d82';
 
 export type PushRegistrationState = {
   status: 'idle' | 'skipped' | 'unsupported' | 'denied' | 'registered' | 'failed';
@@ -121,7 +127,16 @@ export async function registerPushNotifications({ prompt = false } = {}) {
   }
 
   try {
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Default',
+        importance: Notifications.AndroidImportance.DEFAULT,
+      });
+    }
+
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId: EAS_PROJECT_ID,
+    });
     await notificationService.registerPushToken({
       token: tokenData.data,
       platform: getPlatform(),

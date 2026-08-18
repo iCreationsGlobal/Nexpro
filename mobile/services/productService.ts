@@ -1,5 +1,6 @@
 import { api } from './api';
 import { buildScopedQueryString, withActiveShopScope } from '@/utils/shopScope';
+import { MAX_INLINE_IMAGE_DATA_URL_LENGTH } from '@/utils/fileUtils';
 
 type ProductParams = {
   page?: number;
@@ -23,26 +24,10 @@ export type CreateProductPayload = {
   unit?: string;
   isActive?: boolean;
   trackStock?: boolean;
+  hasVariants?: boolean;
   shopId?: string;
   imageUrl?: string;
   metadata?: Record<string, unknown>;
-};
-
-type ProductEntity = {
-  id: string;
-  quantityOnHand?: number | string | null;
-  metadata?: Record<string, unknown>;
-};
-
-const getProductEntity = (response: unknown): ProductEntity => {
-  const body = response && typeof response === 'object' ? response as Record<string, unknown> : {};
-  const data = body.data && typeof body.data === 'object' ? body.data as Record<string, unknown> : undefined;
-  const product = data?.product && typeof data.product === 'object'
-    ? data.product as ProductEntity
-    : data
-      ? data as ProductEntity
-      : body as ProductEntity;
-  return product;
 };
 
 const isNotFoundError = (error: unknown) =>
@@ -51,12 +36,47 @@ const isNotFoundError = (error: unknown) =>
   'response' in error &&
   (error as { response?: { status?: number } }).response?.status === 404;
 
+function sanitizeProductImageUrl(imageUrl: unknown): unknown {
+  if (typeof imageUrl !== 'string') return imageUrl;
+  const trimmed = imageUrl.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('data:') || trimmed.length > MAX_INLINE_IMAGE_DATA_URL_LENGTH) {
+    return null;
+  }
+  return imageUrl;
+}
+
+/** Strip inline images so Products list / cache never hold base64 on device. */
+function sanitizeProductPayload<T>(payload: T): T {
+  if (!payload || typeof payload !== 'object') return payload;
+  const root = payload as Record<string, unknown>;
+  const list = Array.isArray(root.data)
+    ? root.data
+    : Array.isArray(root)
+      ? (root as unknown[])
+      : null;
+  if (list) {
+    for (const row of list) {
+      if (!row || typeof row !== 'object') continue;
+      const product = row as Record<string, unknown>;
+      product.imageUrl = sanitizeProductImageUrl(product.imageUrl);
+    }
+    return payload;
+  }
+  const entity =
+    root.data && typeof root.data === 'object' && !Array.isArray(root.data)
+      ? (root.data as Record<string, unknown>)
+      : root;
+  entity.imageUrl = sanitizeProductImageUrl(entity.imageUrl);
+  return payload;
+}
+
 export const productService = {
   getProducts: async (params: ProductParams = {}) => {
     const query = await buildScopedQueryString(params);
     const res = await api.get(query ? `/products?${query}` : '/products');
     // Backend returns: { success: true, count: N, pagination: {...}, data: [...] }
-    return res.data;
+    return sanitizeProductPayload(res.data);
   },
 
   getProductByBarcode: async (barcode: string) => {
@@ -86,7 +106,7 @@ export const productService = {
   getProductById: async (id: string) => {
     const res = await api.get(`/products/${id}`);
     // Backend returns: { success: true, data: {...} }
-    return res.data;
+    return sanitizeProductPayload(res.data);
   },
 
   createProduct: async (data: CreateProductPayload) => {
@@ -136,6 +156,7 @@ export const productService = {
     quantityOnHand?: number;
     isActive?: boolean;
     imageUrl?: string;
+    hasVariants?: boolean;
     metadata?: Record<string, unknown>;
   }) => {
     const res = await api.put(`/products/${id}`, data);
@@ -143,26 +164,47 @@ export const productService = {
     return res.data;
   },
 
-  adjustStock: async (id: string, quantity: number, mode: 'set' | 'delta' = 'set', reason = '') => {
-    const response = await productService.getProductById(id);
-    const product = getProductEntity(response);
-    const currentQuantity = Number(product.quantityOnHand ?? 0);
-    const baseQuantity = Number.isFinite(currentQuantity) ? currentQuantity : 0;
-    const newQuantity = mode === 'delta' ? baseQuantity + quantity : quantity;
-
-    return productService.updateProduct(id, {
-      quantityOnHand: Math.max(0, newQuantity),
-      metadata: {
-        ...(product.metadata ?? {}),
-        lastStockAdjustment: {
-          previousQuantity: baseQuantity,
-          newQuantity,
-          mode,
-          reason,
-          timestamp: new Date().toISOString(),
-        },
-      },
+  /**
+   * Adjust product or variant stock and record a stock movement on the server.
+   * @param id - Product id
+   * @param quantity - Delta or absolute depending on mode
+   * @param mode - 'delta' adds to on-hand; 'set' replaces on-hand
+   * @param reason - Stored on the movement (e.g. "Receive stock")
+   * @param options.variantId - Required when adjusting a variant SKU
+   * @param options.type - receive | adjustment | …
+   */
+  adjustStock: async (
+    id: string,
+    quantity: number,
+    mode: 'set' | 'delta' = 'set',
+    reason = '',
+    options: { variantId?: string; type?: string; shopId?: string } = {}
+  ) => {
+    const inferredType = options.type
+      || (String(reason || '').toLowerCase().includes('receive') ? 'receive' : undefined);
+    const res = await api.post(`/products/${id}/adjust-stock`, {
+      quantity,
+      mode,
+      reason: reason || '',
+      ...(inferredType ? { type: inferredType } : {}),
+      ...(options.variantId ? { variantId: options.variantId } : {}),
+      ...(options.shopId ? { shopId: options.shopId } : {}),
     });
+    return res.data;
+  },
+
+  /**
+   * Adjust stock for a specific variant (delta or set).
+   */
+  adjustVariantStock: async (
+    productId: string,
+    variantId: string,
+    quantity: number,
+    mode: 'set' | 'delta' = 'delta',
+    reason = 'Receive stock',
+    type = 'receive'
+  ) => {
+    return productService.adjustStock(productId, quantity, mode, reason, { variantId, type });
   },
 
   deleteProduct: async (id: string) => {

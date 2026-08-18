@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "Sabito",
+    "slug": "sabito",
+    "version": "1.0.2",
+    "orientation": "portrait",
+    "icon": "./assets/AppLogo.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "owner": "eamankyim",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sabito.app",
+      "buildNumber": "12",
+      "icon": "./assets/AppLogo.png",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Sabito needs access to your camera to upload profile pictures and business logos.",
+        "NSPhotoLibraryUsageDescription": "Sabito needs access to your photo library to upload profile pictures and business logos.",
+        "NSMicrophoneUsageDescription": "Sabito needs access to your microphone for voice features.",
+        "NSLocationWhenInUseUsageDescription": "Sabito needs access to your location to help you find nearby businesses and marketers.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.sabito.app",
+      "versionCode": 11,
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "com.googleusercontent.apps.YOUR_IOS_CLIENT_ID",
+    "extra": {
+      "googleAuthEnabled": true,
+      "eas": {
+        "projectId": "a790246a-ad64-4e75-8342-19481228155e"
+      }
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
+  }
+}

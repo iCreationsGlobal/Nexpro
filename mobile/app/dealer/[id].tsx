@@ -13,6 +13,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { AppIcon } from '@/components/AppIcon';
 import { FormSheetModal } from '@/components/FormSheetModal';
 import { DealerRecordPaymentSheet } from '@/components/DealerRecordPaymentSheet';
 import { FilterChipRow } from '@/components/FilterChip';
@@ -251,7 +252,20 @@ export default function DealerDetailScreen() {
 
   return (
     <>
-      <EntityDetailHeader title={dealer.businessName} />
+      <EntityDetailHeader
+        title={dealer.businessName}
+        headerRight={() => (
+          <Pressable
+            onPress={openEdit}
+            accessibilityRole="button"
+            accessibilityLabel="Edit dealer"
+            hitSlop={8}
+            style={styles.headerEditBtn}
+          >
+            <AppIcon name="pencil" size={20} color={colors.tint} />
+          </Pressable>
+        )}
+      />
       <ScreenShell
         scrollable
         contentContainerStyle={styles.content}
@@ -425,7 +439,6 @@ export default function DealerDetailScreen() {
           variant="primary"
           onPress={handleSellToDealer}
         />
-        <DetailActionButton label="Edit dealer" icon="edit" onPress={openEdit} />
         {isManager ? (
           <DetailActionButton
             label="Record payment"
@@ -524,6 +537,12 @@ export default function DealerDetailScreen() {
 
 const styles = StyleSheet.create({
   content: { paddingBottom: 120 },
+  headerEditBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   tabContent: { paddingHorizontal: 16, paddingTop: 8 },
   notesText: { fontSize: 15, lineHeight: 22 },
   loader: { marginTop: 24 },

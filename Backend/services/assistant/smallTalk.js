@@ -68,7 +68,7 @@ function classifySmallTalk(message) {
     /^(hi|hello|hey|hiya|howdy|yo|good (morning|afternoon|evening)|thanks|thank you|ok|okay|cool|great|nice)[\s!.]*$/i.test(
       text
     )
-    || /^(hi|hello|hey)[\s,]+(there|abs|assistant|ibis)?[\s!.]*$/i.test(text)
+    || /^(hi|hello|hey)[\s,]+(there|abs|assistant|ibis|ayebia)?[\s!.]*$/i.test(text)
   ) {
     return { intent: SMALL_TALK_INTENTS.GREETING, confidence: 0.96 };
   }
@@ -90,7 +90,7 @@ function buildReplyMarkdown(intent, options = {}) {
 
   if (intent === SMALL_TALK_INTENTS.IDENTITY) {
     return [
-      "I'm **iBIS** — iCreations Business Intelligence System. I help you make sense of your workspace and get things done in African Business Suite.",
+      "I'm **Ayebia**, your business intelligence assistant. I help you make sense of your workspace and get things done in African Business Suite.",
       studio
         ? 'Ask me about sales and collections, open jobs, how to use ABS, or drafts like payment reminders.'
         : 'Ask me about sales insights, collections, stock, how to use ABS, or drafts like payment reminders.',
@@ -100,7 +100,7 @@ function buildReplyMarkdown(intent, options = {}) {
 
   if (intent === SMALL_TALK_INTENTS.HELP) {
     return [
-      "I'm **iBIS**. I can help with business insights (sales, collections" +
+      "I'm **Ayebia**. I can help with business insights (sales, collections" +
         (studio ? ', jobs' : ', stock') +
         '), step-by-step ABS support, and short message drafts.',
       "I stick to your live workspace data for numbers — I won't invent figures.",
@@ -110,7 +110,7 @@ function buildReplyMarkdown(intent, options = {}) {
 
   // Greeting (default)
   return [
-    "Hi — I'm **iBIS**, your business intelligence assistant. Happy to help.",
+    "Hi — I'm **Ayebia**, your business intelligence assistant. Happy to help.",
     studio
       ? 'Ask about today’s sales, who owes you, open jobs, how to use ABS, or a message draft.'
       : 'Ask about today’s sales, who owes you, stock, how to use ABS, or a message draft.',

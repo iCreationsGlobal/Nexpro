@@ -30,6 +30,7 @@ import { ScreenShell } from '@/components/ScreenShell';
 import { FormInput, FormLabel } from '@/components/FormField';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { CartQuantitySheet } from '@/components/CartQuantitySheet';
+import { ProductVariantPickerSheet } from '@/components/ProductVariantPickerSheet';
 import { parseProductQRPayload, isProductQRCode } from '@/utils/productQR';
 import { parseApiEntity, parseApiListResponse } from '@/utils/parseApiListResponse';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -44,9 +45,31 @@ import {
   validateJobCreatePayment,
 } from '@/utils/jobCreatePayment';
 import { OPEN_SCAN_CAMERA_EVENT } from '@/utils/scanTabEvents';
-import { getOutOfStockMessage, isProductOutOfStock } from '@/utils/productStock';
+import {
+  getOutOfStockMessage,
+  isProductOutOfStock,
+  isVariantOutOfStock,
+  productRequiresVariantSelection,
+  type ProductVariantStockInput,
+} from '@/utils/productStock';
 import { deriveBarcodeSearchCandidates } from '@/utils/barcodeSearchCandidates';
 import { Image } from 'expo-image';
+
+type ScanProduct = {
+  id: string;
+  name: string;
+  sellingPrice?: number;
+  costPrice?: number;
+  price?: number;
+  barcode?: string;
+  sku?: string;
+  quantityOnHand?: number;
+  trackStock?: boolean;
+  imageUrl?: string;
+  hasVariants?: boolean;
+  variants?: ProductVariantStockInput[];
+  selectedVariant?: ProductVariantStockInput | null;
+};
 
 type JobItemDraft = {
   category: string;
@@ -105,6 +128,7 @@ export default function ScanScreen() {
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<any>(null);
   const [quantityEditItem, setQuantityEditItem] = useState<(typeof cartItems)[number] | null>(null);
+  const [variantPickerProduct, setVariantPickerProduct] = useState<ScanProduct | null>(null);
   const [jobForm, setJobForm] = useState({
     customerId: '',
     title: '',
@@ -331,7 +355,45 @@ export default function ScanScreen() {
   }, []);
 
   const handleProductSelect = useCallback(
-    (selectedProduct: any) => {
+    (selectedProduct: ScanProduct) => {
+      if (selectedProduct.selectedVariant?.id) {
+        if (isVariantOutOfStock(selectedProduct, selectedProduct.selectedVariant)) {
+          Alert.alert('Out of stock', getOutOfStockMessage(selectedProduct.name));
+          return;
+        }
+        const added = addItem({
+          id: selectedProduct.id,
+          name: selectedProduct.name,
+          sellingPrice: selectedProduct.selectedVariant.sellingPrice
+            ?? selectedProduct.sellingPrice
+            ?? selectedProduct.price
+            ?? selectedProduct.costPrice,
+          price: selectedProduct.price,
+          costPrice: selectedProduct.costPrice,
+          imageUrl: selectedProduct.imageUrl,
+          sku: selectedProduct.selectedVariant.sku || selectedProduct.sku,
+          barcode: selectedProduct.selectedVariant.barcode || selectedProduct.barcode,
+          trackStock: selectedProduct.selectedVariant.trackStock ?? selectedProduct.trackStock,
+          quantityOnHand:
+            selectedProduct.selectedVariant.quantityOnHand ?? selectedProduct.quantityOnHand,
+          selectedVariant: selectedProduct.selectedVariant,
+          hasVariants: selectedProduct.hasVariants,
+          variants: selectedProduct.variants,
+        });
+        if (!added) {
+          Alert.alert('Out of stock', getOutOfStockMessage(selectedProduct.name));
+          return;
+        }
+        setSearchQuery('');
+        setScannedProduct(null);
+        return;
+      }
+
+      if (productRequiresVariantSelection(selectedProduct)) {
+        setVariantPickerProduct(selectedProduct);
+        return;
+      }
+
       if (isProductOutOfStock(selectedProduct)) {
         Alert.alert('Out of stock', getOutOfStockMessage(selectedProduct.name));
         return;
@@ -347,6 +409,8 @@ export default function ScanScreen() {
         barcode: selectedProduct.barcode,
         trackStock: selectedProduct.trackStock,
         quantityOnHand: selectedProduct.quantityOnHand,
+        hasVariants: selectedProduct.hasVariants,
+        variants: selectedProduct.variants,
       });
       if (!added) {
         Alert.alert('Out of stock', getOutOfStockMessage(selectedProduct.name));
@@ -358,14 +422,48 @@ export default function ScanScreen() {
     [addItem]
   );
 
+  const handleSelectVariantForCart = useCallback(
+    (variant: ProductVariantStockInput) => {
+      if (!variantPickerProduct) return;
+      const added = addItem({
+        id: variantPickerProduct.id,
+        name: variantPickerProduct.name,
+        sellingPrice: variant.sellingPrice
+          ?? variantPickerProduct.sellingPrice
+          ?? variantPickerProduct.price
+          ?? variantPickerProduct.costPrice,
+        imageUrl: variantPickerProduct.imageUrl,
+        sku: variant.sku || variantPickerProduct.sku,
+        barcode: variant.barcode || variantPickerProduct.barcode,
+        trackStock: variant.trackStock ?? variantPickerProduct.trackStock,
+        quantityOnHand: variant.quantityOnHand ?? variantPickerProduct.quantityOnHand,
+        selectedVariant: variant,
+        hasVariants: true,
+        variants: variantPickerProduct.variants,
+      });
+      setVariantPickerProduct(null);
+      if (!added) {
+        Alert.alert('Out of stock', getOutOfStockMessage(variantPickerProduct.name));
+        return;
+      }
+      setSearchQuery('');
+      setScannedProduct(null);
+    },
+    [addItem, variantPickerProduct]
+  );
+
   const handleAdjustProductQuantity = useCallback(
-    (productId: string, delta: number) => {
-      const cartItemId = selectedCartItemByProductId.get(productId);
+    (product: ScanProduct, delta: number) => {
+      if (delta > 0 && productRequiresVariantSelection(product)) {
+        handleProductSelect(product);
+        return;
+      }
+      const cartItemId = selectedCartItemByProductId.get(product.id);
       if (!cartItemId) return;
-      const currentQty = cartQuantityByProductId.get(productId) || 0;
+      const currentQty = cartQuantityByProductId.get(product.id) || 0;
       updateQuantity(cartItemId, currentQty + delta);
     },
-    [selectedCartItemByProductId, cartQuantityByProductId, updateQuantity]
+    [selectedCartItemByProductId, cartQuantityByProductId, updateQuantity, handleProductSelect]
   );
 
   const handleOpenQuantityEditor = useCallback(
@@ -396,18 +494,7 @@ export default function ScanScreen() {
   
   // Default products (when no search) - sorted by stock quantity (most stock = likely most popular)
   const defaultProducts = useMemo(() => {
-    const products = parseApiListResponse<{
-      id: string;
-      name: string;
-      sellingPrice?: number;
-      costPrice?: number;
-      price?: number;
-      barcode?: string;
-      sku?: string;
-      quantityOnHand?: number;
-      trackStock?: boolean;
-      imageUrl?: string;
-    }>(defaultProductsResponse);
+    const products = parseApiListResponse<ScanProduct>(defaultProductsResponse);
     // Sort by stock quantity (descending), then by name (ascending). Made-to-order (trackStock false) treated as high stock.
     return [...products].sort((a, b) => {
       const stockA = a.trackStock === false ? Infinity : (a.quantityOnHand ?? 0);
@@ -420,30 +507,10 @@ export default function ScanScreen() {
   }, [defaultProductsResponse]);
 
   // Products from search
-  const products = parseApiListResponse<{
-    id: string;
-    name: string;
-    sellingPrice?: number;
-    costPrice?: number;
-    price?: number;
-    barcode?: string;
-    sku?: string;
-    quantityOnHand?: number;
-    trackStock?: boolean;
-    imageUrl?: string;
-  }>(productsResponse);
+  const products = parseApiListResponse<ScanProduct>(productsResponse);
 
   // Single product from barcode search
-  const barcodeProduct = parseApiEntity<{
-    id: string;
-    name: string;
-    sellingPrice?: number;
-    costPrice?: number;
-    price?: number;
-    barcode?: string;
-    sku?: string;
-    imageUrl?: string;
-  }>(barcodeResponse);
+  const barcodeProduct = parseApiEntity<ScanProduct>(barcodeResponse);
   const foundBarcodeProduct = !barcodeError && !!barcodeProduct;
   
   // Determine which products to show
@@ -931,7 +998,7 @@ export default function ScanScreen() {
                           <Pressable
                             onPress={(e) => {
                               e.stopPropagation();
-                              handleAdjustProductQuantity(p.id, -1);
+                              handleAdjustProductQuantity(p, -1);
                             }}
                             style={[styles.cartQuantityBtn, { borderColor, backgroundColor: '#14532d' }]}
                             accessibilityLabel="Decrease quantity"
@@ -958,7 +1025,7 @@ export default function ScanScreen() {
                                 Alert.alert('Out of stock', getOutOfStockMessage(p.name));
                                 return;
                               }
-                              handleAdjustProductQuantity(p.id, 1);
+                              handleAdjustProductQuantity(p, 1);
                             }}
                             disabled={isOutOfStock}
                             style={[
@@ -1096,6 +1163,19 @@ export default function ScanScreen() {
         item={quantityEditItem}
         onClose={() => setQuantityEditItem(null)}
         onApply={updateQuantity}
+        cardBg={cardBg}
+        borderColor={borderColor}
+        textColor={textColor}
+        mutedColor={mutedColor}
+        inputBg={inputBg}
+        tintColor={colors.tint}
+      />
+
+      <ProductVariantPickerSheet
+        visible={!!variantPickerProduct}
+        product={variantPickerProduct}
+        onClose={() => setVariantPickerProduct(null)}
+        onSelect={handleSelectVariantForCart}
         cardBg={cardBg}
         borderColor={borderColor}
         textColor={textColor}

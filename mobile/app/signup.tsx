@@ -54,7 +54,7 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { tenantSignup, googleAuth } = useAuth();
-  const { googleClientId } = usePublicConfig();
+  const { googleClientId, googleIosClientId, googleAndroidClientId } = usePublicConfig();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
@@ -459,6 +459,8 @@ export default function SignupScreen() {
               </View>
               <GoogleSignInButton
                 webClientId={googleClientId}
+                iosClientId={googleIosClientId || undefined}
+                androidClientId={googleAndroidClientId || undefined}
                 mode="signup"
                 onSuccess={handleGoogleSuccess}
                 onError={setError}

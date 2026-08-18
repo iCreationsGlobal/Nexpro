@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AppIcon } from '@/components/AppIcon';
 import {
   AppBottomSheet,
-  APP_SHEET_HEIGHT_MEDIUM,
+  APP_SHEET_HEIGHT_TALL,
   SheetMenuRow,
   SheetSectionLabel,
 } from '@/components/AppBottomSheet';
@@ -85,7 +85,7 @@ export function MoreMenuSheet({ visible, onClose }: MoreMenuSheetProps) {
       visible={visible}
       title="Menu"
       onClose={onClose}
-      height={APP_SHEET_HEIGHT_MEDIUM}
+      height={APP_SHEET_HEIGHT_TALL}
     >
       {sections.map((section) => (
         <View key={section.id} style={styles.section}>

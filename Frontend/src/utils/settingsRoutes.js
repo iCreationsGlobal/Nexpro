@@ -93,8 +93,8 @@ export const SETTINGS_HUB_CARDS = [
   },
   {
     slug: 'ai',
-    title: 'iBIS / AI',
-    subtitle: 'Anthropic API key for Ask iBIS and automations',
+    title: 'Ayebia / AI',
+    subtitle: 'Anthropic API key for Ask Ayebia and automations',
     group: 'business',
     migrated: true,
     managerOnly: true,

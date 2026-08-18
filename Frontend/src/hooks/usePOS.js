@@ -17,7 +17,7 @@ export const usePOS = () => {
 
   const searchProducts = useCallback(async (query) => {
     requireOnline();
-    const response = await productService.searchProducts(query);
+    const response = await productService.searchProducts(query, { includeVariants: false });
     const body = response && typeof response === 'object' ? response : {};
     return Array.isArray(body.data)
       ? body.data

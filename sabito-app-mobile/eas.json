@@ -1,0 +1,68 @@
+{
+  "cli": {
+    "version": ">= 5.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "development",
+        "EXPO_PUBLIC_ABS_API_URL": "http://localhost:5001/api",
+        "ENABLE_DARK_MODE": "true",
+        "ENABLE_PUSH_NOTIFICATIONS": "false",
+        "DEBUG_MODE": "true",
+        "LOG_LEVEL": "verbose"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "preview",
+        "EXPO_PUBLIC_ABS_API_URL": "https://api.africanbusinesssuite.com/api",
+        "ENABLE_DARK_MODE": "true",
+        "ENABLE_PUSH_NOTIFICATIONS": "false",
+        "DEBUG_MODE": "true",
+        "LOG_LEVEL": "verbose"
+      }
+    },
+    "production": {
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_ABS_API_URL": "https://api.africanbusinesssuite.com/api",
+        "ENABLE_DARK_MODE": "true",
+        "ENABLE_PUSH_NOTIFICATIONS": "false",
+        "DEBUG_MODE": "false",
+        "LOG_LEVEL": "error"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "eamankyim@gmail.com",
+        "ascAppId": "1234567890",
+        "appleTeamId": "2GP52ZDJYZ"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "production"
+      }
+    }
+  }
+}

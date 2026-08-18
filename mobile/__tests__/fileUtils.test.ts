@@ -21,20 +21,15 @@ describe('resolveDisplayImageUrl', () => {
     );
   });
 
-  it('passes through small data urls', () => {
+  it('rejects all API inline data urls on mobile', () => {
     const small = 'data:image/png;base64,abc';
-    expect(resolveDisplayImageUrl(small)).toBe(small);
+    expect(resolveDisplayImageUrl(small)).toBe('');
   });
 
   it('rejects oversized data urls that can OOM Profile Image', () => {
     const huge = `data:image/jpeg;base64,${'a'.repeat(MAX_INLINE_IMAGE_DATA_URL_LENGTH)}`;
     expect(resolveImageUrl(huge)).toBe(huge);
     expect(resolveDisplayImageUrl(huge)).toBe('');
-  });
-
-  it('rejects data urls just over the safe display limit', () => {
-    const over = `data:image/png;base64,${'b'.repeat(MAX_INLINE_IMAGE_DATA_URL_LENGTH + 1)}`;
-    expect(resolveDisplayImageUrl(over)).toBe('');
   });
 
   it('unwraps { url } objects', () => {

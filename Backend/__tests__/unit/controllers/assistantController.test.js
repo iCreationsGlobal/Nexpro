@@ -129,7 +129,7 @@ describe('assistantController.chat', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.message).toMatch(/iBIS/i);
+    expect(res.body.message).toMatch(/Ayebia/i);
     expect(res.body.meta).toMatchObject({
       source: 'small_talk',
       intent: 'small_talk_greeting',
@@ -156,7 +156,7 @@ describe('assistantController.chat', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body.meta.intent).toBe('small_talk_identity');
-    expect(res.body.message).toMatch(/iBIS/i);
+    expect(res.body.message).toMatch(/Ayebia/i);
     expect(openaiService.chatWithContext).not.toHaveBeenCalled();
   });
 

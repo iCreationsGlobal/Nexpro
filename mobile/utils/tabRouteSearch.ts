@@ -30,12 +30,20 @@ export const TAB_ROUTE_SEARCH_DEFAULTS: Record<string, PageSearchConfig> = {
   'store-services': { scope: 'store-services', placeholder: SEARCH_PLACEHOLDERS.GLOBAL },
 };
 
+/**
+ * Active tab segment from an Expo Router pathname.
+ * Home/dashboard is often `/`, `/(tabs)`, or `/index` — normalize those to `index`.
+ */
 export function getTabRouteSegment(pathname: string | null | undefined): string {
-  if (!pathname) return '';
+  if (!pathname) return 'index';
   const parts = pathname.split('/').filter(Boolean);
   const tabsIdx = parts.indexOf('(tabs)');
-  if (tabsIdx >= 0 && parts[tabsIdx + 1]) return parts[tabsIdx + 1];
-  return parts[parts.length - 1] ?? '';
+  if (tabsIdx >= 0) {
+    return parts[tabsIdx + 1] || 'index';
+  }
+  const last = parts[parts.length - 1] ?? '';
+  if (!last || last === '(tabs)') return 'index';
+  return last;
 }
 
 export function resolveHeaderSearchConfig(

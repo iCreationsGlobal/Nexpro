@@ -54,7 +54,7 @@ export default function LoginScreen() {
   const passwordRef = useRef<TextInput>(null);
   const queryClient = useQueryClient();
   const { login, googleAuth } = useAuth();
-  const { googleClientId } = usePublicConfig();
+  const { googleClientId, googleIosClientId, googleAndroidClientId } = usePublicConfig();
 
   useEffect(() => {
     let cancelled = false;
@@ -264,6 +264,8 @@ export default function LoginScreen() {
             </View>
             <GoogleSignInButton
               webClientId={googleClientId}
+              iosClientId={googleIosClientId || undefined}
+              androidClientId={googleAndroidClientId || undefined}
               mode="signin"
               onSuccess={handleGoogleSuccess}
               onError={setError}

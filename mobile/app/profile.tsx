@@ -5,7 +5,6 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  Image,
   ScrollView,
   ActivityIndicator,
   Alert,
@@ -14,12 +13,13 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 
 import { AppIcon } from '@/components/AppIcon';
 import { useAuth } from '@/context/AuthContext';
 import { settingsService } from '@/services/settings';
-import { resolveImageUrl } from '@/utils/fileUtils';
+import { resolveDisplayImageUrl } from '@/utils/fileUtils';
 import { getErrorMessage } from '@/utils/errorMessages';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
@@ -39,12 +39,14 @@ const getStringValue = (value: unknown) => (typeof value === 'string' ? value : 
 export default function ProfileScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { user, refreshAuth } = useAuth();
+  const { user, refreshAuth, logout } = useAuth();
   const { colors, bg, cardBg, borderColor, textColor, mutedColor, inputBg } = useScreenColors();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(getStringValue(user?.name));
   const [email, setEmail] = useState(getStringValue(user?.email));
-  const [profilePreview, setProfilePreview] = useState(getStringValue(user?.profilePicture));
+  const [profilePreview, setProfilePreview] = useState(
+    () => resolveDisplayImageUrl(getStringValue(user?.profilePicture)) || ''
+  );
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -52,6 +54,7 @@ export default function ProfileScreen() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{
     name?: string;
     currentPassword?: string;
@@ -66,25 +69,39 @@ export default function ProfileScreen() {
     queryFn: () => settingsService.getProfile(),
   });
 
-  const rawProfileData = profileRes?.data ?? profileRes;
-  const profileData: ProfileData | undefined =
-    rawProfileData && typeof rawProfileData === 'object' ? rawProfileData : undefined;
+  const profileData = useMemo<ProfileData | undefined>(() => {
+    const rawProfileData = profileRes?.data ?? profileRes;
+    if (!rawProfileData || typeof rawProfileData !== 'object' || Array.isArray(rawProfileData)) {
+      return undefined;
+    }
+    return rawProfileData as ProfileData;
+  }, [profileRes]);
+
   const profilePreviewUrl = useMemo(() => {
     const rawUrl = getStringValue(profilePreview).trim();
-    return rawUrl ? resolveImageUrl(rawUrl) : '';
+    return rawUrl ? resolveDisplayImageUrl(rawUrl) : '';
   }, [profilePreview]);
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [profilePreviewUrl]);
 
   useEffect(() => {
     if (!profileData) return;
     setName(getStringValue(profileData.name));
     setEmail(getStringValue(profileData.email) || getStringValue(user?.email));
-    setProfilePreview(getStringValue(profileData.profilePicture) || getStringValue(user?.profilePicture));
+    const nextPicture =
+      getStringValue(profileData.profilePicture) || getStringValue(user?.profilePicture);
+    // Never keep oversized data URLs in state (display URL is empty for those).
+    setProfilePreview(resolveDisplayImageUrl(nextPicture) || '');
   }, [profileData, user?.email, user?.profilePicture]);
 
   const resetForm = useCallback(() => {
     setName(getStringValue(profileData?.name) || getStringValue(user?.name));
     setEmail(getStringValue(profileData?.email) || getStringValue(user?.email));
-    setProfilePreview(getStringValue(profileData?.profilePicture) || getStringValue(user?.profilePicture));
+    const nextPicture =
+      getStringValue(profileData?.profilePicture) || getStringValue(user?.profilePicture);
+    setProfilePreview(resolveDisplayImageUrl(nextPicture) || '');
     setCurrentPassword('');
     setNewPassword('');
     setShowChangePassword(false);
@@ -102,7 +119,61 @@ export default function ProfileScreen() {
     setEditing(true);
   }, [editing, resetForm]);
 
-  const handlePickPhoto = useCallback(async () => {
+  const uploadFromAsset = useCallback(
+    async (asset: ImagePicker.ImagePickerAsset) => {
+      const previousPreview = profilePreview;
+      // Optimistic local preview while upload runs.
+      setProfilePreview(asset.uri);
+      setUploadingPhoto(true);
+      try {
+        const response = await settingsService.uploadProfilePicture(
+          asset.uri,
+          asset.mimeType ?? 'image/jpeg',
+          asset.fileName
+        );
+        const updatedUser = response?.data ?? response;
+        const imageUrl = getStringValue(updatedUser?.profilePicture).trim();
+        // Prefer server URL when safe; otherwise keep the local file URI (never stash huge data URLs).
+        const nextPreview = resolveDisplayImageUrl(imageUrl) || asset.uri;
+        queryClient.setQueryData(PROFILE_QUERY_KEY, { success: true, data: updatedUser });
+        setProfilePreview(nextPreview);
+        await refreshAuth();
+        await queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
+        logger.info('Profile', 'Profile picture updated');
+        Alert.alert('Saved', 'Profile picture updated.');
+      } catch (err) {
+        setProfilePreview(previousPreview);
+        logger.error('Profile', 'Photo upload failed:', err);
+        Alert.alert('Upload failed', getErrorMessage(err, 'Could not upload profile picture.'));
+      } finally {
+        setUploadingPhoto(false);
+      }
+    },
+    [profilePreview, queryClient, refreshAuth]
+  );
+
+  const takePhoto = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Allow camera access to take a profile picture.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.55,
+      });
+      if (result.canceled || !result.assets[0]?.uri) return;
+      await uploadFromAsset(result.assets[0]);
+    } catch (err) {
+      logger.error('Profile', 'Camera failed:', err);
+      Alert.alert('Camera failed', getErrorMessage(err, 'Could not take photo.'));
+    }
+  }, [uploadFromAsset]);
+
+  const chooseFromLibrary = useCallback(async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -113,34 +184,24 @@ export default function ProfileScreen() {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.85,
+        quality: 0.55,
       });
       if (result.canceled || !result.assets[0]?.uri) return;
-
-      const asset = result.assets[0];
-      setUploadingPhoto(true);
-      const response = await settingsService.uploadProfilePicture(
-        asset.uri,
-        asset.mimeType ?? 'image/jpeg',
-        asset.fileName
-      );
-      const updatedUser = response?.data ?? response;
-      const imageUrl = getStringValue(updatedUser?.profilePicture).trim();
-      if (!imageUrl) {
-        throw new Error('Upload succeeded but no image was returned');
-      }
-      queryClient.setQueryData(PROFILE_QUERY_KEY, { success: true, data: updatedUser });
-      setProfilePreview(imageUrl);
-      await refreshAuth();
-      logger.info('Profile', 'Profile picture updated');
-      Alert.alert('Saved', 'Profile picture updated.');
+      await uploadFromAsset(result.assets[0]);
     } catch (err) {
-      logger.error('Profile', 'Photo upload failed:', err);
-      Alert.alert('Upload failed', getErrorMessage(err, 'Could not upload profile picture.'));
-    } finally {
-      setUploadingPhoto(false);
+      logger.error('Profile', 'Photo picker failed:', err);
+      Alert.alert('Photo picker failed', getErrorMessage(err, 'Could not choose photo.'));
     }
-  }, [queryClient, refreshAuth]);
+  }, [uploadFromAsset]);
+
+  const handlePickPhoto = useCallback(() => {
+    if (uploadingPhoto) return;
+    Alert.alert('Profile picture', 'Update your photo using the camera or photo library.', [
+      { text: 'Take photo', onPress: () => void takePhoto() },
+      { text: 'Choose from library', onPress: () => void chooseFromLibrary() },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [chooseFromLibrary, takePhoto, uploadingPhoto]);
 
   const handleRemovePhoto = useCallback(async () => {
     setUploadingPhoto(true);
@@ -150,6 +211,7 @@ export default function ProfileScreen() {
       queryClient.setQueryData(PROFILE_QUERY_KEY, { success: true, data: updatedUser });
       setProfilePreview('');
       await refreshAuth();
+      await queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
       Alert.alert('Removed', 'Profile picture removed.');
     } catch (err) {
       logger.error('Profile', 'Remove photo failed:', err);
@@ -214,13 +276,20 @@ export default function ProfileScreen() {
     }
   }, [name, newPassword, currentPassword, queryClient, refreshAuth]);
 
-  const handleResetPassword = useCallback(() => {
-    const accountEmail = email.trim() || user?.email || '';
-    router.push({
-      pathname: '/forgot-password',
-      params: accountEmail ? { email: accountEmail } : undefined,
-    });
-  }, [email, router, user?.email]);
+  const handleLogout = useCallback(() => {
+    Alert.alert('Log out?', 'You will need to sign in again to use the app.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          // Same as Account: clear session then leave authenticated stack.
+          router.replace('/login');
+        },
+      },
+    ]);
+  }, [logout, router]);
 
   const inputDisabledBg = inputBg;
 
@@ -300,8 +369,14 @@ export default function ProfileScreen() {
 
         <View style={styles.avatarSection}>
           <View style={styles.avatarWrap}>
-            {profilePreviewUrl ? (
-              <Image source={{ uri: profilePreviewUrl }} style={styles.avatar} />
+            {profilePreviewUrl && !avatarLoadFailed ? (
+              <Image
+                source={{ uri: profilePreviewUrl }}
+                style={styles.avatar}
+                contentFit="cover"
+                onError={() => setAvatarLoadFailed(true)}
+                accessibilityLabel="Profile picture"
+              />
             ) : (
               <View style={[styles.avatarFallback, { backgroundColor: colors.tint }]}>
                 <AppIcon name="user" size={40} color="#fff" />
@@ -323,7 +398,7 @@ export default function ProfileScreen() {
               </Pressable>
             ) : null}
           </View>
-          {editing && profilePreviewUrl ? (
+          {editing && (profilePreviewUrl || getStringValue(profilePreview).trim()) ? (
             <Pressable
               onPress={handleRemovePhoto}
               disabled={uploadingPhoto}
@@ -334,9 +409,11 @@ export default function ProfileScreen() {
               <Text style={{ color: '#dc2626', fontWeight: '600', fontSize: 14 }}>Remove photo</Text>
             </Pressable>
           ) : null}
-          {!profilePreviewUrl && editing ? (
+          {editing ? (
             <Text style={[styles.hint, { color: mutedColor, textAlign: 'center' }]}>
-              Tap the camera icon to upload a profile picture.
+              {uploadingPhoto
+                ? 'Uploading photo…'
+                : 'Tap the camera icon to take a photo or choose from your library.'}
             </Text>
           ) : null}
         </View>
@@ -497,23 +574,21 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           )}
-
-          <Pressable
-            onPress={handleResetPassword}
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              { borderColor, marginTop: 16, alignSelf: 'flex-start' },
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={[styles.secondaryButtonText, { color: textColor }]}>Reset password via email</Text>
-          </Pressable>
-          <Text style={[styles.hint, { color: mutedColor, marginTop: 8 }]}>
-            We'll email you a link if you forgot your current password.
-          </Text>
         </View>
         </>
         )}
+
+        <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
+          <Pressable
+            onPress={handleLogout}
+            accessibilityRole="button"
+            accessibilityLabel="Log out"
+            style={({ pressed }) => [styles.logoutRow, pressed && styles.buttonPressed]}
+          >
+            <AppIcon name="logout" size={20} color="#dc2626" />
+            <Text style={styles.logoutText}>Log out</Text>
+          </Pressable>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
     </ScreenShell>
@@ -590,6 +665,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cancelPasswordBtn: { marginTop: 12, alignSelf: 'flex-start', paddingVertical: 4 },
+  logoutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    minHeight: 44,
+    paddingVertical: 12,
+  },
+  logoutText: {
+    color: '#dc2626',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   hint: { fontSize: 12, marginTop: 6 },
   secondaryButton: {
     borderWidth: 1,

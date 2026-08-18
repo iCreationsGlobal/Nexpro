@@ -147,13 +147,6 @@ export default function TasksScreen() {
 
   const onRefresh = useCallback(() => refetch(), [refetch]);
 
-  if (user?.isPlatformAdmin === true) {
-    return <FeatureAccessDenied message="Tasks are not available for platform admin accounts." />;
-  }
-  if (!hasFeature('jobAutomation')) {
-    return <FeatureAccessDenied message="Tasks are not enabled for this workspace." />;
-  }
-
   const filterOptions = useMemo(
     () =>
       STATUS_FILTERS.map((s) => ({
@@ -175,6 +168,13 @@ export default function TasksScreen() {
     ],
     [members]
   );
+
+  if (user?.isPlatformAdmin === true) {
+    return <FeatureAccessDenied message="Tasks are not available for platform admin accounts." />;
+  }
+  if (!hasFeature('jobAutomation')) {
+    return <FeatureAccessDenied message="Tasks are not enabled for this workspace." />;
+  }
 
   const renderItem = ({ item }: { item: TaskRow }) => (
     <Pressable

@@ -4,16 +4,16 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  Image,
   ScrollView,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { useAuth } from '@/context/AuthContext';
 import { resetLocalSessionForOnboardingTest } from '@/utils/devSessionReset';
-import { resolveImageUrl } from '@/utils/fileUtils';
+import { resolveDisplayImageUrl } from '@/utils/fileUtils';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
 import { StackPageHeader } from '@/components/StackPageHeader';
@@ -104,7 +104,7 @@ export default function AccountScreen() {
     [router]
   );
 
-  const avatarUrl = resolveImageUrl(user?.profilePicture);
+  const avatarUrl = resolveDisplayImageUrl(user?.profilePicture);
 
   return (
     <ScreenShell style={styles.screen}>
@@ -112,7 +112,7 @@ export default function AccountScreen() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={[styles.profileCard, { backgroundColor: cardBg, borderColor }]}>
           {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            <Image source={{ uri: avatarUrl }} style={styles.avatar} contentFit="cover" />
           ) : (
             <View style={[styles.avatarPlaceholder, { backgroundColor: colors.tint }]}>
               <Text style={styles.avatarInitial}>

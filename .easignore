@@ -8,12 +8,21 @@
 .vscode/
 .idea/
 
-# Non-mobile workspaces
+# Non-mobile workspaces (keep APK upload small)
 Backend/
 Frontend/
 marketing-site/
+storefront/
+sabito-app/
+sabito-app-mobile/
+sabito-store/
+sabito-buyer/
+sabito-mobile/
 e2e/
 docs/
+plans/
+scripts/
+omega-360/
 
 # Dependencies anywhere in the monorepo
 node_modules/

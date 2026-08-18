@@ -708,6 +708,20 @@ const POS = () => {
       return;
     }
 
+    if (product?.hasVariants) {
+      productService.getProductById(product.id).then((response) => {
+        const detail = response?.data ?? response;
+        if (getActiveVariants(detail).length > 0) {
+          setVariantPickerProduct(detail);
+          return;
+        }
+        addResolvedItemToCart(detail?.id ? detail : product, null);
+      }).catch(() => {
+        addResolvedItemToCart(product, null);
+      });
+      return;
+    }
+
     addResolvedItemToCart(product, null);
   }, [addResolvedItemToCart]);
 

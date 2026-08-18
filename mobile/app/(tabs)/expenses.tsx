@@ -196,8 +196,68 @@ export default function ExpensesScreen() {
       receiptUrl?: string;
       notes?: string;
     }) => expenseService.createExpense(data),
-    onSuccess: async () => {
-      await refreshAfterExpense(queryClient);
+    onSuccess: (response, variables) => {
+      const created = (response as { data?: Expense })?.data ?? (response as Expense | undefined);
+      if (created && typeof created === 'object' && created.id) {
+        queryClient.setQueriesData(
+          {
+            predicate: (query) => {
+              const key = query.queryKey;
+              return (
+                Array.isArray(key) &&
+                key[0] === 'expenses' &&
+                key[1] !== 'categories' &&
+                key[1] !== 'stats'
+              );
+            },
+          },
+          (old: unknown) => {
+            if (!old || typeof old !== 'object') return old;
+            const prev = old as { data?: Expense[]; count?: number };
+            if (Array.isArray(prev.data)) {
+              if (prev.data.some((row) => row?.id === created.id)) return old;
+              return {
+                ...prev,
+                data: [created, ...prev.data],
+                count: typeof prev.count === 'number' ? prev.count + 1 : prev.count,
+              };
+            }
+            if (Array.isArray(old)) {
+              const list = old as Expense[];
+              if (list.some((row) => row?.id === created.id)) return old;
+              return [created, ...list];
+            }
+            return old;
+          }
+        );
+
+        queryClient.setQueriesData(
+          {
+            predicate: (query) =>
+              Array.isArray(query.queryKey) &&
+              query.queryKey[0] === 'expenses' &&
+              query.queryKey[1] === 'stats',
+          },
+          (old: unknown) => {
+            if (!old || typeof old !== 'object') return old;
+            const wrap = old as ExpenseStatsResponse;
+            const stats = (wrap.data ?? wrap) as ExpenseStatsResponse;
+            const amount = Number(variables.amount) || 0;
+            const totals = { ...(stats.totals ?? {}) };
+            totals.totalExpenses = Number(totals.totalExpenses ?? stats.totalExpenses ?? 0) + amount;
+            totals.approvedCount = Number(totals.approvedCount ?? stats.approvedCount ?? 0) + 1;
+            const next = {
+              ...stats,
+              totalExpenses: Number(stats.totalExpenses ?? 0) + amount,
+              approvedCount: Number(stats.approvedCount ?? 0) + 1,
+              totals,
+            };
+            return wrap.data ? { ...wrap, data: next } : next;
+          }
+        );
+      }
+
+      // Close UI as soon as POST succeeds — refresh list/stats in the background.
       setAddModalVisible(false);
       setFormData({
         description: '',
@@ -210,6 +270,7 @@ export default function ExpensesScreen() {
       });
       setReceiptFileName('');
       Alert.alert('Success', 'Expense recorded successfully');
+      void refreshAfterExpense(queryClient);
     },
     onError: (error: unknown) => {
       Alert.alert('Error', getApiErrorMessage(error, 'Failed to record expense'));

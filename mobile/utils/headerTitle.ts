@@ -20,7 +20,7 @@ export const TAB_PAGE_TITLES: Record<string, string> = {
   deliveries: 'Deliveries',
   jobs: 'Jobs',
   orders: 'Orders',
-  chat: 'Chat',
+  chat: 'Ayebia',
   cart: 'Cart',
   store: 'Online Store',
   'online-orders': 'Online Store',

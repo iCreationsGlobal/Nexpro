@@ -75,12 +75,12 @@ exports.ask = async (req, res, next) => {
         route: analysis.route,
         message:
           analysis.route === 'draft'
-            ? 'This looks like a draft request. Use Ask iBIS chat for message drafts.'
-            : 'This looks like an ABS how-to question. Use Ask iBIS chat for step-by-step support.',
+            ? 'This looks like a draft request. Use Ask Ayebia chat for message drafts.'
+            : 'This looks like an ABS how-to question. Use Ask Ayebia chat for step-by-step support.',
         answerMarkdown:
           analysis.route === 'draft'
-            ? 'This looks like a draft request. Use Ask iBIS chat for message drafts.'
-            : 'This looks like an ABS how-to question. Use Ask iBIS chat for step-by-step support.',
+            ? 'This looks like a draft request. Use Ask Ayebia chat for message drafts.'
+            : 'This looks like an ABS how-to question. Use Ask Ayebia chat for step-by-step support.',
         metrics: {},
         reasons: [],
         meta: {

@@ -204,9 +204,12 @@ const styles = StyleSheet.create({
   },
   backLink: {
     marginTop: 16,
+    alignSelf: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
   backLinkText: {
     fontSize: 14,

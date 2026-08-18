@@ -48,7 +48,7 @@ const SettingsAiSection = () => {
           AI Settings
         </CardTitle>
         <CardDescription className="text-xs md:text-sm mt-1">
-          Add a workspace Anthropic API key for growth and strategy questions in Ask iBIS (required). The same key also powers smart report narratives and automation drafting, and overrides the system default when set. Live sales, stock, and receivables answers work without a key.
+          Add a workspace Anthropic API key for growth and strategy questions in Ask Ayebia (required). The same key also powers smart report narratives and automation drafting, and overrides the system default when set. Live sales, stock, and receivables answers work without a key.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -74,7 +74,7 @@ const SettingsAiSection = () => {
                 ) : aiSettings.systemConfigured ? (
                   <>No workspace key is saved. Product how-tos and drafts can use the system default; growth and strategy questions need a workspace key.</>
                 ) : (
-                  <>No workspace or system key is configured. Add a workspace key to unlock Ask iBIS advice, smart report AI, and automation drafting.</>
+                  <>No workspace or system key is configured. Add a workspace key to unlock Ask Ayebia advice, smart report AI, and automation drafting.</>
                 )}
               </AlertDescription>
             </Alert>

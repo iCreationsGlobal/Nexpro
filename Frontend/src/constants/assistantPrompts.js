@@ -263,7 +263,7 @@ function suggestionMetaForPrompt(prompt) {
   if (/top customers/i.test(p)) {
     return { title: 'Top customers', icon: 'users' };
   }
-  return { title: 'Ask iBIS', icon: 'sparkles' };
+  return { title: 'Ask Ayebia', icon: 'sparkles' };
 }
 
 /**

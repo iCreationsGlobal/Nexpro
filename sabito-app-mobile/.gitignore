@@ -1,0 +1,79 @@
+# Environment files (NEVER commit these)
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Node modules
+node_modules/
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# Native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.keystore
+
+# iOS
+ios/Pods/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+ios/.xcode.env.local
+
+# Android
+*.apk
+*.aab
+build/
+.gradle
+local.properties
+*.iml
+.idea/
+.gradle/
+captures/
+.externalNativeBuild
+.cxx
+
+# macOS
+.DS_Store
+
+# Temporary files
+*.swp
+*.swo
+*~
+*.tmp
+
+# Testing
+coverage/
+
+# Watchman
+.watchmanconfig

@@ -5,17 +5,16 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  Image,
   Platform,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 
+import { AppBrandLogo } from '@/components/AppBrandLogo';
 import { AppIcon } from '@/components/AppIcon';
 import { useAuth } from '@/context/AuthContext';
 import { useSmartSearch } from '@/context/SmartSearchContext';
-import { resolveImageUrl } from '@/utils/fileUtils';
 import { resolveHeaderSearchConfig } from '@/utils/tabRouteSearch';
 import { HeaderScopeTitle } from '@/components/HeaderScopeTitle';
 import { OfflineQueueBanner } from '@/components/WorkspaceScopeSwitcher';
@@ -25,13 +24,13 @@ import { useScreenColors } from '@/hooks/useScreenColors';
 import { FontFamily, FontSize } from '@/constants/typography';
 
 /**
- * Mobile header with global page-aware search, notifications, avatar, and shop scope.
+ * Mobile header with ABS logo, shop/workspace name + switcher, search, and notifications.
  */
 export function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { user, activeTenantId, isDriver } = useAuth();
+  const { activeTenantId, isDriver } = useAuth();
   const { colors, headerBg, borderColor, inputBg, textColor, mutedColor } = useScreenColors();
   const { pageConfig, searchValue, setSearchValue } = useSmartSearch();
   const inStoreSetup = useIsStoreSetupRoute();
@@ -56,10 +55,6 @@ export function Header() {
     setSearchValue('');
   }, [setSearchValue]);
 
-  const handleAvatarPress = useCallback(() => {
-    router.push('/account');
-  }, [router]);
-
   const handleChatPress = useCallback(() => {
     router.push('/(tabs)/chat');
   }, [router]);
@@ -81,25 +76,9 @@ export function Header() {
     >
       <View style={[styles.topRow, !searchConfig && styles.topRowCompact]}>
         <View style={styles.topRowLeft}>
-          <Pressable
-            onPress={handleAvatarPress}
-            style={({ pressed }) => [
-              styles.avatarButton,
-              pressed && styles.iconButtonPressed,
-            ]}
-            hitSlop={8}
-          >
-            {user?.profilePicture ? (
-              <Image
-                source={{ uri: resolveImageUrl(user.profilePicture) }}
-                style={styles.avatar}
-              />
-            ) : (
-              <View style={[styles.avatarFallback, { backgroundColor: colors.tint }]}>
-                <AppIcon name="user" size={18} color="#fff" />
-              </View>
-            )}
-          </Pressable>
+          <View style={styles.logoWrap} accessibilityRole="image" accessibilityLabel="ABS">
+            <AppBrandLogo size={36} style={styles.logo} />
+          </View>
           <View style={styles.scopeSlot}>
             <HeaderScopeTitle embedded />
           </View>
@@ -235,23 +214,16 @@ const styles = StyleSheet.create({
   iconButtonPressed: {
     opacity: 0.7,
   },
-  avatarButton: {
+  logoWrap: {
     width: 40,
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
-  avatarFallback: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+  logo: {
+    marginBottom: 0,
+    alignSelf: 'center',
+    gap: 0,
   },
 });

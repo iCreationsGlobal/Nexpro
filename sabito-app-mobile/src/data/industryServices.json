@@ -1,0 +1,478 @@
+[
+  {
+    "industry": "Creative & Design",
+    "services": [
+      {"service": "Logo Design"},
+      {"service": "UI/UX Design"},
+      {"service": "Brand Identity"},
+      {"service": "Graphic Design"},
+      {"service": "Web Design"},
+      {"service": "Print Design"},
+      {"service": "Package Design"},
+      {"service": "Interior Design"},
+      {"service": "Fashion Design"},
+      {"service": "Photography"},
+      {"service": "Video Production"},
+      {"service": "Animation"},
+      {"service": "Illustration"},
+      {"service": "Art Direction"}
+    ]
+  },
+  {
+    "industry": "Technology",
+    "services": [
+      {"service": "Web Development", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Mobile App Development", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "API Integration", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Software Development", "profit_margin_range": "15-35%", "typical_margin": "25%"},
+      {"service": "Cloud Computing", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Data Analytics", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Cybersecurity", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "IT Consulting", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "System Administration", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Database Management", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "DevOps", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "AI/Machine Learning", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Blockchain Development", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "IoT Solutions", "profit_margin_range": "20-40%", "typical_margin": "30%"}
+    ]
+  },
+  {
+    "industry": "Marketing & Advertising",
+    "services": [
+      {"service": "Digital Marketing", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Social Media Marketing", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Content Marketing", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "SEO/SEM", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Email Marketing", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "PPC Advertising", "profit_margin_range": "15-35%", "typical_margin": "25%"},
+      {"service": "Brand Strategy", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Market Research", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Public Relations", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Influencer Marketing", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Copywriting", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Video Marketing", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Affiliate Marketing", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Event Marketing", "profit_margin_range": "15-35%", "typical_margin": "25%"}
+    ]
+  },
+  {
+    "industry": "Healthcare & Medical",
+    "services": [
+      {"service": "Primary Care", "profit_margin_range": "8-18%", "typical_margin": "13%"},
+      {"service": "Specialized Medicine", "profit_margin_range": "12-25%", "typical_margin": "18%"},
+      {"service": "Dental Care", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Mental Health", "profit_margin_range": "20-35%", "typical_margin": "27%"},
+      {"service": "Physical Therapy", "profit_margin_range": "10-25%", "typical_margin": "17%"},
+      {"service": "Medical Imaging", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Laboratory Services", "profit_margin_range": "12-28%", "typical_margin": "20%"},
+      {"service": "Telemedicine", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Home Healthcare", "profit_margin_range": "8-20%", "typical_margin": "14%"},
+      {"service": "Medical Equipment", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Pharmaceutical Services", "profit_margin_range": "15-35%", "typical_margin": "25%"},
+      {"service": "Health Insurance", "profit_margin_range": "3-8%", "typical_margin": "5%"},
+      {"service": "Medical Research", "profit_margin_range": "10-25%", "typical_margin": "17%"},
+      {"service": "Medical Consulting", "profit_margin_range": "25-45%", "typical_margin": "35%"}
+    ]
+  },
+  {
+    "industry": "Finance & Accounting",
+    "services": [
+      {"service": "Bookkeeping", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Tax Preparation", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Financial Planning", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Investment Advisory", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Insurance Services", "profit_margin_range": "10-25%", "typical_margin": "17%"},
+      {"service": "Banking", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Loan Services", "profit_margin_range": "15-35%", "typical_margin": "25%"},
+      {"service": "Payroll Processing", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Auditing", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Business Valuation", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Risk Management", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Wealth Management", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Corporate Finance", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Financial Consulting", "profit_margin_range": "40-60%", "typical_margin": "50%"}
+    ]
+  },
+  {
+    "industry": "Legal Services",
+    "services": [
+      {"service": "Corporate Law", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Personal Injury", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Family Law", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Criminal Defense", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Real Estate Law", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Immigration Law", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Intellectual Property", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Employment Law", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Tax Law", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Contract Law", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Litigation", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Legal Consulting", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Document Preparation", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Mediation", "profit_margin_range": "55-75%", "typical_margin": "65%"}
+    ]
+  },
+  {
+    "industry": "Real Estate",
+    "services": [
+      {"service": "Residential Sales", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Commercial Sales", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Property Management", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Real Estate Investment", "profit_margin_range": "15-35%", "typical_margin": "25%"},
+      {"service": "Property Development", "profit_margin_range": "10-30%", "typical_margin": "20%"},
+      {"service": "Appraisal Services", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Mortgage Brokerage", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Property Inspection", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Real Estate Consulting", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Leasing Services", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Property Marketing", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Title Services", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Relocation Services", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Land Development", "profit_margin_range": "12-32%", "typical_margin": "22%"}
+    ]
+  },
+  {
+    "industry": "Education & Training",
+    "services": [
+      {"service": "Online Learning", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Corporate Training", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Language Training", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Professional Development", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Skills Assessment", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Educational Consulting", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Curriculum Development", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "E-learning Development", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Tutoring", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Certification Programs", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Workshop Facilitation", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Training Materials", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Learning Management Systems", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Educational Technology", "profit_margin_range": "20-40%", "typical_margin": "30%"}
+    ]
+  },
+  {
+    "industry": "Consulting & Professional Services",
+    "services": [
+      {"service": "Business Consulting", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Management Consulting", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Strategy Consulting", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Process Improvement", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Change Management", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Project Management", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "HR Consulting", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Operations Consulting", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Technology Consulting", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Market Analysis", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Due Diligence", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Performance Optimization", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Organizational Development", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Risk Assessment", "profit_margin_range": "45-65%", "typical_margin": "55%"}
+    ]
+  },
+  {
+    "industry": "Construction & Engineering",
+    "services": [
+      {"service": "General Contracting", "profit_margin_range": "8-18%", "typical_margin": "13%"},
+      {"service": "Electrical Work", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Plumbing", "profit_margin_range": "20-35%", "typical_margin": "27%"},
+      {"service": "HVAC Installation", "profit_margin_range": "18-32%", "typical_margin": "25%"},
+      {"service": "Roofing", "profit_margin_range": "25-40%", "typical_margin": "32%"},
+      {"service": "Flooring", "profit_margin_range": "30-45%", "typical_margin": "37%"},
+      {"service": "Painting", "profit_margin_range": "35-50%", "typical_margin": "42%"},
+      {"service": "Structural Engineering", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Civil Engineering", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Architecture", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Project Management", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Site Preparation", "profit_margin_range": "12-25%", "typical_margin": "18%"},
+      {"service": "Renovation", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Green Building", "profit_margin_range": "10-25%", "typical_margin": "17%"}
+    ]
+  },
+  {
+    "industry": "Manufacturing & Production",
+    "services": [
+      {"service": "Custom Manufacturing", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Product Assembly", "profit_margin_range": "10-25%", "typical_margin": "17%"},
+      {"service": "Quality Control", "profit_margin_range": "25-40%", "typical_margin": "32%"},
+      {"service": "Supply Chain Management", "profit_margin_range": "8-20%", "typical_margin": "14%"},
+      {"service": "Inventory Management", "profit_margin_range": "20-35%", "typical_margin": "27%"},
+      {"service": "Product Design", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Prototyping", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "3D Printing", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "CNC Machining", "profit_margin_range": "25-40%", "typical_margin": "32%"},
+      {"service": "Injection Molding", "profit_margin_range": "20-35%", "typical_margin": "27%"},
+      {"service": "Metal Fabrication", "profit_margin_range": "18-32%", "typical_margin": "25%"},
+      {"service": "Packaging", "profit_margin_range": "12-25%", "typical_margin": "18%"},
+      {"service": "Automation", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Lean Manufacturing", "profit_margin_range": "30-50%", "typical_margin": "40%"}
+    ]
+  },
+  {
+    "industry": "Transportation & Logistics",
+    "services": [
+      {"service": "Freight Shipping", "profit_margin_range": "5-15%", "typical_margin": "10%"},
+      {"service": "Last-Mile Delivery", "profit_margin_range": "8-18%", "typical_margin": "13%"},
+      {"service": "Warehousing", "profit_margin_range": "12-25%", "typical_margin": "18%"},
+      {"service": "Supply Chain Optimization", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Fleet Management", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "International Shipping", "profit_margin_range": "8-20%", "typical_margin": "14%"},
+      {"service": "Express Delivery", "profit_margin_range": "12-25%", "typical_margin": "18%"},
+      {"service": "Cold Chain Logistics", "profit_margin_range": "10-22%", "typical_margin": "16%"},
+      {"service": "E-commerce Fulfillment", "profit_margin_range": "15-28%", "typical_margin": "21%"},
+      {"service": "Customs Brokerage", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Transportation Planning", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Inventory Distribution", "profit_margin_range": "12-25%", "typical_margin": "18%"},
+      {"service": "Courier Services", "profit_margin_range": "20-35%", "typical_margin": "27%"},
+      {"service": "Moving Services", "profit_margin_range": "25-40%", "typical_margin": "32%"}
+    ]
+  },
+  {
+    "industry": "Food & Beverage",
+    "services": [
+      {"service": "Restaurant Services", "profit_margin_range": "3-8%", "typical_margin": "5%"},
+      {"service": "Catering", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Food Delivery", "profit_margin_range": "8-18%", "typical_margin": "13%"},
+      {"service": "Meal Planning", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Recipe Development", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Food Photography", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Menu Design", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Restaurant Consulting", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Food Safety Consulting", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Beverage Development", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Food Packaging", "profit_margin_range": "20-35%", "typical_margin": "27%"},
+      {"service": "Nutrition Consulting", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Event Catering", "profit_margin_range": "18-32%", "typical_margin": "25%"},
+      {"service": "Private Chef Services", "profit_margin_range": "40-60%", "typical_margin": "50%"}
+    ]
+  },
+  {
+    "industry": "Retail & E-commerce",
+    "services": [
+      {"service": "Online Store Development", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Product Photography", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Inventory Management", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Order Fulfillment", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Customer Service", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Payment Processing", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Marketplace Management", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Product Sourcing", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Retail Consulting", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Visual Merchandising", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "POS Systems", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Supply Chain Management", "profit_margin_range": "12-25%", "typical_margin": "18%"},
+      {"service": "Returns Management", "profit_margin_range": "20-35%", "typical_margin": "27%"},
+      {"service": "Multi-channel Selling", "profit_margin_range": "18-35%", "typical_margin": "26%"}
+    ]
+  },
+  {
+    "industry": "Automotive",
+    "services": [
+      {"service": "Vehicle Repair", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Maintenance Services", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Auto Detailing", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Body Shop Services", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Tire Services", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Oil Changes", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Brake Services", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Engine Repair", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Transmission Services", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Auto Parts", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Vehicle Inspection", "profit_margin_range": "80-95%", "typical_margin": "87%"},
+      {"service": "Fleet Services", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Roadside Assistance", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Auto Insurance", "profit_margin_range": "8-18%", "typical_margin": "13%"}
+    ]
+  },
+  {
+    "industry": "Beauty & Wellness",
+    "services": [
+      {"service": "Hair Styling", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Skincare Treatments", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Massage Therapy", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Nail Services", "profit_margin_range": "75-95%", "typical_margin": "85%"},
+      {"service": "Makeup Services", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Spa Treatments", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Fitness Training", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Nutrition Coaching", "profit_margin_range": "75-95%", "typical_margin": "85%"},
+      {"service": "Wellness Consulting", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Mental Health Counseling", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Beauty Product Development", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Salon Management", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Aesthetic Treatments", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Holistic Health", "profit_margin_range": "60-80%", "typical_margin": "70%"}
+    ]
+  },
+  {
+    "industry": "Entertainment & Media",
+    "services": [
+      {"service": "Video Production", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Audio Production", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Event Planning", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Live Entertainment", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Content Creation", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Streaming Services", "profit_margin_range": "10-25%", "typical_margin": "17%"},
+      {"service": "Music Production", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Podcast Production", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Social Media Content", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Documentary Production", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Media Distribution", "profit_margin_range": "15-35%", "typical_margin": "25%"},
+      {"service": "Talent Management", "profit_margin_range": "80-95%", "typical_margin": "87%"},
+      {"service": "Equipment Rental", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Post-Production", "profit_margin_range": "35-55%", "typical_margin": "45%"}
+    ]
+  },
+  {
+    "industry": "Travel & Hospitality",
+    "services": [
+      {"service": "Travel Planning", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Hotel Booking", "profit_margin_range": "85-95%", "typical_margin": "90%"},
+      {"service": "Tour Guide Services", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Event Venues", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Vacation Rentals", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Travel Insurance", "profit_margin_range": "75-95%", "typical_margin": "85%"},
+      {"service": "Corporate Travel", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Destination Weddings", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Adventure Tours", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Cultural Experiences", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Transportation Booking", "profit_margin_range": "80-95%", "typical_margin": "87%"},
+      {"service": "Concierge Services", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Travel Photography", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Group Travel", "profit_margin_range": "40-60%", "typical_margin": "50%"}
+    ]
+  },
+  {
+    "industry": "Home & Garden",
+    "services": [
+      {"service": "Landscaping", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Garden Design", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Tree Services", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Lawn Care", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Pest Control", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Cleaning Services", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Home Organizing", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Handyman Services", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Pool Services", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Snow Removal", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Irrigation Systems", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Outdoor Living Design", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Plant Care", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Home Maintenance", "profit_margin_range": "50-70%", "typical_margin": "60%"}
+    ]
+  },
+  {
+    "industry": "Sports & Fitness",
+    "services": [
+      {"service": "Personal Training", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Group Fitness Classes", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Sports Coaching", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Nutrition Planning", "profit_margin_range": "75-95%", "typical_margin": "85%"},
+      {"service": "Fitness Equipment", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Athletic Performance", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Injury Prevention", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Sports Medicine", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Gym Management", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Fitness App Development", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Sports Event Planning", "profit_margin_range": "15-35%", "typical_margin": "25%"},
+      {"service": "Athletic Wear", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Recovery Services", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Youth Sports Programs", "profit_margin_range": "40-60%", "typical_margin": "50%"}
+    ]
+  },
+  {
+    "industry": "Non-Profit & Social Services",
+    "services": [
+      {"service": "Fundraising", "profit_margin_range": "10-25%", "typical_margin": "17%"},
+      {"service": "Grant Writing", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Volunteer Management", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Community Outreach", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Social Work", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Advocacy", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Educational Programs", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Disaster Relief", "profit_margin_range": "5-15%", "typical_margin": "10%"},
+      {"service": "Environmental Conservation", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Youth Programs", "profit_margin_range": "15-35%", "typical_margin": "25%"},
+      {"service": "Senior Services", "profit_margin_range": "12-28%", "typical_margin": "20%"},
+      {"service": "Food Banks", "profit_margin_range": "8-18%", "typical_margin": "13%"},
+      {"service": "Housing Assistance", "profit_margin_range": "10-25%", "typical_margin": "17%"},
+      {"service": "Mental Health Support", "profit_margin_range": "20-35%", "typical_margin": "27%"}
+    ]
+  },
+  {
+    "industry": "Energy & Utilities",
+    "services": [
+      {"service": "Solar Installation", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Energy Audits", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Utility Management", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Renewable Energy Consulting", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Energy Efficiency", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Power Generation", "profit_margin_range": "8-20%", "typical_margin": "14%"},
+      {"service": "Grid Management", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Energy Storage", "profit_margin_range": "20-40%", "typical_margin": "30%"},
+      {"service": "Electric Vehicle Charging", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Green Energy Solutions", "profit_margin_range": "25-45%", "typical_margin": "35%"},
+      {"service": "Waste Management", "profit_margin_range": "12-28%", "typical_margin": "20%"},
+      {"service": "Water Treatment", "profit_margin_range": "20-35%", "typical_margin": "27%"},
+      {"service": "Environmental Consulting", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Sustainability Planning", "profit_margin_range": "45-65%", "typical_margin": "55%"}
+    ]
+  },
+  {
+    "industry": "Agriculture & Farming",
+    "services": [
+      {"service": "Crop Production", "profit_margin_range": "5-15%", "typical_margin": "10%"},
+      {"service": "Livestock Management", "profit_margin_range": "8-18%", "typical_margin": "13%"},
+      {"service": "Farm Equipment", "profit_margin_range": "20-35%", "typical_margin": "27%"},
+      {"service": "Agricultural Consulting", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Soil Testing", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Irrigation Services", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Organic Farming", "profit_margin_range": "12-25%", "typical_margin": "18%"},
+      {"service": "Pest Management", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Harvest Services", "profit_margin_range": "25-40%", "typical_margin": "32%"},
+      {"service": "Agricultural Technology", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Farm Management Software", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Veterinary Services", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Food Processing", "profit_margin_range": "10-25%", "typical_margin": "17%"},
+      {"service": "Agricultural Finance", "profit_margin_range": "15-30%", "typical_margin": "22%"}
+    ]
+  },
+  {
+    "industry": "Security & Safety",
+    "services": [
+      {"service": "Security Systems", "profit_margin_range": "40-60%", "typical_margin": "50%"},
+      {"service": "Surveillance Services", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Cybersecurity", "profit_margin_range": "30-50%", "typical_margin": "40%"},
+      {"service": "Risk Assessment", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Emergency Response", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Fire Safety", "profit_margin_range": "45-65%", "typical_margin": "55%"},
+      {"service": "Access Control", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Security Consulting", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Background Checks", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Safety Training", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Compliance Auditing", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Threat Assessment", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Security Monitoring", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Personal Protection", "profit_margin_range": "45-65%", "typical_margin": "55%"}
+    ]
+  },
+  {
+    "industry": "Pet Care & Veterinary",
+    "services": [
+      {"service": "Veterinary Care", "profit_margin_range": "15-30%", "typical_margin": "22%"},
+      {"service": "Pet Grooming", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Pet Sitting", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Dog Training", "profit_margin_range": "75-95%", "typical_margin": "85%"},
+      {"service": "Pet Boarding", "profit_margin_range": "50-70%", "typical_margin": "60%"},
+      {"service": "Pet Photography", "profit_margin_range": "60-80%", "typical_margin": "70%"},
+      {"service": "Pet Insurance", "profit_margin_range": "20-35%", "typical_margin": "27%"},
+      {"service": "Animal Behavior Consulting", "profit_margin_range": "70-90%", "typical_margin": "80%"},
+      {"service": "Pet Transportation", "profit_margin_range": "55-75%", "typical_margin": "65%"},
+      {"service": "Pet Supplies", "profit_margin_range": "35-55%", "typical_margin": "45%"},
+      {"service": "Emergency Veterinary Care", "profit_margin_range": "12-25%", "typical_margin": "18%"},
+      {"service": "Specialized Veterinary Services", "profit_margin_range": "20-35%", "typical_margin": "27%"},
+      {"service": "Pet Nutrition", "profit_margin_range": "65-85%", "typical_margin": "75%"},
+      {"service": "Animal Rescue", "profit_margin_range": "5-15%", "typical_margin": "10%"}
+    ]
+  }
+]
+

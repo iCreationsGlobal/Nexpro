@@ -91,9 +91,20 @@ export async function markAfterSaleStale(queryClient: QueryClient) {
   ]);
 }
 
-/** Expense create/update */
+/**
+ * Expense create/update/archive.
+ * Refetch list + stats once (skip categories metadata). Mark dashboard stale without
+ * blocking on a dashboard round-trip — callers should not await this before closing UI.
+ */
 export async function refreshAfterExpense(queryClient: QueryClient) {
-  await refreshRelatedQueries(queryClient, [['expenses'], ['expense'], ['dashboard']]);
+  await Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: ['expenses'],
+      predicate: (query) => query.queryKey[1] !== 'categories',
+    }),
+    queryClient.invalidateQueries({ queryKey: ['expense'] }),
+  ]);
+  await markPrefixesStale(queryClient, [['dashboard']]);
 }
 
 /** Product create/update/delete */

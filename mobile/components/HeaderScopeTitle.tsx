@@ -2,14 +2,10 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { usePathname } from 'expo-router';
 
-import { AppIcon } from '@/components/AppIcon';
 import { WorkspaceScopeSwitcher } from '@/components/WorkspaceScopeSwitcher';
 import { useAuth } from '@/context/AuthContext';
-import { useShopOptional } from '@/context/ShopContext';
-import { useStudioLocationOptional } from '@/context/StudioLocationContext';
 import { useSmartSearch } from '@/context/SmartSearchContext';
 import { useTheme } from '@/context/ThemeContext';
-import { useScopedWorkspaceName } from '@/hooks/useScopedWorkspaceName';
 import {
   resolveHeaderPageTitle,
   shouldShowWorkspaceScopeInHeader,
@@ -21,15 +17,13 @@ type HeaderScopeTitleProps = {
 };
 
 /**
- * Header scope slot: workspace picker/name on primary tabs, page title elsewhere.
+ * Header scope slot: shop / studio / workspace switcher on primary tabs (incl. dashboard),
+ * page title elsewhere. Brand mark lives beside this in Header (ABS logo).
  */
 export function HeaderScopeTitle({ embedded = true }: HeaderScopeTitleProps) {
   const pathname = usePathname();
   const { activeTenant } = useAuth();
   const { resolvedTheme } = useTheme();
-  const shop = useShopOptional();
-  const studio = useStudioLocationOptional();
-  const scopedName = useScopedWorkspaceName('ABS');
   const { pageConfig } = useSmartSearch();
 
   const showWorkspaceScope = shouldShowWorkspaceScopeInHeader(pathname);
@@ -40,22 +34,8 @@ export function HeaderScopeTitle({ embedded = true }: HeaderScopeTitleProps) {
     ? [styles.row, styles.embeddedRow]
     : styles.row;
 
-  const hasScopePicker =
-    (shop?.isShopWorkspace && (shop.shops.length > 0 || shop.loadingShops)) ||
-    (studio?.isStudioWorkspace && (studio.locations.length > 0 || studio.loadingLocations));
-
   if (showWorkspaceScope) {
-    if (hasScopePicker) {
-      return <WorkspaceScopeSwitcher embedded={embedded} />;
-    }
-    return (
-      <View style={rowStyle}>
-        <AppIcon name="briefcase" size={14} color={mutedColor} />
-        <Text style={[styles.label, { color: textColor }]} numberOfLines={1}>
-          {scopedName}
-        </Text>
-      </View>
-    );
+    return <WorkspaceScopeSwitcher embedded={embedded} />;
   }
 
   const pageTitle =
@@ -99,12 +79,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'center',
     gap: 1,
-  },
-  label: {
-    fontFamily: FontFamily.semiBold,
-    fontSize: FontSize.sm,
-    fontWeight: '600',
-    flexShrink: 1,
   },
   pageTitle: {
     fontFamily: FontFamily.bold,

@@ -3,8 +3,8 @@ import SettingsAiSection from '../../components/settings/sections/SettingsAiSect
 
 const SettingsAiPage = () => (
   <SettingsLayout
-    title="iBIS / AI"
-    description="Workspace Anthropic API key for Ask iBIS, reports, and automations."
+    title="Ayebia / AI"
+    description="Workspace Anthropic API key for Ask Ayebia, reports, and automations."
   >
     <SettingsAiSection />
   </SettingsLayout>

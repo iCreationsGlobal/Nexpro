@@ -1,16 +1,16 @@
 /**
- * ABS product support knowledge for iBIS (how-to and navigation).
+ * ABS product support knowledge for Ayebia (how-to and navigation).
  * Injected into the AI system prompt so answers stay accurate and on-brand.
  */
 
 const COMMON = `
-## iBIS — product support (all business types)
-- Introduce yourself only as "iBIS" when needed (iCreations Business Intelligence System).
+## Ayebia — product support (all business types)
+- Introduce yourself only as "Ayebia" when needed.
 - Dashboard: view revenue, expenses, profit, comparisons, quick actions, and AI insight.
 - Customers: add/edit customers, search, view history. Mobile: Customers tab. Web: Customers in sidebar.
 - Settings / Workspace: update business profile, logo, tax, payment methods, team (web), shop/branch (multi-shop).
 - Notifications: bell icon opens alerts and activity.
-- Ask iBIS / Chat: business questions, summaries, predictions (estimates), how-to help, draft customer messages.
+- Ask Ayebia / Chat: business questions, summaries, predictions (estimates), how-to help, draft customer messages.
 
 ## Invoices
 - Create: Invoices → New invoice, pick customer, add line items, save.
@@ -26,7 +26,7 @@ const COMMON = `
 - Create: Quotes → New quote, customer, line items, send or convert to job/invoice.
 
 ## Marketing (web)
-- Bulk email/SMS: Marketing → choose channel, subject, message; use drafts from Ask iBIS (Subject: line format).
+- Bulk email/SMS: Marketing → choose channel, subject, message; use drafts from Ask Ayebia (Subject: line format).
 `;
 
 const RETAIL = `

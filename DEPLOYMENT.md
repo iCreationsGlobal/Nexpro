@@ -1,5 +1,7 @@
 # Deploying ABS (African Business Suite) to Vercel
 
+> **Hosting split (2026-08):** Production web (API + every customer-facing frontend) runs on the **Contabo VPS**. **Vercel is for demos only.** See [docs/DEPLOY_CONTABO_VS_VERCEL.md](docs/DEPLOY_CONTABO_VS_VERCEL.md) for architecture, DNS, nginx, branching (`main` → Contabo, `staging` → Vercel demo), and cutover. This file still describes the older Vercel project layout and env names.
+
 This guide covers deploying the **Backend**, **Frontend**, and **Marketing Site** as **three separate Vercel projects** from this monorepo.
 
 ---

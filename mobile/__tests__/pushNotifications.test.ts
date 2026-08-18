@@ -8,6 +8,11 @@ jest.mock('expo-device', () => ({
   modelName: 'Test Device',
 }));
 
+jest.mock('expo-constants', () => ({
+  easConfig: { projectId: '8dff9445-6979-427f-b84e-aae48f077d82' },
+  expoConfig: { extra: { eas: { projectId: '8dff9445-6979-427f-b84e-aae48f077d82' } } },
+}));
+
 jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
 }));
@@ -17,6 +22,11 @@ jest.mock('expo-notifications', () => ({
   clearLastNotificationResponseAsync: jest.fn(() => Promise.resolve()),
   getLastNotificationResponseAsync: jest.fn(() => Promise.resolve(null)),
   setNotificationHandler: jest.fn(),
+  getExpoPushTokenAsync: jest.fn(),
+  getPermissionsAsync: jest.fn(),
+  requestPermissionsAsync: jest.fn(),
+  setNotificationChannelAsync: jest.fn(),
+  AndroidImportance: { DEFAULT: 3 },
 }));
 
 jest.mock('@/services/notificationService', () => ({

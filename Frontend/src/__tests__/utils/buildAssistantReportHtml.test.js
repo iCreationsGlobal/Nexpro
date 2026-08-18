@@ -35,7 +35,7 @@ describe('buildAssistantReportHtml', () => {
     expect(html).toContain('Acme Shop');
     expect(html).toContain('0200000000');
     expect(html).toContain('hello@acme.test');
-    expect(html).toContain('iBIS Insight Report');
+    expect(html).toContain('Ayebia Insight Report');
     expect(html).toContain('Today');
     expect(html).toContain('How much did I sell today?');
     expect(html).toContain('https://cdn.example.com/logo.png');

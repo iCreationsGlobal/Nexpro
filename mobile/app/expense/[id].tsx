@@ -64,11 +64,11 @@ export default function ExpenseDetailScreen() {
 
   const updateMutation = useMutation({
     mutationFn: (payload: object) => expenseService.updateExpense(String(id), payload),
-    onSuccess: async () => {
-      await refetch();
-      await refreshAfterExpense(queryClient);
+    onSuccess: () => {
       setEditOpen(false);
       Alert.alert('Success', 'Expense updated');
+      void refetch();
+      void refreshAfterExpense(queryClient);
     },
     onError: (err: unknown) => {
       Alert.alert('Update failed', getApiErrorMessage(err, 'Could not update expense'));
@@ -120,8 +120,8 @@ export default function ExpenseDetailScreen() {
           runExclusiveAction('archive', async () => {
             try {
               await expenseService.archive(expense.id);
-              await refreshAfterExpense(queryClient);
               Alert.alert('Archived', 'Expense archived');
+              void refreshAfterExpense(queryClient);
               router.back();
             } catch (err: unknown) {
               Alert.alert('Archive failed', getApiErrorMessage(err, 'Could not archive expense'));

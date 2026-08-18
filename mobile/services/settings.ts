@@ -1,6 +1,5 @@
 import { api } from './api';
-import { MAX_INLINE_IMAGE_DATA_URL_LENGTH } from '../utils/fileUtils';
-import { parseJsonStrippingOversizedInlineDataUrls } from '../utils/stripOversizedInlineDataUrls';
+import { parseJsonStrippingOversizedInlineDataUrls, sanitizeInlineImageField } from '../utils/stripOversizedInlineDataUrls';
 
 export type ProfilePayload = {
   name?: string;
@@ -31,13 +30,9 @@ function sanitizeProfileResponse<T>(payload: T): T {
     root.data && typeof root.data === 'object' && !Array.isArray(root.data)
       ? (root.data as Record<string, unknown>)
       : root;
-  const picture = data.profilePicture;
-  if (
-    typeof picture === 'string' &&
-    picture.startsWith('data:') &&
-    picture.length > MAX_INLINE_IMAGE_DATA_URL_LENGTH
-  ) {
-    data.profilePicture = '';
+  const picture = sanitizeInlineImageField(data.profilePicture);
+  if (picture !== undefined) {
+    data.profilePicture = picture ?? '';
   }
   return payload;
 }

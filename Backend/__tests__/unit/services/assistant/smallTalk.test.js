@@ -54,7 +54,7 @@ describe('smallTalk', () => {
       const out = trySmallTalk('hi', { businessType: 'shop' });
       expect(out.matched).toBe(true);
       expect(out.intent).toBe(SMALL_TALK_INTENTS.GREETING);
-      expect(out.answerMarkdown).toMatch(/iBIS/i);
+      expect(out.answerMarkdown).toMatch(/Ayebia/i);
       expect(out.answerMarkdown).not.toMatch(/GHS|\$\d|revenue of|sold \d/i);
       expect(out.meta.source).toBe('small_talk');
       expect(out.meta.suggestedQuestions?.length).toBeGreaterThan(0);
@@ -64,7 +64,7 @@ describe('smallTalk', () => {
       const out = trySmallTalk('who are you?', { businessType: 'printing_press' });
       expect(out.matched).toBe(true);
       expect(out.intent).toBe(SMALL_TALK_INTENTS.IDENTITY);
-      expect(out.answerMarkdown).toMatch(/iBIS/i);
+      expect(out.answerMarkdown).toMatch(/Ayebia/i);
       expect(out.answerMarkdown).toMatch(/jobs/i);
     });
 

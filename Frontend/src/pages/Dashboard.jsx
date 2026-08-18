@@ -11,6 +11,7 @@ import DashboardJobsTable from '../components/DashboardJobsTable';
 import { showSuccess, showError, showWarning } from '../utils/toast';
 import { formatPeriodLabel } from '../utils/formatPeriodLabel';
 import { buildAskAiUrl } from '../utils/buildAskAiUrl';
+import { IBIS_ASK_LABEL, IBIS_NAME } from '@/constants/ibis';
 import { getCoreTypeForBusinessSubType } from '@/constants/businessTypes';
 import { cn } from '@/lib/utils';
 import {
@@ -259,7 +260,7 @@ const buildFallbackInsight = ({ businessHealthContext }) => {
 
   return {
     title: 'Your dashboard is ready',
-    body: 'Ask iBIS to explain trends, collections, stock, or next steps for this period.',
+    body: `Ask ${IBIS_NAME} to explain trends, collections, stock, or next steps for this period.`,
   };
 };
 
@@ -1188,7 +1189,7 @@ const Dashboard = () => {
                   }))
                 }
               >
-                Ask iBIS
+                {IBIS_ASK_LABEL}
                 <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>

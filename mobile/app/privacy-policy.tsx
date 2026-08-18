@@ -1,9 +1,10 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { StackPageHeader } from '@/components/StackPageHeader';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
+import { PUBLIC_PRIVACY_POLICY_URL } from '@/constants/legal';
 
 const sections = [
   {
@@ -39,7 +40,7 @@ const sections = [
 ];
 
 export default function PrivacyPolicyScreen() {
-  const { bg, textColor, mutedColor } = useScreenColors();
+  const { colors, textColor, mutedColor } = useScreenColors();
 
   return (
     <ScreenShell style={styles.screen}>
@@ -48,6 +49,16 @@ export default function PrivacyPolicyScreen() {
         <Text style={[styles.intro, { color: mutedColor }]}>
           This policy explains how African Business Suite (ABS) collects, uses, and protects information in the mobile app.
         </Text>
+        <Pressable
+          onPress={() => Linking.openURL(PUBLIC_PRIVACY_POLICY_URL)}
+          accessibilityRole="link"
+          style={styles.webLinkWrap}
+        >
+          <Text style={[styles.webLink, { color: colors.tint }]}>
+            View full privacy policy on the web
+          </Text>
+          <Text style={[styles.webUrl, { color: mutedColor }]}>{PUBLIC_PRIVACY_POLICY_URL}</Text>
+        </Pressable>
         {sections.map((section) => (
           <View key={section.title} style={styles.section}>
             <Text style={[styles.sectionTitle, { color: textColor }]}>{section.title}</Text>
@@ -62,7 +73,10 @@ export default function PrivacyPolicyScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
-  intro: { fontSize: 15, lineHeight: 22, marginBottom: 20 },
+  intro: { fontSize: 15, lineHeight: 22, marginBottom: 12 },
+  webLinkWrap: { marginBottom: 20 },
+  webLink: { fontSize: 15, fontWeight: '600', marginBottom: 4 },
+  webUrl: { fontSize: 13, lineHeight: 18 },
   section: { marginBottom: 20 },
   sectionTitle: { fontSize: 17, fontWeight: '700', marginBottom: 8 },
   sectionBody: { fontSize: 15, lineHeight: 22 },

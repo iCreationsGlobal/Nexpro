@@ -37,7 +37,7 @@ export function IbisMoreSheet({
   return (
     <AppBottomSheet
       visible={visible}
-      title="iBIS"
+      title="Ayebia"
       onClose={onClose}
       height={APP_SHEET_HEIGHT_COMPACT}
     >

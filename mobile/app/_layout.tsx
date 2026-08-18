@@ -7,7 +7,7 @@ import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_7
 import { Stack, usePathname, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
-import { AppState, AppStateStatus, Text, TextInput, View } from 'react-native';
+import { AppState, AppStateStatus, Pressable, Text, TextInput, View } from 'react-native';
 import 'react-native-reanimated';
 import { offlineQueueService } from '@/services/offlineQueueService';
 import { refreshAfterSale } from '@/utils/queryInvalidation';
@@ -26,7 +26,41 @@ import { FontFamily } from '@/constants/typography';
 import { getCurrentNetworkOnline, registerReactQueryOnlineManager } from '@/utils/connectivity';
 import { observeSellerNotificationResponses, registerPushNotifications } from '@/utils/pushNotifications';
 
-export { ErrorBoundary } from 'expo-router';
+type RouteErrorBoundaryProps = {
+  error: Error;
+  retry: () => Promise<void> | void;
+};
+
+/**
+ * Local boundary — do not re-export from `expo-router`. That import is circular
+ * (`expo-router` loads this layout before `ErrorBoundary` exists) and crashes
+ * Profile / other lazy stack screens with: Cannot read property 'ErrorBoundary' of undefined.
+ */
+export function ErrorBoundary({ error, retry }: RouteErrorBoundaryProps) {
+  return (
+    <View style={{ flex: 1, backgroundColor: '#000', padding: 24, justifyContent: 'center' }}>
+      <Text style={{ color: '#fff', fontSize: 24, fontWeight: '700' }}>Something went wrong</Text>
+      <Text style={{ color: '#fff', fontSize: 16, marginTop: 8 }}>
+        {error?.message || 'Unknown error'}
+      </Text>
+      <Pressable
+        onPress={() => {
+          void retry();
+        }}
+        style={{
+          marginTop: 24,
+          borderWidth: 2,
+          borderColor: '#fff',
+          paddingVertical: 12,
+          paddingHorizontal: 24,
+          alignItems: 'center',
+        }}
+      >
+        <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>Retry</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export const unstable_settings = {
   initialRouteName: 'index',
@@ -162,17 +196,18 @@ export default function RootLayout() {
         persister: asyncStoragePersister,
         // Only persist queries that are marked as persistent
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        // Bust caches that may include multi-MB product image data URLs (Products OOM).
+        buster: 'abs-rq-v3-no-inline-api-images',
         // Dehydrate options - only persist successful queries
         dehydrateOptions: {
           shouldDehydrateQuery: (query) => {
-            // Don't persist auth-related queries or mutations
-            const queryKey = query.queryKey[0] as string;
-            return (
-              query.state.status === 'success' &&
-              !queryKey.includes('auth') &&
-              !queryKey.includes('login') &&
-              !queryKey.includes('register')
-            );
+            // Don't persist auth/profile (avatars) or products (image payloads).
+            const keyParts = Array.isArray(query.queryKey) ? query.queryKey : [];
+            const keyText = keyParts.map((part) => String(part ?? '')).join(':');
+            if (query.state.status !== 'success') return false;
+            if (!keyText) return false;
+            if (/(^|:)(auth|login|register|profile|products)(:|$)/i.test(keyText)) return false;
+            return true;
           },
         },
       }}

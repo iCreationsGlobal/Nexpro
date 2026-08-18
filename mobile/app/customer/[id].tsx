@@ -298,25 +298,25 @@ export default function CustomerDetailScreen() {
   ].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   const customerPrimaryIsCreateJob = isStudio;
   const customerMoreActions: DetailMoreAction[] = [
-    ...(customerPrimaryIsCreateJob && canManageCustomer
-      ? [{
-          key: 'edit',
-          label: 'Edit customer',
-          icon: 'edit' as const,
-          onPress: openEdit,
-          disabled: isAnyActionActive,
-        }]
-      : []),
     ...(canManageCustomer
-      ? [{
-          key: 'delete',
-          label: 'Delete',
-          icon: 'trash' as const,
-          variant: 'danger' as const,
-          onPress: handleDeleteCustomer,
-          loading: isActionActive('delete'),
-          disabled: isAnyActionActive,
-        }]
+      ? [
+          {
+            key: 'edit',
+            label: 'Edit',
+            icon: 'edit' as const,
+            onPress: openEdit,
+            disabled: isAnyActionActive,
+          },
+          {
+            key: 'delete',
+            label: 'Delete',
+            icon: 'trash' as const,
+            variant: 'danger' as const,
+            onPress: handleDeleteCustomer,
+            loading: isActionActive('delete'),
+            disabled: isAnyActionActive,
+          },
+        ]
       : []),
   ];
 
@@ -407,11 +407,12 @@ export default function CustomerDetailScreen() {
               onPress={handleCreateJob}
               disabled={isAnyActionActive}
             />
-          ) : canManageCustomer ? (
+          ) : null}
+          {canManageCustomer ? (
             <DetailActionButton
-              label="Edit customer"
+              label="Edit"
               icon="edit"
-              variant="primary"
+              variant={customerPrimaryIsCreateJob ? 'outline' : 'primary'}
               onPress={openEdit}
               disabled={isAnyActionActive}
             />

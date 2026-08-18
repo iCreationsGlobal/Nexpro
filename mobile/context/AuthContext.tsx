@@ -9,6 +9,7 @@ import { shouldSuppressAppGuidance } from '@/utils/appGuidanceEligibility';
 import { isOnboardingComplete } from '@/utils/onboardingStatus';
 import { membershipTenantId, normalizeMemberships } from '@/utils/membership';
 import { getCurrentNetworkOnline } from '@/utils/connectivity';
+import { sanitizeAuthUserForMobile } from '@/utils/stripOversizedInlineDataUrls';
 
 type User = {
   id: string;
@@ -286,7 +287,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         memberships: m,
         defaultTenantId,
       });
-      setUser(userData);
+      setUser(sanitizeAuthUserForMobile(userData));
       setMemberships(m as Membership[]);
       if (defaultTenantId) await setActiveTenantId(defaultTenantId);
     }
@@ -310,7 +311,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const payload = res?.data ?? res;
     const u = payload?.user ?? null;
     const m = normalizeMemberships(payload?.memberships ?? payload?.tenantMemberships ?? []) as Membership[];
-    setUser(u);
+    setUser(sanitizeAuthUserForMobile(u));
     setMemberships(m);
     const tid =
       payload?.defaultTenantId ??
@@ -358,7 +359,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = res?.data ?? res;
       const u = data?.user ?? null;
       const m = normalizeMemberships(data?.memberships ?? data?.tenantMemberships ?? []) as Membership[];
-      setUser(u);
+      setUser(sanitizeAuthUserForMobile(u));
       setMemberships(m);
       const tid =
         data?.defaultTenantId ??
@@ -384,7 +385,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = res?.data ?? res;
       const u = data?.user ?? null;
       const m = normalizeMemberships(data?.memberships ?? data?.tenantMemberships ?? []) as Membership[];
-      setUser(u);
+      setUser(sanitizeAuthUserForMobile(u));
       setMemberships(m);
       const tid =
         data?.defaultTenantId ??
@@ -423,7 +424,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           activeTenantId: storedTenantId ?? 'none',
         });
 
-        if (mounted && storedUser) setUser(storedUser);
+        if (mounted && storedUser) setUser(sanitizeAuthUserForMobile(storedUser));
         if (mounted && storedMemberships?.length) setMemberships(storedMemberships);
 
         // Resolve activeTenantId from stored data (prefer stored if valid, then default, then first)
@@ -473,7 +474,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 const defaultTenantId =
                   resolveInitialTenant(m, resolvedTenantId ?? storedTenantId ?? bootstrapData.activeTenantId ?? null);
                 seedBootstrapQueryCache(bootstrapData, defaultTenantId);
-                if (user) setUser(user);
+                if (user) setUser(sanitizeAuthUserForMobile(user));
                 setMemberships(m);
                 await authService.persistAuthPayload({
                   user: user ?? undefined,

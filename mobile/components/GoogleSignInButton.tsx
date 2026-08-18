@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Text, Pressable, StyleSheet, ActivityIndicator, View } from 'react-native';
+import { Text, Pressable, StyleSheet, ActivityIndicator, View, Platform } from 'react-native';
 import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 
-import { AppIcon, type AppIconName } from '@/components/AppIcon';
-const PRIMARY = '#166534';
+import { AppIcon } from '@/components/AppIcon';
+
+WebBrowser.maybeCompleteAuthSession();
 
 type Props = {
   webClientId: string;
@@ -16,9 +18,8 @@ type Props = {
 };
 
 /**
- * Google Sign-In button using expo-auth-session.
- * Requires client IDs from Google Cloud.
- * For now, we fall back to webClientId on native if platform-specific IDs are not provided.
+ * Google Sign-In via expo-auth-session.
+ * Prefer platform OAuth clients for store builds; webClientId is always required by the library.
  */
 export function GoogleSignInButton({
   webClientId,
@@ -33,9 +34,8 @@ export function GoogleSignInButton({
 
   const config = {
     webClientId,
-    // Fallback: use webClientId on native platforms if specific IDs not provided
-    iosClientId: iosClientId || webClientId,
-    androidClientId: androidClientId || webClientId,
+    ...(iosClientId ? { iosClientId } : {}),
+    ...(androidClientId ? { androidClientId } : {}),
   };
 
   const [request, result, promptAsync] = Google.useIdTokenAuthRequest(config);
@@ -66,8 +66,19 @@ export function GoogleSignInButton({
       });
   }, [result, onSuccess, onError]);
 
+  const missingNativeClient =
+    (Platform.OS === 'ios' && !iosClientId) || (Platform.OS === 'android' && !androidClientId);
+
   const handlePress = () => {
     if (!request || loading || disabled) return;
+    if (missingNativeClient && !__DEV__) {
+      onError(
+        Platform.OS === 'ios'
+          ? 'Google Sign-In is not configured for iOS yet. Use email and password, or contact support.'
+          : 'Google Sign-In is not configured for Android yet. Use email and password, or contact support.',
+      );
+      return;
+    }
     promptAsync();
   };
 

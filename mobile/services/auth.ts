@@ -6,7 +6,8 @@ import { STORAGE_KEYS } from '@/constants';
 import { membershipTenantId, normalizeMemberships } from '@/utils/membership';
 import {
   parseJsonStrippingOversizedInlineDataUrls,
-  stripOversizedInlineDataUrlsFromJsonText,
+  sanitizeAuthUserForMobile,
+  stripInlineDataUrlsFromJsonText,
 } from '@/utils/stripOversizedInlineDataUrls';
 
 const AUTH_STORAGE_KEYS = {
@@ -30,8 +31,9 @@ async function persistAuthPayload(payload: {
     setApiAuthToken(token);
   }
   if (user) {
-    const raw = JSON.stringify(user);
-    const cleaned = stripOversizedInlineDataUrlsFromJsonText(raw);
+    const safeUser = sanitizeAuthUserForMobile(user as { profilePicture?: unknown });
+    const raw = JSON.stringify(safeUser);
+    const cleaned = stripInlineDataUrlsFromJsonText(raw);
     await AsyncStorage.setItem(AUTH_STORAGE_KEYS.user, cleaned);
   }
   await AsyncStorage.setItem(AUTH_STORAGE_KEYS.memberships, JSON.stringify(normalizedMemberships));
@@ -154,7 +156,7 @@ export const authService = {
   getStoredUser: async () => {
     const raw = await AsyncStorage.getItem(AUTH_STORAGE_KEYS.user);
     if (!raw) return null;
-    const cleaned = stripOversizedInlineDataUrlsFromJsonText(raw);
+    const cleaned = stripInlineDataUrlsFromJsonText(raw);
     if (cleaned !== raw) {
       await AsyncStorage.setItem(AUTH_STORAGE_KEYS.user, cleaned);
     }

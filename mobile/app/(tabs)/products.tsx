@@ -16,7 +16,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 
-import { AppIcon, type AppIconName } from '@/components/AppIcon';
+import { AppIcon } from '@/components/AppIcon';
 import { FormSheetModal } from '@/components/FormSheetModal';
 import { FORM_LABELS } from '@/constants/formLabels';
 import { productService } from '@/services/productService';
@@ -27,9 +27,9 @@ import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
 import { RestockProductSheet } from '@/components/RestockProductSheet';
-import { CURRENCY, SHOP_TYPES, resolveBusinessType } from '@/constants';
+import { SHOP_TYPES, resolveBusinessType } from '@/constants';
 import { formatCurrency } from '@/utils/formatCurrency';
-import { resolveImageUrl } from '@/utils/fileUtils';
+import { resolveDisplayImageUrl } from '@/utils/fileUtils';
 import { useRouter } from 'expo-router';
 import { useIsStoreSetupRoute } from '@/hooks/useIsStoreSetupRoute';
 
@@ -53,8 +53,16 @@ type Product = {
   trackStock?: boolean;
   unit?: string;
   imageUrl?: string | null;
+  shopId?: string | null;
   category?: { id: string; name: string };
   isActive?: boolean;
+  hasVariants?: boolean;
+  variants?: Array<{
+    id: string;
+    name: string;
+    quantityOnHand?: number;
+    isActive?: boolean;
+  }>;
 };
 
 export default function ProductsScreen() {
@@ -147,20 +155,38 @@ export default function ProductsScreen() {
   });
 
   const restockProductMutation = useMutation({
-    mutationFn: ({ productId, quantity }: { productId: string; quantity: number }) =>
-      productService.adjustStock(productId, quantity, 'delta', 'Receive stock'),
+    mutationFn: ({
+      productId,
+      quantity,
+      variantId,
+    }: {
+      productId: string;
+      quantity: number;
+      variantId?: string;
+      variantName?: string;
+    }) =>
+      productService.adjustStock(productId, quantity, 'delta', 'Receive stock', {
+        variantId,
+        type: 'receive',
+        shopId: productToRestock?.shopId || activeShopId || undefined,
+      }),
     onSuccess: async (_, variables) => {
       await refreshAfterInventoryChange(queryClient);
-      const name = productToRestock?.name || 'Product';
+      const baseName = productToRestock?.name || 'Product';
+      const label = variables.variantName ? `${baseName} — ${variables.variantName}` : baseName;
       setProductToRestock(null);
-      Alert.alert('Success', `Added ${variables.quantity} to ${name}`);
+      Alert.alert('Success', `Added ${variables.quantity} to ${label}`);
     },
     onError: (error: unknown) => {
       Alert.alert('Error', getApiErrorMessage(error, 'Failed to restock product'));
     },
   });
 
-  const products = useMemo(() => parseApiListResponse<Product>(response), [response]);
+  const products = useMemo(() => {
+    const list = parseApiListResponse<Product>(response);
+    // Drop malformed rows so FlatList keyExtractor / render never throw.
+    return list.filter((item): item is Product => Boolean(item && typeof item === 'object' && item.id));
+  }, [response]);
   const loadErrorMessage = useMemo(
     () => getApiErrorMessage(error, 'Could not load products. Pull to refresh.'),
     [error]
@@ -179,9 +205,14 @@ export default function ProductsScreen() {
   }, []);
 
   const handleRestockSubmit = useCallback(
-    (quantity: number) => {
+    (payload: { quantity: number; variantId?: string; variantName?: string }) => {
       if (!productToRestock?.id) return;
-      restockProductMutation.mutate({ productId: productToRestock.id, quantity });
+      restockProductMutation.mutate({
+        productId: productToRestock.id,
+        quantity: payload.quantity,
+        variantId: payload.variantId,
+        variantName: payload.variantName,
+      });
     },
     [productToRestock?.id, restockProductMutation]
   );
@@ -212,7 +243,7 @@ export default function ProductsScreen() {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.85,
+        quality: 0.55,
       });
       if (result.canceled || !result.assets[0]?.uri) return;
       await uploadProductImageFromAsset(result.assets[0]);
@@ -232,7 +263,7 @@ export default function ProductsScreen() {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.85,
+        quality: 0.55,
       });
       if (result.canceled || !result.assets[0]?.uri) return;
       await uploadProductImageFromAsset(result.assets[0]);
@@ -292,10 +323,16 @@ export default function ProductsScreen() {
     });
   }, [formData, createProductMutation, uploadingImage, isRestaurant]);
 
+  // Must stay above early returns — auth/businessType can resolve after first paint.
+  const addFormImageUri = useMemo(() => {
+    if (imagePreviewUri) return imagePreviewUri;
+    if (formData.imageUrl.trim()) return resolveDisplayImageUrl(formData.imageUrl) || null;
+    return null;
+  }, [imagePreviewUri, formData.imageUrl]);
+
   if (!hasFeature('products')) {
     return <FeatureAccessDenied message="Products are not enabled for this workspace." />;
   }
-
 
   if (!isRetailLike) {
     return (
@@ -310,23 +347,12 @@ export default function ProductsScreen() {
 
   const awaitingShop = isShopWorkspace && !scopeReady;
 
-  const addFormImageUri = useMemo(() => {
-    if (imagePreviewUri) return imagePreviewUri;
-    if (formData.imageUrl.trim()) return resolveImageUrl(formData.imageUrl);
-    return null;
-  }, [imagePreviewUri, formData.imageUrl]);
-
   const screenWidth = Dimensions.get('window').width;
   const cardWidth = (screenWidth - 16 * 2 - 12) / 2; // padding + gap between cards
 
   const renderProductItem = ({ item }: { item: Product }) => {
-    const imageUrl = item.imageUrl;
-    const hasImage = imageUrl && 
-                     typeof imageUrl === 'string' &&
-                     imageUrl.trim() !== '' && 
-                     imageUrl !== 'null' && 
-                     imageUrl !== 'undefined' &&
-                     !imageUrl.startsWith('undefined');
+    const displayImageUrl = resolveDisplayImageUrl(item.imageUrl);
+    const hasImage = Boolean(displayImageUrl);
     const quantityOnHand = Number(item.quantityOnHand ?? 0);
     const reorderLevel = Number(item.reorderLevel ?? 10);
     const shouldShowRestock =
@@ -347,7 +373,7 @@ export default function ProductsScreen() {
         <View style={styles.cardImageContainer}>
           {hasImage ? (
             <Image
-              source={{ uri: resolveImageUrl(imageUrl) }}
+              source={{ uri: displayImageUrl }}
               style={styles.cardImage}
               contentFit="cover"
             />
@@ -366,15 +392,15 @@ export default function ProductsScreen() {
                 styles.stockBadge,
                 {
                   backgroundColor:
-                    item.quantityOnHand === 0
+                    quantityOnHand === 0
                       ? 'rgba(239,68,68,0.9)'
-                      : item.quantityOnHand < 10
+                      : quantityOnHand < 10
                       ? 'rgba(245,158,11,0.9)'
                       : 'rgba(16,185,129,0.9)',
                 },
               ]}
             >
-              <Text style={styles.stockBadgeText}>{item.quantityOnHand}</Text>
+              <Text style={styles.stockBadgeText}>{quantityOnHand}</Text>
             </View>
           )}
         </View>
@@ -383,20 +409,17 @@ export default function ProductsScreen() {
           <Text style={[styles.cardProductName, { color: textColor }]} numberOfLines={2}>
             {item.name || 'Unnamed Product'}
           </Text>
-          {item.sku && (
+          {item.sku ? (
             <Text style={[styles.cardSku, { color: mutedColor }]} numberOfLines={1}>
               {item.sku}
             </Text>
-          )}
+          ) : null}
           <Text style={[styles.cardPrice, { color: colors.tint }]}>
             {formatCurrency(item.sellingPrice)}
           </Text>
           {shouldShowRestock ? (
             <Pressable
-              onPress={(event) => {
-                event.stopPropagation();
-                handleOpenRestock(item);
-              }}
+              onPress={() => handleOpenRestock(item)}
               style={[styles.restockPill, { borderColor: colors.tint }]}
             >
               <AppIcon name="download" size={14} color={colors.tint} />
