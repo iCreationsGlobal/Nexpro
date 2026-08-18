@@ -186,6 +186,24 @@ const shouldSyncDenormalizedQuantity = (product, shopId) => {
 };
 
 /**
+ * Resolve displayed/used qty when overlaying a per-shop stock row onto catalog qty.
+ * Shop qty wins when it is > 0. A 0 row at the home shop (or null home) is treated
+ * as a stale placeholder and falls back to catalog qty. Non-home shops keep 0.
+ * @param {number|string|null|undefined} shopQty
+ * @param {number|string|null|undefined} catalogQty
+ * @param {boolean} isHomeShop
+ * @returns {number}
+ */
+const resolveShopOverlayQuantity = (shopQty, catalogQty, isHomeShop) => {
+  if (shopQty == null) return parseQuantity(catalogQty);
+  const shop = parseQuantity(shopQty);
+  const catalog = parseQuantity(catalogQty);
+  if (shop > 0) return shop;
+  if (isHomeShop && catalog > 0) return catalog;
+  return shop;
+};
+
+/**
  * Lock or create the per-shop stock balance row.
  * @param {object} params
  * @returns {Promise<{ row: object, previousQuantity: number, created: boolean }>}
@@ -286,7 +304,26 @@ const getShopStockQuantity = async ({
       },
       transaction,
     });
-    if (row) return parseQuantity(row.quantityOnHand);
+    if (row) {
+      const shopQty = parseQuantity(row.quantityOnHand);
+      if (shopQty > 0) return shopQty;
+
+      let p = product;
+      if (!p) {
+        p = await Product.findByPk(productId, { transaction });
+      }
+
+      let catalogQty;
+      if (productVariantId || variant) {
+        const v = variant || await ProductVariant.findByPk(productVariantId, { transaction });
+        catalogQty = parseQuantity(v?.quantityOnHand);
+      } else {
+        catalogQty = parseQuantity(p?.quantityOnHand);
+      }
+
+      const isHomeShop = p ? shouldSyncDenormalizedQuantity(p, shopId) : true;
+      return resolveShopOverlayQuantity(shopQty, catalogQty, isHomeShop);
+    }
   }
 
   if (productVariantId || variant) {
@@ -391,7 +428,7 @@ const applyStockChange = async ({
     ? parseQuantity(variant.quantityOnHand)
     : parseQuantity(product.quantityOnHand);
 
-  const { row, previousQuantity } = await lockOrCreateShopStock({
+  const { row, previousQuantity: lockedPrevious, created } = await lockOrCreateShopStock({
     tenantId,
     productId,
     productVariantId: productVariantId || null,
@@ -399,6 +436,16 @@ const applyStockChange = async ({
     fallbackQuantity: denormalizedFallback,
     transaction,
   });
+
+  let previousQuantity = lockedPrevious;
+  const canHealStaleZero = !created
+    && setTo === undefined
+    && previousQuantity === 0
+    && denormalizedFallback > 0
+    && shouldSyncDenormalizedQuantity(product, shopId);
+  if (canHealStaleZero) {
+    previousQuantity = denormalizedFallback;
+  }
 
   let newQuantity;
   if (setTo !== undefined) {
@@ -558,15 +605,29 @@ const attachShopStockToProducts = async (products, {
       ? product.get({ plain: true })
       : { ...product };
 
+    const isHomeShop = shouldSyncDenormalizedQuantity(plain, shopId);
+
     if (productQty.has(plain.id) && !plain.hasVariants) {
-      plain.quantityOnHand = productQty.get(plain.id);
+      plain.quantityOnHand = resolveShopOverlayQuantity(
+        productQty.get(plain.id),
+        plain.quantityOnHand,
+        isHomeShop
+      );
     }
 
-    if (Array.isArray(plain.variants)) {
-      plain.variants = plain.variants.map((variant) => {
+    // POS and getProduct always include variants. Simple products come back as
+    // `variants: []`. Summing that empty list was wiping parent qty to 0, so
+    // Products (no variants) showed 87 while POS/details showed Out of Stock.
+    const loadedVariants = Array.isArray(plain.variants) ? plain.variants : null;
+    if (loadedVariants && loadedVariants.length > 0) {
+      plain.variants = loadedVariants.map((variant) => {
         const v = { ...variant };
         if (variantQty.has(v.id)) {
-          v.quantityOnHand = variantQty.get(v.id);
+          v.quantityOnHand = resolveShopOverlayQuantity(
+            variantQty.get(v.id),
+            v.quantityOnHand,
+            isHomeShop
+          );
         }
         return v;
       });
@@ -607,6 +668,7 @@ module.exports = {
   recordProductStockMovement,
   MOVEMENT_TYPES,
   shouldSyncDenormalizedQuantity,
+  resolveShopOverlayQuantity,
   lockOrCreateShopStock,
   getShopStockQuantity,
   applyStockChange,

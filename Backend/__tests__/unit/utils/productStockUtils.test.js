@@ -36,7 +36,7 @@ jest.mock('../../../config/database', () => ({
 }));
 
 const { Product, ProductVariant, ProductStockMovement, ProductShopStock } = require('../../../models');
-const { applyStockChange, getShopStockQuantity } = require('../../../utils/productStockUtils');
+const { applyStockChange, getShopStockQuantity, attachShopStockToProducts } = require('../../../utils/productStockUtils');
 
 describe('productStockUtils', () => {
   beforeEach(() => {
@@ -322,6 +322,42 @@ describe('productStockUtils', () => {
       expect(shopStock.update).toHaveBeenCalledWith({ quantityOnHand: 5 }, { transaction });
       expect(product.update).not.toHaveBeenCalled();
     });
+
+    it('heals stale empty home-shop row before applying delta', async () => {
+      const product = {
+        id: 'p1',
+        tenantId: 't1',
+        shopId: 's1',
+        trackStock: true,
+        hasVariants: false,
+        quantityOnHand: 10,
+        update: jest.fn().mockResolvedValue(undefined),
+      };
+      const shopStock = {
+        id: 'ss1',
+        quantityOnHand: 0,
+        update: jest.fn().mockResolvedValue(undefined),
+      };
+
+      Product.findOne.mockResolvedValue(product);
+      ProductShopStock.findOne.mockResolvedValue(shopStock);
+      ProductStockMovement.create.mockResolvedValue({ id: 'm4' });
+
+      const result = await applyStockChange({
+        tenantId: 't1',
+        productId: 'p1',
+        shopId: 's1',
+        delta: -1,
+        type: 'sale',
+        transaction,
+      });
+
+      expect(result.previousQuantity).toBe(10);
+      expect(result.newQuantity).toBe(9);
+      expect(result.quantityDelta).toBe(-1);
+      expect(shopStock.update).toHaveBeenCalledWith({ quantityOnHand: 9 }, { transaction });
+      expect(product.update).toHaveBeenCalledWith({ quantityOnHand: 9 }, { transaction });
+    });
   });
 
   describe('getShopStockQuantity', () => {
@@ -345,6 +381,111 @@ describe('productStockUtils', () => {
         product: { quantityOnHand: 9 },
       });
       expect(qty).toBe(9);
+    });
+
+    it('falls back to catalog qty for a stale empty home-shop row', async () => {
+      ProductShopStock.findOne.mockResolvedValue({ quantityOnHand: 0 });
+      const qty = await getShopStockQuantity({
+        tenantId: 't1',
+        productId: 'p1',
+        shopId: 's1',
+        product: { shopId: 's1', quantityOnHand: 9 },
+      });
+      expect(qty).toBe(9);
+    });
+  });
+
+  describe('attachShopStockToProducts', () => {
+    it('uses catalog qty when home-shop row is 0', async () => {
+      ProductShopStock.findAll.mockResolvedValue([
+        { productId: 'p1', productVariantId: null, quantityOnHand: 0 },
+      ]);
+      const [result] = await attachShopStockToProducts(
+        [{ id: 'p1', shopId: 's1', hasVariants: false, quantityOnHand: 87 }],
+        { tenantId: 't1', shopId: 's1' }
+      );
+      expect(result.quantityOnHand).toBe(87);
+    });
+
+    it('prefers shop qty when home-shop row is > 0', async () => {
+      ProductShopStock.findAll.mockResolvedValue([
+        { productId: 'p1', productVariantId: null, quantityOnHand: 12 },
+      ]);
+      const [result] = await attachShopStockToProducts(
+        [{ id: 'p1', shopId: 's1', hasVariants: false, quantityOnHand: 87 }],
+        { tenantId: 't1', shopId: 's1' }
+      );
+      expect(result.quantityOnHand).toBe(12);
+    });
+
+    it('keeps 0 for a non-home shop row', async () => {
+      ProductShopStock.findAll.mockResolvedValue([
+        { productId: 'p1', productVariantId: null, quantityOnHand: 0 },
+      ]);
+      const [result] = await attachShopStockToProducts(
+        [{ id: 'p1', shopId: 'home-shop', hasVariants: false, quantityOnHand: 87 }],
+        { tenantId: 't1', shopId: 'other-shop' }
+      );
+      expect(result.quantityOnHand).toBe(0);
+    });
+
+    it('keeps catalog when no shop row', async () => {
+      ProductShopStock.findAll.mockResolvedValue([]);
+      const [result] = await attachShopStockToProducts(
+        [{ id: 'p1', shopId: 's1', hasVariants: false, quantityOnHand: 87 }],
+        { tenantId: 't1', shopId: 's1' }
+      );
+      expect(result.quantityOnHand).toBe(87);
+    });
+
+    it('does not zero simple-product qty when POS/detail include empty variants', async () => {
+      ProductShopStock.findAll.mockResolvedValue([
+        { productId: 'p1', productVariantId: null, quantityOnHand: 87 },
+      ]);
+      const [result] = await attachShopStockToProducts(
+        [{
+          id: 'p1',
+          shopId: 's1',
+          hasVariants: false,
+          quantityOnHand: 87,
+          variants: [],
+        }],
+        { tenantId: 't1', shopId: 's1' }
+      );
+      expect(result.quantityOnHand).toBe(87);
+    });
+
+    it('keeps catalog qty for simple products with empty variants and no shop row', async () => {
+      ProductShopStock.findAll.mockResolvedValue([]);
+      const [result] = await attachShopStockToProducts(
+        [{
+          id: 'p1',
+          shopId: 's1',
+          hasVariants: false,
+          quantityOnHand: 526,
+          variants: [],
+        }],
+        { tenantId: 't1', shopId: 's1' }
+      );
+      expect(result.quantityOnHand).toBe(526);
+    });
+
+    it('overlays variant qty from catalog when home-shop variant row is 0', async () => {
+      ProductShopStock.findAll.mockResolvedValue([
+        { productId: 'p1', productVariantId: 'v1', quantityOnHand: 0 },
+      ]);
+      const [result] = await attachShopStockToProducts(
+        [{
+          id: 'p1',
+          shopId: 's1',
+          hasVariants: true,
+          quantityOnHand: 0,
+          variants: [{ id: 'v1', quantityOnHand: 10, isActive: true }],
+        }],
+        { tenantId: 't1', shopId: 's1' }
+      );
+      expect(result.variants[0].quantityOnHand).toBe(10);
+      expect(result.quantityOnHand).toBe(10);
     });
   });
 });

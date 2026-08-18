@@ -522,6 +522,16 @@ exports.getProduct = async (req, res, next) => {
   try {
     const product = await Product.findOne({
       where: applyTenantFilter(req.tenantId, { id: req.params.id }),
+      attributes: {
+        include: [
+          [Product.sequelize.literal(`(
+            SELECT COALESCE(SUM(pv."quantityOnHand"), 0)
+            FROM product_variants pv
+            WHERE pv."productId" = "Product"."id"
+              AND pv."isActive" = true
+          )`), 'totalVariantStock'],
+        ],
+      },
       include: [
         { model: Shop, as: 'shop', attributes: ['id', 'name'] },
         { model: ProductCategory, as: 'category', attributes: ['id', 'name'] },
@@ -547,7 +557,7 @@ exports.getProduct = async (req, res, next) => {
     }
 
     let data = stripSensitiveProductFields(product, req);
-    const effectiveShopId = req.query.shopId || req.shopFilterId || product.shopId || null;
+    const effectiveShopId = req.query.shopId || (req.shopScoped ? req.shopFilterId : null) || null;
     if (effectiveShopId) {
       const [withShopQty] = await attachShopStockToProducts(
         [typeof data?.get === 'function' ? data.get({ plain: true }) : data],

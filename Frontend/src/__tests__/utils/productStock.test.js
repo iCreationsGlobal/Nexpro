@@ -7,8 +7,12 @@ import {
 } from '../../utils/productStock';
 
 describe('getProductStockQuantity', () => {
-  it('returns parent quantity for simple products', () => {
-    expect(getProductStockQuantity({ hasVariants: false, quantityOnHand: 12 })).toBe(12);
+  it('returns parent quantity for simple products with an empty variants array', () => {
+    expect(getProductStockQuantity({
+      hasVariants: false,
+      quantityOnHand: 87,
+      variants: [],
+    })).toBe(87);
   });
 
   it('sums active variant stock even when parent quantityOnHand is 0', () => {
