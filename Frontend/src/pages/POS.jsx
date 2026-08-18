@@ -78,6 +78,13 @@ import { normalizePhone, validatePhone } from '../utils/phoneUtils';
 import { mergeBranchOrganization } from '../utils/branchOrganization';
 import { CURRENCY, DEBOUNCE_DELAYS, QUERY_CACHE } from '../constants';
 import { formatAmount } from '../utils/formatNumber';
+import {
+  getActiveVariants,
+  getCatalogUnitPrice,
+  getProductStockQuantity,
+  isProductOutOfStock,
+  isVariantOutOfStock,
+} from '../utils/productStock';
 import { FEATURE_NOT_AVAILABLE } from '../constants/microcopy';
 import { QUERY_STALE, refreshAfterSale } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
@@ -99,40 +106,12 @@ const getProductCode = (product) => {
   return String(alias || '').trim();
 };
 
-const isProductOutOfStock = (product) => {
-  if (!product || product.trackStock === false) return false;
-  const variants = getActiveVariants(product);
-  if (variants.length > 0) {
-    return variants.every((variant) => isVariantOutOfStock(product, variant));
-  }
-  const qty = Number(product.quantityOnHand);
-  return Number.isFinite(qty) && qty <= 0;
-};
-
-const getActiveVariants = (product) => (
-  Array.isArray(product?.variants)
-    ? product.variants.filter((variant) => variant?.isActive !== false)
-    : []
-);
-
-const isVariantOutOfStock = (product, variant) => {
-  if (!variant || product?.trackStock === false || variant.trackStock === false) return false;
-  const qty = Number(variant.quantityOnHand);
-  return Number.isFinite(qty) && qty <= 0;
-};
-
 const getVariantLabel = (variant) => {
   if (!variant) return '';
   const attributeText = Object.values(variant.attributes || {})
     .filter(Boolean)
     .join(' / ');
   return variant.name || attributeText || variant.sku || 'Variant';
-};
-
-const getCatalogUnitPrice = (product, variant = null) => {
-  const value = variant?.sellingPrice ?? product?.sellingPrice ?? 0;
-  const price = Number(value);
-  return Number.isFinite(price) ? price : 0;
 };
 
 const buildCartItemFromProduct = (product, variant = null) => {
@@ -156,7 +135,7 @@ const buildCartItemFromProduct = (product, variant = null) => {
     discount: 0,
     tax: 0,
     trackStock: variant?.trackStock ?? product?.trackStock,
-    quantityOnHand: variant?.quantityOnHand ?? product?.quantityOnHand,
+    quantityOnHand: variant?.quantityOnHand ?? getProductStockQuantity(product),
   };
 };
 
@@ -195,7 +174,7 @@ const ProductVariantDialog = ({ product, open, onClose, onSelect }) => {
                       </div>
                     </div>
                     <div className="text-right text-sm">
-                      <div className="font-semibold text-green-700">{formatAmount(variant.sellingPrice ?? product?.sellingPrice)}</div>
+                      <div className="font-semibold text-green-700">{formatAmount(getCatalogUnitPrice(product, variant))}</div>
                       <div className="text-xs text-muted-foreground">
                         {variant.trackStock === false || product?.trackStock === false
                           ? 'Made to order'

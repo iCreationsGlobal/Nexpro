@@ -27,6 +27,7 @@ import {
   getPagePrompts,
 } from '@/constants/assistantPrompts';
 import { resolveAssistantPeriodForMessage } from '@/utils/assistantPeriod';
+import { IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY } from '@/constants/ibis';
 
 type Message = {
   id: string;
@@ -439,11 +440,11 @@ export default function ChatScreen() {
             </View>
 
             <View style={[styles.lockBanner, { backgroundColor: theme.dateChip }]}>
-              <View style={styles.lockIconRow}>
-                <AppIcon name="lock" size={12} color={theme.lock} />
-              </View>
+              <Text style={[styles.welcomeGreeting, { color: theme.dateText }]}>
+                {IBIS_WELCOME_GREETING}
+              </Text>
               <Text style={[styles.lockText, { color: theme.lock }]}>
-                Messages to iBIS stay in your ABS workspace. Ask about sales, stock, jobs, or how to use ABS.
+                {IBIS_WELCOME_SUBCOPY}
               </Text>
             </View>
           </ScrollView>
@@ -626,7 +627,7 @@ const styles = StyleSheet.create({
     maxWidth: 320,
     gap: 6,
   },
-  lockIconRow: { marginBottom: 2 },
+  welcomeGreeting: { fontSize: 14, lineHeight: 20, textAlign: 'center', fontWeight: '600' },
   lockText: { fontSize: 12, lineHeight: 17, textAlign: 'center' },
   list: { paddingHorizontal: 10, paddingTop: 8, paddingBottom: 12 },
   bubbleRow: { marginBottom: 4, paddingHorizontal: 4 },

@@ -59,6 +59,13 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { useDebounce } from '../../hooks/useDebounce';
 import { CURRENCY } from '../../constants';
 import { parseDecimalInput } from '../../utils/formatNumber';
+import {
+  getActiveVariants,
+  getCatalogUnitPrice,
+  getProductStockQuantity,
+  isProductOutOfStock,
+  isVariantOutOfStock,
+} from '../../utils/productStock';
 import { showSuccess, showError } from '../../utils/toast';
 import customerService from '../../services/customerService';
 
@@ -77,40 +84,12 @@ const generateCartItemId = () => {
   return `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 };
 
-const getActiveVariants = (product) => (
-  Array.isArray(product?.variants)
-    ? product.variants.filter((variant) => variant?.isActive !== false)
-    : []
-);
-
 const getVariantLabel = (variant) => {
   if (!variant) return '';
   const attributeText = Object.values(variant.attributes || {})
     .filter(Boolean)
     .join(' / ');
   return variant.name || attributeText || variant.sku || 'Variant';
-};
-
-const getCatalogUnitPrice = (product, variant = null) => {
-  const value = variant?.sellingPrice ?? product?.sellingPrice ?? 0;
-  const price = Number(value);
-  return Number.isFinite(price) ? price : 0;
-};
-
-const isVariantOutOfStock = (product, variant) => {
-  if (!variant || product?.trackStock === false || variant.trackStock === false) return false;
-  const qty = Number(variant.quantityOnHand);
-  return Number.isFinite(qty) && qty <= 0;
-};
-
-const isProductOutOfStock = (product) => {
-  if (!product || product.trackStock === false) return false;
-  const variants = getActiveVariants(product);
-  if (variants.length > 0) {
-    return variants.every((variant) => isVariantOutOfStock(product, variant));
-  }
-  const qty = Number(product.quantityOnHand);
-  return Number.isFinite(qty) && qty <= 0;
 };
 
 const buildCartItem = (product, variant = null) => {
@@ -131,7 +110,7 @@ const buildCartItem = (product, variant = null) => {
     discount: 0,
     tax: 0,
     trackStock: variant?.trackStock ?? product?.trackStock,
-    quantityOnHand: variant?.quantityOnHand ?? product?.quantityOnHand,
+    quantityOnHand: variant?.quantityOnHand ?? getProductStockQuantity(product),
   };
 };
 
@@ -164,7 +143,7 @@ const ProductVariantDialog = ({ product, open, onClose, onSelect }) => {
                       <div className="text-xs text-muted-foreground">{variant.sku || 'No SKU'}</div>
                     </div>
                     <div className="text-right text-sm">
-                      <div className="font-semibold text-green-700">{formatCurrency(variant.sellingPrice ?? product?.sellingPrice)}</div>
+                      <div className="font-semibold text-green-700">{formatCurrency(getCatalogUnitPrice(product, variant))}</div>
                       <div className="text-xs text-muted-foreground">
                         {product?.trackStock === false || variant.trackStock === false
                           ? 'Made to order'

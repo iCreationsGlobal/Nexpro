@@ -34,9 +34,10 @@ import { useDebounce } from '../../hooks/useDebounce';
 import { useResponsive } from '../../hooks/useResponsive';
 import { DEBOUNCE_DELAYS } from '../../constants';
 import { formatAmount } from '../../utils/formatNumber';
-import { getProductStockQuantity } from '../../utils/productStock';
+import { getProductStockQuantity, getCatalogUnitPrice } from '../../utils/productStock';
 import { parseProductQRPayload } from '../../utils/productQR';
 import { resolveImageUrl } from '../../utils/fileUtils';
+import { getPosProductDisplayName } from '../../utils/posProductDisplayName';
 import api from '../../services/api';
 
 /**
@@ -47,7 +48,7 @@ const ProductPriceDisplay = memo(function ProductPriceDisplay({
   dealerPrice,
   className,
 }) {
-  const retail = Number(product?.sellingPrice);
+  const retail = Number(getCatalogUnitPrice(product));
   const dealerUnit = dealerPrice?.unitPrice != null ? Number(dealerPrice.unitPrice) : null;
   const showDealer = dealerUnit != null && Number.isFinite(dealerUnit);
   const retailDiffers = showDealer
@@ -170,7 +171,7 @@ const ProductItem = memo(function ProductItem({
         {product.imageUrl && (
           <img
             src={resolveImageUrl(product.imageUrl) || ''}
-            alt={product.name}
+            alt={getPosProductDisplayName(product)}
             className="relative z-10 w-full h-full object-contain"
             onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
@@ -184,7 +185,7 @@ const ProductItem = memo(function ProductItem({
 
       {/* Product details */}
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-foreground truncate">{product.name}</p>
+        <p className="font-medium text-foreground truncate">{getPosProductDisplayName(product)}</p>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>SKU: {product.sku}</span>
           {product.barcode && (
@@ -252,13 +253,14 @@ const ProductCard = memo(function ProductCard({
   const isLowStock = trackStock && quantityOnHand <= reorder;
   const isOutOfStock = trackStock && quantityOnHand <= 0;
   const inCart = quantityInCart > 0;
+  const displayName = getPosProductDisplayName(product);
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <div
           className={cn(
-            'rounded-lg border p-3 flex flex-col transition-colors cursor-pointer min-h-[260px] relative',
+            'rounded-lg border p-3 flex flex-col transition-colors cursor-pointer relative',
             isOutOfStock
               ? 'border-muted bg-muted opacity-60 cursor-not-allowed'
               : inCart
@@ -282,24 +284,24 @@ const ProductCard = memo(function ProductCard({
           )}
         </div>
       )}
-      <div className="w-full aspect-square bg-muted rounded-md flex items-center justify-center flex-shrink-0 mb-2 relative overflow-hidden">
+      <div className="w-full h-28 sm:h-32 bg-muted rounded-md flex items-center justify-center flex-shrink-0 mb-2 relative overflow-hidden">
         <div className="absolute inset-0 flex items-center justify-center bg-muted pointer-events-none" aria-hidden>
           <Package className="h-8 w-8 text-muted-foreground" />
         </div>
         {product.imageUrl && (
           <img
             src={resolveImageUrl(product.imageUrl) || ''}
-            alt={product.name}
+            alt={displayName}
             className="relative z-10 w-full h-full object-contain"
             onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
         )}
       </div>
-      <p className="font-medium text-foreground text-sm leading-5 line-clamp-2 min-h-[2.5rem]" title={product.name}>
-        {product.name}
+      <p className="font-medium text-foreground text-sm leading-5 line-clamp-2 min-h-[2.5rem] shrink-0" title={displayName}>
+        {displayName}
       </p>
-      <ProductPriceDisplay product={product} dealerPrice={dealerPrice} className="mt-1 text-left" />
-      <div className="mt-1.5">
+      <ProductPriceDisplay product={product} dealerPrice={dealerPrice} className="mt-1 text-left shrink-0" />
+      <div className="mt-1.5 shrink-0">
         {!trackStock ? (
           <span className="text-xs text-muted-foreground">Made to order</span>
         ) : isOutOfStock ? (
@@ -1219,7 +1221,7 @@ const QRCodeScanner = ({
 const BROWSE_LIST_SIZE = 60;
 const POS_RESULTS_VIRT_MIN = 32;
 const POS_LIST_ROW_EST = 92;
-const POS_GRID_ROW_EST = 300;
+const POS_GRID_ROW_EST = 260;
 
 function POSVirtualProductList({
   scrollRef,
@@ -1306,12 +1308,11 @@ function POSVirtualProductGrid({
             className="absolute left-0 top-0 w-full px-0.5"
             style={{
               transform: `translateY(${vi.start}px)`,
-              height: `${vi.size}px`,
             }}
           >
             <div
               className={cn(
-                'grid h-full gap-2',
+                'grid gap-2 pb-2',
                 columnCount === 2 && 'grid-cols-2',
                 columnCount === 3 && 'grid-cols-3'
               )}

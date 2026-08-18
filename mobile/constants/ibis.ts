@@ -1,13 +1,8 @@
 /**
  * iBIS — iCreations Business Intelligence System
- * Product name for Ask AI / floating assistant across web and docs.
+ * Product name and empty-state welcome (aligned with Frontend/src/constants/ibis.js).
  */
 export const IBIS_NAME = 'iBIS';
-export const IBIS_FULL_NAME = 'iCreations Business Intelligence System';
-export const IBIS_ASK_LABEL = 'Ask iBIS';
-export const IBIS_SHORT_TAGLINE = 'Business insights for your workspace';
-
-/** Empty-state / first-load welcome (Ask iBIS page and floating panel). */
 export const IBIS_WELCOME_GREETING =
   "Hi 👋 I'm iBIS, your business intelligence assistant. How can I help you today?";
 export const IBIS_WELCOME_SUBCOPY =

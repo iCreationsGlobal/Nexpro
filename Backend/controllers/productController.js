@@ -427,8 +427,8 @@ exports.getProducts = async (req, res, next) => {
         tenantId: req.tenantId,
         shopId: effectiveShopId,
       });
-      listData = listData.map((p) => applyEffectiveProductQuantity(p));
     }
+    listData = listData.map((p) => applyEffectiveProductQuantity(p));
 
     res.status(200).json({
       success: true,

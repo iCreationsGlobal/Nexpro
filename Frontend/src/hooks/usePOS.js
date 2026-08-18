@@ -7,6 +7,7 @@ import saleService from '../services/saleService';
 import { getQuickItems, setQuickItem, removeQuickItem } from '../utils/posDb';
 import { requireOnline } from '../utils/onlineRequired';
 import { useOnlineStatus } from './useOnlineStatus';
+import { getCatalogUnitPrice } from '../utils/productStock';
 
 /**
  * @returns {Object} POS functions and online status
@@ -59,7 +60,7 @@ export const usePOS = () => {
         id: product.id,
         name: product.name,
         sku: product.sku,
-        sellingPrice: product.sellingPrice,
+        sellingPrice: getCatalogUnitPrice(product),
         barcode: product.barcode,
       },
     });

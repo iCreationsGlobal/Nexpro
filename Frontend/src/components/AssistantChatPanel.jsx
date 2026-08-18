@@ -11,7 +11,7 @@ import { formatAssistantMessage } from '@/utils/assistantMessageFormatter';
 import { useAuth } from '@/context/AuthContext';
 import { getAssistantPromptSets } from '@/constants/assistantPrompts';
 import { resolveAssistantPeriodForMessage } from '@/utils/assistantPeriod';
-import { IBIS_ASK_LABEL, IBIS_NAME } from '@/constants/ibis';
+import { IBIS_ASK_LABEL, IBIS_NAME, IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY } from '@/constants/ibis';
 import { IbisMoreMenu } from '@/components/IbisMoreMenu';
 import { useIbisChatPreferences } from '@/hooks/useIbisChatPreferences';
 
@@ -322,8 +322,9 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
         <ScrollArea ref={scrollRef} className="min-h-0 flex-1" style={CHAT_WALLPAPER}>
           {messages.length === 0 ? (
             <div className="space-y-4 px-3 py-4">
-              <div className="mx-auto max-w-[92%] rounded-2xl bg-white/90 px-3 py-2 text-center text-xs text-[#667781]">
-                Say hi or ask about today’s sales, collections, stock or jobs, ABS how-tos, and drafts.
+              <div className="mx-auto max-w-[92%] space-y-2 rounded-2xl bg-white/90 px-3 py-3 text-center text-sm leading-relaxed text-[#111b21]">
+                <p>{IBIS_WELCOME_GREETING}</p>
+                <p className="text-xs text-[#667781]">{IBIS_WELCOME_SUBCOPY}</p>
               </div>
               {showSuggestionChips ? (
                 <>

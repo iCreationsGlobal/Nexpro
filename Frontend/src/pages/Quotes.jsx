@@ -39,6 +39,7 @@ import settingsService from '../services/settingsService';
 import userService from '../services/userService';
 import customDropdownService from '../services/customDropdownService';
 import { mergeBranchOrganization } from '../utils/branchOrganization';
+import { getCatalogUnitPrice, getProductStockQuantity } from '../utils/productStock';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { QUERY_STALE, refreshAfterQuoteChange } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
@@ -351,7 +352,7 @@ const QuoteProductPicker = forwardRef(({
   }, [onChange]);
 
   const triggerLabel = currentProduct
-    ? `${currentProduct.name} — ₵${parseFloat(currentProduct.sellingPrice || 0).toFixed(2)}`
+    ? `${currentProduct.name} — ₵${parseFloat(getCatalogUnitPrice(currentProduct) || 0).toFixed(2)}`
     : 'Search or select product';
 
   return (
@@ -414,8 +415,8 @@ const QuoteProductPicker = forwardRef(({
                   <span className="truncate font-medium text-foreground">{product.name}</span>
                   <span className="truncate text-xs text-muted-foreground">
                     {product.sku ? `SKU: ${product.sku} · ` : ''}
-                    ₵{parseFloat(product.sellingPrice || 0).toFixed(2)}
-                    {product.trackStock !== false ? ` · Stock: ${Number(product.quantityOnHand || 0)}` : ''}
+                    ₵{parseFloat(getCatalogUnitPrice(product) || 0).toFixed(2)}
+                    {product.trackStock !== false ? ` · Stock: ${getProductStockQuantity(product)}` : ''}
                   </span>
                 </button>
               ))
@@ -2268,7 +2269,7 @@ const Quotes = () => {
                                 onChange={field.onChange}
                                 onProductSelect={(product) => {
                                   form.setValue(`items.${index}.description`, product.name || '');
-                                  form.setValue(`items.${index}.unitPrice`, parseFloat(product.sellingPrice || 0));
+                                  form.setValue(`items.${index}.unitPrice`, getCatalogUnitPrice(product));
                                   if (product.unit) {
                                     form.setValue(`items.${index}.metadata`, {
                                       ...(form.getValues(`items.${index}.metadata`) || {}),

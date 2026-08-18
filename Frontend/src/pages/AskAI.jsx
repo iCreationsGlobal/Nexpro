@@ -32,20 +32,9 @@ import {
   resolveAssistantPeriod,
   resolveAssistantPeriodForMessage,
 } from '@/utils/assistantPeriod';
-import { IBIS_ASK_LABEL, IBIS_NAME } from '@/constants/ibis';
+import { IBIS_ASK_LABEL, IBIS_NAME, IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY } from '@/constants/ibis';
 import { IbisMoreMenu } from '@/components/IbisMoreMenu';
 import { useIbisChatPreferences } from '@/hooks/useIbisChatPreferences';
-
-/**
- * Time-of-day greeting for Ask AI empty state.
- * @returns {'Good morning'|'Good afternoon'|'Good evening'}
- */
-function getTimeOfDayGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
-}
 
 const extractMarketingDraft = (content = '') => {
   const text = String(content || '').trim();
@@ -92,7 +81,7 @@ function SuggestionCard({ card, onSelect, disabled }) {
  */
 export default function AskAI() {
   const navigate = useNavigate();
-  const { activeTenant, user, isManager } = useAuth();
+  const { activeTenant, isManager } = useAuth();
   const [searchParams] = useSearchParams();
   const pageContext = searchParams.get('from') || searchParams.get('pageContext') || undefined;
   const initialPrompt = searchParams.get('prompt') || undefined;
@@ -102,7 +91,6 @@ export default function AskAI() {
 
   const businessType = activeTenant?.businessType || 'printing_press';
   const shopType = activeTenant?.metadata?.shopType || null;
-  const firstName = String(user?.name || '').trim().split(/\s+/)[0] || 'there';
   const activeTenantId = activeTenant?.id;
 
   const { data: organizationData } = useQuery({
@@ -146,18 +134,6 @@ export default function AskAI() {
     () => getAssistantPromptSets({ businessType, shopType }),
     [businessType, shopType]
   );
-
-  const emptyStateSubcopy = useMemo(() => {
-    if (promptSets.kind === 'studio') {
-      return 'I can answer questions about revenue, jobs, customers, reports, expenses, employees and profits.';
-    }
-    if (promptSets.kind === 'restaurant') {
-      return 'I can answer questions about food sales, inventory, customers, reports, expenses, employees and profits.';
-    }
-    return 'I can answer questions about sales, inventory, customers, reports, expenses, employees and profits.';
-  }, [promptSets.kind]);
-
-  const timeGreeting = useMemo(() => getTimeOfDayGreeting(), []);
 
   const suggestionCards = useMemo(
     () => getAssistantSuggestionCards({ businessType, shopType, limit: 5 }),
@@ -394,15 +370,11 @@ export default function AskAI() {
             </span>
           </div>
 
-          <h1 className="mt-5 max-w-2xl text-center text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-            {timeGreeting},{' '}
-            <span className="text-[#166534]">{firstName}.</span>
+          <h1 className="mt-5 max-w-2xl text-center text-2xl font-bold tracking-tight text-foreground md:text-3xl">
+            {IBIS_WELCOME_GREETING}
           </h1>
           <p className="mt-3 max-w-xl text-center text-base text-muted-foreground md:text-lg">
-            How can I help with your business today?
-          </p>
-          <p className="mt-2 max-w-xl text-center text-sm text-muted-foreground">
-            {emptyStateSubcopy}
+            {IBIS_WELCOME_SUBCOPY}
           </p>
 
           <div className="mt-8 w-full">{composer}</div>

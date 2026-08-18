@@ -76,6 +76,26 @@ describe('productStockUtils', () => {
         totalVariantStock: 40,
       })).toBe(40);
     });
+
+    it('does not overwrite simple product quantity when totalVariantStock is 0', () => {
+      expect(getEffectiveProductQuantityOnHand({
+        hasVariants: false,
+        quantityOnHand: 50,
+        totalVariantStock: 0,
+      })).toBe(50);
+    });
+
+    it('uses totalVariantStock when loaded variants are all zero', () => {
+      expect(getEffectiveProductQuantityOnHand({
+        hasVariants: true,
+        quantityOnHand: 0,
+        totalVariantStock: 313,
+        variants: [
+          { quantityOnHand: 0, isActive: true },
+          { quantityOnHand: 0, isActive: true },
+        ],
+      })).toBe(313);
+    });
   });
 
   describe('applyEffectiveProductQuantity', () => {
@@ -86,7 +106,7 @@ describe('productStockUtils', () => {
         totalVariantStock: 40,
       });
       expect(product.quantityOnHand).toBe(40);
-      expect(product.totalVariantStock).toBeUndefined();
+      expect(product.totalVariantStock).toBe(40);
     });
   });
 

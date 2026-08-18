@@ -127,15 +127,20 @@ const sumActiveVariantQuantity = (variants = []) => {
 
 const getEffectiveProductQuantityOnHand = (product) => {
   if (!product) return 0;
-  if (!product.hasVariants) return parseQuantity(product.quantityOnHand);
 
-  if (product.totalVariantStock != null) {
-    return Math.max(parseQuantity(product.totalVariantStock), 0);
-  }
-  if (Array.isArray(product.variants) && product.variants.length > 0) {
-    return sumActiveVariantQuantity(product.variants);
-  }
-  return parseQuantity(product.quantityOnHand);
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  const variantSum = sumActiveVariantQuantity(variants);
+  const hasTotalVariantStock = product.totalVariantStock != null && product.totalVariantStock !== '';
+  const totalVariantStock = hasTotalVariantStock
+    ? Math.max(parseQuantity(product.totalVariantStock), 0)
+    : null;
+  const parentQty = parseQuantity(product.quantityOnHand);
+  const isVariantProduct = Boolean(product.hasVariants) || variants.length > 0;
+
+  if (!isVariantProduct) return parentQty;
+  if (variantSum > 0) return variantSum;
+  if (totalVariantStock != null) return totalVariantStock;
+  return parentQty;
 };
 
 const applyEffectiveProductQuantity = (product) => {
@@ -145,11 +150,11 @@ const applyEffectiveProductQuantity = (product) => {
     ? product.get({ plain: true })
     : { ...product };
 
-  if (plain.hasVariants) {
+  const isVariantProduct = Boolean(plain.hasVariants)
+    || (Array.isArray(plain.variants) && plain.variants.length > 0);
+
+  if (isVariantProduct) {
     plain.quantityOnHand = getEffectiveProductQuantityOnHand(plain);
-  }
-  if (plain.totalVariantStock !== undefined) {
-    delete plain.totalVariantStock;
   }
   return plain;
 };
