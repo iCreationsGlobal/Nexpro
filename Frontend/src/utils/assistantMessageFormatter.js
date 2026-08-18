@@ -1,3 +1,5 @@
+import { sanitizeAssistantDisplayName } from '@/constants/ibis';
+
 /**
  * Format assistant message text to safe HTML with lightweight markdown support.
  * Supports headings, bullets, numbered lists, bold, and italics.
@@ -6,6 +8,7 @@
  */
 export function formatAssistantMessage(text) {
   if (!text || typeof text !== 'string') return '';
+  text = sanitizeAssistantDisplayName(text);
 
   const escapeHtml = (s) =>
     String(s)

@@ -11,7 +11,7 @@ import { formatAssistantMessage } from '@/utils/assistantMessageFormatter';
 import { useAuth } from '@/context/AuthContext';
 import { getAssistantPromptSets } from '@/constants/assistantPrompts';
 import { resolveAssistantPeriodForMessage } from '@/utils/assistantPeriod';
-import { IBIS_ASK_LABEL, IBIS_NAME, IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY } from '@/constants/ibis';
+import { IBIS_ASK_LABEL, IBIS_NAME, IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY, sanitizeAssistantDisplayName } from '@/constants/ibis';
 import { IbisMoreMenu } from '@/components/IbisMoreMenu';
 import { useIbisChatPreferences } from '@/hooks/useIbisChatPreferences';
 
@@ -199,7 +199,9 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
           endDate: periodRange.endDate,
           periodLabel: periodRange.periodLabel,
         });
-        const assistantContent = result?.message ?? result?.error ?? 'No response from the assistant.';
+        const assistantContent = sanitizeAssistantDisplayName(
+          result?.message ?? result?.error ?? 'No response from the assistant.'
+        );
         setMessages((prev) => [
           ...prev,
           {

@@ -1,4 +1,9 @@
 const { getAssistantSupportGuide, getPageContextHint } = require('../utils/assistantSupportGuide');
+const {
+  ASSISTANT_DISPLAY_NAME,
+  ASSISTANT_IDENTITY_RULES,
+  sanitizeAssistantDisplayName,
+} = require('../utils/assistantIdentity');
 const { formatDecimal } = require('../utils/formatNumber');
 const { parseAiJsonResponse } = require('../utils/parseAiJsonResponse');
 const { buildReportAnalysisFallback } = require('../utils/reportAnalysisFallback');
@@ -505,30 +510,33 @@ Write in a professional, executive-friendly tone. Highlight key achievements, ch
 };
 
 /**
- * Chat with the AI assistant using conversation history and tenant context.
- * Used for in-app Q&A (e.g. "How many customers this month?", "Predict next month sales").
- * @param {Array<{ role: string, content: string }>} messages - Conversation history (user/assistant)
- * @param {Object} context - Tenant context from getAssistantContext: { businessType, tenantName, workspaceContact, thisMonth, last3Months, receivables }
- * @param {Object} options - Optional { businessType, mode: 'support' | 'advisory', apiKey, tenantId, pageContext, contextTier }
- * @returns {Promise<string>} Assistant reply text
+ * Build the Ask Ayebia system prompt (advisory vs support).
+ * Exported for unit tests so identity copy cannot drift back to iBIS.
+ *
+ * @param {Object} context
+ * @param {Object} [options]
+ * @returns {string}
  */
-const chatWithContext = async (messages, context, options = {}) => {
-  try {
-    const businessType = options.businessType || context.businessType || 'printing_press';
-    const pageContext = options.pageContext;
-    const workspaceContact = context.workspaceContact || {};
-    const mode = options.mode === 'advisory' ? 'advisory' : 'support';
-    const pageHint = getPageContextHint(pageContext);
-    const contextTier = options.contextTier || (mode === 'advisory' ? 'light' : 'full');
-    const contextBlob = JSON.stringify(
-      summarizeAssistantContext(context, contextTier),
-      null,
-      contextTier === 'light' ? 0 : 2
-    );
+function buildChatSystemPrompt(context = {}, options = {}) {
+  const businessType = options.businessType || context.businessType || 'printing_press';
+  const pageContext = options.pageContext;
+  const workspaceContact = context.workspaceContact || {};
+  const mode = options.mode === 'advisory' ? 'advisory' : 'support';
+  const pageHint = getPageContextHint(pageContext);
+  const contextTier = options.contextTier || (mode === 'advisory' ? 'light' : 'full');
+  const contextBlob = JSON.stringify(
+    summarizeAssistantContext(context, contextTier),
+    null,
+    contextTier === 'light' ? 0 : 2
+  );
+  const tenantLabel = context.tenantName || 'this workspace';
+  const identityLine =
+    `You are ${ASSISTANT_DISPLAY_NAME}, the business intelligence assistant for ${tenantLabel} (${businessType} business in African Business Suite / ABS). ${ASSISTANT_IDENTITY_RULES}`;
+  const smallTalkBackstop =
+    `If the user is only greeting or making small talk (hi, hey, good morning, good day, how are you, who are you, wow, thanks, bye, or similar), reply in 1–2 short sentences as ${ASSISTANT_DISPLAY_NAME}. Do not write a strategy, analysis, or workspace dump unless they asked. Never invent numbers.`;
 
-    let systemPrompt;
-    if (mode === 'advisory') {
-      systemPrompt = `You are a practical business advisor for ${context.tenantName || 'this workspace'} (${businessType} business in African Business Suite / ABS). If you introduce yourself, say only "I'm Ayebia."
+  if (mode === 'advisory') {
+    return `${identityLine}
 
 Your role for this conversation: open-ended business advice — growth, marketing, customer acquisition, strategy, forecasts, and similar questions the built-in ABS analysis engine cannot answer with exact ledger numbers.
 
@@ -540,17 +548,19 @@ Workspace contact (for signatures if drafting; never invent email/phone):
 ${JSON.stringify(workspaceContact, null, 2)}
 
 Rules:
+- ${smallTalkBackstop}
 - Give concrete, actionable advice suited to a small/medium African business of this type.
 - Prefer short sections with **bold** labels and bullet lists.
 - When suggesting forecasts or predictions, end with: "This is an estimate, not a guarantee."
-- Do not claim ABS menu steps unless you are sure; for product how-tos, say they can ask "How do I…" in Ask Ayebia.
+- Do not claim ABS menu steps unless you are sure; for product how-tos, say they can ask "How do I…" in Ask ${ASSISTANT_DISPLAY_NAME}.
 - Keep replies concise and practical. If you lack local market data, say so and give general best practices.
 ${context.dateFilter?.active
   ? `- Live numbers in the JSON are for "${context.dateFilter.periodLabel}" only (${context.dateFilter.startDate} to ${context.dateFilter.endDate}). If the user asks about a different timeframe (e.g. this year while the filter is this quarter), say that clearly, answer with selectedPeriod for the active filter, and invite them to ask again naming the timeframe (today / this week / this month / this year). Never pretend you lack all sales visibility when selectedPeriod is present.`
   : ''}`;
-    } else {
-      const supportGuide = getAssistantSupportGuide(businessType);
-      systemPrompt = `You are Ayebia, the business intelligence assistant for ${context.tenantName || 'this workspace'} (${businessType} business in African Business Suite). If you introduce yourself, say only "I'm Ayebia."
+  }
+
+  const supportGuide = getAssistantSupportGuide(businessType);
+  return `${identityLine}
 
 Your roles (detect from the user's message):
 1. **Business advisor** — insights, summaries, comparisons, collections advice, inventory/restock ideas using ONLY the JSON data below.
@@ -571,6 +581,7 @@ Workspace contact (for signatures; never invent email/phone):
 ${JSON.stringify(workspaceContact, null, 2)}
 
 Formatting rules:
+- ${smallTalkBackstop}
 - Start with one short direct answer line when possible.
 - Use **bold** for key numbers and labels.
 - Use bullet lists or numbered steps (1. 2. 3.) as appropriate.
@@ -579,7 +590,19 @@ Formatting rules:
 - For low stock: use inventory.lowStockProducts when present.
 - Email/SMS drafts: first line \`Subject: ...\`, blank line, then body. Sign with business name and contact when available.
 - Keep replies concise. If data is missing, say what is missing instead of guessing.`;
-    }
+}
+
+/**
+ * Chat with the AI assistant using conversation history and tenant context.
+ * Used for in-app Q&A (e.g. "How many customers this month?", "Predict next month sales").
+ * @param {Array<{ role: string, content: string }>} messages - Conversation history (user/assistant)
+ * @param {Object} context - Tenant context from getAssistantContext: { businessType, tenantName, workspaceContact, thisMonth, last3Months, receivables }
+ * @param {Object} options - Optional { businessType, mode: 'support' | 'advisory', apiKey, tenantId, pageContext, contextTier }
+ * @returns {Promise<string>} Assistant reply text
+ */
+const chatWithContext = async (messages, context, options = {}) => {
+  try {
+    const systemPrompt = buildChatSystemPrompt(context, options);
 
     const anthropic = await requireAnthropic({
       tenantId: options.tenantId,
@@ -593,7 +616,9 @@ Formatting rules:
       messages: claudeMessages
     });
     const textBlock = claudeResponse.content?.find((b) => b.type === 'text');
-    return textBlock?.text?.trim() || 'I couldn\'t generate a response. Please try again.';
+    return sanitizeAssistantDisplayName(
+      textBlock?.text?.trim() || 'I couldn\'t generate a response. Please try again.'
+    );
   } catch (error) {
     console.error('Error in chatWithContext:', {
       message: error?.message,
@@ -674,6 +699,7 @@ For WhatsApp actions, use template messages only and set "category" to "transact
 module.exports = {
   analyzeReportData,
   generateExecutiveSummary,
+  buildChatSystemPrompt,
   chatWithContext,
   draftAutomationRule,
   generateStoreBannerSvg

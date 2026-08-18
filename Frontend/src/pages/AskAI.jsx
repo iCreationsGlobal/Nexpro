@@ -32,7 +32,7 @@ import {
   resolveAssistantPeriod,
   resolveAssistantPeriodForMessage,
 } from '@/utils/assistantPeriod';
-import { IBIS_ASK_LABEL, IBIS_NAME, IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY } from '@/constants/ibis';
+import { IBIS_ASK_LABEL, IBIS_NAME, IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY, sanitizeAssistantDisplayName } from '@/constants/ibis';
 import { IbisMoreMenu } from '@/components/IbisMoreMenu';
 import { useIbisChatPreferences } from '@/hooks/useIbisChatPreferences';
 
@@ -64,12 +64,12 @@ function SuggestionCard({ card, onSelect, disabled }) {
       disabled={disabled}
       onClick={() => onSelect(card.prompt)}
       className={cn(
-        'inline-flex max-w-[200px] shrink-0 items-center rounded-full border border-border bg-white px-2.5 py-1.5 text-left transition-colors',
+        'inline-flex max-w-[280px] shrink-0 items-center rounded-full border border-border bg-white px-2.5 py-1.5 text-left transition-colors',
         'hover:border-[#166534]/40 hover:bg-[#f0fdf4]/50',
         'disabled:opacity-50 disabled:pointer-events-none'
       )}
     >
-      <span className="line-clamp-2 text-xs font-medium leading-snug text-foreground">
+      <span className="whitespace-nowrap text-xs font-medium leading-snug text-foreground">
         {card.prompt}
       </span>
     </button>
@@ -206,7 +206,7 @@ export default function AskAI() {
           endDate: periodRange.endDate,
           periodLabel: periodRange.periodLabel,
         });
-        const content = res?.message || 'No response from assistant.';
+        const content = sanitizeAssistantDisplayName(res?.message || 'No response from assistant.');
         setMessages((prev) => [
           ...prev,
           {
@@ -250,7 +250,7 @@ export default function AskAI() {
 
   const handleCopy = useCallback(async (content) => {
     try {
-      await navigator.clipboard.writeText(String(content || ''));
+      await navigator.clipboard.writeText(sanitizeAssistantDisplayName(content));
       showSuccess('Copied to clipboard');
     } catch (err) {
       showError(err, 'Failed to copy text');

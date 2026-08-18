@@ -27,7 +27,7 @@ import {
   getPagePrompts,
 } from '@/constants/assistantPrompts';
 import { resolveAssistantPeriodForMessage } from '@/utils/assistantPeriod';
-import { IBIS_NAME, IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY } from '@/constants/ibis';
+import { IBIS_NAME, IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY, sanitizeAssistantDisplayName } from '@/constants/ibis';
 
 type Message = {
   id: string;
@@ -116,7 +116,7 @@ function parseBoldSegments(text: string): TextSegment[] {
 }
 
 function FormattedMessage({ content, color }: { content: string; color: string }) {
-  const lines = content.replace(/\r\n/g, '\n').split('\n');
+  const lines = sanitizeAssistantDisplayName(content).replace(/\r\n/g, '\n').split('\n');
 
   return (
     <View>
@@ -284,7 +284,7 @@ export default function ChatScreen() {
         const assistantMsg: Message = {
           id: `a-${Date.now()}`,
           role: 'assistant',
-          content: reply || 'No response.',
+          content: sanitizeAssistantDisplayName(reply || 'No response.'),
           createdAt: Date.now(),
           reasons,
           intent: res?.meta?.intent,
@@ -507,7 +507,7 @@ export default function ChatScreen() {
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={[styles.chipText, { color: theme.incomingText }]} numberOfLines={2}>
+                <Text style={[styles.chipText, { color: theme.incomingText }]} numberOfLines={1}>
                   {chip}
                 </Text>
               </Pressable>
@@ -711,7 +711,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chip: {
-    maxWidth: 220,
+    maxWidth: 280,
     borderWidth: 1,
     borderRadius: 18,
     paddingHorizontal: 14,
