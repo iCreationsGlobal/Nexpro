@@ -4,10 +4,9 @@ import { MapPin, Phone, Globe, Mail } from 'lucide-react';
 import { API_BASE_URL } from '../services/api';
 import { getInvoiceTaxDisplay } from '../utils/invoiceTaxDisplay';
 import { formatLineItemQuantity } from '../utils/documentLineItems';
+import { resolvePrintedInvoiceTerms } from '../utils/invoicePrintTerms';
 import GraEvatStampBlock from './GraEvatStampBlock';
 
-const DEFAULT_TERMS_TEXT =
-  'Payment is due within the specified payment terms. Late payments may incur additional charges.';
 const DEFAULT_THANK_YOU = 'Thank you for doing business with us.';
 
 const formatAddress = (address) => {
@@ -232,8 +231,9 @@ const PrintableInvoice = ({
         }
         .invoice-info {
           text-align: right;
-          flex-shrink: 0;
-          min-width: 200px;
+          flex: 0 1 240px;
+          max-width: 42%;
+          min-width: 0;
         }
         .invoice-title {
           font-size: ${printStyles.titleSize};
@@ -842,11 +842,6 @@ const PrintableInvoice = ({
                 <strong>Due Date:</strong> {dayjs(invoice.dueDate).format('MMMM D, YYYY')}
               </div>
             )}
-            {invoice.paymentTerms && (
-              <div className="invoice-meta-row">
-                <strong>Terms:</strong> {invoice.paymentTerms}
-              </div>
-            )}
           </div>
         </div>
 
@@ -883,13 +878,7 @@ const PrintableInvoice = ({
                 </div>
               )}
               {invoice.job?.title && <div>{invoice.job.title}</div>}
-              {invoice.paymentTerms && (
-                <div>
-                  {invoice.paymentTerms}
-                  {String(invoice.paymentTerms).toLowerCase().includes('term') ? '' : ' Terms'}
-                </div>
-              )}
-              {!invoice.job?.jobNumber && !invoice.paymentTerms && <div>—</div>}
+              {!invoice.job?.jobNumber && !invoice.job?.title && <div>—</div>}
             </div>
           </div>
           )}
@@ -1027,7 +1016,7 @@ const PrintableInvoice = ({
           <div className="notes-section">
             <div className="notes-title">Terms &amp; Conditions:</div>
             <div className="notes-content">
-              {invoice.termsAndConditions || DEFAULT_TERMS_TEXT}
+              {resolvePrintedInvoiceTerms(invoice)}
             </div>
           </div>
         )}
