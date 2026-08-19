@@ -169,7 +169,7 @@ const AdminTenants = () => {
   const [supportMode, setSupportMode] = useState('read_only');
   const [supportStarting, setSupportStarting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('');
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const [deletingTenant, setDeletingTenant] = useState(false);
   const [subscriptionPayments, setSubscriptionPayments] = useState([]);
   const [tenantBillingStatus, setTenantBillingStatus] = useState(null);
@@ -305,20 +305,23 @@ const AdminTenants = () => {
 
   const handleDeleteTenant = async () => {
     if (!selectedTenant?.id) return;
-    const slug = String(deleteConfirmSlug || '').trim();
-    if (slug !== selectedTenant.slug) {
-      showError('Type the tenant slug exactly to confirm deletion.');
+    const confirmName = String(deleteConfirmName || '').trim();
+    const nameMatches = confirmName === String(selectedTenant.name || '').trim();
+    const deleteLiteral = confirmName === 'DELETE';
+    if (!nameMatches && !deleteLiteral) {
+      showError('Type the tenant name exactly (or DELETE) to confirm deletion.');
       return;
     }
 
     setDeletingTenant(true);
     try {
-      await adminService.deleteTenant(selectedTenant.id, slug);
+      await adminService.deleteTenant(selectedTenant.id, confirmName);
       showSuccess(`Tenant "${selectedTenant.name}" was permanently deleted.`);
       setDeleteDialogOpen(false);
-      setDeleteConfirmSlug('');
+      setDeleteConfirmName('');
       setDrawerVisible(false);
       setSelectedTenant(null);
+      navigate('/admin/tenants');
       await fetchTenants(pagination.current, pagination.pageSize);
     } catch (error) {
       handleApiError(error, { context: 'delete tenant' });
@@ -1316,13 +1319,6 @@ const AdminTenants = () => {
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
                   <Button
-                    onClick={() => handleStatusUpdate(selectedTenant.id, 'activate')}
-                    disabled={selectedTenant.status === 'active'}
-                    loading={statusUpdating}
-                  >
-                    Activate
-                  </Button>
-                  <Button
                     variant="outline"
                     onClick={() => handleStatusUpdate(selectedTenant.id, 'pause')}
                     disabled={selectedTenant.status === 'paused'}
@@ -1360,17 +1356,24 @@ const AdminTenants = () => {
                       ) : null}
                     </Tooltip>
                   )}
+                  <Button
+                    onClick={() => handleStatusUpdate(selectedTenant.id, 'activate')}
+                    disabled={selectedTenant.status === 'active'}
+                    loading={statusUpdating}
+                  >
+                    Activate
+                  </Button>
                   {canDeleteTenants && selectedTenant.slug !== 'platform' && (
                     <Button
                       variant="outline"
                       className="border-destructive text-destructive hover:bg-destructive/10"
                       onClick={() => {
-                        setDeleteConfirmSlug('');
+                        setDeleteConfirmName('');
                         setDeleteDialogOpen(true);
                       }}
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
+                      Permanently delete
                     </Button>
                   )}
                 </CardContent>
@@ -1967,29 +1970,50 @@ const AdminTenants = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) setDeleteConfirmName('');
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete tenant permanently?</AlertDialogTitle>
+            <AlertDialogTitle>Permanently delete this tenant?</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3 text-sm text-muted-foreground">
                 <p>
-                  This will delete <strong className="text-foreground">{selectedTenant?.name}</strong> and
-                  all workspace data. User accounts that belong only to this tenant will also be removed.
+                  You are about to permanently delete{' '}
+                  <strong className="text-foreground">{selectedTenant?.name}</strong>
+                  {selectedTenant?.slug ? (
+                    <>
+                      {' '}
+                      (<span className="font-mono text-foreground">{selectedTenant.slug}</span>)
+                    </>
+                  ) : null}
+                  . This is a hard delete and cannot be undone.
                 </p>
+                <p>All data for this workspace will be removed, including:</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Sales, invoices, quotes, jobs, products, and shops</li>
+                  <li>Customers, team memberships, and settings</li>
+                  <li>Billing history for this tenant</li>
+                  <li>User accounts that belong only to this tenant</li>
+                </ul>
                 <p>
-                  Type <strong className="text-foreground">{selectedTenant?.slug}</strong> below to confirm.
+                  Type <strong className="text-foreground">{selectedTenant?.name}</strong> below to enable deletion.
+                  You can also type <strong className="text-foreground">DELETE</strong>.
                 </p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-2">
-            <Label htmlFor="delete-tenant-slug">Tenant slug</Label>
+            <Label htmlFor="delete-tenant-name">Tenant name</Label>
             <Input
-              id="delete-tenant-slug"
-              value={deleteConfirmSlug}
-              onChange={(e) => setDeleteConfirmSlug(e.target.value)}
-              placeholder={selectedTenant?.slug || 'tenant-slug'}
+              id="delete-tenant-name"
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              placeholder={selectedTenant?.name || 'Tenant name'}
               className="mt-1.5"
               autoComplete="off"
             />
@@ -2003,11 +2027,14 @@ const AdminTenants = () => {
               }}
               disabled={
                 deletingTenant ||
-                deleteConfirmSlug.trim() !== (selectedTenant?.slug || '')
+                (
+                  deleteConfirmName.trim() !== String(selectedTenant?.name || '').trim()
+                  && deleteConfirmName.trim() !== 'DELETE'
+                )
               }
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deletingTenant ? 'Deleting…' : 'Delete permanently'}
+              {deletingTenant ? 'Deleting…' : 'Permanently delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -22,11 +22,17 @@ const {
   SaleItem,
   Sale,
   SaleActivity,
+  SaleReturn,
+  SaleReturnItem,
+  SaleReturnExchangeItem,
   ProductVariant,
+  ProductStockMovement,
+  ProductShopStock,
   Barcode,
   Product,
   ProductCategory,
   Shop,
+  StockTransfer,
   PrescriptionItem,
   DrugInteraction,
   ExpiryAlert,
@@ -64,6 +70,33 @@ const {
   StockCount,
   StockCountItem,
   FootTraffic,
+  SubscriptionPayment,
+  SupportTicket,
+  SupportAccessSession,
+  DeliveryEvent,
+  SystemHealthIssue,
+  AutomationDelayedRun,
+  MarketplaceOrderPayment,
+  MarketplaceLedgerEntry,
+  MarketplacePayout,
+  MarketplaceDispute,
+  StorefrontWishlistItem,
+  StorefrontReview,
+  OnlineProductListing,
+  OnlineServiceListing,
+  OnlineStoreSettings,
+  Dealer,
+  DealerLedgerEntry,
+  DealerPriceTier,
+  DealerProductPrice,
+  SalesAgentCommission,
+  PartnerProgramSettings,
+  PartnerProgramService,
+  PartnershipApplication,
+  Partnership,
+  PartnerCommission,
+  PartnerReferral,
+  PartnerCashoutRequest,
   PlatformAdminUserRole,
   UserTodo,
   UserWeekFocus,
@@ -86,12 +119,24 @@ const {
 
 const PLATFORM_TENANT_SLUG = 'platform';
 
+/**
+ * Destroy rows matching `where`. Always scoped by the caller — pass tenantId (or child ids
+ * already loaded for this tenant) so other tenants cannot be touched.
+ * Sequelize associations do not set onDelete CASCADE; some migrations do at the DB layer.
+ * Missing tables/columns are skipped unless strict mode is on.
+ *
+ * @param {import('sequelize').Model} Model
+ * @param {object} where
+ * @param {object} [opts]
+ * @returns {Promise<number>}
+ */
 async function del(Model, where, opts = {}) {
   if (!Model?.destroy) return 0;
+  const { strict, ...destroyOpts } = opts;
   try {
-    return await Model.destroy({ where, ...opts });
+    return await Model.destroy({ where, ...destroyOpts });
   } catch (err) {
-    if (opts.strict || process.env.DELETE_TENANT_DATA_STRICT === 'true') {
+    if (strict || process.env.DELETE_TENANT_DATA_STRICT === 'true') {
       throw err;
     }
     console.warn(`[deleteTenantData] ${Model.name}: ${err.message}`);
@@ -100,6 +145,9 @@ async function del(Model, where, opts = {}) {
 }
 
 /**
+ * Hard-delete every tenant-scoped row that would block removing the tenant, then the tenant.
+ * Children are deleted first (sale returns before sales, listings before products, memberships last).
+ *
  * @param {string} tenantId
  * @param {import('sequelize').Transaction} [transaction]
  */
@@ -152,7 +200,16 @@ async function deleteTenantData(tenantId, transaction = null) {
   const studioLocationIds = (
     await StudioLocation.findAll({ where: { tenantId: id }, attributes: ['id'], ...options })
   ).map((r) => r.id);
+  let saleReturnIds = [];
+  try {
+    saleReturnIds = (
+      await SaleReturn.findAll({ where: { tenantId: id }, attributes: ['id'], ...options })
+    ).map((r) => r.id);
+  } catch (err) {
+    console.warn(`[deleteTenantData] SaleReturn.findAll: ${err.message}`);
+  }
 
+  await del(AutomationDelayedRun, { tenantId: id }, options);
   await del(AutomationRun, { tenantId: id }, options);
   await del(AutomationRule, { tenantId: id }, options);
   await del(WhatsAppMessageEvent, { tenantId: id }, options);
@@ -170,6 +227,9 @@ async function deleteTenantData(tenantId, transaction = null) {
   await del(ExpenseActivity, { tenantId: id }, options);
   await del(Payment, { tenantId: id }, options);
   await del(Expense, { tenantId: id }, options);
+  await del(PartnerCommission, { tenantId: id }, options);
+  await del(PartnerCashoutRequest, { tenantId: id }, options);
+  await del(PartnerReferral, { tenantId: id }, options);
   await Sale.update({ invoiceId: null }, { where: { tenantId: id }, ...options });
   await Prescription.update({ invoiceId: null }, { where: { tenantId: id }, ...options });
   await del(Invoice, { tenantId: id }, options);
@@ -181,10 +241,33 @@ async function deleteTenantData(tenantId, transaction = null) {
   await del(QuoteActivity, { tenantId: id }, options);
   await del(Quote, { tenantId: id }, options);
   await del(Lead, { tenantId: id }, options);
+  await del(MarketplaceDispute, { tenantId: id }, options);
+  await del(MarketplaceLedgerEntry, { tenantId: id }, options);
+  await del(MarketplacePayout, { tenantId: id }, options);
+  await del(MarketplaceOrderPayment, { tenantId: id }, options);
+  await del(DeliveryEvent, { tenantId: id }, options);
+  await del(DealerLedgerEntry, { tenantId: id }, options);
+  if (saleReturnIds.length) {
+    await del(SaleReturnItem, { saleReturnId: saleReturnIds }, options);
+    await del(SaleReturnExchangeItem, { saleReturnId: saleReturnIds }, options);
+  }
+  await del(SaleReturn, { tenantId: id }, options);
   if (saleIds.length) await del(SaleItem, { saleId: saleIds }, options);
   await del(SaleActivity, { tenantId: id }, options);
-  await del(Sale, { tenantId: id }, options);
+  await del(Sale, { tenantId: id }, { ...options, force: true });
+  await del(DealerProductPrice, { tenantId: id }, options);
+  await del(DealerPriceTier, { tenantId: id }, options);
+  await del(Dealer, { tenantId: id }, options);
   if (stockCountIds.length) await del(StockCountItem, { stockCountId: stockCountIds }, options);
+  await del(StockTransfer, { tenantId: id }, options);
+  await del(ProductStockMovement, { tenantId: id }, options);
+  await del(ProductShopStock, { tenantId: id }, options);
+  await del(StorefrontWishlistItem, { tenantId: id }, options);
+  await del(StorefrontReview, { tenantId: id }, options);
+  await del(PartnerProgramService, { tenantId: id }, options);
+  await del(OnlineProductListing, { tenantId: id }, options);
+  await del(OnlineServiceListing, { tenantId: id }, options);
+  await del(OnlineStoreSettings, { tenantId: id }, options);
   await del(Barcode, { tenantId: id }, options);
   if (productIds.length) await del(ProductVariant, { productId: productIds }, options);
   await del(Product, { tenantId: id }, options);
@@ -228,6 +311,14 @@ async function deleteTenantData(tenantId, transaction = null) {
   await del(InviteToken, { tenantId: id }, options);
   await del(Notification, { tenantId: id }, options);
   await del(SabitoTenantMapping, { nexproTenantId: id }, options);
+  await del(Partnership, { tenantId: id }, options);
+  await del(PartnershipApplication, { tenantId: id }, options);
+  await del(PartnerProgramSettings, { tenantId: id }, options);
+  await del(SalesAgentCommission, { tenantId: id }, options);
+  await del(SubscriptionPayment, { tenantId: id }, options);
+  await del(SupportTicket, { tenantId: id }, options);
+  await del(SupportAccessSession, { tenantId: id }, options);
+  await del(SystemHealthIssue, { tenantId: id }, options);
   await del(StockCount, { tenantId: id }, options);
   await del(FootTraffic, { tenantId: id }, options);
   await del(Shop, { tenantId: id }, options);

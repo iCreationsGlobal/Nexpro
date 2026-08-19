@@ -93,6 +93,7 @@ function normalizeSmallTalk(message) {
     .toLowerCase()
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[!?.,~:;]+/g, ' ')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F\u200D]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -425,7 +426,9 @@ function buildReplyMarkdown(intent, options = {}) {
 
   const opener = greetingOpener(text, options);
   if (opener === 'Hi') {
-    return `Hi — I'm **${name}**. What would you like to check in the business?`;
+    return `Hi 👋 I'm **${name}**, your business intelligence assistant.
+
+I'm here to help you understand and manage your business with ABS. You can ask me about your sales, customers, debts, expenses, jobs, reports, or even ask me to draft a message.`;
   }
   return `${opener}. I'm **${name}** — happy to help.`;
 }

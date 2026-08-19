@@ -305,6 +305,40 @@ router.patch('/tenants/:id/settings', requirePlatformAdminPermission('tenants.up
  *         description: Tenant not found.
  */
 router.patch('/tenants/:id/status', requirePlatformAdminPermission('tenants.manage_status'), updateTenantStatus);
+/**
+ * @swagger
+ * /api/admin/tenants/{id}:
+ *   delete:
+ *     summary: Permanently delete a tenant and all tenant-scoped data
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [confirmName]
+ *             properties:
+ *               confirmName:
+ *                 type: string
+ *                 description: Exact tenant name, or the literal DELETE
+ *     responses:
+ *       200:
+ *         description: Tenant permanently deleted.
+ *       400:
+ *         description: Confirmation mismatch or protected tenant.
+ *       403:
+ *         description: Not a platform admin.
+ *       404:
+ *         description: Tenant not found.
+ */
 router.delete('/tenants/:id', requirePlatformAdminPermission('tenants.delete'), deleteTenant);
 router.patch('/tenants/:id/access', requirePlatformAdminPermission('tenants.update'), updateTenantAccess);
 router.post('/tenants/:id/reset-trial', requirePlatformAdminPermission('tenants.update'), resetTenantTrial);

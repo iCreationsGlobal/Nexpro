@@ -44,6 +44,9 @@ jest.mock('../../../utils/deleteTenantData', () => ({
   deleteTenantData: jest.fn(),
   deleteOrphanUsersWithoutTenants: jest.fn(),
 }));
+jest.mock('../../../services/permanentDeleteTenantService', () => ({
+  permanentlyDeleteTenant: jest.fn(),
+}));
 jest.mock('../../../config/enterpriseTiers', () => ({
   ENTERPRISE_TIER_IDS: ['business', 'corporate'],
   getEnterpriseTier: jest.fn(),

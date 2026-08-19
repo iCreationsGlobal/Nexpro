@@ -20,6 +20,7 @@ describe('smallTalk', () => {
       'hi ayebia',
       'hey ayebia',
       'hello ayebia',
+      'Hi 👋',
     ])('matches greeting: %s', (msg) => {
       const r = classifySmallTalk(msg);
       expect(r).toEqual({
@@ -181,11 +182,13 @@ describe('smallTalk', () => {
   });
 
   describe('trySmallTalk', () => {
-    it('builds a short hi without inventing numbers or naming iBIS', () => {
+    it('builds a hi welcome without inventing numbers or naming iBIS', () => {
       const out = trySmallTalk('hi', { businessType: 'shop' });
       expect(out.matched).toBe(true);
       expect(out.intent).toBe(SMALL_TALK_INTENTS.GREETING);
-      expect(out.answerMarkdown).toBe("Hi — I'm **Ayebia**. What would you like to check in the business?");
+      expect(out.answerMarkdown).toContain("Hi 👋 I'm **Ayebia**, your business intelligence assistant.");
+      expect(out.answerMarkdown).toContain('understand and manage your business with ABS');
+      expect(out.answerMarkdown).toContain('draft a message');
       expect(out.answerMarkdown).not.toMatch(/iBIS/i);
       expect(out.answerMarkdown).not.toMatch(/GHS|\$\d|revenue of|sold \d/i);
       expect(out.answerMarkdown).not.toMatch(/Try asking/i);
@@ -195,13 +198,13 @@ describe('smallTalk', () => {
 
     it('echoes hello the same way as hi', () => {
       const out = trySmallTalk('hello');
-      expect(out.answerMarkdown).toBe("Hi — I'm **Ayebia**. What would you like to check in the business?");
+      expect(out.answerMarkdown).toContain("Hi 👋 I'm **Ayebia**, your business intelligence assistant.");
     });
 
-    it('echoes hi ayebia without a landing-page dump', () => {
+    it('echoes hi ayebia with the same welcome', () => {
       const out = trySmallTalk('hi ayebia');
       expect(out.intent).toBe(SMALL_TALK_INTENTS.GREETING);
-      expect(out.answerMarkdown).toBe("Hi — I'm **Ayebia**. What would you like to check in the business?");
+      expect(out.answerMarkdown).toContain("Hi 👋 I'm **Ayebia**, your business intelligence assistant.");
       expect(out.answerMarkdown).not.toMatch(/iBIS/i);
     });
 

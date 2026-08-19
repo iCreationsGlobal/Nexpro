@@ -108,9 +108,9 @@ const endSupportAccess = async (sessionId) =>
 const updateTenantStatus = async (tenantId, action) =>
   api.patch(`/admin/tenants/${tenantId}/status`, { action });
 
-/** Permanently delete tenant and all workspace data (requires matching confirmSlug). */
-const deleteTenant = async (tenantId, confirmSlug) =>
-  api.delete(`/admin/tenants/${tenantId}`, { data: { confirmSlug } });
+/** Permanently delete tenant and all workspace data (requires matching confirmName or DELETE). */
+const deleteTenant = async (tenantId, confirmName) =>
+  api.delete(`/admin/tenants/${tenantId}`, { data: { confirmName } });
 
 const updateTenantAccess = async (tenantId, payload) =>
   api.patch(`/admin/tenants/${tenantId}/access`, payload);

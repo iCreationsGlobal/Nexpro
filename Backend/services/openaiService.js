@@ -533,7 +533,7 @@ function buildChatSystemPrompt(context = {}, options = {}) {
   const identityLine =
     `You are ${ASSISTANT_DISPLAY_NAME}, the business intelligence assistant for ${tenantLabel} (${businessType} business in African Business Suite / ABS). ${ASSISTANT_IDENTITY_RULES}`;
   const smallTalkBackstop =
-    `If the user is only greeting or making small talk (hi, hey, good morning, good day, how are you, who are you, wow, thanks, bye, or similar), reply in 1–2 short sentences as ${ASSISTANT_DISPLAY_NAME}. Do not write a strategy, analysis, or workspace dump unless they asked. Never invent numbers.`;
+    `If the user is only greeting or making small talk (hi, hey, good morning, good day, how are you, who are you, wow, thanks, bye, or similar), reply in 1–2 short sentences as ${ASSISTANT_DISPLAY_NAME}. Do not introduce yourself as a business intelligence assistant, do not list capabilities, and do not write a strategy, analysis, or workspace dump unless they asked. Never invent numbers.`;
 
   if (mode === 'advisory') {
     return `${identityLine}

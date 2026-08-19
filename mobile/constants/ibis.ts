@@ -5,9 +5,9 @@
 export const IBIS_NAME = 'Ayebia';
 export const IBIS_ASK_LABEL = 'Ask Ayebia';
 export const IBIS_WELCOME_GREETING =
-  "Hi — I'm Ayebia. What would you like to check in the business?";
+  "Hi 👋 I'm Ayebia, your business intelligence assistant.";
 export const IBIS_WELCOME_SUBCOPY =
-  'You can ask me about your sales, customers, invoices, expenses, or anything about your business.';
+  "I'm here to help you understand and manage your business with ABS. You can ask me about your sales, customers, debts, expenses, jobs, reports, or even ask me to draft a message.";
 
 /** Rewrite leftover iBIS self-introductions in assistant replies. */
 export function sanitizeAssistantDisplayName(text: unknown): string {

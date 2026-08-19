@@ -62,11 +62,6 @@ const {
   normalizeFeatureOverrides,
   getTenantEffectiveEntitlements
 } = require('../utils/tenantEntitlements');
-const {
-  PLATFORM_TENANT_SLUG,
-  deleteTenantData,
-  deleteOrphanUsersWithoutTenants,
-} = require('../utils/deleteTenantData');
 const { ENTERPRISE_TIER_IDS, getEnterpriseTier } = require('../config/enterpriseTiers');
 const { buildEnterprisePaymentMetadata } = require('../services/subscriptionPlanCatalogService');
 const { getSeatUsageSummary } = require('../utils/seatLimitHelper');
@@ -74,6 +69,7 @@ const { getStorageUsageSummary } = require('../utils/storageLimitHelper');
 const { invalidateProductListCache, invalidateInvoiceListCache, invalidateSaleListCache, invalidateAfterMutation } = require('../middleware/cache');
 const { updateCustomerBalance } = require('../services/customerBalanceService');
 const { getRecentSlowOperations } = require('../utils/performanceLogger');
+const { permanentlyDeleteTenant } = require('../services/permanentDeleteTenantService');
 
 const PLAN_PRICING = {
   trial: 0,
@@ -2308,51 +2304,31 @@ exports.cleanupTenantQuotes = async (req, res, next) => {
 // @access  Platform admin (tenants.delete)
 exports.deleteTenant = async (req, res, next) => {
   try {
-    const tenant = await Tenant.findByPk(req.params.id, {
-      attributes: ['id', 'name', 'slug'],
+    const tenant = await permanentlyDeleteTenant({
+      tenantId: req.params.id,
+      confirmName: req.body?.confirmName,
+      actor: {
+        id: req.user?.id,
+        isPlatformAdmin: req.user?.isPlatformAdmin,
+        tenantId: req.tenantId,
+      },
     });
-
-    if (!tenant) {
-      return res.status(404).json({
-        success: false,
-        message: 'Tenant not found',
-      });
-    }
-
-    if (tenant.slug === PLATFORM_TENANT_SLUG) {
-      return res.status(400).json({
-        success: false,
-        message: 'The platform workspace cannot be deleted.',
-      });
-    }
-
-    const confirmSlug = String(req.body?.confirmSlug || '').trim();
-    if (!confirmSlug || confirmSlug !== tenant.slug) {
-      return res.status(400).json({
-        success: false,
-        message: 'Type the tenant slug exactly to confirm deletion.',
-        code: 'CONFIRM_SLUG_REQUIRED',
-      });
-    }
-
-    await sequelize.transaction(async (tx) => {
-      await deleteTenantData(tenant.id, tx);
-      await deleteOrphanUsersWithoutTenants(tx);
-    });
-
-    console.log(
-      '[Admin] Tenant deleted tenantId=%s slug=%s by userId=%s',
-      tenant.id,
-      tenant.slug,
-      req.user?.id
-    );
 
     return res.status(200).json({
       success: true,
       message: `Tenant "${tenant.name}" and all related data were permanently deleted.`,
-      data: { id: tenant.id, slug: tenant.slug },
+      data: { id: tenant.id, slug: tenant.slug, name: tenant.name },
     });
   } catch (error) {
+    if (error.statusCode) {
+      const requestId = req.id || req.headers?.['x-request-id'];
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+        errorCode: error.errorCode || error.code || 'INTERNAL_ERROR',
+        ...(requestId ? { requestId } : {}),
+      });
+    }
     next(error);
   }
 };
