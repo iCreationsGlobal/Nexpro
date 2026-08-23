@@ -1643,79 +1643,30 @@ exports.getProductVariants = async (req, res, next) => {
 // @route   POST /api/products/:id/variants
 // @access  Private
 exports.createProductVariant = async (req, res, next) => {
+  const transaction = await Product.sequelize.transaction();
+  let transactionFinished = false;
   try {
     // First verify the product exists and belongs to tenant
     const product = await Product.findOne({
-      where: applyTenantFilter(req.tenantId, { id: req.params.id })
+      where: applyTenantFilter(req.tenantId, { id: req.params.id }),
+      transaction,
     });
 
     if (!product) {
+      await transaction.rollback();
+      transactionFinished = true;
       return res.status(404).json({
         success: false,
         message: 'Product not found'
       });
     }
 
-    const payload = sanitizePayload(req.body);
-    stripStaffProductWritePayload(payload, req);
     try {
-      normalizeWholesalePrice(payload);
-    } catch (validationErr) {
-      return res.status(400).json({
-        success: false,
-        message: validationErr.message,
-      });
-    }
-
-    // Create the variant
-    const variant = await ProductVariant.create({
-      ...payload,
-      productId: product.id
-    });
-
-    // Update product to indicate it has variants
-    if (!product.hasVariants) {
-      await product.update({ hasVariants: true });
-    }
-    await syncParentQuantityFromVariants(product.id);
-
-    res.status(201).json({
-      success: true,
-      data: stripSensitiveProductFields(variant, req)
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Update product variant
-// @route   PUT /api/products/variants/:variantId
-// @access  Private
-exports.updateProductVariant = async (req, res, next) => {
-  try {
-    const variant = await ProductVariant.findByPk(req.params.variantId, {
-      include: [{ model: Product, as: 'product' }]
-    });
-
-    if (!variant) {
-      return res.status(404).json({
-        success: false,
-        message: 'Variant not found'
-      });
-    }
-
-    // Verify the variant's product belongs to the tenant
-    if (variant.product.tenantId !== req.tenantId) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to update this variant'
-      });
-    }
-
-    try {
-      assertShopRecordAccess(req, variant.product);
+      assertShopRecordAccess(req, product);
     } catch (accessErr) {
       if (accessErr.statusCode === 403) {
+        await transaction.rollback();
+        transactionFinished = true;
         return res.status(403).json({ success: false, message: accessErr.message });
       }
       throw accessErr;
@@ -1726,9 +1677,127 @@ exports.updateProductVariant = async (req, res, next) => {
     try {
       normalizeWholesalePrice(payload);
     } catch (validationErr) {
+      await transaction.rollback();
+      transactionFinished = true;
       return res.status(400).json({
         success: false,
         message: validationErr.message,
+      });
+    }
+
+    const openingQty = parseQuantity(payload.quantityOnHand);
+    const stockShopId = payload.shopId || req.shopFilterId || req.defaultShopId || product.shopId || null;
+    const tracksStock = product.trackStock !== false && payload.trackStock !== false;
+    const shouldRecordOpening = Boolean(stockShopId && openingQty > 0 && tracksStock);
+    delete payload.shopId;
+    delete payload.reason;
+
+    // Create the variant
+    const variant = await ProductVariant.create({
+      ...payload,
+      quantityOnHand: shouldRecordOpening ? 0 : (payload.quantityOnHand ?? 0),
+      productId: product.id
+    }, { transaction });
+
+    // Update product to indicate it has variants
+    if (!product.hasVariants) {
+      await product.update({ hasVariants: true }, { transaction });
+    }
+
+    if (shouldRecordOpening) {
+      await applyStockChange({
+        tenantId: req.tenantId,
+        productId: product.id,
+        productVariantId: variant.id,
+        shopId: stockShopId,
+        setTo: openingQty,
+        type: 'opening',
+        reason: 'Opening stock on variant create',
+        userId: req.user?.id || null,
+        metadata: { source: 'createProductVariant' },
+        transaction,
+      });
+      await variant.reload({ transaction });
+    } else {
+      await syncParentQuantityFromVariants(product.id, transaction);
+    }
+
+    await transaction.commit();
+    transactionFinished = true;
+    invalidateProductListCache(req.tenantId);
+
+    res.status(201).json({
+      success: true,
+      data: stripSensitiveProductFields(variant, req)
+    });
+  } catch (error) {
+    if (!transactionFinished) {
+      await transaction.rollback();
+    }
+    next(error);
+  }
+};
+
+// @desc    Update product variant
+// @route   PUT /api/products/variants/:variantId
+// @access  Private
+exports.updateProductVariant = async (req, res, next) => {
+  const transaction = await Product.sequelize.transaction();
+  let transactionFinished = false;
+  try {
+    const variant = await ProductVariant.findByPk(req.params.variantId, {
+      include: [{ model: Product, as: 'product' }],
+      transaction,
+    });
+
+    if (!variant) {
+      await transaction.rollback();
+      transactionFinished = true;
+      return res.status(404).json({
+        success: false,
+        message: 'Variant not found'
+      });
+    }
+
+    // Verify the variant's product belongs to the tenant
+    if (variant.product.tenantId !== req.tenantId) {
+      await transaction.rollback();
+      transactionFinished = true;
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update this variant'
+      });
+    }
+
+    try {
+      assertShopRecordAccess(req, variant.product);
+    } catch (accessErr) {
+      if (accessErr.statusCode === 403) {
+        await transaction.rollback();
+        transactionFinished = true;
+        return res.status(403).json({ success: false, message: accessErr.message });
+      }
+      throw accessErr;
+    }
+
+    const payload = sanitizePayload(req.body);
+    stripStaffProductWritePayload(payload, req);
+    try {
+      normalizeWholesalePrice(payload);
+    } catch (validationErr) {
+      await transaction.rollback();
+      transactionFinished = true;
+      return res.status(400).json({
+        success: false,
+        message: validationErr.message,
+      });
+    }
+    if (payload.shopId && !userCanAccessShopId(req, payload.shopId)) {
+      await transaction.rollback();
+      transactionFinished = true;
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have access to this shop',
       });
     }
     const previousQuantity = parseQuantity(variant.quantityOnHand);
@@ -1736,36 +1805,71 @@ exports.updateProductVariant = async (req, res, next) => {
     const newQuantity = hasQtyPayload
       ? parseQuantity(payload.quantityOnHand)
       : previousQuantity;
+    const stockShopId = payload.shopId || req.shopFilterId || req.defaultShopId || variant.product?.shopId || null;
+    const tracksStock = variant.product?.trackStock !== false && variant.trackStock !== false;
+    const applyViaShopStock = hasQtyPayload && Boolean(stockShopId) && tracksStock;
+    const updatePayload = { ...payload };
+    if (applyViaShopStock) {
+      delete updatePayload.quantityOnHand;
+    }
+    delete updatePayload.shopId;
+    delete updatePayload.reason;
 
-    await variant.update(payload);
-    await syncParentQuantityFromVariants(variant.productId);
-    invalidateProductListCache(req.tenantId);
+    await variant.update(updatePayload, { transaction });
 
-    const quantityDelta = newQuantity - previousQuantity;
-    if (hasQtyPayload && quantityDelta !== 0) {
-      await recordProductStockMovement({
+    if (applyViaShopStock) {
+      await applyStockChange({
         tenantId: req.tenantId,
         productId: variant.productId,
         productVariantId: variant.id,
-        shopId: variant.product?.shopId || null,
+        shopId: stockShopId,
+        setTo: newQuantity,
         type: resolveStockMovementType({
           reason: payload.reason || payload.metadata?.reason,
-          quantityDelta,
+          quantityDelta: newQuantity - previousQuantity,
         }),
-        quantityDelta,
-        previousQuantity,
-        newQuantity,
         reason: payload.reason || payload.metadata?.reason || null,
-        createdBy: req.user?.id || null,
+        userId: req.user?.id || null,
         metadata: { source: 'updateProductVariant' },
+        transaction,
       });
+      await variant.reload({ transaction });
+    } else {
+      await syncParentQuantityFromVariants(variant.productId, transaction);
+      const quantityDelta = newQuantity - previousQuantity;
+      if (hasQtyPayload && quantityDelta !== 0) {
+        await recordProductStockMovement({
+          tenantId: req.tenantId,
+          productId: variant.productId,
+          productVariantId: variant.id,
+          shopId: null,
+          type: resolveStockMovementType({
+            reason: payload.reason || payload.metadata?.reason,
+            quantityDelta,
+          }),
+          quantityDelta,
+          previousQuantity,
+          newQuantity,
+          reason: payload.reason || payload.metadata?.reason || null,
+          createdBy: req.user?.id || null,
+          metadata: { source: 'updateProductVariant' },
+          transaction,
+        });
+      }
     }
+
+    await transaction.commit();
+    transactionFinished = true;
+    invalidateProductListCache(req.tenantId);
 
     res.status(200).json({
       success: true,
       data: stripSensitiveProductFields(variant, req)
     });
   } catch (error) {
+    if (!transactionFinished) {
+      await transaction.rollback();
+    }
     next(error);
   }
 };
