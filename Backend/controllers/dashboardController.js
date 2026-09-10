@@ -9,6 +9,7 @@ const { applyStudioLocationFilter, getStudioLocationSqlFragment } = require('../
 const { applyTenantFilter } = require('../utils/tenantUtils');
 const { resolveBusinessType } = require('../config/businessTypes');
 const { normalizeTenantClassification } = require('../utils/tenantClassification');
+const collectedRevenueService = require('../services/collectedRevenueService');
 
 const logDashboardDebug = (...args) => {
   if (config.nodeEnv === 'development') {
@@ -490,6 +491,57 @@ exports.getDashboardOverview = async (req, res, next) => {
     const salesCogsStats = Array.isArray(salesCogsStatsResult) ? salesCogsStatsResult[0] : (salesCogsStatsResult || {});
     const inventoryStats = Array.isArray(inventoryStatsResult) ? inventoryStatsResult[0] : (inventoryStatsResult || {});
 
+    // Prefer Payment-ledger collections (installments by paymentDate) when available.
+    const isRetail = businessType === 'shop' || businessType === 'pharmacy';
+    const collectedWindows = await collectedRevenueService.sumCollectedRevenueWindows(
+      req,
+      {
+        tenantId,
+        monthStart: firstDayOfMonth,
+        monthEnd: lastDayOfMonth,
+        todayStart,
+        todayEnd,
+        weekStart,
+        weekEnd,
+        hasDateFilter,
+        filterStart: hasDateFilter ? filterStart : undefined,
+        filterEnd: hasDateFilter ? filterEnd : undefined,
+        prevPeriod: Boolean(prevPeriod),
+        prevStart: prevPeriod?.start,
+        prevEnd: prevPeriod?.end,
+      },
+      isRetail ? 'retail' : 'studio'
+    );
+
+    let totalRevenue = parseFloat(invoiceStats.totalRevenue) || 0;
+    let thisMonthRevenue = parseFloat(invoiceStats.thisMonthRevenue) || 0;
+    let filteredRevenue = hasDateFilter ? (parseFloat(invoiceStats.filteredRevenue) || 0) : 0;
+    let monthSalesRevenue = parseFloat(salesStats.monthSalesRevenue) || 0;
+    let todaySales = parseFloat(salesStats.todaySales) || 0;
+    let weekSales = parseFloat(salesStats.weekSales) || 0;
+    let filteredSalesRevenue = hasDateFilter ? (parseFloat(salesStats.filteredSalesRevenue) || 0) : 0;
+
+    if (collectedWindows) {
+      totalRevenue = parseFloat(collectedWindows.totalRevenue) || 0;
+      thisMonthRevenue = parseFloat(collectedWindows.monthRevenue) || 0;
+      if (hasDateFilter) {
+        filteredRevenue = parseFloat(collectedWindows.filteredRevenue) || 0;
+      }
+      if (isRetail) {
+        monthSalesRevenue = parseFloat(collectedWindows.monthRevenue) || 0;
+        todaySales = parseFloat(collectedWindows.todayRevenue) || 0;
+        weekSales = parseFloat(collectedWindows.weekRevenue) || 0;
+        if (hasDateFilter) {
+          filteredSalesRevenue = parseFloat(collectedWindows.filteredRevenue) || 0;
+        }
+        if (prevPeriod) {
+          salesStats.prevSalesRevenue = collectedWindows.prevRevenue;
+        }
+      } else if (prevPeriod) {
+        invoiceStats.prevRevenue = collectedWindows.prevRevenue;
+      }
+    }
+
     // Map consolidated results to original variable names
     const totalCustomers = parseInt(entityCounts.totalCustomers) || 0;
     const totalVendors = parseInt(entityCounts.totalVendors) || 0;
@@ -500,8 +552,6 @@ exports.getDashboardOverview = async (req, res, next) => {
     const cancelledJobs = parseInt(jobStats.cancelledJobs) || 0;
     const completedJobs = parseInt(jobStats.completedJobs) || 0;
     const thisMonthJobs = parseInt(jobStats.thisMonthJobs) || 0;
-    const totalRevenue = parseFloat(invoiceStats.totalRevenue) || 0;
-    const thisMonthRevenue = parseFloat(invoiceStats.thisMonthRevenue) || 0;
     const totalExpenses = parseFloat(expenseStats.totalExpenses) || 0;
     const thisMonthExpenses = parseFloat(expenseStats.thisMonthExpenses) || 0;
     const newCustomersThisMonth = parseInt(entityCounts.newCustomersThisMonth) || 0;
@@ -514,18 +564,13 @@ exports.getDashboardOverview = async (req, res, next) => {
     const filteredOnHoldJobs = hasDateFilter ? (parseInt(jobStats.filteredOnHoldJobs) || 0) : 0;
     const filteredCancelledJobs = hasDateFilter ? (parseInt(jobStats.filteredCancelledJobs) || 0) : 0;
     const filteredCompletedJobs = hasDateFilter ? (parseInt(jobStats.filteredCompletedJobs) || 0) : 0;
-    const filteredRevenue = hasDateFilter ? (parseFloat(invoiceStats.filteredRevenue) || 0) : 0;
     const filteredExpenses = hasDateFilter ? (parseFloat(expenseStats.filteredExpenses) || 0) : 0;
     const filteredNewCustomers = hasDateFilter ? (parseInt(entityCounts.filteredNewCustomers) || 0) : 0;
 
     // Shop/Pharmacy sales data
-    const monthSalesRevenue = parseFloat(salesStats.monthSalesRevenue) || 0;
-    const todaySales = parseFloat(salesStats.todaySales) || 0;
-    const weekSales = parseFloat(salesStats.weekSales) || 0;
-    const monthSales = parseFloat(salesStats.monthSalesRevenue) || 0;
+    const monthSales = monthSalesRevenue;
     const totalSales = parseInt(salesStats.totalSales) || 0;
     const todaySalesCount = parseInt(salesStats.todaySalesCount) || 0;
-    const filteredSalesRevenue = hasDateFilter ? (parseFloat(salesStats.filteredSalesRevenue) || 0) : 0;
 
     // Cost of goods sold for the same periods (0 for non-retail business types, no products/sale_items to cost).
     const monthCogs = parseFloat(salesCogsStats.monthCogs) || 0;
@@ -806,6 +851,66 @@ exports.getRevenueByMonth = async (req, res, next) => {
 
     const year = req.query.year || new Date().getFullYear();
     const tenantId = req.tenantId;
+
+    let businessType = 'shop';
+    try {
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['businessType'] });
+      businessType = tenant?.businessType || 'shop';
+    } catch (_) {
+      /* use default */
+    }
+    const isRetail = businessType === 'shop' || businessType === 'pharmacy';
+    const mode = isRetail ? 'retail' : 'studio';
+
+    const paymentPeriod = await collectedRevenueService.getCollectedRevenueByPeriod(
+      {
+        ...req,
+        tenantId,
+      },
+      {
+        [Op.between]: [new Date(`${year}-01-01`), new Date(`${year}-12-31T23:59:59.999`)],
+      },
+      'month',
+      mode
+    );
+
+    if (paymentPeriod) {
+      return res.status(200).json({
+        success: true,
+        data: paymentPeriod.map((row) => ({
+          month: row.month,
+          totalRevenue: row.totalRevenue,
+        })),
+      });
+    }
+
+    if (isRetail) {
+      const saleShopFrag = getShopSqlFragment(req, '');
+      const revenueByMonth = await sequelize.query(
+        `
+          SELECT EXTRACT(MONTH FROM "createdAt") AS month,
+                 SUM(total) AS "totalRevenue"
+          FROM sales
+          WHERE "tenantId" = :tenantId
+            AND status = 'completed'
+            AND "deletedAt" IS NULL
+            AND "createdAt" BETWEEN :yearStart AND :yearEnd
+            ${saleShopFrag.sql}
+          GROUP BY 1
+          ORDER BY 1
+        `,
+        {
+          replacements: {
+            tenantId,
+            yearStart: new Date(`${year}-01-01`),
+            yearEnd: new Date(`${year}-12-31T23:59:59.999`),
+            ...saleShopFrag.replacements,
+          },
+          type: sequelize.QueryTypes.SELECT,
+        }
+      );
+      return res.status(200).json({ success: true, data: revenueByMonth });
+    }
 
     const revenueByMonth = await Invoice.findAll({
       attributes: [

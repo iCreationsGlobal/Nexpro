@@ -10,6 +10,7 @@ const {
 } = require('../utils/reportScopeUtils');
 const { resolveBusinessType } = require('../config/businessTypes');
 const { classifyAiProviderError, AI_PROVIDER_USER_MESSAGES } = require('../utils/aiProviderErrors');
+const collectedRevenueService = require('../services/collectedRevenueService');
 
 /** Tenant + active shop filter for retail reports. */
 const scopedRetailWhere = (req, extra = {}) =>
@@ -38,12 +39,16 @@ const scopedSaleWhere = (req, dateFilter = {}) =>
   });
 
 /**
- * Total POS revenue for shop/pharmacy (scoped by active shop when applicable).
+ * Collected revenue for shop/pharmacy: Payment ledger by paymentDate when available
+ * (installments land in the month received). Falls back to Sale.total by createdAt.
  * @param {import('express').Request} req
  * @param {Object} dateFilter
  */
 const getRetailRevenueTotal = async (req, dateFilter = {}) =>
-  parseFloat(await Sale.sum('total', { where: scopedSaleWhere(req, dateFilter) }) || 0);
+  collectedRevenueService.sumCollectedRevenue(req, dateFilter, {
+    mode: 'retail',
+    fallbackField: 'total',
+  });
 
 const getRetailCogsTotal = async (req, dateFilter = {}) => {
   if (!isRetailBusiness(req)) return 0;
@@ -85,11 +90,20 @@ const getRetailCogsTotal = async (req, dateFilter = {}) => {
 
 /**
  * POS revenue grouped by period for trend charts.
+ * Prefers Payment ledger by paymentDate when available.
  * @param {import('express').Request} req
  * @param {Object} dateFilter
  * @param {string} groupBy
  */
 const getRetailRevenueByPeriod = async (req, dateFilter = {}, groupBy = 'day') => {
+  const fromPayments = await collectedRevenueService.getCollectedRevenueByPeriod(
+    req,
+    dateFilter,
+    groupBy,
+    'retail'
+  );
+  if (fromPayments) return fromPayments;
+
   const hasDate = hasDateFilter(dateFilter);
   const shopFrag = getShopSqlFragment(req, '');
   const replacements = {
@@ -144,6 +158,7 @@ const getRetailRevenueByPeriod = async (req, dateFilter = {}, groupBy = 'day') =
 
 /**
  * Invoice revenue for studio types; POS revenue for shop/pharmacy.
+ * Uses Payment ledger by paymentDate when available (correct installment attribution).
  * @param {import('express').Request} req
  * @param {Object} dateFilter
  */
@@ -151,9 +166,7 @@ const resolveOverviewRevenueTotal = async (req, dateFilter = {}) => {
   if (isRetailBusiness(req)) {
     return getRetailRevenueTotal(req, dateFilter);
   }
-  return parseFloat(
-    await Invoice.sum('amountPaid', { where: buildCollectedRevenueWhere(req, dateFilter) }) || 0
-  );
+  return collectedRevenueService.sumCollectedRevenue(req, dateFilter, { mode: 'studio' });
 };
 const config = require('../config/config');
 const accountingReportService = require('../services/accountingReportService');
@@ -217,11 +230,20 @@ const buildOutstandingInvoiceWhere = (req, dateFilter = null, extra = {}) =>
 
 /**
  * Top customers by POS revenue for shop/pharmacy revenue reports.
+ * Prefers Payment ledger collections when available.
  * @param {import('express').Request} req
  * @param {Object} dateFilter
  * @param {number} [limit]
  */
 const getRetailRevenueByCustomer = async (req, dateFilter = {}, limit = 20) => {
+  const fromPayments = await collectedRevenueService.getCollectedRevenueByCustomer(
+    req,
+    dateFilter,
+    limit,
+    'retail'
+  );
+  if (fromPayments) return fromPayments;
+
   const rows = await Sale.findAll({
     attributes: [
       'customerId',
@@ -277,7 +299,7 @@ exports.getRevenueReport = async (req, res, next) => {
           byPeriod,
           byCustomer,
           byMethod: [],
-          revenueSource: 'sales'
+          revenueSource: 'payments'
         }
       });
     }
@@ -285,7 +307,15 @@ exports.getRevenueReport = async (req, res, next) => {
     const revWhere = buildCollectedRevenueWhere(req, dateFilter);
     const studioFrag = invoiceDocumentSqlFragment(req);
 
-    const getRevenueByPeriod = () => {
+    const getRevenueByPeriod = async () => {
+      const fromPayments = await collectedRevenueService.getCollectedRevenueByPeriod(
+        req,
+        dateFilter,
+        groupBy,
+        'studio'
+      );
+      if (fromPayments) return fromPayments;
+
       if (groupBy === 'hour') {
         return sequelize.query(
           `SELECT FLOOR(EXTRACT(HOUR FROM COALESCE("paidDate", "updatedAt"))/2)*2 as "hour", SUM("amountPaid") as "totalRevenue", COUNT("id") as "count" FROM "invoices" WHERE "tenantId"=:tenantId AND status!='cancelled' AND "amountPaid" > 0 ${hasDateFilterValue ? 'AND COALESCE("paidDate", "updatedAt") BETWEEN :startDate AND :endDate' : ''}${studioFrag.sql} GROUP BY 1 ORDER BY 1`,
@@ -311,50 +341,39 @@ exports.getRevenueReport = async (req, res, next) => {
     };
 
     let revenueByMethod = [];
-    // try {
-    //   revenueByMethod = await Invoice.findAll({
-    //     attributes: [
-    //       'paymentMethod',
-    //       [sequelize.fn('SUM', sequelize.literal('"Invoice"."amountPaid"')), 'totalRevenue'],
-    //       [sequelize.fn('COUNT', sequelize.literal('"Invoice"."id"')), 'count']
-    //     ],
-    //     where: applyTenantFilter(req.tenantId, {
-    //       status: 'paid',
-    //       ...(Object.keys(dateFilter).length > 0 && { paidDate: dateFilter })
-    //     }),
-    //     group: ['paymentMethod'],
-    //     order: [[sequelize.fn('SUM', sequelize.literal('"Invoice"."amountPaid"')), 'DESC']],
-    //     raw: true
-    //   });
-    //   console.log('[Revenue Report] Revenue by payment method fetched:', revenueByMethod.length, 'methods');
-    // } catch (methodError) {
-    //   console.error('[Revenue Report] Error fetching revenue by payment method:', methodError);
-    //   revenueByMethod = [];
-    // }
+
+    const paymentCustomers = await collectedRevenueService.getCollectedRevenueByCustomer(
+      req,
+      dateFilter,
+      20,
+      'studio'
+    );
 
     const [revenueByPeriod, revenueByCustomer, totalRevenue] = await Promise.all([
       getRevenueByPeriod(),
-      Invoice.findAll({
-        attributes: ['customerId', [sequelize.fn('SUM', sequelize.literal('"Invoice"."amountPaid"')), 'totalRevenue'], [sequelize.fn('COUNT', sequelize.literal('"Invoice"."id"')), 'paymentCount']],
-        where: revWhere,
-        include: [{ model: Customer, as: 'customer', attributes: ['id', 'name', 'company'] }],
-        group: ['customerId', 'customer.id'],
-        order: [[sequelize.fn('SUM', sequelize.literal('"Invoice"."amountPaid"')), 'DESC']],
-        limit: 20
-      }),
-      Invoice.sum('amountPaid', { where: revWhere })
+      paymentCustomers
+        ? Promise.resolve(paymentCustomers)
+        : Invoice.findAll({
+            attributes: ['customerId', [sequelize.fn('SUM', sequelize.literal('"Invoice"."amountPaid"')), 'totalRevenue'], [sequelize.fn('COUNT', sequelize.literal('"Invoice"."id"')), 'paymentCount']],
+            where: revWhere,
+            include: [{ model: Customer, as: 'customer', attributes: ['id', 'name', 'company'] }],
+            group: ['customerId', 'customer.id'],
+            order: [[sequelize.fn('SUM', sequelize.literal('"Invoice"."amountPaid"')), 'DESC']],
+            limit: 20
+          }),
+      collectedRevenueService.sumCollectedRevenue(req, dateFilter, { mode: 'studio' })
     ]);
 
     const effectiveTotalRevenue = parseFloat(totalRevenue || 0);
     const effectiveByPeriod = revenueByPeriod;
-    logReport('[Revenue Report] Total revenue:', effectiveTotalRevenue, '(from Invoice.amountPaid)');
+    logReport('[Revenue Report] Total revenue:', effectiveTotalRevenue, '(payment ledger / invoice fallback)');
 
     const responseData = {
       totalRevenue: effectiveTotalRevenue,
       byPeriod: effectiveByPeriod,
       byCustomer: revenueByCustomer,
       byMethod: revenueByMethod,
-      revenueSource: 'invoices'
+      revenueSource: 'payments'
     };
     logReport('[Revenue Report] Response data summary:', {
       totalRevenue: responseData.totalRevenue,
@@ -991,7 +1010,12 @@ exports.getIncomeExpenditureReport = async (req, res, next) => {
     });
 
     const [totalIncome, expensesByCategory, totalExpenditure] = await Promise.all([
-      Invoice.sum('amountPaid', { where: revWhere }) || 0,
+      isRetailBusiness(req)
+        ? collectedRevenueService.sumCollectedRevenue(req, dateFilter, {
+            mode: 'retail',
+            fallbackField: 'total',
+          })
+        : collectedRevenueService.sumCollectedRevenue(req, dateFilter, { mode: 'studio' }),
       Expense.findAll({
         attributes: [
           'category',
@@ -1218,29 +1242,17 @@ exports.getFinancialPositionReport = async (req, res, next) => {
 };
 
 /**
- * Cash collected from customers (studio/invoice types) for the period.
+ * Cash collected from customers for the period.
  * Prefers the Payment ledger (each row has its own paymentDate + amount, so partial payments
- * spread across periods are attributed correctly) over Invoice.amountPaid, which is a running
- * total that — when filtered by paidDate/updatedAt — can mis-state per-period cash for invoices
- * paid across multiple periods. Falls back to the invoice total when the tenant has no income
- * Payment rows at all, so tenants who haven't recorded payments this way don't see a blank report.
+ * spread across periods are attributed correctly) over Invoice.amountPaid / Sale.amountPaid,
+ * which are running totals that mis-state per-period cash when installments span months.
+ * Falls back when the tenant has no income Payment rows.
  * @param {import('express').Request} req
  * @param {Object} dateFilter
- * @param {Object} revWhere - Invoice fallback where clause (buildCollectedRevenueWhere)
+ * @param {Object} revWhere - unused (kept for call-site compatibility)
  */
 const getStudioCashCollected = async (req, dateFilter, revWhere) => {
-  const hasAnyIncomePayments = await Payment.count({
-    where: applyTenantFilter(req.tenantId, { type: 'income', status: 'completed' })
-  });
-  if (hasAnyIncomePayments > 0) {
-    const paymentWhere = applyTenantFilter(req.tenantId, {
-      type: 'income',
-      status: 'completed',
-      ...(hasDateFilter(dateFilter) && { paymentDate: dateFilter })
-    });
-    return parseFloat(await Payment.sum('amount', { where: paymentWhere }) || 0);
-  }
-  return parseFloat(await Invoice.sum('amountPaid', { where: revWhere }) || 0);
+  return collectedRevenueService.sumCollectedRevenue(req, dateFilter, { mode: 'studio' });
 };
 
 // @desc    Get cash flow statement (simplified: operating only)
@@ -1260,7 +1272,10 @@ exports.getCashFlowReport = async (req, res, next) => {
 
     const [cashFromCustomers, cashPaidExpenses] = await Promise.all([
       isRetailBusiness(req)
-        ? Sale.sum('amountPaid', { where: scopedSaleWhere(req, dateFilter) })
+        ? collectedRevenueService.sumCollectedRevenue(req, dateFilter, {
+            mode: 'retail',
+            fallbackField: 'amountPaid',
+          })
         : getStudioCashCollected(req, dateFilter, revWhere),
       Expense.sum('amount', { where: expenseWhere }) || 0
     ]);
@@ -2909,7 +2924,10 @@ async function computeOverviewPeriodMetrics(req, rangeStart, rangeEnd) {
       ? Sale.count({ where: scopedSaleWhere(req, dateFilter) })
       : Promise.resolve(0),
     isRetailBusiness(req)
-      ? Sale.sum('amountPaid', { where: scopedSaleWhere(req, dateFilter) })
+      ? collectedRevenueService.sumCollectedRevenue(req, dateFilter, {
+          mode: 'retail',
+          fallbackField: 'amountPaid',
+        })
       : Promise.resolve(0)
   ]);
 
@@ -2929,7 +2947,8 @@ async function computeOverviewPeriodMetrics(req, rangeStart, rangeEnd) {
     const saleCount = parseInt(retailSaleCount || 0, 10);
     averageInvoiceValue = saleCount > 0 ? parseFloat((revenue / saleCount).toFixed(2)) : 0;
     const salePaid = parseFloat(retailSalePaid || 0);
-    collectionRate = revenue > 0 ? parseFloat(((salePaid / revenue) * 100).toFixed(2)) : 100;
+    // With payment-ledger revenue, salePaid and revenue are both collections — rate ~100%.
+    collectionRate = revenue > 0 ? parseFloat(((Math.min(salePaid, revenue) / revenue) * 100).toFixed(2)) : 100;
   } else {
     const totalInvoiced = parseFloat(invoiceAggregates?.totalInvoiced || 0);
     const totalCollected = parseFloat(invoiceAggregates?.totalCollected || 0);
@@ -2959,7 +2978,7 @@ async function computeOverviewPeriodMetrics(req, rangeStart, rangeEnd) {
     collectionRate,
     outstandingAmount: parseFloat(outstandingInPeriod || 0),
     totalOutstanding: parseFloat(totalOutstandingAll || 0),
-    revenueSource: isRetailBusiness(req) ? 'sales' : 'invoices',
+    revenueSource: 'payments',
     averageMetricLabel: isRetailBusiness(req) ? 'averageSaleValue' : 'averageInvoiceValue'
   };
 }

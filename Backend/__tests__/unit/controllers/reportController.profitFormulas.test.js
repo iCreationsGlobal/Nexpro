@@ -41,7 +41,7 @@ jest.mock('../../../models', () => ({
   JournalEntryLine: {},
 }));
 
-const { Expense, Customer, Invoice, Sale, SaleItem } = require('../../../models');
+const { Expense, Customer, Invoice, Sale, SaleItem, Payment } = require('../../../models');
 const reportController = require('../../../controllers/reportController');
 
 const mockRes = () => {
@@ -54,6 +54,8 @@ const mockRes = () => {
 describe('reportController profit formulas', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // No Payment ledger rows → fall back to Invoice/Sale totals (legacy behaviour under test).
+    Payment.count.mockResolvedValue(0);
   });
 
   describe('getKpiSummary', () => {

@@ -1541,6 +1541,19 @@ const createSaleCore = async (transaction, tenantId, userId, body, clientId = nu
     });
   }
 
+  // Record POS tender on the Payment ledger so revenue/cash-flow attribute by paymentDate.
+  const netTender = Math.min(parseFloat(amountPaid) || 0, parseFloat(total) || 0);
+  if (netTender > 0) {
+    const { createSaleIncomePayment } = require('../utils/incomePaymentLedger');
+    await createSaleIncomePayment(sale, {
+      amount: netTender,
+      paymentMethod,
+      paymentDate: sale.createdAt || new Date(),
+      notes: 'POS tender',
+      transaction,
+    });
+  }
+
   return { sale, items: createdItems };
 };
 
@@ -3861,6 +3874,14 @@ exports.checkPaystackChargeForSale = async (req, res, next) => {
         }
       };
       if (statusResult.status === 'SUCCESSFUL') {
+        const { createSaleIncomePaymentForSettlement } = require('../utils/incomePaymentLedger');
+        await createSaleIncomePaymentForSettlement(sale, {
+          newAmountPaid: sale.total,
+          paymentMethod: 'mobile_money',
+          paymentDate: new Date(),
+          referenceNumber: mobileMoneyRef.referenceId || null,
+          notes: `Mobile money payment for sale ${sale.saleNumber || sale.id}`,
+        });
         await sale.update({
           status: 'completed',
           paymentMethod: 'mobile_money',

@@ -14,8 +14,13 @@ jest.mock('../../../services/paystackService', () => ({
   getMoMoBankCode: jest.fn()
 }));
 
+jest.mock('../../../utils/incomePaymentLedger', () => ({
+  createSaleIncomePaymentForSettlement: jest.fn().mockResolvedValue({ created: true, delta: 96 }),
+}));
+
 const { Tenant } = require('../../../models');
 const { applyPaystackChargeToSaleFromTx } = require('../../../services/paystackSalePayment');
+const { createSaleIncomePaymentForSettlement } = require('../../../utils/incomePaymentLedger');
 
 describe('paystackSalePayment', () => {
   beforeEach(() => {
@@ -47,6 +52,13 @@ describe('paystackSalePayment', () => {
     const outcome = await applyPaystackChargeToSaleFromTx(sale, 'SALE-sale-1-123', tx);
     expect(outcome.applied).toBe(true);
     expect(outcome.nextStatus).toBe('completed');
+    expect(createSaleIncomePaymentForSettlement).toHaveBeenCalledWith(
+      sale,
+      expect.objectContaining({
+        newAmountPaid: 96,
+        referenceNumber: 'SALE-sale-1-123',
+      })
+    );
     expect(sale.update).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'completed',
