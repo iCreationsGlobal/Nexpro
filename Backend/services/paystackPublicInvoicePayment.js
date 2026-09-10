@@ -3,7 +3,7 @@
  * Shared by Paystack webhooks and POST /api/public/invoices/:token/verify-paystack (return URL fallback).
  */
 
-const { Invoice, Customer, Payment } = require('../models');
+const { Invoice, Customer } = require('../models');
 const activityLogger = require('./activityLogger');
 const { updateCustomerBalance } = require('./customerBalanceService');
 const { ensureSaleFromPaidInvoice } = require('./invoiceSaleService');
@@ -146,24 +146,17 @@ async function applyPaystackChargeToInvoiceFromTx(reference, tx) {
   }
   await invoice.update(updatePayload);
 
-  const paymentNumber = `PAY-${Date.now()}`;
-  const paymentData = {
-    paymentNumber,
-    type: 'income',
-    customerId: invoice.customerId,
-    tenantId: invoice.tenantId,
+  const { createInvoiceIncomePayment } = require('../utils/incomePaymentLedger');
+  const { payment } = await createInvoiceIncomePayment(invoice, {
     amount: appliedPaymentAmount,
     paymentMethod,
     paymentDate: new Date(),
     referenceNumber: reference,
-    status: 'completed',
-    notes: `Paystack payment for invoice ${invoice.invoiceNumber}`
-  };
-  if (invoice.jobId) paymentData.jobId = invoice.jobId;
-  if (invoice.saleId) paymentData.saleId = invoice.saleId;
-  if (invoice.prescriptionId) paymentData.prescriptionId = invoice.prescriptionId;
-  const payment = await Payment.create(paymentData);
-  await ensureSaleFromPaidInvoice(invoice.id, payment.id, {
+    notes: `Paystack payment for invoice ${invoice.invoiceNumber}`,
+    jobId: invoice.jobId || null,
+  });
+
+  await ensureSaleFromPaidInvoice(invoice.id, payment?.id || null, {
     tenantId: invoice.tenantId,
     paymentMethod
   });

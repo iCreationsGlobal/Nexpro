@@ -13,6 +13,7 @@ const {
 const { sequelize } = require('../config/database');
 const { emitNewSale } = require('../services/websocketService');
 const { Op } = require('sequelize');
+const { createSaleIncomePaymentForSettlement } = require('../utils/incomePaymentLedger');
 
 async function loadMtnRuntimeForTenant(tenantId) {
   const tenant = await Tenant.findByPk(tenantId);
@@ -277,6 +278,14 @@ exports.pollSalePayment = async (req, res) => {
 
     // If payment successful, update sale status
     if (result.status === 'SUCCESSFUL') {
+      await createSaleIncomePaymentForSettlement(sale, {
+        newAmountPaid: sale.total,
+        paymentMethod: 'mobile_money',
+        paymentDate: new Date(),
+        referenceNumber: mobileMoneyRef.referenceId || null,
+        notes: `Mobile money payment for sale ${sale.saleNumber || sale.id}`,
+        transaction,
+      });
       await sale.update({
         status: 'completed',
         paymentMethod: 'mobile_money',
@@ -395,6 +404,13 @@ exports.mtnWebhook = async (req, res) => {
     });
 
     if (sale && status === 'SUCCESSFUL') {
+      await createSaleIncomePaymentForSettlement(sale, {
+        newAmountPaid: sale.total,
+        paymentMethod: 'mobile_money',
+        paymentDate: new Date(),
+        referenceNumber: referenceId || null,
+        notes: `MTN MoMo payment for sale ${sale.saleNumber || sale.id}`,
+      });
       await sale.update({
         status: 'completed',
         paymentMethod: 'mobile_money',
@@ -443,6 +459,13 @@ exports.airtelWebhook = async (req, res) => {
       });
 
       if (sale) {
+        await createSaleIncomePaymentForSettlement(sale, {
+          newAmountPaid: sale.total,
+          paymentMethod: 'mobile_money',
+          paymentDate: new Date(),
+          referenceNumber: referenceId || null,
+          notes: `Airtel Money payment for sale ${sale.saleNumber || sale.id}`,
+        });
         await sale.update({
           status: 'completed',
           paymentMethod: 'mobile_money',
@@ -551,6 +574,13 @@ exports.hubtelWebhook = async (req, res) => {
       };
 
       if (parsed.status === 'SUCCESSFUL') {
+        await createSaleIncomePaymentForSettlement(sale, {
+          newAmountPaid: sale.total,
+          paymentMethod: 'mobile_money',
+          paymentDate: new Date(),
+          referenceNumber: parsed.clientReference || existing.referenceId || null,
+          notes: `Hubtel payment for sale ${sale.saleNumber || sale.id}`,
+        });
         await sale.update({
           status: 'completed',
           paymentMethod: 'mobile_money',

@@ -5,6 +5,7 @@
 
 const { findTenantWithOptionalColumns } = require('../utils/tenantUtils');
 const paystackService = require('./paystackService');
+const { createSaleIncomePaymentForSettlement } = require('../utils/incomePaymentLedger');
 
 /**
  * @param {import('../models').Sale} sale
@@ -61,6 +62,14 @@ async function applyPaystackChargeToSaleFromTx(sale, reference, tx) {
   const pc = tenant?.metadata?.paymentCollection || {};
   const isMoMo = pc.settlementType === 'momo' && pc.momoPhone;
   const useLegacyMomoTransfer = isMoMo && !tenant?.paystackSubaccountCode;
+
+  await createSaleIncomePaymentForSettlement(sale, {
+    newAmountPaid,
+    paymentMethod: nextPaymentMethod,
+    paymentDate: new Date(),
+    referenceNumber: reference,
+    notes: `Paystack charge for sale ${sale.saleNumber || sale.id}`,
+  });
 
   await sale.update({
     status: nextStatus,

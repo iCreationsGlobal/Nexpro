@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { sequelize } = require('../../../config/database');
-const { Sale, Invoice, Expense, Tenant } = require('../../../models');
+const { Sale, Invoice, Expense, Tenant, Payment } = require('../../../models');
 const {
   computeAlignedProfit,
   isRetailBusinessType,
@@ -12,6 +12,7 @@ const {
   resolveAnalysisPeriod,
   countInclusiveDays,
 } = require('./dates');
+const { applyTenantFilter } = require('../../../utils/tenantUtils');
 
 /**
  * @param {string} tenantId
@@ -30,6 +31,7 @@ async function resolveTenantMeta(tenantId) {
 }
 
 /**
+ * Collected revenue for the period — Payment ledger by paymentDate when available.
  * @param {{ tenantId: string, shopFilterId?: string|null, studioLocationFilterId?: string|null }} scope
  * @param {Date} start
  * @param {Date} end
@@ -38,6 +40,43 @@ async function resolveTenantMeta(tenantId) {
  */
 async function fetchRevenue(scope, start, end, isRetail) {
   const { tenantId, shopFilterId, studioLocationFilterId } = scope;
+  const hasPayments = await Payment.count({
+    where: applyTenantFilter(tenantId, { type: 'income', status: 'completed' }),
+  });
+
+  if (hasPayments > 0) {
+    const collectedRevenueService = require('../../collectedRevenueService');
+    const fakeReq = {
+      tenantId,
+      shopScoped: Boolean(shopFilterId),
+      shopFilterId: shopFilterId || null,
+      canAccessAllShops: !shopFilterId,
+      studioLocationScoped: Boolean(studioLocationFilterId),
+      studioLocationFilterId: studioLocationFilterId || null,
+      canAccessAllStudioLocations: !studioLocationFilterId,
+    };
+    const dateFilter = { [Op.between]: [start, end] };
+    const revenueRaw = await collectedRevenueService.sumCollectedRevenue(
+      fakeReq,
+      dateFilter,
+      { mode: isRetail ? 'retail' : 'studio' }
+    );
+    const periodRows = await collectedRevenueService.getCollectedRevenueByPeriod(
+      fakeReq,
+      dateFilter,
+      'day',
+      isRetail ? 'retail' : 'studio'
+    );
+    const saleCount = (periodRows || []).reduce(
+      (sum, row) => sum + (parseInt(row.count, 10) || 0),
+      0
+    );
+    return {
+      revenue: roundMoney(revenueRaw),
+      saleCount,
+    };
+  }
+
   if (isRetail) {
     const where = {
       tenantId,

@@ -27,6 +27,7 @@ jest.mock('../../../models', () => ({
     count: jest.fn().mockResolvedValue(0),
     findAll: jest.fn().mockResolvedValue([]),
   },
+  Payment: { count: jest.fn().mockResolvedValue(0), sum: jest.fn().mockResolvedValue(0) },
 }));
 
 describe('dashboardController expense scoping', () => {
