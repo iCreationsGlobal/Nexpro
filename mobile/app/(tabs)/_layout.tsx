@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, usePathname, useRouter } from 'expo-router';
 import { DeviceEventEmitter, View, Pressable, StyleSheet, Text } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
@@ -56,10 +56,12 @@ export default function TabLayout() {
   const isStudio = resolvedType === 'studio';
   const isRetailLike = isShop || isPharmacy;
   const showInvoicesInTab = (isRetailLike || isStudio) && hasFeature('invoices');
-  const centerTabTitle = isStudio ? 'Add Job' : 'Scan';
+  const centerTabTitle = isStudio ? 'Add Job' : 'Sell';
   const isScanRoute = pathname === '/scan' || pathname.endsWith('/scan');
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const lastCenterTapRef = useRef(0);
+  const DOUBLE_TAP_WINDOW_MS = 350;
 
   useEffect(() => {
     if (!isDriver) return;
@@ -119,6 +121,21 @@ export default function TabLayout() {
           tabBarButton: (props) => (
             <Pressable
               onPress={(event) => {
+                const now = Date.now();
+                const isDoubleTap = now - lastCenterTapRef.current < DOUBLE_TAP_WINDOW_MS;
+                lastCenterTapRef.current = now;
+
+                // Double-tap always forces the camera open — a manual override for
+                // when the workspace hasn't enabled barcode scanning by default.
+                if (isDoubleTap && !isStudio) {
+                  if (isScanRoute) {
+                    DeviceEventEmitter.emit(OPEN_SCAN_CAMERA_EVENT, { force: true });
+                  } else {
+                    router.push('/(tabs)/scan?forceCamera=1' as never);
+                  }
+                  return;
+                }
+
                 if (!isStudio && isScanRoute && scanningEnabled) {
                   DeviceEventEmitter.emit(OPEN_SCAN_CAMERA_EVENT);
                   return;

@@ -48,7 +48,7 @@ jest.mock('../../../models', () => ({
   User: {},
   SaleActivity: {},
   Tenant: {},
-  Payment: {},
+  Payment: { create: jest.fn().mockResolvedValue({ id: "payment-1" }) },
   Setting: {
     findOne: jest.fn()
   }
@@ -123,7 +123,7 @@ jest.mock('../../../middleware/cache', () => ({
 jest.mock('../../../config/config', () => ({ nodeEnv: 'test' }));
 
 const { sequelize } = require('../../../config/database');
-const { Sale, SaleItem, Product, ProductVariant, Setting, Dealer } = require('../../../models');
+const { Sale, SaleItem, Product, ProductVariant, Setting, Dealer, Payment } = require('../../../models');
 const { checkCreditLimit } = require('../../../services/dealerBalanceService');
 const { recordSaleCharge } = require('../../../services/dealerLedgerService');
 const saleController = require('../../../controllers/saleController');
@@ -142,7 +142,15 @@ describe('saleController createSaleCore', () => {
     Product.create.mockResolvedValue({ id: 'product-new', sku: null, barcode: null });
     Setting.findOne.mockResolvedValue(null);
     Sale.create.mockImplementation((payload) => Promise.resolve({ id: 'sale-1', ...payload }));
+    Payment.create.mockResolvedValue({ id: 'payment-1' });
     SaleItem.bulkCreate.mockImplementation((rows) => Promise.resolve(rows.map((row, index) => ({ id: `item-${index + 1}`, ...row }))));
+  });
+
+  it('records the paid portion with the sale transaction', async () => {
+    await saleController.createSaleCore(transaction, tenantId, userId, {
+      items: [{ name: 'Custom item', quantity: 1, unitPrice: 50 }], amountPaid: 20,
+    });
+    expect(Payment.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 20, tenantId, description: 'sale:sale-1' }), { transaction });
   });
 
   it('creates a sale item for an unsaved custom POS item with productId null', async () => {

@@ -3,6 +3,7 @@ const {
   PartnerReferral,
   Partnership,
   Customer,
+  Job,
   PartnerProgramSettings,
   Tenant,
 } = require('../models');
@@ -248,8 +249,8 @@ const listReferralsForMarketer = async (marketerId) =>
     order: [['createdAt', 'DESC']],
   });
 
-const getReferralForMarketer = async (marketerId, referralId) =>
-  PartnerReferral.findOne({
+const getReferralForMarketer = async (marketerId, referralId) => {
+  const referral = await PartnerReferral.findOne({
     where: { id: referralId, marketerId },
     include: [
       { association: 'tenant', attributes: ['id', 'name'] },
@@ -257,6 +258,25 @@ const getReferralForMarketer = async (marketerId, referralId) =>
       { association: 'customer', attributes: ['id', 'name', 'email', 'phone'] },
     ],
   });
+
+  if (!referral) return null;
+  const result = referral.toJSON();
+  result.jobs = [];
+  if (referral.status === 'matched' && referral.customerId && referral.matchedAt) {
+    result.jobs = await Job.findAll({
+      where: {
+        tenantId: referral.tenantId, customerId: referral.customerId,
+        [Op.or]: [
+          { partnershipId: referral.partnershipId, partnerMarketerId: marketerId },
+          { partnershipId: null, partnerMarketerId: null, createdAt: { [Op.gte]: referral.matchedAt } },
+        ],
+      },
+      attributes: ['id', 'jobNumber', 'title', 'status', 'dueDate', 'createdAt', 'updatedAt'],
+      order: [['createdAt', 'DESC']],
+    });
+  }
+  return result;
+};
 
 const listReferralsForTenant = async (tenantId, { status } = {}) => {
   const where = { tenantId };

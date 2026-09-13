@@ -12,6 +12,11 @@
       "src": "/(.*)",
       "dest": "api/index.js"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/internal/partner-commissions/reconcile",
+      "schedule": "*/2 * * * *"
+    }
   ]
 }
-

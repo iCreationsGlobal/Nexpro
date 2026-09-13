@@ -5,6 +5,9 @@
 
 const { findTenantWithOptionalColumns } = require('../utils/tenantUtils');
 const paystackService = require('./paystackService');
+const { Sale, Payment } = require('../models');
+const { sequelize } = require('../config/database');
+const { recordSalePayment } = require('./partnerPaymentService');
 
 /**
  * @param {import('../models').Sale} sale
@@ -17,6 +20,9 @@ async function applyPaystackChargeToSaleFromTx(sale, reference, tx) {
     return { applied: false, reason: 'sale_not_found' };
   }
 
+  const outcome = await sequelize.transaction(async (transaction) => {
+    sale = await Sale.findOne({ where: { id: sale.id, tenantId: sale.tenantId }, transaction, lock: transaction.LOCK.UPDATE });
+    if (!sale) return { applied: false, reason: 'sale_not_found' };
   const saleTotal = parseFloat(sale.total || 0);
   const currentPaid = parseFloat(sale.amountPaid || 0);
   const balanceDue = Math.max(saleTotal - currentPaid, 0);
@@ -48,7 +54,13 @@ async function applyPaystackChargeToSaleFromTx(sale, reference, tx) {
     return { applied: false, duplicate: true, reason: 'already_recorded' };
   }
 
+  const existing = await Payment.findOne({ where: {
+    tenantId: sale.tenantId, referenceNumber: reference, description: `sale:${sale.id}`,
+  }, transaction });
+  if (existing) return { applied: false, duplicate: true, reason: 'already_recorded' };
+  if (tx.currency && tx.currency !== 'GHS') return { applied: false, reason: 'currency_mismatch' };
   const amount = parseFloat(tx.amount || 0) / 100;
+  if (!Number.isFinite(amount) || amount <= 0) return { applied: false, reason: 'invalid_amount' };
   const appliedAmount =
     Number.isFinite(balanceDue) && balanceDue > 0 ? Math.min(amount, balanceDue) : amount;
   const newAmountPaid = Math.min(currentPaid + appliedAmount, saleTotal);
@@ -56,11 +68,6 @@ async function applyPaystackChargeToSaleFromTx(sale, reference, tx) {
   const channel = String(tx.channel || tx.authorization?.channel || '').toLowerCase();
   const nextPaymentMethod =
     channel.includes('mobile') || sale.paymentMethod === 'mobile_money' ? 'mobile_money' : 'card';
-
-  const tenant = await findTenantWithOptionalColumns(sale.tenantId);
-  const pc = tenant?.metadata?.paymentCollection || {};
-  const isMoMo = pc.settlementType === 'momo' && pc.momoPhone;
-  const useLegacyMomoTransfer = isMoMo && !tenant?.paystackSubaccountCode;
 
   await sale.update({
     status: nextStatus,
@@ -71,7 +78,18 @@ async function applyPaystackChargeToSaleFromTx(sale, reference, tx) {
       paystackRef: reference,
       paystackCompletedAt: new Date().toISOString()
     }
+  }, { transaction });
+    await recordSalePayment(sale, appliedAmount, { transaction, reference });
+    return { applied: true, appliedAmount, nextStatus };
   });
+  if (!outcome.applied) return outcome;
+  const { appliedAmount, nextStatus } = outcome;
+  const tenant = await findTenantWithOptionalColumns(sale.tenantId);
+  const pc = tenant?.metadata?.paymentCollection || {};
+  const isMoMo = pc.settlementType === 'momo' && pc.momoPhone;
+  const useLegacyMomoTransfer = isMoMo && !tenant?.paystackSubaccountCode;
+
+
 
   if (useLegacyMomoTransfer) {
     try {

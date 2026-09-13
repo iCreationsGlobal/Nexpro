@@ -6,7 +6,6 @@ const { checkCreditLimit } = require('../services/dealerBalanceService');
 const { recordSaleCharge } = require('../services/dealerLedgerService');
 const { createSaleCogsJournal, createSaleRevenueJournal } = require('../services/saleAccountingService');
 const { hardDeleteSaleInTransaction } = require('../services/saleHardDeleteService');
-const { maybeCreateCommissionForPayment } = require('../services/partnerCommissionService');
 const { Op } = require('sequelize');
 const { applyTenantFilter, sanitizePayload, findTenantWithOptionalColumns } = require('../utils/tenantUtils');
 const { resolvePaymentNotesFromBody } = require('../utils/paymentNoteUtils');
@@ -1541,6 +1540,9 @@ const createSaleCore = async (transaction, tenantId, userId, body, clientId = nu
     });
   }
 
+  if (['completed', 'partially_paid'].includes(sale.status) && Number(sale.amountPaid) > 0) {
+    await require('../services/partnerPaymentService').recordSalePayment(sale, sale.amountPaid, { transaction });
+  }
   return { sale, items: createdItems };
 };
 
@@ -2273,18 +2275,7 @@ exports.recordPayment = async (req, res, next) => {
 
     setImmediate(async () => {
       try {
-        try {
-          await maybeCreateCommissionForPayment({
-            tenantId,
-            paymentAmount,
-            paymentId: payment.id,
-            saleId: sale.id,
-            invoiceId: sale.invoiceId || null,
-            customerId: sale.customerId || null,
-          });
-        } catch (partnerErr) {
-          console.error('[RecordPayment] Partner commission failed:', partnerErr?.message || partnerErr);
-        }
+
 
         if (!becameCompleted) return;
 

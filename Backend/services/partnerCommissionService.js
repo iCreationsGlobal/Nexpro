@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const {
   PartnerCommission,
+  PartnerReferral,
   Partnership,
   Customer,
   Sale,
@@ -136,6 +137,7 @@ const maybeCreateCommissionForPayment = async ({
   invoiceId = null,
   customerId = null,
   jobId = null,
+  collectedAt = null,
 }) => {
   const amountCollected = money(paymentAmount);
   if (!tenantId || amountCollected <= 0) return null;
@@ -155,10 +157,24 @@ const maybeCreateCommissionForPayment = async ({
   if (!attribution) return null;
 
   const { partnership, customerId: cid, saleId: sid, invoiceId: iid } = attribution;
+  // Recovery must never attribute payments collected before this referral existed.
+  if (collectedAt) {
+    const paidAt = new Date(collectedAt);
+    if (partnership.activatedAt && paidAt < new Date(partnership.activatedAt)) return null;
+    if (cid) {
+      const referral = await PartnerReferral.findOne({ where: {
+        tenantId, partnershipId: partnership.id, marketerId: partnership.marketerId,
+        customerId: cid, status: 'matched',
+      } });
+      if (referral?.matchedAt && paidAt < new Date(referral.matchedAt)) return null;
+    }
+  }
   const { rateType, ratePercent } = await resolveRate(partnership, cid);
   const commissionAmount = money((amountCollected * ratePercent) / 100);
   if (commissionAmount <= 0) return null;
 
+  const platformFeePercent = await require('./sabitoAppPlatformService').getPlatformFeePercent();
+  const platformFeeAmount = money(commissionAmount * platformFeePercent / 100);
   try {
     return await PartnerCommission.create({
       tenantId,
@@ -172,6 +188,10 @@ const maybeCreateCommissionForPayment = async ({
       ratePercent,
       paymentAmount: amountCollected,
       amount: commissionAmount,
+      platformFeePercent,
+      platformFeeAmount,
+      marketerShareAmount: money(commissionAmount - platformFeeAmount),
+      remittanceStatus: 'owed',
       currency: 'GHS',
       status: 'due',
     });

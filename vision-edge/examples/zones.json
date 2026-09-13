@@ -1,0 +1,13 @@
+{
+  "camera": "counter_phone",
+  "zones": [
+    {
+      "name": "counter",
+      "type": "counter",
+      "x": 0.68,
+      "y": 0.52,
+      "w": 0.26,
+      "h": 0.42
+    }
+  ]
+}

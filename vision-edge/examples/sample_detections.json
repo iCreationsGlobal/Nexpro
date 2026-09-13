@@ -1,0 +1,13 @@
+{
+  "fps": 2,
+  "start_time": "2026-08-30T10:32:00",
+  "frames": [
+    {"t": 0, "detections": [{"track_id": "384", "bbox": [0.10, 0.40, 0.22, 0.90], "confidence": 0.94}]},
+    {"t": 2, "detections": [{"track_id": "384", "bbox": [0.18, 0.40, 0.30, 0.90], "confidence": 0.93}]},
+    {"t": 4, "detections": [{"track_id": "384", "bbox": [0.70, 0.55, 0.84, 0.90], "confidence": 0.91}]},
+    {"t": 6, "detections": [{"track_id": "384", "bbox": [0.70, 0.55, 0.84, 0.90], "confidence": 0.90}]},
+    {"t": 8, "detections": [{"track_id": "384", "bbox": [0.71, 0.55, 0.85, 0.90], "confidence": 0.89}]},
+    {"t": 10, "detections": [{"track_id": "384", "bbox": [0.70, 0.56, 0.84, 0.91], "confidence": 0.88}]},
+    {"t": 12, "detections": [{"track_id": "384", "bbox": [0.70, 0.55, 0.84, 0.90], "confidence": 0.87}]}
+  ]
+}

@@ -87,7 +87,11 @@ const createDefaultJobItem = (): JobItemDraft => ({
 
 export default function ScanScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ customerId?: string; customerName?: string }>();
+  const params = useLocalSearchParams<{
+    customerId?: string;
+    customerName?: string;
+    forceCamera?: string;
+  }>();
   const queryClient = useQueryClient();
   const { activeTenant, activeTenantId, hasFeature } = useAuth();
   const { activeShopId, activeStudioLocationId, scopeReady } = useWorkspaceScope();
@@ -149,13 +153,23 @@ export default function ScanScreen() {
   }, [params.customerId]);
 
   useEffect(() => {
-    const subscription = DeviceEventEmitter.addListener(OPEN_SCAN_CAMERA_EVENT, () => {
-      if (!isStudio && scanningEnabled) {
-        setScannerVisible(true);
+    const subscription = DeviceEventEmitter.addListener(
+      OPEN_SCAN_CAMERA_EVENT,
+      (payload?: { force?: boolean }) => {
+        // A forced open (double-tap the Sell tab) bypasses the workspace scanning toggle —
+        // it's an explicit manual request to scan, not the auto-add "scan to sell" flow.
+        if (!isStudio && (scanningEnabled || payload?.force)) {
+          setScannerVisible(true);
+        }
       }
-    });
+    );
     return () => subscription.remove();
   }, [isStudio, scanningEnabled]);
+
+  useEffect(() => {
+    if (params.forceCamera !== '1' || isStudio) return;
+    setScannerVisible(true);
+  }, [params.forceCamera, isStudio]);
 
   // Debounce search query for unified search (name or barcode)
   const debouncedSearch = useDebounce(searchQuery, 500);
@@ -1150,13 +1164,11 @@ export default function ScanScreen() {
         )}
       </ScreenShell>
 
-      {scanningEnabled && (
-        <BarcodeScanner
-          visible={scannerVisible}
-          onClose={() => setScannerVisible(false)}
-          onScan={handleScan}
-        />
-      )}
+      <BarcodeScanner
+        visible={scannerVisible}
+        onClose={() => setScannerVisible(false)}
+        onScan={handleScan}
+      />
 
       <CartQuantitySheet
         visible={!!quantityEditItem}

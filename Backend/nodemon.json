@@ -1,0 +1,11 @@
+{
+  "watch": ["."],
+  "ext": "js,mjs,cjs,json",
+  "ignore": [
+    "uploads",
+    "uploads/**",
+    "__tests__",
+    "coverage",
+    "node_modules"
+  ]
+}

@@ -42,7 +42,6 @@ const {
 } = require('../services/automationEngineService');
 const { updateCustomerBalance } = require('../services/customerBalanceService');
 const { ensureSaleFromPaidInvoice } = require('../services/invoiceSaleService');
-const { maybeCreateCommissionForPayment } = require('../services/partnerCommissionService');
 const sabitoWebhookService = require('../services/sabitoWebhookService');
 const mobileMoneyService = require('../services/mobileMoneyService');
 const { getResolvedMtnConfigForTenant } = require('../services/tenantMomoCollectionService');
@@ -1783,19 +1782,7 @@ async function applyInvoicePaymentInternal({
     notes: notes || null,
   });
 
-  try {
-    await maybeCreateCommissionForPayment({
-      tenantId,
-      paymentAmount,
-      paymentId: payment.id,
-      saleId: invoice.saleId || null,
-      invoiceId: invoice.id,
-      customerId: invoice.customerId || null,
-      jobId: invoice.jobId || null,
-    });
-  } catch (partnerErr) {
-    console.error('[InvoiceRecordPayment] Partner commission failed:', partnerErr?.message || partnerErr);
-  }
+
 
   const updatedInvoice = await Invoice.findOne({
     where: applyTenantFilter(tenantId, { id: invoice.id }),

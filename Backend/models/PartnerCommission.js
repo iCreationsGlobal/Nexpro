@@ -66,6 +66,11 @@ const PartnerCommission = sequelize.define(
       allowNull: false,
       comment: 'Commission amount in GHS',
     },
+    platformFeePercent: { type: DataTypes.DECIMAL(6, 2), allowNull: false, defaultValue: 20 },
+    platformFeeAmount: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
+    marketerShareAmount: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
+    remittanceStatus: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'owed' },
+    remittanceId: { type: DataTypes.UUID, allowNull: true, references: { model: 'partner_remittances', key: 'id' } },
     currency: {
       type: DataTypes.STRING(10),
       allowNull: false,

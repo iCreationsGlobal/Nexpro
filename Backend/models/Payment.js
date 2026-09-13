@@ -81,6 +81,14 @@ const Payment = sequelize.define('Payment', {
   }
 }, {
   timestamps: true,
+  hooks: {
+    afterCreate: (payment, options) => require('../services/partnerPaymentService').schedulePayment(payment, options),
+    afterUpdate: (payment, options) => {
+      if (payment.changed('status') || payment.changed('amount')) {
+        return require('../services/partnerPaymentService').schedulePayment(payment, options);
+      }
+    },
+  },
   tableName: 'payments'
 });
 

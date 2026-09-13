@@ -1,0 +1,9 @@
+# Ultralytics ByteTrack — ABS Watch shop floor (short occlusions at the till).
+# Higher track_buffer keeps a YOLO id through a brief hide. This is not a named identity.
+tracker_type: bytetrack
+track_high_thresh: 0.5
+track_low_thresh: 0.1
+new_track_thresh: 0.6
+track_buffer: 90
+match_thresh: 0.8
+fuse_score: True

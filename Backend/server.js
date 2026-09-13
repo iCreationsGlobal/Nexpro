@@ -156,6 +156,7 @@ app.use('/api', async (req, res, next) => {
 
 // Rate limiting - apply to all API routes
 app.use('/api', generalLimiter);
+app.get('/api/internal/partner-commissions/reconcile', require('./controllers/partnerCommissionRecoveryController').reconcile);
 
 // Reject obviously invalid paths (e.g. GET /api/& from malformed client requests)
 app.use('/api', (req, res, next) => {
@@ -423,6 +424,9 @@ if (!IS_VERCEL_SERVERLESS) {
       console.warn(`[Server] Listening on port ${port} (production)`);
     }
     // Warm CORS allowlist with connected (pending|verified) merchant custom domains
+    if (process.env.PARTNER_COMMISSION_RECONCILIATION_ENABLED !== 'false') {
+      require('./services/partnerCommissionScheduler').start();
+    }
     require('./utils/corsUtils').refreshVerifiedDomainOrigins().catch((err) => {
       console.error('[Server] Failed loading custom-domain CORS origins:', err?.message || err);
     });

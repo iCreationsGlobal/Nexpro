@@ -9,19 +9,21 @@ const {
 } = require('../models');
 const { money } = require('./partnerProgramService');
 
+const share = row => money(row.marketerShareAmount ?? row.amount);
+
 const OPEN_CASHOUT_STATUSES = ['pending', 'approved'];
 
 /**
  * Available balance = sum of due commissions not locked in a cashout.
  */
 const getAvailableBalance = async (marketerId, tenantId = null) => {
-  const where = { marketerId, status: 'due', cashoutRequestId: null };
+  const where = { marketerId, status: 'due', remittanceStatus: 'collected', cashoutRequestId: null };
   if (tenantId) where.tenantId = tenantId;
   const rows = await PartnerCommission.findAll({
     where,
-    attributes: ['amount'],
+    attributes: ['amount', 'marketerShareAmount', 'remittanceStatus'],
   });
-  return money(rows.reduce((sum, row) => sum + money(row.amount), 0));
+  return money(rows.reduce((sum, row) => sum + share(row), 0));
 };
 
 /**
@@ -50,6 +52,7 @@ const createCashout = async ({ marketerId, commissionIds = [], notes = null }) =
         id: { [Op.in]: ids },
         marketerId,
         status: 'due',
+        remittanceStatus: 'collected',
         cashoutRequestId: null,
       },
       lock: transaction.LOCK.UPDATE,
@@ -72,7 +75,7 @@ const createCashout = async ({ marketerId, commissionIds = [], notes = null }) =
     }
 
     const tenantId = tenantIds[0];
-    const amount = money(commissions.reduce((sum, row) => sum + money(row.amount), 0));
+    const amount = money(commissions.reduce((sum, row) => sum + share(row), 0));
     if (amount <= 0) {
       const err = new Error('Cashout amount must be greater than zero.');
       err.statusCode = 400;
@@ -167,7 +170,7 @@ const listCashoutsForTenant = async (tenantId, { status } = {}) => {
 
 const assertTenantCashout = async (tenantId, cashoutId, transaction) => {
   const cashout = await PartnerCashoutRequest.findOne({
-    where: { id: cashoutId, tenantId },
+    where: { id: cashoutId, ...(tenantId ? { tenantId } : {}) },
     lock: transaction ? transaction.LOCK.UPDATE : undefined,
     transaction,
   });
@@ -284,15 +287,15 @@ const getMarketerDashboard = async (marketerId) => {
     await Promise.all([
       PartnerCommission.findAll({
         where: { marketerId, status: 'due', cashoutRequestId: null },
-        attributes: ['amount'],
+        attributes: ['amount', 'marketerShareAmount', 'remittanceStatus'],
       }),
       PartnerCommission.findAll({
         where: { marketerId, status: 'cashout_pending' },
-        attributes: ['amount'],
+        attributes: ['amount', 'marketerShareAmount', 'remittanceStatus'],
       }),
       PartnerCommission.findAll({
         where: { marketerId, status: 'paid' },
-        attributes: ['amount'],
+        attributes: ['amount', 'marketerShareAmount', 'remittanceStatus'],
       }),
       PartnerCashoutRequest.count({
         where: { marketerId, status: { [Op.in]: OPEN_CASHOUT_STATUSES } },
@@ -304,16 +307,17 @@ const getMarketerDashboard = async (marketerId) => {
       PartnerReferral.count({ where: { marketerId } }),
     ]);
 
-  const availableBalance = money(dueRows.reduce((s, r) => s + money(r.amount), 0));
-  const pendingCashoutAmount = money(cashoutPendingRows.reduce((s, r) => s + money(r.amount), 0));
+  const availableBalance = money(dueRows.filter(r => r.remittanceStatus === 'collected').reduce((s, r) => s + share(r), 0));
+  const pendingCashoutAmount = money(cashoutPendingRows.reduce((s, r) => s + share(r), 0));
   const totalEarned = money(
-    availableBalance
+    dueRows.reduce((s, r) => s + share(r), 0)
     + pendingCashoutAmount
-    + paidRows.reduce((s, r) => s + money(r.amount), 0)
+    + paidRows.reduce((s, r) => s + share(r), 0)
   );
 
   return {
     availableBalance,
+    awaitingCollectionAmount: money(dueRows.filter(r => r.remittanceStatus !== 'collected').reduce((s, r) => s + share(r), 0)),
     pendingCashoutAmount,
     totalEarned,
     pendingCommissionsCount: dueRows.length,
@@ -328,7 +332,19 @@ const getMarketerDashboard = async (marketerId) => {
   };
 };
 
+const listCashoutsAdmin = async ({ status, search, limit = 20, offset = 0 } = {}) => {
+  const where = status ? { status } : {};
+  return PartnerCashoutRequest.findAndCountAll({ where, limit, offset, distinct: true,
+    include: [
+      { association: 'marketer', attributes: ['id', 'name', 'email', 'momoNumber', 'bankDetails'],
+        ...(search ? { where: { name: { [Op.iLike]: `%${String(search).trim()}%` } }, required: true } : {}) },
+      { association: 'tenant', attributes: ['id', 'name'] },
+    ], order: [['createdAt', 'DESC']],
+  });
+};
+
 module.exports = {
+  listCashoutsAdmin,
   getAvailableBalance,
   createCashout,
   getCashoutById,

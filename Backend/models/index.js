@@ -1,3 +1,5 @@
+const PartnerRemittance = require('./PartnerRemittance');
+const SabitoAppPlatformSettings = require('./SabitoAppPlatformSettings');
 const User = require('./User');
 const Tenant = require('./Tenant');
 const UserTenant = require('./UserTenant');
@@ -1003,7 +1005,14 @@ Sale.belongsTo(Partnership, { foreignKey: 'partnershipId', as: 'partnership' });
 Job.belongsTo(Marketer, { foreignKey: 'partnerMarketerId', as: 'partnerMarketer' });
 Job.belongsTo(Partnership, { foreignKey: 'partnershipId', as: 'partnership' });
 
+PartnerRemittance.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+Tenant.hasMany(PartnerRemittance, { foreignKey: 'tenantId', as: 'partnerRemittances' });
+PartnerRemittance.hasMany(PartnerCommission, { foreignKey: 'remittanceId', as: 'commissions' });
+PartnerCommission.belongsTo(PartnerRemittance, { foreignKey: 'remittanceId', as: 'remittance' });
+
 module.exports = {
+  PartnerRemittance,
+  SabitoAppPlatformSettings,
   User,
   Customer,
   Vendor,
