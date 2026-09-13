@@ -547,12 +547,14 @@ export default function DashboardScreen() {
       {/* Verify email banner (matches web MainLayout) */}
       {showVerifyEmailBanner && (
         <View style={styles.verifyBanner}>
-          <AppIcon name="mail-outline" size={20} color="#b45309" />
-          <View style={styles.verifyBannerText}>
-            <Text style={styles.verifyBannerTitle}>Verify your email</Text>
-            <Text style={styles.verifyBannerSubtitle}>
-              We sent a link to your email. Click it to verify, or resend below.
-            </Text>
+          <View style={styles.verifyBannerTop}>
+            <AppIcon name="mail-outline" size={20} color="#b45309" />
+            <View style={styles.verifyBannerText}>
+              <Text style={styles.verifyBannerTitle}>Verify your email</Text>
+              <Text style={styles.verifyBannerSubtitle}>
+                We sent a link to your email. Click it to verify, or resend below.
+              </Text>
+            </View>
           </View>
           <Pressable
             style={styles.verifyBannerButton}
@@ -1163,8 +1165,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   verifyBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
     marginBottom: 16,
     padding: 14,
@@ -1173,17 +1173,25 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(180, 83, 9, 0.5)',
     backgroundColor: 'rgba(245, 158, 11, 0.1)',
   },
+  verifyBannerTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
   verifyBannerText: { flex: 1, minWidth: 0 },
   verifyBannerTitle: { fontSize: 15, fontWeight: '600', color: '#111' },
   verifyBannerSubtitle: { fontSize: 13, color: '#6b7280', marginTop: 2 },
   verifyBannerButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    alignSelf: 'stretch',
+    width: '100%',
+    minHeight: 44,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: 'rgba(180, 83, 9, 0.5)',
-    minWidth: 90,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   verifyBannerButtonText: { fontSize: 14, fontWeight: '600', color: '#b45309' },
   setupBanner: {

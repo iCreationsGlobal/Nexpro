@@ -124,6 +124,16 @@ const updateDeliverySettings = async (payload) => {
   return res?.data?.data ?? res?.data ?? res;
 };
 
+const getRentalSettings = async () => {
+  const res = await api.get('/settings/rental');
+  return res?.data?.data ?? res?.data ?? res;
+};
+
+const updateRentalSettings = async (payload) => {
+  const res = await api.put('/settings/rental', payload);
+  return res?.data?.data ?? res?.data ?? res;
+};
+
 const getAISettings = async () => {
   const res = await api.get('/settings/ai');
   return res?.data?.data ?? res?.data ?? res;
@@ -278,6 +288,8 @@ export default {
   updatePOSConfig,
   getDeliverySettings,
   updateDeliverySettings,
+  getRentalSettings,
+  updateRentalSettings,
   getAISettings,
   updateAISettings,
   deleteAISettings,

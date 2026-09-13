@@ -22,17 +22,60 @@ export type ContactImportResult = {
   message?: string;
 };
 
+const CONTACT_IMPORT_BATCH_SIZE = 50;
+
+function mergeImportResults(
+  aggregate: ContactImportResult,
+  batch: ContactImportResult
+): ContactImportResult {
+  return {
+    success: aggregate.success !== false && batch.success !== false,
+    successCount: (aggregate.successCount || 0) + (batch.successCount || 0),
+    skippedCount: (aggregate.skippedCount || 0) + (batch.skippedCount || 0),
+    errorCount: (aggregate.errorCount || 0) + (batch.errorCount || 0),
+    errors: [...(aggregate.errors || []), ...(batch.errors || [])],
+    skipped: [...(aggregate.skipped || []), ...(batch.skipped || [])],
+  };
+}
+
+async function postContactImportBatch(
+  destination: ContactImportDestination,
+  contacts: ContactImportItem[]
+): Promise<ContactImportResult> {
+  const query = await buildScopedQueryString({});
+  const res = await api.post(
+    query ? `/contacts/import?${query}` : '/contacts/import',
+    { destination, contacts },
+    { timeout: 60000 }
+  );
+  return (res.data as ContactImportResult) ?? res.data;
+}
+
 export const contactImportService = {
   importFromContacts: async (
     destination: ContactImportDestination,
     contacts: ContactImportItem[]
   ): Promise<ContactImportResult> => {
-    const query = await buildScopedQueryString({});
-    const res = await api.post(query ? `/contacts/import?${query}` : '/contacts/import', {
-      destination,
-      contacts,
-    });
-    return (res.data as ContactImportResult) ?? res.data;
+    if (contacts.length <= CONTACT_IMPORT_BATCH_SIZE) {
+      return postContactImportBatch(destination, contacts);
+    }
+
+    let aggregate: ContactImportResult = {
+      success: true,
+      successCount: 0,
+      skippedCount: 0,
+      errorCount: 0,
+      errors: [],
+      skipped: [],
+    };
+
+    for (let offset = 0; offset < contacts.length; offset += CONTACT_IMPORT_BATCH_SIZE) {
+      const batch = contacts.slice(offset, offset + CONTACT_IMPORT_BATCH_SIZE);
+      const result = await postContactImportBatch(destination, batch);
+      aggregate = mergeImportResults(aggregate, result);
+    }
+
+    return aggregate;
   },
 
   importFromFile: async (

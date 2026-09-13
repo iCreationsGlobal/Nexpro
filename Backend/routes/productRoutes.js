@@ -33,6 +33,13 @@ const { bulkOperationLimiter, exportLimiter } = require('../middleware/rateLimit
 const { productImageUploader, importFileUploader, checkStorageLimit } = require('../middleware/upload');
 const { createOrUpdateListingFromProduct } = require('../controllers/storeController');
 const { timeCrudAction } = require('../middleware/crudTiming');
+const {
+  listProductRentalUnits,
+  createProductRentalUnit,
+  updateProductRentalUnit,
+  deleteProductRentalUnit,
+} = require('../controllers/rentalUnitController');
+const { requireFeature } = require('../middleware/featureAccess');
 
 const router = express.Router();
 
@@ -101,6 +108,14 @@ router.route('/:id/adjust-stock')
 
 router.route('/:id/store-listing')
   .post(authorize('admin', 'manager', 'staff'), timeCrudAction('products.store_listing.upsert'), createOrUpdateListingFromProduct);
+
+router.route('/:productId/rental-units')
+  .get(requireFeature('rentals'), listProductRentalUnits)
+  .post(requireFeature('rentals'), authorize('admin', 'manager', 'staff'), timeCrudAction('products.rental_units.create'), createProductRentalUnit);
+
+router.route('/:productId/rental-units/:unitId')
+  .put(requireFeature('rentals'), authorize('admin', 'manager', 'staff'), timeCrudAction('products.rental_units.update'), updateProductRentalUnit)
+  .delete(requireFeature('rentals'), authorize('admin', 'manager'), timeCrudAction('products.rental_units.delete'), deleteProductRentalUnit);
 
 router.route('/:id')
   .get(timeCrudAction('products.read'), getProduct)

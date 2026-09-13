@@ -14,6 +14,7 @@ const {
 } = require('../utils/shopUtils');
 const { resolveCatalogProductCode } = require('../utils/documentLineItemUtils');
 const { sanitizeInlineDataUrlForClient } = require('../utils/profilePictureResponse');
+const { resolveBusinessType } = require('../config/businessTypes');
 const {
   applyEffectiveProductQuantity,
   syncParentQuantityFromVariants,
@@ -58,6 +59,138 @@ const normalizeWholesalePrice = (payload) => {
     throw err;
   }
   payload.wholesalePrice = n;
+  return payload;
+};
+
+/**
+ * Parse optional boolean query/body values (`true`/`false` strings or booleans).
+ * @param {unknown} value
+ * @returns {boolean|undefined}
+ */
+const parseOptionalBoolean = (value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  return undefined;
+};
+
+/**
+ * Normalize optional rentalRatePerDay on create/update payloads.
+ * @param {object} payload
+ * @returns {object} payload
+ */
+const normalizeRentalRatePerDay = (payload) => {
+  if (!payload || !Object.prototype.hasOwnProperty.call(payload, 'rentalRatePerDay')) {
+    return payload;
+  }
+  const raw = payload.rentalRatePerDay;
+  if (raw === '' || raw === null || raw === undefined) {
+    payload.rentalRatePerDay = null;
+    return payload;
+  }
+  const n = typeof raw === 'number' ? raw : Number.parseFloat(raw);
+  if (Number.isNaN(n) || n < 0) {
+    const err = new Error('rentalRatePerDay must be a non-negative number');
+    err.statusCode = 400;
+    throw err;
+  }
+  payload.rentalRatePerDay = n;
+  return payload;
+};
+
+/**
+ * Apply rental-tenant defaults on product create when flags are omitted.
+ * @param {object} payload
+ * @param {object} req
+ * @param {{ isCreate?: boolean }} [options]
+ * @returns {object} payload
+ */
+const applyRentalTenantProductDefaults = (payload, req, { isCreate = false } = {}) => {
+  if (!isCreate || !payload) return payload;
+
+  const businessType = resolveBusinessType(req.tenant?.businessType);
+  if (businessType !== 'rental') return payload;
+
+  if (payload.isRentable === undefined) {
+    payload.isRentable = true;
+  }
+  if (payload.isSalable === undefined) {
+    payload.isSalable = false;
+  }
+  return payload;
+};
+
+/**
+ * Validate rental product fields for create/update.
+ * Rental tenants require rentalRatePerDay > 0 when the product is rentable.
+ * Selling price is not required when the product is not salable.
+ * @param {object} payload
+ * @param {object} req
+ * @param {{ existingProduct?: object|null, isCreate?: boolean }} [options]
+ * @returns {object} payload
+ */
+const validateProductRentalFields = (payload, req, { existingProduct = null, isCreate = false } = {}) => {
+  if (!payload) return payload;
+
+  const businessType = resolveBusinessType(req.tenant?.businessType);
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'isRentable')) {
+    const parsed = parseOptionalBoolean(payload.isRentable);
+    if (parsed === undefined) {
+      const err = new Error('isRentable must be a boolean');
+      err.statusCode = 400;
+      throw err;
+    }
+    payload.isRentable = parsed;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'isSalable')) {
+    const parsed = parseOptionalBoolean(payload.isSalable);
+    if (parsed === undefined) {
+      const err = new Error('isSalable must be a boolean');
+      err.statusCode = 400;
+      throw err;
+    }
+    payload.isSalable = parsed;
+  }
+
+  normalizeRentalRatePerDay(payload);
+
+  const isRentable = Object.prototype.hasOwnProperty.call(payload, 'isRentable')
+    ? payload.isRentable
+    : (existingProduct?.isRentable ?? (businessType === 'rental' && isCreate));
+
+  const isSalable = Object.prototype.hasOwnProperty.call(payload, 'isSalable')
+    ? payload.isSalable
+    : (existingProduct?.isSalable ?? !(businessType === 'rental' && isCreate));
+
+  const rentalRatePerDay = Object.prototype.hasOwnProperty.call(payload, 'rentalRatePerDay')
+    ? payload.rentalRatePerDay
+    : existingProduct?.rentalRatePerDay ?? null;
+
+  if (businessType === 'rental' && isRentable !== false) {
+    const rate = rentalRatePerDay != null ? Number(rentalRatePerDay) : 0;
+    if (!(rate > 0)) {
+      const err = new Error('rentalRatePerDay must be greater than 0 for rentable products');
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  if (!isSalable) {
+    if (
+      isCreate
+      && !Object.prototype.hasOwnProperty.call(payload, 'sellingPrice')
+    ) {
+      payload.sellingPrice = 0;
+    } else if (Object.prototype.hasOwnProperty.call(payload, 'sellingPrice')) {
+      const raw = payload.sellingPrice;
+      if (raw === '' || raw === null || raw === undefined) {
+        payload.sellingPrice = 0;
+      }
+    }
+  }
+
   return payload;
 };
 
@@ -330,6 +463,8 @@ exports.getProducts = async (req, res, next) => {
     const shopId = req.query.shopId;
     const categoryId = req.query.categoryId;
     const isActive = req.query.isActive;
+    const isRentable = req.query.isRentable;
+    const isSalable = req.query.isSalable;
     const includeVariants = req.query.includeVariants === 'true' || req.query.forPOS === 'true';
     const { order } = resolveProductListSort(req.query.sort || req.query.sortBy);
 
@@ -342,6 +477,12 @@ exports.getProducts = async (req, res, next) => {
     }
     if (isActive !== undefined) {
       where.isActive = isActive === 'true' || isActive === true;
+    }
+    if (isRentable !== undefined) {
+      where.isRentable = isRentable === 'true' || isRentable === true;
+    }
+    if (isSalable !== undefined) {
+      where.isSalable = isSalable === 'true' || isSalable === true;
     }
     if (search) {
       const searchPattern = `%${search}%`;
@@ -447,6 +588,8 @@ exports.getProducts = async (req, res, next) => {
 
 // Exported for unit tests
 exports._resolveProductListSort = resolveProductListSort;
+exports._validateProductRentalFields = validateProductRentalFields;
+exports._applyRentalTenantProductDefaults = applyRentalTenantProductDefaults;
 
 // @desc    Get product catalog statistics
 // @route   GET /api/products/stats
@@ -1106,6 +1249,17 @@ exports.createProduct = async (req, res, next) => {
         message: validationErr.message,
       });
     }
+    applyRentalTenantProductDefaults(payload, req, { isCreate: true });
+    try {
+      validateProductRentalFields(payload, req, { isCreate: true });
+    } catch (validationErr) {
+      await transaction.rollback();
+      transactionFinished = true;
+      return res.status(400).json({
+        success: false,
+        message: validationErr.message,
+      });
+    }
     const { hasAliasPayload, aliases } = extractProductAliasBarcodes(payload);
     const openingQty = parseQuantity(payload.quantityOnHand);
     const openingShopId = payload.shopId || req.shopFilterId || req.defaultShopId || null;
@@ -1207,6 +1361,16 @@ exports.updateProduct = async (req, res, next) => {
     stripStaffProductWritePayload(payload, req);
     try {
       normalizeWholesalePrice(payload);
+    } catch (validationErr) {
+      await transaction.rollback();
+      transactionFinished = true;
+      return res.status(400).json({
+        success: false,
+        message: validationErr.message,
+      });
+    }
+    try {
+      validateProductRentalFields(payload, req, { existingProduct: product, isCreate: false });
     } catch (validationErr) {
       await transaction.rollback();
       transactionFinished = true;

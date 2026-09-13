@@ -300,6 +300,7 @@ const MarketerEarnings: React.FC<MarketerEarningsScreenProps> = ({ navigation })
             cashouts.map((c) => (
               <View
                 key={c.id}
+                onTouchEnd={() => navigation.navigate('CashoutDetails' as any, { id: c.id } as any)}
                 style={[styles.earningCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}
               >
                 <View style={styles.earningStats}>

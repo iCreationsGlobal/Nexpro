@@ -43,6 +43,12 @@ import { resolveImageUrl, resolveStoreBannerImageUrl } from '../../utils/fileUti
 import { formatAmount, formatInteger } from '../../utils/formatNumber';
 import { resolveVisibleProductCardActions } from '../../utils/productCardActions';
 import {
+  filterProductCardActionsForListing,
+  getListingCommerceBadges,
+  getProductPriceDisplay,
+  isRentOnlyListing,
+} from '../../utils/productListingDisplay';
+import {
   buildStoreWhatsAppHref,
   resolveStoreWhatsAppPhone,
   whatsappPriceInquiryMessage,
@@ -1165,15 +1171,21 @@ export const ProductCard = ({ product }) => {
   const saved = isWishlisted(listingId);
   const wishlistPending = pendingListingIds.includes(listingId);
   const cardActions = useMemo(
-    () => resolveVisibleProductCardActions(
-      storeForActions.productCardActions,
-      storeForActions,
-      { resolvePhone: resolveStoreWhatsAppPhone },
+    () => filterProductCardActionsForListing(
+      resolveVisibleProductCardActions(
+        storeForActions.productCardActions,
+        storeForActions,
+        { resolvePhone: resolveStoreWhatsAppPhone },
+      ),
+      product,
     ),
-    [storeForActions],
+    [product, storeForActions],
   );
   const softenPrice = cardActions.includes('contact_for_price');
   const isSample = product?.isSample === true;
+  const commerceBadges = useMemo(() => getListingCommerceBadges(product), [product]);
+  const priceDisplay = useMemo(() => getProductPriceDisplay(product), [product]);
+  const rentOnly = isRentOnlyListing(product);
 
   const handleAddToCart = useCallback(() => {
     if (isSample) {
@@ -1367,6 +1379,15 @@ export const ProductCard = ({ product }) => {
           <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[11px] text-slate-600">
             {availability.label}
           </Badge>
+          {commerceBadges.map((badge) => (
+            <Badge
+              key={badge}
+              variant="outline"
+              className="border-[color:color-mix(in_srgb,var(--store-accent,#166534)_25%,#e2e8f0)] bg-[var(--store-accent-soft,#16653422)] text-[11px] text-[color:var(--store-accent,#166534)]"
+            >
+              {badge}
+            </Badge>
+          ))}
           <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[11px] text-slate-600">
             {review.detail}
           </Badge>
@@ -1374,11 +1395,26 @@ export const ProductCard = ({ product }) => {
         <div className="mt-4 flex flex-wrap items-baseline gap-2">
           {softenPrice ? (
             <span className="text-lg font-extrabold text-slate-700">Contact for price</span>
-          ) : (
+          ) : priceDisplay.amount != null ? (
             <>
-              <span className="text-lg font-extrabold text-[color:var(--store-accent,#166534)]">{formatAmount(price, currency)}</span>
-              {compareAt > price ? <span className="text-sm text-slate-400 line-through">{formatAmount(compareAt, currency)}</span> : null}
+              <span className="text-lg font-extrabold text-[color:var(--store-accent,#166534)]">
+                {formatAmount(priceDisplay.amount, currency)}
+                {priceDisplay.suffix ? (
+                  <span className="ml-1 text-sm font-bold text-slate-500">{priceDisplay.suffix}</span>
+                ) : null}
+              </span>
+              {priceDisplay.secondaryAmount != null && priceDisplay.secondaryAmount > 0 ? (
+                <span className="text-sm font-semibold text-slate-600">
+                  or {formatAmount(priceDisplay.secondaryAmount, currency)}{priceDisplay.secondarySuffix}
+                  <span className="font-normal text-slate-500"> to rent</span>
+                </span>
+              ) : null}
+              {!rentOnly && compareAt > price ? (
+                <span className="text-sm text-slate-400 line-through">{formatAmount(compareAt, currency)}</span>
+              ) : null}
             </>
+          ) : (
+            <span className="text-lg font-extrabold text-slate-700">Price on request</span>
           )}
         </div>
         <div className={`mt-auto grid gap-2 pt-4 ${cardActions.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>

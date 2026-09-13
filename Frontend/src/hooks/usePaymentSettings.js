@@ -73,14 +73,8 @@ export function usePaymentSettings(queryOptions = {}) {
   );
 
   const onlinePaymentRequired = useMemo(
-    () =>
-      Boolean(
-        (notificationChannelsData != null && notificationChannelsData.autoSendInvoiceToCustomer !== false) ||
-        ['create_job_invoice_and_send', 'create_sale_invoice_and_send'].includes(
-          quoteWorkflowData?.onAccept || 'record_only'
-        )
-      ),
-    [notificationChannelsData, quoteWorkflowData]
+    () => Boolean(notificationChannelsData?.acceptOnlinePayments === true),
+    [notificationChannelsData]
   );
 
   return {

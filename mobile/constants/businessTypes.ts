@@ -7,6 +7,7 @@ export const CORE_BUSINESS_TYPES = {
   SHOP: 'shop',
   STUDIO: 'studio',
   PHARMACY: 'pharmacy',
+  RENTAL: 'rental',
 } as const;
 
 export const BUSINESS_GROUPS = {
@@ -17,6 +18,7 @@ export const BUSINESS_GROUPS = {
   FOOD: 'food',
   HEALTH: 'health',
   SERVICES: 'services',
+  RENTAL: 'rental',
 } as const;
 
 export type BusinessOption = {
@@ -24,7 +26,7 @@ export type BusinessOption = {
   label: string;
   description: string;
   group: string;
-  coreType: 'shop' | 'studio' | 'pharmacy';
+  coreType: 'shop' | 'studio' | 'pharmacy' | 'rental';
   services?: string[];
 };
 
@@ -48,6 +50,11 @@ export const BUSINESS_OPTIONS: BusinessOption[] = [
   { id: 'bakery', label: 'Bakery / Pastry shop', description: 'Bread, pastries, and baked goods.', group: BUSINESS_GROUPS.FOOD, coreType: CORE_BUSINESS_TYPES.SHOP, services: ['bakery', 'retail'] },
   { id: 'community_pharmacy', label: 'Community pharmacy', description: 'Retail pharmacy with prescriptions and OTC medicines.', group: BUSINESS_GROUPS.HEALTH, coreType: CORE_BUSINESS_TYPES.PHARMACY, services: ['prescriptions', 'otc_medicines'] },
   { id: 'clinic_pharmacy', label: 'Clinic / hospital pharmacy', description: 'Pharmacy inside a clinic or hospital.', group: BUSINESS_GROUPS.HEALTH, coreType: CORE_BUSINESS_TYPES.PHARMACY, services: ['prescriptions'] },
+  { id: 'equipment_rental', label: 'Equipment & tool rental', description: 'Hire out tools, machinery, and equipment.', group: BUSINESS_GROUPS.RENTAL, coreType: CORE_BUSINESS_TYPES.RENTAL, services: ['equipment', 'tools', 'machinery'] },
+  { id: 'event_rental', label: 'Event & party rental', description: 'Tents, chairs, sound systems, and event supplies.', group: BUSINESS_GROUPS.RENTAL, coreType: CORE_BUSINESS_TYPES.RENTAL, services: ['events', 'parties', 'tents', 'sound_systems'] },
+  { id: 'vehicle_rental', label: 'Vehicle rental', description: 'Cars, bikes, and commercial vehicle hire.', group: BUSINESS_GROUPS.RENTAL, coreType: CORE_BUSINESS_TYPES.RENTAL, services: ['cars', 'bikes', 'commercial_vehicles'] },
+  { id: 'general_rental', label: 'General rental', description: 'Other items and goods for hire.', group: BUSINESS_GROUPS.RENTAL, coreType: CORE_BUSINESS_TYPES.RENTAL, services: ['general'] },
+  { id: 'other', label: 'Other', description: 'My business type is not listed here.', group: BUSINESS_GROUPS.SERVICES, coreType: CORE_BUSINESS_TYPES.SHOP, services: ['general'] },
 ];
 
 export function findBusinessOptionById(id: string | undefined | null): BusinessOption | undefined {
@@ -59,7 +66,7 @@ export function findBusinessOptionById(id: string | undefined | null): BusinessO
  * Get the core business type for a given business sub-type.
  * Falls back to 'shop' when the sub-type is unknown (matches web).
  */
-export function getCoreTypeForBusinessSubType(id: string | undefined | null): 'shop' | 'studio' | 'pharmacy' {
+export function getCoreTypeForBusinessSubType(id: string | undefined | null): 'shop' | 'studio' | 'pharmacy' | 'rental' {
   const option = findBusinessOptionById(id);
   if (option?.coreType) return option.coreType;
   return CORE_BUSINESS_TYPES.SHOP;
@@ -83,6 +90,7 @@ export const BUSINESS_GROUP_LABELS: Record<string, string> = {
   [BUSINESS_GROUPS.AUTO]: 'Auto & Workshop',
   [BUSINESS_GROUPS.FOOD]: 'Food & Drinks',
   [BUSINESS_GROUPS.HEALTH]: 'Health / Pharmacy',
+  [BUSINESS_GROUPS.RENTAL]: 'Rental',
   [BUSINESS_GROUPS.SERVICES]: 'Other services',
 };
 
@@ -94,5 +102,6 @@ export const BUSINESS_GROUP_EXAMPLES: Record<string, string> = {
   [BUSINESS_GROUPS.AUTO]: 'e.g. Mechanic workshops, car wash and detailing',
   [BUSINESS_GROUPS.FOOD]: 'e.g. Restaurants, fast food joints, bakeries and pastry shops',
   [BUSINESS_GROUPS.HEALTH]: 'e.g. Community pharmacies, clinic or hospital pharmacies',
+  [BUSINESS_GROUPS.RENTAL]: 'e.g. Equipment rental, event rental, vehicle rental',
   [BUSINESS_GROUPS.SERVICES]: 'e.g. Other professional and local services',
 };

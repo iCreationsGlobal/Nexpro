@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { canCashout, commissionAmount } from "@/lib/workspace";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -20,21 +21,28 @@ export default function CashoutPage() {
   const [notes, setNotes] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
-  const [hasMomo, setHasMomo] = useState(true);
+  const [hasPayout, setHasPayout] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [businessId, setBusinessId] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    setLoading(true); setLoadError("");
     (async () => {
       const [earn, me] = await Promise.all([listMyEarnings("due"), getMarketerSession()]);
-      const rows = (earn.data || []) as AnyRow[];
+      const rows = ((earn.data || []) as AnyRow[]).filter(canCashout);
       setDue(rows);
-      setSelected(new Set(rows.map((r) => String(r.id))));
-      setHasMomo(Boolean(me.data.marketer.momoNumber));
-    })().catch((err) => setMessage(err instanceof Error ? err.message : "Failed to load"));
-  }, []);
+      const firstBusiness = rows[0] ? String(rows[0].tenantId) : "";
+      setBusinessId(firstBusiness);
+      setSelected(new Set(rows.filter(r => String(r.tenantId) === firstBusiness).map(r => String(r.id))));
+      setHasPayout(Boolean(me.data.marketer.momoNumber || me.data.marketer.bankDetails));
+    })().catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load")).finally(() => setLoading(false));
+  }, [attempt]);
 
   const total = due
     .filter((e) => selected.has(String(e.id)))
-    .reduce((s, e) => s + Number(e.amount || 0), 0);
+    .reduce((s, e) => s + commissionAmount(e), 0);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -47,8 +55,8 @@ export default function CashoutPage() {
 
   const submit = async () => {
     setMessage("");
-    if (!hasMomo) {
-      setMessage("Save a MoMo number in Account first.");
+    if (!hasPayout) {
+      setMessage("Save a MoMo number or bank details in Account first.");
       return;
     }
     if (selected.size === 0) {
@@ -68,6 +76,10 @@ export default function CashoutPage() {
     }
   };
 
+  if (loading) return <div className="workspace-page" role="status">Loading available commissions…</div>;
+
+  if (loadError) return <div className="workspace-page" role="alert"><p>{loadError}</p><Button onClick={() => setAttempt(a => a + 1)}>Try again</Button></div>;
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <Link href="/earnings">
@@ -75,24 +87,28 @@ export default function CashoutPage() {
       </Link>
       <h1 className="mt-4 text-2xl font-bold text-slate-900">Request cashout</h1>
       <p className="mt-1 text-sm text-slate-500">
-        Select due commissions. The business pays you outside ABS, then marks paid in Settings →
-        Sabito Partners.
+        Select available commissions from one business per request. Track the payout status in Earnings.
       </p>
 
-      {!hasMomo ? (
+      {!hasPayout ? (
         <p className="mt-4 text-sm text-amber-700">
           <Link href="/account" className="underline">
-            Add MoMo details
+            Add payout details
           </Link>{" "}
           before cashout.
         </p>
       ) : null}
 
+      {due.length > 0 && <label className="mt-6 block text-sm">Business
+        <select className="mt-2 block w-full rounded-lg border border-slate-200 bg-white p-3" value={businessId} onChange={event => { const id = event.target.value; setBusinessId(id); setSelected(new Set(due.filter(row => String(row.tenantId) === id).map(row => String(row.id)))); }}>
+          {Array.from(new Set(due.map(row => String(row.tenantId)))).map(id => { const row = due.find(row => String(row.tenantId) === id); return <option key={id} value={id}>{String((row?.tenant as AnyRow)?.name || id)}</option>; })}
+        </select>
+      </label>}
       <div className="mt-6 space-y-2">
         {due.length === 0 ? (
           <p className="text-sm text-slate-500">No due commissions.</p>
         ) : (
-          due.map((e) => {
+          due.filter(e => String(e.tenantId) === businessId).map((e) => {
             const id = String(e.id);
             return (
               <label
@@ -105,7 +121,7 @@ export default function CashoutPage() {
                   onChange={() => toggle(id)}
                 />
                 <span className="flex-1">
-                  GHS {Number(e.amount || 0).toFixed(2)} · {String(e.rateType || "commission")}
+                  GHS {commissionAmount(e).toFixed(2)} · {String(e.rateType || "commission")}
                 </span>
               </label>
             );
@@ -119,7 +135,7 @@ export default function CashoutPage() {
       </label>
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <Button type="button" disabled={saving || selected.size === 0} onClick={submit}>
+        <Button type="button" disabled={loading || saving || !hasPayout || selected.size === 0} onClick={submit}>
           {saving ? "Submitting…" : `Request GHS ${total.toFixed(2)}`}
         </Button>
         {message ? <p className="text-sm text-slate-500">{message}</p> : null}

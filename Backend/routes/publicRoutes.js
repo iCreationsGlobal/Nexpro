@@ -37,6 +37,7 @@ const {
   listPublicStoreTemplates,
   getPublicStoreTemplate,
 } = require('../controllers/storeController');
+const { submitPublicRentalBookingRequest, getPublicRentalAvailability } = require('../controllers/publicRentalBookingController');
 const {
   getMarketplaceStudios,
   getMarketplaceServicesHome,
@@ -109,6 +110,8 @@ const {
   publicTrackingLookupLimiter,
   publicTrackBrandingLimiter,
   publicFeedbackSubmitLimiter,
+  publicRentalBookingSubmitLimiter,
+  publicRentalAvailabilityLimiter,
   registrationLimiter,
   marketerWriteLimiter,
 } = require('../middleware/rateLimiter');
@@ -274,6 +277,8 @@ router.get('/storefront/disputes', requireStorefrontCustomer, listStorefrontCust
 router.get('/storefront/disputes/:id', requireStorefrontCustomer, getStorefrontCustomerDispute);
 router.get('/store/:slug', publicStoreReadCache, getPublicStore);
 router.get('/store/:slug/products', publicStoreReadCache, getPublicStoreProducts);
+router.get('/store/:slug/rental-availability', publicRentalAvailabilityLimiter, getPublicRentalAvailability);
+router.post('/store/:slug/rental-booking-request', publicRentalBookingSubmitLimiter, submitPublicRentalBookingRequest);
 router.get('/store-templates', listPublicStoreTemplates);
 router.get('/store-templates/:templateId', getPublicStoreTemplate);
 
@@ -299,6 +304,11 @@ const {
 } = require('../controllers/partnerProgramController');
 const { requireMarketer } = require('../middleware/marketerAuth');
 
+const marketerAccount = require('../controllers/marketerAccountController');
+router.post('/sabito-marketer/auth/forgot-password', authLimiter, marketerAccount.forgotPassword);
+router.post('/sabito-marketer/auth/reset-password', authLimiter, marketerAccount.resetPassword);
+router.post('/sabito-marketer/auth/change-password', requireMarketer, marketerWriteLimiter, marketerAccount.changePassword);
+router.delete('/sabito-marketer/auth/account', requireMarketer, marketerWriteLimiter, marketerAccount.closeAccount);
 router.get('/sabito-partners', listPublicSabitoPartners);
 router.get('/sabito-partners/:slug', getPublicSabitoPartner);
 router.post('/sabito-marketer/auth/register', registrationLimiter, registerMarketer);

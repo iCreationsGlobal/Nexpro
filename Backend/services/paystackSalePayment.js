@@ -21,64 +21,64 @@ async function applyPaystackChargeToSaleFromTx(sale, reference, tx) {
   }
 
   const outcome = await sequelize.transaction(async (transaction) => {
-    sale = await Sale.findOne({ where: { id: sale.id, tenantId: sale.tenantId }, transaction, lock: transaction.LOCK.UPDATE });
-    if (!sale) return { applied: false, reason: 'sale_not_found' };
-  const saleTotal = parseFloat(sale.total || 0);
-  const currentPaid = parseFloat(sale.amountPaid || 0);
-  const balanceDue = Math.max(saleTotal - currentPaid, 0);
+    const locked = await Sale.findOne({ where: { id: sale.id, tenantId: sale.tenantId }, transaction, lock: transaction.LOCK.UPDATE });
+    if (!locked) return { applied: false, reason: 'sale_not_found' };
+    sale = locked;
+    const saleTotal = parseFloat(sale.total || 0);
+    const currentPaid = parseFloat(sale.amountPaid || 0);
+    const balanceDue = Math.max(saleTotal - currentPaid, 0);
 
-  if (sale.status === 'cancelled' || sale.status === 'refunded') {
-    return { applied: false, reason: 'sale_terminal_state' };
-  }
-
-  if (balanceDue <= 0) {
-    return { applied: false, reason: 'already_settled', duplicate: true };
-  }
-
-  const txStatus = String(tx?.status || '').toLowerCase();
-  if (txStatus !== 'success') {
-    return { applied: false, reason: 'not_success', paystackStatus: tx?.status };
-  }
-
-  const metadata =
-    typeof tx.metadata === 'string' ? JSON.parse(tx.metadata || '{}') : (tx.metadata || {});
-
-  if (metadata.sale_id && String(metadata.sale_id) !== String(sale.id)) {
-    return { applied: false, reason: 'sale_mismatch' };
-  }
-  if (metadata.tenant_id && String(metadata.tenant_id) !== String(sale.tenantId)) {
-    return { applied: false, reason: 'tenant_mismatch' };
-  }
-
-  if (sale.metadata?.paystackRef === reference) {
-    return { applied: false, duplicate: true, reason: 'already_recorded' };
-  }
-
-  const existing = await Payment.findOne({ where: {
-    tenantId: sale.tenantId, referenceNumber: reference, description: `sale:${sale.id}`,
-  }, transaction });
-  if (existing) return { applied: false, duplicate: true, reason: 'already_recorded' };
-  if (tx.currency && tx.currency !== 'GHS') return { applied: false, reason: 'currency_mismatch' };
-  const amount = parseFloat(tx.amount || 0) / 100;
-  if (!Number.isFinite(amount) || amount <= 0) return { applied: false, reason: 'invalid_amount' };
-  const appliedAmount =
-    Number.isFinite(balanceDue) && balanceDue > 0 ? Math.min(amount, balanceDue) : amount;
-  const newAmountPaid = Math.min(currentPaid + appliedAmount, saleTotal);
-  const nextStatus = newAmountPaid >= saleTotal ? 'completed' : 'partially_paid';
-  const channel = String(tx.channel || tx.authorization?.channel || '').toLowerCase();
-  const nextPaymentMethod =
-    channel.includes('mobile') || sale.paymentMethod === 'mobile_money' ? 'mobile_money' : 'card';
-
-  await sale.update({
-    status: nextStatus,
-    paymentMethod: nextPaymentMethod,
-    amountPaid: newAmountPaid,
-    metadata: {
-      ...(sale.metadata || {}),
-      paystackRef: reference,
-      paystackCompletedAt: new Date().toISOString()
+    if (sale.status === 'cancelled' || sale.status === 'refunded') {
+      return { applied: false, reason: 'sale_terminal_state' };
     }
-  }, { transaction });
+
+    if (balanceDue <= 0) {
+      return { applied: false, reason: 'already_settled', duplicate: true };
+    }
+
+    const txStatus = String(tx?.status || '').toLowerCase();
+    if (txStatus !== 'success') {
+      return { applied: false, reason: 'not_success', paystackStatus: tx?.status };
+    }
+
+    const metadata =
+      typeof tx.metadata === 'string' ? JSON.parse(tx.metadata || '{}') : (tx.metadata || {});
+
+    if (metadata.sale_id && String(metadata.sale_id) !== String(sale.id)) {
+      return { applied: false, reason: 'sale_mismatch' };
+    }
+    if (metadata.tenant_id && String(metadata.tenant_id) !== String(sale.tenantId)) {
+      return { applied: false, reason: 'tenant_mismatch' };
+    }
+
+    if (sale.metadata?.paystackRef === reference) {
+      return { applied: false, duplicate: true, reason: 'already_recorded' };
+    }
+
+    if (tx.currency && String(tx.currency).toUpperCase() !== 'GHS') return { applied: false, reason: 'currency_mismatch' };
+    const existingPayment = await Payment.findOne({ where: { tenantId: sale.tenantId, referenceNumber: reference, description: `sale:${sale.id}` }, transaction });
+    if (existingPayment) return { applied: false, duplicate: true, reason: 'already_recorded' };
+    const amount = parseFloat(tx.amount || 0) / 100;
+    const appliedAmount =
+      Number.isFinite(balanceDue) && balanceDue > 0 ? Math.min(amount, balanceDue) : amount;
+    if (!Number.isFinite(appliedAmount) || appliedAmount <= 0) return { applied: false, reason: 'invalid_amount' };
+    const newAmountPaid = Math.min(currentPaid + appliedAmount, saleTotal);
+    const nextStatus = newAmountPaid >= saleTotal ? 'completed' : 'partially_paid';
+    const channel = String(tx.channel || tx.authorization?.channel || '').toLowerCase();
+    const nextPaymentMethod =
+      channel.includes('mobile') || sale.paymentMethod === 'mobile_money' ? 'mobile_money' : 'card';
+
+    await sale.update({
+      status: nextStatus,
+      paymentMethod: nextPaymentMethod,
+      amountPaid: newAmountPaid,
+      metadata: {
+        ...(sale.metadata || {}),
+        paystackRef: reference,
+        paystackCompletedAt: new Date().toISOString()
+      }
+    }, { transaction });
+
     await recordSalePayment(sale, appliedAmount, { transaction, reference });
     return { applied: true, appliedAmount, nextStatus };
   });
@@ -88,8 +88,6 @@ async function applyPaystackChargeToSaleFromTx(sale, reference, tx) {
   const pc = tenant?.metadata?.paymentCollection || {};
   const isMoMo = pc.settlementType === 'momo' && pc.momoPhone;
   const useLegacyMomoTransfer = isMoMo && !tenant?.paystackSubaccountCode;
-
-
 
   if (useLegacyMomoTransfer) {
     try {

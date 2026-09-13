@@ -1,6 +1,8 @@
 jest.mock('../../../config/database', () => ({
   sequelize: {
     transaction: jest.fn(),
+    where: jest.fn((...args) => ({ sequelizeWhere: args })),
+    literal: jest.fn((value) => value),
   },
 }));
 
@@ -22,6 +24,7 @@ jest.mock('../../../models', () => ({
   Shop: { findByPk: jest.fn() },
   StudioLocation: { findByPk: jest.fn() },
   User: {},
+  Rental: { findAll: jest.fn().mockResolvedValue([]), findByPk: jest.fn() },
 }));
 
 jest.mock('../../../middleware/cache', () => ({
@@ -41,6 +44,11 @@ jest.mock('../../../services/customerBalanceService', () => ({
 
 jest.mock('../../../services/invoiceSaleService', () => ({
   ensureSaleFromPaidInvoice: jest.fn().mockResolvedValue({ sale: null, created: false, updated: false }),
+}));
+
+jest.mock('../../../services/rentalInvoicePaymentService', () => ({
+  isRentalSourcedInvoice: jest.fn(() => false),
+  syncRentalFromPaidInvoice: jest.fn().mockResolvedValue({ rental: null, invoice: null }),
 }));
 
 jest.mock('../../../services/sabitoWebhookService', () => ({
@@ -921,6 +929,31 @@ describe('invoiceController getInvoices list visibility', () => {
       })
     );
     expect(res.status).toHaveBeenCalledWith(200);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('includes rental and quote sourceTypes for rental tenants', async () => {
+    const req = {
+      query: { page: '1', limit: '20' },
+      headers: {},
+      tenantId: 'tenant-1',
+      tenant: { businessType: 'rental' },
+      user: { id: 'user-1', role: 'admin' },
+      tenantRole: 'admin',
+    };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await invoiceController.getInvoices(req, res, next);
+
+    expect(Invoice.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: 'tenant-1',
+          [Op.or]: [{ sourceType: 'rental' }, { sourceType: 'quote' }, { sourceType: 'sale' }],
+        }),
+      })
+    );
     expect(next).not.toHaveBeenCalled();
   });
 });

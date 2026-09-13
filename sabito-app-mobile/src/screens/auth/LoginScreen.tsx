@@ -151,6 +151,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, onLoginSuccess })
             >
               {isLoading ? 'Signing In...' : 'Sign In'}
             </Button>
+            <Button onPress={() => navigation.navigate('PasswordRecovery' as any)}>Forgot password?</Button>
 
             <View style={styles.signupSection}>
               <Text style={[styles.signupText, { color: colors.textSecondary }]}>

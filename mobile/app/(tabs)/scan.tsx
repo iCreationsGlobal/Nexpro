@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
+import { IconButton } from '@/components/IconButton';
 import { ListEmptyState, EmptyStateActionButton } from '@/components/ListEmptyState';
 import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
@@ -24,7 +25,7 @@ import { productService } from '@/services/productService';
 import { jobService } from '@/services/jobService';
 import { customerService } from '@/services/customerService';
 import { userWorkspaceService } from '@/services/userWorkspaceService';
-import { CURRENCY, resolveBusinessType } from '@/constants';
+import { CURRENCY, isRentalBusinessType, resolveBusinessType } from '@/constants';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
 import { FormInput, FormLabel } from '@/components/FormField';
@@ -35,6 +36,7 @@ import { parseProductQRPayload, isProductQRCode } from '@/utils/productQR';
 import { parseApiEntity, parseApiListResponse } from '@/utils/parseApiListResponse';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useScanningEnabled } from '@/hooks/useScanningEnabled';
+import { useScanToSell } from '@/hooks/useScanToSell';
 import { resolveImageUrl } from '@/utils/fileUtils';
 import { refreshAfterJobChange, QUERY_STALE } from '@/utils/queryInvalidation';
 import {
@@ -98,7 +100,9 @@ export default function ScanScreen() {
   const { items: cartItems, getItemCount, addItem, updateQuantity } = useCart();
   const { colors, bg, cardBg, borderColor, textColor, mutedColor, inputBg } = useScreenColors();
   const { scanningEnabled } = useScanningEnabled();
+  const { scanToSell } = useScanToSell();
   const cartItemCount = getItemCount();
+  const pendingScanAddRef = useRef(false);
   const selectedCartItemByProductId = useMemo(() => {
     const map = new Map<string, string>();
     cartItems.forEach((item) => {
@@ -123,8 +127,9 @@ export default function ScanScreen() {
 
   const businessType = activeTenant?.businessType ?? 'printing_press';
   const isStudio = resolveBusinessType(businessType) === 'studio';
+  const isRental = isRentalBusinessType(businessType);
   const productQueriesEnabled =
-    !!activeTenantId && !isStudio && hasFeature('products') && scopeReady;
+    !!activeTenantId && !isStudio && !isRental && hasFeature('products') && scopeReady;
   const studioCustomerQueryEnabled =
     !!activeTenantId && isStudio && hasFeature('crm') && scopeReady;
 
@@ -280,30 +285,6 @@ export default function ScanScreen() {
   });
 
 
-  const handleScan = useCallback((scannedData: string) => {
-    const candidates = deriveBarcodeSearchCandidates(scannedData);
-    console.info('[Scan] Barcode candidates', { raw: scannedData, candidates });
-
-    // Check if scanned data is a product QR code (JSON) or a regular barcode
-    if (isProductQRCode(scannedData)) {
-      const result = parseProductQRPayload(scannedData);
-      if (result.success && result.data) {
-        // Use product data directly from QR code
-        setScannedProduct(result.data);
-        // Set search query to barcode if available, otherwise clear
-        setSearchQuery(result.data.barcode || '');
-      } else {
-        // Fallback to barcode search if parsing fails
-        setSearchQuery(scannedData);
-        setScannedProduct(null);
-      }
-    } else {
-      // Regular barcode - set in unified search
-      setSearchQuery(scannedData);
-      setScannedProduct(null);
-    }
-  }, []);
-
   const handleCreateJob = useCallback(() => {
     if (!jobForm.customerId) {
       Alert.alert('Error', 'Please select a customer');
@@ -405,6 +386,7 @@ export default function ScanScreen() {
 
       if (productRequiresVariantSelection(selectedProduct)) {
         setVariantPickerProduct(selectedProduct);
+        setScannerVisible(false);
         return;
       }
 
@@ -434,6 +416,39 @@ export default function ScanScreen() {
       setScannedProduct(null);
     },
     [addItem]
+  );
+
+  const handleScan = useCallback(
+    (scannedData: string) => {
+      const candidates = deriveBarcodeSearchCandidates(scannedData);
+      console.info('[Scan] Barcode candidates', { raw: scannedData, candidates });
+
+      if (isProductQRCode(scannedData)) {
+        const result = parseProductQRPayload(scannedData);
+        if (result.success && result.data) {
+          if (scanToSell) {
+            handleProductSelect(result.data as ScanProduct);
+            setScannerVisible(false);
+            return;
+          }
+          setScannedProduct(result.data);
+          setSearchQuery(result.data.barcode || '');
+        } else {
+          setSearchQuery(scannedData);
+          setScannedProduct(null);
+          if (scanToSell) {
+            pendingScanAddRef.current = true;
+          }
+        }
+      } else {
+        setSearchQuery(scannedData);
+        setScannedProduct(null);
+        if (scanToSell) {
+          pendingScanAddRef.current = true;
+        }
+      }
+    },
+    [scanToSell, handleProductSelect]
   );
 
   const handleSelectVariantForCart = useCallback(
@@ -530,6 +545,75 @@ export default function ScanScreen() {
   // Determine which products to show
   const productsToShow = debouncedSearch ? products : defaultProducts;
   const isLoadingProductsList = debouncedSearch ? loadingProducts : loadingDefaultProducts;
+
+  useEffect(() => {
+    if (!scanToSell || !pendingScanAddRef.current) return;
+
+    if (debouncedSearch && !isLikelyBarcode) {
+      pendingScanAddRef.current = false;
+      Alert.alert('Product not found', 'No product matches this barcode.');
+      setScannerVisible(false);
+      return;
+    }
+
+    if (loadingBarcode) return;
+
+    if (foundBarcodeProduct && barcodeProduct) {
+      pendingScanAddRef.current = false;
+      handleProductSelect(barcodeProduct);
+      setScannerVisible(false);
+      return;
+    }
+
+    const barcodeLookupAttempted =
+      productQueriesEnabled &&
+      !!debouncedSearch &&
+      debouncedSearch.length >= 2 &&
+      !scannedProduct &&
+      isLikelyBarcode &&
+      barcodeSearchCandidates.length > 0;
+
+    if (barcodeLookupAttempted && !loadingBarcode && !foundBarcodeProduct) {
+      pendingScanAddRef.current = false;
+      Alert.alert('Product not found', 'No product matches this barcode.');
+      setScannerVisible(false);
+    }
+  }, [
+    scanToSell,
+    loadingBarcode,
+    foundBarcodeProduct,
+    barcodeProduct,
+    debouncedSearch,
+    isLikelyBarcode,
+    barcodeSearchCandidates.length,
+    productQueriesEnabled,
+    scannedProduct,
+    handleProductSelect,
+  ]);
+
+  if (isRental) {
+    if (!hasFeature('rentals')) {
+      return <FeatureAccessDenied message="Rentals are not enabled for this workspace." />;
+    }
+    return (
+      <ScreenShell style={styles.container}>
+        <ListEmptyState
+          imageKey="TASKS"
+          title="New rental"
+          subtitle="Start a hire with full payment, part payment, or credit."
+          titleColor={textColor}
+          subtitleColor={mutedColor}
+          fill
+        >
+          <EmptyStateActionButton
+            label="New rental"
+            onPress={() => router.push('/rental/new' as never)}
+            backgroundColor={colors.tint}
+          />
+        </ListEmptyState>
+      </ScreenShell>
+    );
+  }
 
   if (isStudio && !hasFeature('jobAutomation')) {
     return (
@@ -668,9 +752,14 @@ export default function ScanScreen() {
                 <View style={styles.lineItemHeader}>
                   <Text style={[styles.lineItemTitle, { color: textColor }]}>Item {index + 1}</Text>
                   {jobForm.items.length > 1 ? (
-                    <Pressable onPress={() => handleRemoveJobItem(index)} style={styles.removeBtn}>
-                      <AppIcon name="times" size={14} color="#ef4444" />
-                    </Pressable>
+                    <IconButton
+                      icon="times"
+                      onPress={() => handleRemoveJobItem(index)}
+                      variant="ghost"
+                      iconSize={14}
+                      color="#ef4444"
+                      accessibilityLabel={`Remove item ${index + 1}`}
+                    />
                   ) : null}
                 </View>
                 <FormLabel>Category</FormLabel>
@@ -851,23 +940,29 @@ export default function ScanScreen() {
               autoCorrect={false}
             />
             {searchQuery.length > 0 && (
-              <Pressable
+              <IconButton
+                icon="times"
                 onPress={() => {
                   setSearchQuery('');
                   setScannedProduct(null);
                 }}
+                variant="ghost"
+                iconSize={16}
+                color={mutedColor}
                 style={styles.clearBtn}
-              >
-                <AppIcon name="times" size={16} color={mutedColor} />
-              </Pressable>
+                accessibilityLabel="Clear search"
+              />
             )}
             {scanningEnabled && (
-              <Pressable
+              <IconButton
+                icon="camera"
                 onPress={() => setScannerVisible(true)}
-                style={[styles.scanBtn, { backgroundColor: colors.tint }]}
-              >
-                <AppIcon name="camera" size={18} color="#fff" />
-              </Pressable>
+                variant="filled"
+                color={colors.tint}
+                iconSize={18}
+                style={styles.scanBtn}
+                accessibilityLabel="Scan barcode"
+              />
             )}
           </View>
         </View>
@@ -1263,7 +1358,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   lineItemTitle: { fontSize: 15, fontWeight: '700' },
-  removeBtn: { padding: 6 },
   lineItemFieldsRow: { flexDirection: 'row', gap: 12 },
   lineItemField: { flex: 1 },
   lineTotal: { marginTop: 10, fontSize: 14, fontWeight: '600', textAlign: 'right' },
@@ -1293,12 +1387,8 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, fontSize: 16, paddingVertical: 8 },
-  clearBtn: { padding: 6, marginRight: 2 },
-  scanBtn: {
-    padding: 8,
-    borderRadius: 8,
-    marginLeft: 4,
-  },
+  clearBtn: { marginRight: 2 },
+  scanBtn: { marginLeft: 4 },
   loading: { padding: 24, alignItems: 'center' },
   loadingText: { marginTop: 12, fontSize: 14 },
   productListContainer: { marginTop: 20 },

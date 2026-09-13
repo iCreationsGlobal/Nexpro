@@ -19,9 +19,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { AppIcon } from '@/components/AppIcon';
 import { FormSheetModal } from '@/components/FormSheetModal';
 import { FORM_LABELS } from '@/constants/formLabels';
+import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
 import { productService } from '@/services/productService';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/context/AuthContext';
+import { useShopOptional } from '@/context/ShopContext';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { useScreenColors } from '@/hooks/useScreenColors';
@@ -40,6 +42,7 @@ import { useRegisterPageSearch } from '@/hooks/useRegisterPageSearch';
 import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListResponse';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { refreshAfterInventoryChange, QUERY_STALE } from '@/utils/queryInvalidation';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 
 type Product = {
   id: string;
@@ -71,12 +74,16 @@ export default function ProductsScreen() {
   const { colors, bg, cardBg, borderColor, textColor, mutedColor, inputBg } = useScreenColors();
   const queryClient = useQueryClient();
   const { activeTenant, activeTenantId, hasFeature } = useAuth();
-  const { activeShopId, activeStudioLocationId, isShopWorkspace, scopeReady } = useWorkspaceScope();
+  const shop = useShopOptional();
+  const { activeShopId, activeStudioLocationId, isShopWorkspace } = useWorkspaceScope();
   const resolvedType = resolveBusinessType(activeTenant?.businessType);
   const isShop = resolvedType === 'shop';
   const isPharmacy = resolvedType === 'pharmacy';
   const isRetailLike = isShop || isPharmacy;
   const inStoreSetup = useIsStoreSetupRoute();
+  const shopStillLoading = isShopWorkspace && !!shop?.loadingShops;
+  const productsQueryEnabled =
+    !!activeTenantId && isRetailLike && hasFeature('products') && !inStoreSetup && !shopStillLoading;
 
   const { searchValue, setSearchValue } = useSmartSearch();
   useRegisterPageSearch({ scope: 'products', placeholder: SEARCH_PLACEHOLDERS.PRODUCTS });
@@ -105,7 +112,7 @@ export default function ProductsScreen() {
 
   const debouncedSearch = useDebounce(searchValue, 400);
 
-  const { data: response, isLoading, refetch, isRefetching, error, isError } = useQuery({
+  const { data: response, isPending, refetch, isRefetching, error, isError } = useQuery({
     queryKey: ['products', activeTenantId, activeShopId, activeStudioLocationId, debouncedSearch],
     queryFn: () =>
       productService.getProducts({
@@ -114,10 +121,11 @@ export default function ProductsScreen() {
         search: debouncedSearch || undefined,
         isActive: true,
       }),
-    enabled: !!activeTenantId && isRetailLike && hasFeature('products') && scopeReady && !inStoreSetup,
+    enabled: productsQueryEnabled,
     staleTime: QUERY_STALE.LIST,
     gcTime: 2 * 60 * 60 * 1000,
   });
+  const showProductsLoading = productsQueryEnabled && isPending && !isError;
 
   const shopType = activeTenant?.metadata?.shopType;
   const isRestaurant = shopType === SHOP_TYPES.RESTAURANT;
@@ -143,11 +151,14 @@ export default function ProductsScreen() {
   const createProductMutation = useMutation({
     mutationFn: (data: Parameters<typeof productService.createProduct>[0]) =>
       productService.createProduct(data),
-    onSuccess: async () => {
-      await refreshAfterInventoryChange(queryClient);
+    onSuccess: () => {
       setAddModalVisible(false);
       resetAddForm();
       Alert.alert('Success', 'Product created successfully');
+      // The product is saved. Refresh lists without keeping the save button pending.
+      void refreshAfterInventoryChange(queryClient).catch(() => {
+        console.warn('[Products] Product saved, but refreshing inventory failed.');
+      });
     },
     onError: (error: unknown) => {
       Alert.alert('Error', getApiErrorMessage(error, 'Failed to create product'));
@@ -345,8 +356,6 @@ export default function ProductsScreen() {
     );
   }
 
-  const awaitingShop = isShopWorkspace && !scopeReady;
-
   const screenWidth = Dimensions.get('window').width;
   const cardWidth = (screenWidth - 16 * 2 - 12) / 2; // padding + gap between cards
 
@@ -434,7 +443,7 @@ export default function ProductsScreen() {
   return (
     <ScreenShell style={styles.container}>
       {/* Add product — hide when empty (empty state has its own CTA) */}
-      {!isLoading && !isError && products.length > 0 && (
+      {!showProductsLoading && !isError && products.length > 0 && (
         <ListActionButton
           label="Add Product"
           onPress={() => setAddModalVisible(true)}
@@ -442,9 +451,9 @@ export default function ProductsScreen() {
         />
       )}
 
-      {awaitingShop ? (
+      {shopStillLoading ? (
         <ListLoadingState message="Loading shop..." />
-      ) : isLoading && !response ? (
+      ) : showProductsLoading ? (
         <ListLoadingState message="Loading products..." />
       ) : isError ? (
         <ListErrorState title="Failed to load products" message={loadErrorMessage} onRetry={refetch} />
@@ -721,8 +730,8 @@ const styles = StyleSheet.create({
   cardPrice: { fontSize: 15, fontWeight: '700' },
   restockPill: {
     marginTop: 10,
-    minHeight: 34,
-    borderWidth: 1,
+    minHeight: TOUCH_TARGET.compact,
+    borderWidth: BORDER_WIDTH.standard,
     borderRadius: 999,
     flexDirection: 'row',
     alignItems: 'center',
@@ -837,11 +846,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  removeImageBtn: { marginTop: 10, alignSelf: 'flex-start' },
+  removeImageBtn: {
+    marginTop: 10,
+    ...standaloneFullWidth,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
   removeImageText: { color: '#dc2626', fontSize: 14, fontWeight: '600' },
   formLabel: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
   formInput: {
-    borderWidth: 1,
+    minHeight: TOUCH_TARGET.standard,
+    borderWidth: BORDER_WIDTH.standard,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -852,6 +867,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   submitButton: {
+    ...standaloneFullWidth,
     height: 48,
     borderRadius: 12,
     alignItems: 'center',

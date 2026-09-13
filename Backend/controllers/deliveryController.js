@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Job, Sale, Customer, SaleActivity, User, UserTenant, MarketplaceOrderPayment } = require('../models');
+const { Job, Sale, Rental, Customer, SaleActivity, User, UserTenant, MarketplaceOrderPayment } = require('../models');
 const { sequelize } = require('../config/database');
 const { applyTenantFilter } = require('../utils/tenantUtils');
 const { applyShopReadFilter } = require('../utils/shopUtils');
@@ -13,6 +13,13 @@ const {
   CUSTOMER_CONFIRMED_DELIVERY_ERROR_MESSAGE,
   hasCustomerConfirmedDelivery,
 } = require('../utils/marketplaceOrderStatus');
+const {
+  expandRentalDeliveryRows,
+  applyRentalBranchReadFilter,
+  rentalHasScheduledDeliveryCondition,
+  updateRentalDeliveryLeg,
+  RENTAL_DELIVERY_LEGS,
+} = require('../services/rentalDeliveryService');
 
 const DELIVERY_LABELS = {
   ready_for_delivery: 'Ready for delivery',
@@ -254,6 +261,10 @@ function applySaleScope(req, where) {
   return applyShopReadFilter(req, where);
 }
 
+function applyRentalScope(req, where) {
+  return applyRentalBranchReadFilter(req, where);
+}
+
 /**
  * @desc    List completed jobs and sales in the delivery queue (or recent finished deliveries)
  * @route   GET /api/deliveries/queue
@@ -291,7 +302,12 @@ exports.getDeliveryQueue = async (req, res, next) => {
         ...(isDriver ? { deliveryAssignedTo: req.user.id } : {}),
       }));
 
-      const [jobs, sales] = await Promise.all([
+      const rentalWhere = applyRentalScope(req, applyTenantFilter(tenantId, {
+        status: { [Op.notIn]: ['cancelled'] },
+        [Op.and]: [rentalHasScheduledDeliveryCondition()],
+      }));
+
+      const [jobs, sales, rentals] = await Promise.all([
         Job.findAll({
           where: jobWhere,
           include: [customerInclude],
@@ -304,10 +320,23 @@ exports.getDeliveryQueue = async (req, res, next) => {
           where: saleWhere,
           include: [customerInclude, marketplacePaymentInclude],
           order: [['updatedAt', 'DESC']]
-        })
+        }),
+        Rental.findAll({
+          where: rentalWhere,
+          include: [customerInclude],
+          order: [['updatedAt', 'DESC']],
+        }),
       ]);
 
-      const rows = [...jobs.map(formatJobRow), ...sales.map(formatSaleRow)].sort(
+      const rentalRows = expandRentalDeliveryRows(rentals, 'active', {
+        isDriver,
+        driverUserId: req.user?.id || null,
+      });
+      const rows = [
+        ...jobs.map(formatJobRow),
+        ...sales.map(formatSaleRow),
+        ...rentalRows,
+      ].sort(
         (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
       );
 
@@ -333,7 +362,12 @@ exports.getDeliveryQueue = async (req, res, next) => {
       ...(isDriver ? { deliveredBy: req.user.id } : {}),
     }));
 
-    const [jobs, sales] = await Promise.all([
+    const rentalWhere = applyRentalScope(req, applyTenantFilter(tenantId, {
+      [Op.and]: [rentalHasScheduledDeliveryCondition()],
+      updatedAt: { [Op.gte]: ninetyDaysAgo },
+    }));
+
+    const [jobs, sales, rentals] = await Promise.all([
       Job.findAll({
         where: jobWhere,
         include: [customerInclude],
@@ -343,10 +377,23 @@ exports.getDeliveryQueue = async (req, res, next) => {
         where: saleWhere,
         include: [customerInclude, marketplacePaymentInclude],
         order: [['updatedAt', 'DESC']]
-      })
+      }),
+      Rental.findAll({
+        where: rentalWhere,
+        include: [customerInclude],
+        order: [['updatedAt', 'DESC']],
+      }),
     ]);
 
-    const rows = [...jobs.map(formatJobRow), ...sales.map(formatSaleRow)].sort(
+    const rentalRows = expandRentalDeliveryRows(rentals, 'done', {
+      isDriver,
+      driverUserId: req.user?.id || null,
+    });
+    const rows = [
+      ...jobs.map(formatJobRow),
+      ...sales.map(formatSaleRow),
+      ...rentalRows,
+    ].sort(
       (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
     );
 
@@ -578,10 +625,57 @@ async function updateSaleDeliveryStatus(
   }
 }
 
+async function updateRentalDeliveryStatus(
+  req,
+  { tenantId, rentalId, deliveryLeg, deliveryStatus, deliveryAssignedTo, hasAssignedDriverField, userId }
+) {
+  const isDriver = isDriverRequest(req);
+
+  if (!RENTAL_DELIVERY_LEGS.includes(deliveryLeg)) {
+    return { ok: false, message: 'deliveryLeg must be "pickup" or "return" for rental deliveries' };
+  }
+
+  if (!isDriver && hasAssignedDriverField) {
+    if (!canAssignDriver(req)) return { ok: false, message: 'Only managers/admins can assign drivers' };
+  }
+
+  const normalizedAssignedDriver = normalizeAssignedDriver(deliveryAssignedTo);
+  if (!isDriver && hasAssignedDriverField && normalizedAssignedDriver) {
+    const validAssignee = await assertAssignedDriverIsValid(tenantId, normalizedAssignedDriver);
+    if (!validAssignee.ok) return { ok: false, message: validAssignee.message };
+  }
+
+  const rental = await Rental.findOne({
+    where: applyRentalScope(req, applyTenantFilter(tenantId, { id: rentalId })),
+  });
+  if (!rental) {
+    return { ok: false, message: 'Rental not found' };
+  }
+
+  const result = updateRentalDeliveryLeg({
+    rental,
+    leg: deliveryLeg,
+    deliveryStatus,
+    deliveryAssignedTo,
+    hasAssignedDriverField,
+    userId,
+    isDriver,
+    assertAssignedDriverIsValid,
+    enforceDriverStatusTransition,
+    normalizeAssignedDriver,
+  });
+
+  if (!result.ok) return result;
+  if (result.unchanged) return { ok: true, unchanged: true };
+
+  await rental.update({ metadata: result.metadata });
+  return { ok: true };
+}
+
 /**
- * @desc    Set deliveryStatus on one or more jobs / sales (tenant-scoped)
+ * @desc    Set deliveryStatus on one or more jobs / sales / rentals (tenant-scoped)
  * @route   PATCH /api/deliveries/status
- * @body    { updates: [{ entityType: 'job'|'sale', id: uuid, deliveryStatus: string|null }] }
+ * @body    { updates: [{ entityType: 'job'|'sale'|'rental', id: uuid, deliveryStatus: string|null, deliveryLeg?: 'pickup'|'return' }] }
  * @access  Private (tenant)
  */
 exports.patchDeliveryStatuses = async (req, res, next) => {
@@ -608,12 +702,12 @@ exports.patchDeliveryStatuses = async (req, res, next) => {
     for (const item of raw) {
       const entityType = item?.entityType;
       const id = item?.id;
-      if (!id || (entityType !== 'job' && entityType !== 'sale')) {
+      if (!id || !['job', 'sale', 'rental'].includes(entityType)) {
         results.push({
           entityType: entityType || null,
           id: id || null,
           ok: false,
-          message: 'Each update needs entityType "job" or "sale" and id'
+          message: 'Each update needs entityType "job", "sale", or "rental" and id'
         });
         continue;
       }
@@ -641,7 +735,7 @@ exports.patchDeliveryStatuses = async (req, res, next) => {
             hasAssignedDriverField: Object.prototype.hasOwnProperty.call(item || {}, 'deliveryAssignedTo'),
             userId
           });
-        } else {
+        } else if (entityType === 'sale') {
           r = await updateSaleDeliveryStatus(req, {
             tenantId,
             saleId: id,
@@ -651,6 +745,16 @@ exports.patchDeliveryStatuses = async (req, res, next) => {
             userId
           });
           if (r.ok) saleTouched = true;
+        } else {
+          r = await updateRentalDeliveryStatus(req, {
+            tenantId,
+            rentalId: id,
+            deliveryLeg: item.deliveryLeg || 'pickup',
+            deliveryStatus: item.deliveryStatus,
+            deliveryAssignedTo: item.deliveryAssignedTo,
+            hasAssignedDriverField: Object.prototype.hasOwnProperty.call(item || {}, 'deliveryAssignedTo'),
+            userId,
+          });
         }
         results.push({ entityType, id, ...r });
       } catch (err) {

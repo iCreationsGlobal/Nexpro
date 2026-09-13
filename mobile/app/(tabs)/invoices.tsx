@@ -7,12 +7,11 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
-  ActivityIndicator,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
-import { AppIcon, type AppIconName } from '@/components/AppIcon';
-import { ListEmptyState, ListActionButton } from '@/components/ListEmptyState';
+import { invoiceService, type InvoiceStats } from '@/services/invoiceService';
+import { ListEmptyState, EmptyStateActionButton, ListActionButton } from '@/components/ListEmptyState';
 import { SEARCH_PLACEHOLDERS } from '@/constants/searchPlaceholders';
 import { useSmartSearch } from '@/context/SmartSearchContext';
 import { useRegisterPageSearch } from '@/hooks/useRegisterPageSearch';
@@ -20,7 +19,6 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { flatListStyleForEmpty, listContentStyleWhenEmpty, showListFilters } from '@/utils/listEmptyLayout';
 import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListResponse';
 import { formatStatusLabel } from '@/utils/formatLabels';
-import { invoiceService } from '@/services/invoiceService';
 import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
@@ -28,9 +26,18 @@ import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
 import { FilterChipRow } from '@/components/FilterChip';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
-import { CURRENCY, resolveBusinessType } from '@/constants';
+import { resolveBusinessType } from '@/constants';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { logger } from '@/utils/logger';
+import { QUERY_STALE } from '@/utils/queryInvalidation';
+
+function normalizeInvoiceStatsResponse(response: unknown): InvoiceStats | null {
+  if (!response || typeof response !== 'object') return null;
+  const payload =
+    (response as { data?: unknown }).data != null ? (response as { data: unknown }).data : response;
+  const stats = (payload as { data?: unknown })?.data ?? payload;
+  return stats && typeof stats === 'object' ? (stats as InvoiceStats) : null;
+}
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -42,6 +49,7 @@ function getStatusColor(status: string): string {
     draft: '#6b7280',
     sent: '#3b82f6',
     paid: '#10b981',
+    partial: '#d97706',
     overdue: '#ef4444',
     cancelled: '#6b7280',
   };
@@ -72,7 +80,7 @@ export default function InvoicesScreen() {
     canAccessAllStudioLocations,
     scopeReady,
   } = useWorkspaceScope();
-  const { colors, bg, cardBg, borderColor, textColor, mutedColor, inputBg } = useScreenColors();
+  const { colors, cardBg, borderColor, textColor, mutedColor } = useScreenColors();
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
@@ -114,6 +122,13 @@ export default function InvoicesScreen() {
     ]
   );
 
+  const { data: statsResponse, isLoading: isStatsLoading, refetch: refetchStats } = useQuery({
+    queryKey: ['invoices', 'stats', activeTenantId, activeShopId, activeStudioLocationId],
+    queryFn: () => invoiceService.getStats(),
+    enabled: invoicesQueryEnabled,
+    staleTime: QUERY_STALE.TRANSACTIONAL,
+  });
+
   const { data: response, isLoading, refetch, isRefetching, error, isError } = useQuery({
     queryKey: ['invoices', activeTenantId, activeShopId, activeStudioLocationId, statusFilter, debouncedSearch],
     queryFn: async () => {
@@ -151,6 +166,29 @@ export default function InvoicesScreen() {
   });
 
   const invoices = useMemo(() => parseApiListResponse<Invoice>(response), [response]);
+
+  const invoiceStats = useMemo(() => {
+    const stats = normalizeInvoiceStatsResponse(statsResponse);
+    const totalCount = Number(stats?.totalInvoices ?? 0);
+    const paidCount = Number(stats?.paidInvoices ?? 0);
+    const pendingFromApi =
+      Number(stats?.unpaidInvoices ?? 0) + Number(stats?.overdueInvoices ?? 0);
+    const pendingCount =
+      pendingFromApi > 0 ? pendingFromApi : Math.max(0, totalCount - paidCount);
+
+    const paidAmount = Number(stats?.totalRevenue ?? 0);
+    const pendingAmount = Number(stats?.outstandingAmount ?? 0);
+
+    return {
+      totalCount,
+      paidCount,
+      pendingCount,
+      paidAmount,
+      pendingAmount,
+      totalAmount: paidAmount + pendingAmount,
+    };
+  }, [statsResponse]);
+
   const loadErrorMessage = useMemo(
     () => getApiErrorMessage(error, 'An error occurred while loading invoices. Please try again.'),
     [error]
@@ -178,11 +216,15 @@ export default function InvoicesScreen() {
 
   const isEmpty = !isLoading && !isError && invoices.length === 0;
   const hasActiveFilter = statusFilter !== 'all' || !!debouncedSearch.trim();
-  const onRefresh = useCallback(() => refetch(), [refetch]);
+  const onRefresh = useCallback(async () => {
+    await Promise.all([refetch(), refetchStats()]);
+  }, [refetch, refetchStats]);
+  const showStatsSection = invoicesQueryEnabled && (isStatsLoading || statsResponse != null);
+  const showStatsSkeleton = isStatsLoading && !statsResponse;
 
   const filterOptions = useMemo(
     () =>
-      (['all', 'draft', 'sent', 'paid', 'overdue'] as const).map((s) => ({
+      (['all', 'draft', 'sent', 'partial', 'paid', 'overdue'] as const).map((s) => ({
         value: s,
         label: s === 'all' ? 'All' : formatStatusLabel(s),
       })),
@@ -281,12 +323,55 @@ export default function InvoicesScreen() {
 
   return (
     <ScreenShell style={styles.container}>
-      {!isLoading && !isError ? (
+      {!isLoading && !isError && invoices.length > 0 ? (
         <ListActionButton
           label="New Invoice"
           onPress={handleNewInvoice}
           backgroundColor={colors.tint}
         />
+      ) : null}
+
+      {showStatsSection ? (
+        <View style={styles.statsRow}>
+          {showStatsSkeleton ? (
+            [0, 1, 2].map((index) => (
+              <View
+                key={index}
+                style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}
+              >
+                <View style={[styles.statSkeletonLine, { width: '55%' }]} />
+                <View style={[styles.statSkeletonLine, { width: '35%', marginTop: 8 }]} />
+                <View style={[styles.statSkeletonLine, { width: '70%', marginTop: 8 }]} />
+              </View>
+            ))
+          ) : (
+            <>
+              <View style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}>
+                <Text style={[styles.statLabel, { color: mutedColor }]}>Total</Text>
+                <Text style={[styles.statCount, { color: textColor }]}>{invoiceStats.totalCount}</Text>
+                <Text style={[styles.statAmount, { color: mutedColor }]} numberOfLines={1}>
+                  {formatCurrency(invoiceStats.totalAmount)}
+                </Text>
+              </View>
+
+              <View style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}>
+                <Text style={[styles.statLabel, { color: mutedColor }]}>Paid</Text>
+                <Text style={[styles.statCount, { color: textColor }]}>{invoiceStats.paidCount}</Text>
+                <Text style={[styles.statAmount, { color: mutedColor }]} numberOfLines={1}>
+                  {formatCurrency(invoiceStats.paidAmount)}
+                </Text>
+              </View>
+
+              <View style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}>
+                <Text style={[styles.statLabel, { color: mutedColor }]}>Pending</Text>
+                <Text style={[styles.statCount, { color: textColor }]}>{invoiceStats.pendingCount}</Text>
+                <Text style={[styles.statAmount, { color: mutedColor }]} numberOfLines={1}>
+                  {formatCurrency(invoiceStats.pendingAmount)}
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
       ) : null}
 
       {/* Status filter */}
@@ -315,7 +400,13 @@ export default function InvoicesScreen() {
               subtitle={emptyMessage.subtitle}
               titleColor={textColor}
               subtitleColor={mutedColor}
-            />
+            >
+              <EmptyStateActionButton
+                label="New Invoice"
+                onPress={handleNewInvoice}
+                backgroundColor={colors.tint}
+              />
+            </ListEmptyState>
           }
         />
       )}
@@ -334,6 +425,28 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  statCard: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  statLabel: { fontSize: 11, fontWeight: '600' },
+  statCount: { fontSize: 18, fontWeight: '700', marginTop: 4 },
+  statAmount: { fontSize: 12, fontWeight: '600', marginTop: 4 },
+  statSkeletonLine: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#e5e7eb',
+  },
   filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 12, flexWrap: 'wrap' },
   filterBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
   filterText: { fontSize: 14, fontWeight: '600' },

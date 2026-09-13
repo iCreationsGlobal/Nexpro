@@ -36,6 +36,7 @@ import { userWorkspaceService } from '@/services/userWorkspaceService';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { parseApiEntity, parseApiListResponse } from '@/utils/parseApiListResponse';
 import { refreshAfterJobChange } from '@/utils/queryInvalidation';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 import { DeliveryStatusPicker } from '@/components/DeliveryStatusPicker';
 
 type TabKey = 'details' | 'services' | 'attachments' | 'activities';
@@ -689,7 +690,13 @@ const styles = StyleSheet.create({
   priorityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   priorityChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
   priorityChipText: { fontSize: 13, fontWeight: '600' },
-  saveBtn: { height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  saveBtn: {
+    ...standaloneFullWidth,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });
 

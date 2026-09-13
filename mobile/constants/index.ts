@@ -142,3 +142,44 @@ export const resolveBusinessType = (businessType: string | undefined): 'shop' | 
 export const isStudioLikeBusinessType = (businessType: string | undefined): boolean =>
   resolveBusinessType(businessType) === 'studio' ||
   STUDIO_LIKE_TYPES.includes((businessType || '') as (typeof STUDIO_LIKE_TYPES)[number]);
+
+/** Rental lifecycle statuses (aligned with web RENTAL_STATUSES). */
+export const RENTAL_STATUSES = {
+  PENDING: 'pending',
+  CONFIRMED: 'confirmed',
+  ACTIVE: 'active',
+  OVERDUE: 'overdue',
+  RETURNED: 'returned',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled',
+} as const;
+
+export const RENTAL_STATUS_LABELS: Record<string, string> = {
+  [RENTAL_STATUSES.PENDING]: 'Pending',
+  [RENTAL_STATUSES.CONFIRMED]: 'Confirmed',
+  [RENTAL_STATUSES.ACTIVE]: 'Active',
+  [RENTAL_STATUSES.OVERDUE]: 'Overdue',
+  [RENTAL_STATUSES.RETURNED]: 'Returned',
+  [RENTAL_STATUSES.COMPLETED]: 'Completed',
+  [RENTAL_STATUSES.CANCELLED]: 'Cancelled',
+};
+
+/** Rentals where inventory is still reserved or items are out. */
+export const RENTAL_OPEN_STATUSES = [
+  RENTAL_STATUSES.PENDING,
+  RENTAL_STATUSES.CONFIRMED,
+  RENTAL_STATUSES.ACTIVE,
+  RENTAL_STATUSES.OVERDUE,
+] as const;
+
+/** Rentals eligible for return. */
+export const RENTAL_RETURNABLE_STATUSES = [
+  RENTAL_STATUSES.ACTIVE,
+  RENTAL_STATUSES.OVERDUE,
+] as const;
+
+/** Rentals eligible for checkout / handover (start date checked separately). */
+export const RENTAL_CHECKOUTABLE_STATUSES = [RENTAL_STATUSES.CONFIRMED] as const;
+
+export const isRentalBusinessType = (businessType?: string | null): boolean =>
+  businessType === 'rental';

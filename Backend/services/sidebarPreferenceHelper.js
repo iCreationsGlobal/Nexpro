@@ -27,6 +27,7 @@ const CONFIGURABLE_SIDEBAR_KEYS = [
   '/tasks',
   '/automations',
   '/leads',
+  '/messages',
   '/marketing',
   '/vendors',
   '/payroll',
@@ -79,6 +80,7 @@ const LOCKED_SIDEBAR_KEYS = [
   '/settings',
   '/profile',
   '/sales',
+  '/watch',
   '/orders',
   '/products',
   '/jobs',
@@ -118,6 +120,7 @@ const isSidebarMenuKeyAllowedForBusinessType = (key, businessType, shopType = nu
   const isShop = businessType === 'shop';
   const isPharmacy = businessType === 'pharmacy';
 
+  if (key === '/shops') return isShop || businessType === 'rental';
   if (SHOP_ONLY_SIDEBAR_KEYS.has(key)) return isShop;
   if (PHARMACY_ONLY_SIDEBAR_KEYS.has(key)) return isPharmacy;
   if (RETAIL_ONLY_SIDEBAR_KEYS.has(key)) return isShop || isPharmacy;

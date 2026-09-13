@@ -114,6 +114,8 @@ export const SEARCH_PLACEHOLDERS = {
   ASSETS: 'Name, tag, or location...',
   MATERIALS: 'Name, SKU, or category...',
   EQUIPMENT: 'Name, serial #, or location...',
+  RENTALS: 'Customer, product, or status...',
+  PRE_BOOKINGS: 'Customer, product, or status...',
   EMPLOYEES: 'Name, department, or role...',
   USERS: 'Name, email, or role...',
   EXPENSES: 'Description, vendor, or category...',
@@ -372,6 +374,58 @@ export const EMPTY_STATES = {
     title: 'No matching equipment',
     description: 'Try adjusting your filters or search terms.',
     primaryAction: 'Clear Filters',
+  },
+
+  // Rentals
+  WATCH: {
+    icon: 'Eye',
+    title: 'No watch incidents yet',
+    description: 'Ingest counter activity from a phone MP4 or camera. ABS will compare it with recorded sales.',
+    primaryAction: 'Refresh',
+  },
+  WATCH_FILTERED: {
+    icon: 'Eye',
+    title: 'No matching incidents',
+    description: 'Try another bucket or clear the status filter.',
+    primaryAction: 'Clear Filters',
+  },
+
+  RENTALS: {
+    icon: 'Clock',
+    title: 'No rentals yet',
+    description: 'Hire out equipment, vehicles, or event items and track returns.',
+    primaryAction: 'New Rental',
+  },
+  RENTALS_FILTERED: {
+    icon: 'Clock',
+    title: 'No matching rentals',
+    description: 'Try adjusting your filters or search terms.',
+    primaryAction: 'Clear Filters',
+  },
+  PRE_BOOKINGS: {
+    icon: 'Calendar',
+    title: 'No pre-bookings yet',
+    description: 'Reserve inventory for future rentals before confirming the hire.',
+    primaryAction: 'New Pre-booking',
+  },
+  PRE_BOOKINGS_FILTERED: {
+    icon: 'Calendar',
+    title: 'No matching pre-bookings',
+    description: 'Try adjusting your filters or search terms.',
+    primaryAction: 'Clear Filters',
+  },
+  RENTAL_NO_PRODUCTS: {
+    icon: 'Package',
+    title: 'Add rentable products first',
+    description: 'Add items with daily rental rates before you create your first rental.',
+    primaryAction: 'Add Rentable Product',
+  },
+  RENTAL_PRODUCTS: {
+    icon: 'Package',
+    title: 'Your rental catalog is empty',
+    description: 'Add items with daily rates so customers can hire them out.',
+    primaryAction: 'Add Rentable Product',
+    secondaryAction: 'Import CSV',
   },
   
   // Materials

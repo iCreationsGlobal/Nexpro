@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { accountDestination } from "@/lib/workspace";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { persistAuth, registerMarketer } from "@/lib/api";
@@ -23,7 +24,8 @@ export default function SignupPage() {
     try {
       const res = await registerMarketer({ name, email, phone, password });
       persistAuth(res.data.token);
-      router.push("/dashboard");
+      const next = new URLSearchParams(window.location.search).get("next") || "/dashboard";
+      router.push(accountDestination(next));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed");
     } finally {

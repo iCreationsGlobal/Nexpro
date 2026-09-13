@@ -28,7 +28,7 @@ const BUSINESS_STEPS = [
     n: 3,
     title: "Track referrals & pay on results",
     description:
-      "When a referred customer pays, commission becomes due. Marketers request cashout; you pay and mark it paid in ABS.",
+      "When a referred customer pays, commission becomes due. Remit it to ABS so the marketer can request cashout of their share.",
     image: "/brand/marketing/business_step3.png",
   },
 ];
@@ -198,7 +198,7 @@ export default function HowItWorksPage() {
             ],
             [
               "How do cashouts work?",
-              "Marketers request cashout in Sabito. Businesses pay outside ABS (e.g. MoMo), then mark the cashout paid in Settings → Sabito Partners.",
+              "Businesses remit commissions to ABS. Once collected, marketers request cashout in Sabito and ABS pays their share by MoMo or bank.",
             ],
           ].map(([q, a]) => (
             <details key={q} className="rounded-xl border border-slate-200 bg-white p-4">

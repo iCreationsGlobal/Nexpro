@@ -53,6 +53,8 @@ const userRoutes = require('./routes/userRoutes');
 const customerRoutes = require('./routes/customerRoutes');
 const dealerRoutes = require('./routes/dealerRoutes');
 const marketingRoutes = require('./routes/marketingRoutes');
+const messagesRoutes = require('./routes/messagesRoutes');
+const absCreditsRoutes = require('./routes/absCreditsRoutes');
 const vendorRoutes = require('./routes/vendorRoutes');
 const jobRoutes = require('./routes/jobRoutes');
 const deliveryRoutes = require('./routes/deliveryRoutes');
@@ -106,9 +108,11 @@ const stockCountRoutes = require('./routes/stockCountRoutes');
 const mobileMoneyRoutes = require('./routes/mobileMoneyRoutes');
 // Variance Detection Routes
 const varianceRoutes = require('./routes/varianceRoutes');
+const watchRoutes = require('./routes/watchRoutes');
 const userWorkspaceRoutes = require('./routes/userWorkspaceRoutes');
 const swaggerUi = require('swagger-ui-express');
 const openapiSpecification = require('./docs/openapi');
+const rentalRoutes = require('./routes/rentalRoutes');
 
 const app = express();
 
@@ -241,6 +245,8 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/contacts', require('./routes/contactImportRoutes'));
 app.use('/api/dealers', dealerRoutes);
 app.use('/api/marketing', marketingRoutes);
+app.use('/api/messages', messagesRoutes);
+app.use('/api/credits', absCreditsRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/deliveries', deliveryRoutes);
@@ -282,6 +288,7 @@ app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/shops', shopRoutes);
 app.use('/api/studio-locations', studioLocationRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/rentals', rentalRoutes);
 app.use('/api/merchandise', merchandiseRoutes);
 app.use('/api/store', storeRoutes);
 app.use('/api/sales', saleRoutes);
@@ -299,6 +306,7 @@ app.use('/api/stock-counts', stockCountRoutes);
 app.use('/api/mobile-money', mobileMoneyRoutes);
 // Variance Detection Routes
 app.use('/api/variance', varianceRoutes);
+app.use('/api/watch', watchRoutes);
 app.use('/api/user-workspace', userWorkspaceRoutes);
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpecification));
 
@@ -430,6 +438,9 @@ if (!IS_VERCEL_SERVERLESS) {
     require('./utils/corsUtils').refreshVerifiedDomainOrigins().catch((err) => {
       console.error('[Server] Failed loading custom-domain CORS origins:', err?.message || err);
     });
+    if (process.env.PARTNER_COMMISSION_RECONCILIATION_ENABLED !== 'false') {
+      require('./services/partnerCommissionScheduler').start();
+    }
     if (process.env.SABITO_SYNC_ENABLED !== 'false') {
       try {
         require('./services/sabitoScheduler').start();
@@ -454,6 +465,14 @@ if (!IS_VERCEL_SERVERLESS) {
       console.error('[Server] Failed to start job due reminder service:', error);
     }
     try {
+      require('./services/rentalNotificationService').start();
+      if (config.nodeEnv === 'development') {
+        console.log('[Server] ✅ Rental notification service started');
+      }
+    } catch (error) {
+      console.error('[Server] Failed to start rental notification service:', error);
+    }
+    try {
       require('./services/autoTaskSchedulerService').start();
       if (config.nodeEnv === 'development') {
         console.log('[Server] ✅ Auto task scheduler service started');
@@ -468,6 +487,14 @@ if (!IS_VERCEL_SERVERLESS) {
       }
     } catch (error) {
       console.error('[Server] Failed to start automation scheduler service:', error);
+    }
+    try {
+      require('./services/marketingCampaignSchedulerService').start();
+      if (config.nodeEnv === 'development') {
+        console.log('[Server] ✅ Marketing campaign scheduler started');
+      }
+    } catch (error) {
+      console.error('[Server] Failed to start marketing campaign scheduler:', error);
     }
     try {
       require('./services/recurringJournalSchedulerService').start();
@@ -522,6 +549,10 @@ if (!IS_VERCEL_SERVERLESS) {
         };
         server.once('error', onError);
         server.once('listening', onListening);
+        // Incoming sockets: no idle timeout. requestTimeout covers the full Watch YOLO POST.
+        server.timeout = 0;
+        server.requestTimeout = 6 * 60 * 1000;
+        server.headersTimeout = 6 * 60 * 1000 + 10 * 1000;
         server.listen(listenPort, '0.0.0.0');
       };
 

@@ -51,6 +51,13 @@ import {
   whatsappProductInterestMessage,
 } from '../utils/whatsapp';
 import { resolveVisibleProductCardActions } from '../utils/productCardActions';
+import {
+  filterProductCardActionsForListing,
+  getListingCommerceBadges,
+  getProductPriceDisplay,
+  isRentableListing,
+  isRentOnlyListing,
+} from '../utils/productListingDisplay';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -58,6 +65,35 @@ import { Input } from '@/components/ui/input';
 import TemplateThemeProvider, { getTemplateTheme, resolveStoreBrandColors } from '../templates/TemplateThemeProvider';
 
 const unwrapData = (response) => response?.data?.data || response?.data || response;
+
+const getRentalDayCount = (startDate, endDate) => {
+  if (!startDate || !endDate) return 0;
+  const start = new Date(`${startDate}T12:00:00`);
+  const end = new Date(`${endDate}T12:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+};
+
+const getTodayDateInputValue = () => new Date().toISOString().slice(0, 10);
+
+const validateRentalBookingForm = (values) => {
+  const errors = {};
+  if (!values.name.trim()) errors.name = 'Your name is required';
+  if (!values.phone.trim()) errors.phone = 'Phone number is required';
+  if (!values.startDate) errors.startDate = 'Start date is required';
+  if (!values.endDate) errors.endDate = 'End date is required';
+  if (values.startDate && values.endDate && values.endDate < values.startDate) {
+    errors.endDate = 'End date must be on or after start date';
+  }
+  if (values.startDate && values.startDate < getTodayDateInputValue()) {
+    errors.startDate = 'Start date cannot be in the past';
+  }
+  const quantity = Number.parseInt(values.quantity, 10);
+  if (!Number.isFinite(quantity) || quantity < 1) {
+    errors.quantity = 'Quantity must be at least 1';
+  }
+  return errors;
+};
 
 const StoreScopedHeader = ({
   store,
@@ -251,7 +287,7 @@ const PublicStoreProduct = () => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { addItem } = useCart();
-  const { isAuthenticated, openShopperAuthModal } = useStorefrontAuth();
+  const { isAuthenticated, openShopperAuthModal, customer: storefrontCustomer } = useStorefrontAuth();
   const {
     mode,
     isSingleStoreMode,
@@ -262,6 +298,21 @@ const PublicStoreProduct = () => {
   } = useStorefrontMode();
   const { isWishlisted, pendingListingIds, toggleWishlist } = useWishlist();
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const [bookingSubmitted, setBookingSubmitted] = useState(false);
+  const [bookingFormErrors, setBookingFormErrors] = useState({});
+  const [rentalAvailability, setRentalAvailability] = useState(null);
+  const [rentalAvailabilityLoading, setRentalAvailabilityLoading] = useState(false);
+  const [rentalAvailabilityError, setRentalAvailabilityError] = useState(null);
+  const [bookingForm, setBookingForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    startDate: '',
+    endDate: '',
+    quantity: '1',
+    notes: '',
+  });
   const reviewSaleId = searchParams.get('saleId') || '';
   const storeSlug = routeStoreSlug || modeSlug;
   const storeBasePath = resolveSingleStoreHomePath({
@@ -517,19 +568,169 @@ const PublicStoreProduct = () => {
   }, [addItem, navigate, product, store, storeSlug]);
 
   const cardActions = useMemo(
-    () => resolveVisibleProductCardActions(
-      store?.productCardActions,
-      store,
-      { resolvePhone: resolveStoreWhatsAppPhone },
-    ).filter((action) => {
-      if (action === 'view') return false;
-      if (product?.isSample && (action === 'add_to_cart' || action === 'buy_now')) return false;
-      return true;
-    }),
-    [product?.isSample, store],
+    () => filterProductCardActionsForListing(
+      resolveVisibleProductCardActions(
+        store?.productCardActions,
+        store,
+        { resolvePhone: resolveStoreWhatsAppPhone },
+      ).filter((action) => {
+        if (action === 'view') return false;
+        if (product?.isSample && (action === 'add_to_cart' || action === 'buy_now')) return false;
+        return true;
+      }),
+      product,
+    ),
+    [product, store],
   );
   const softenPrice = cardActions.includes('contact_for_price')
     || (store?.productCardActions || []).includes('contact_for_price');
+  const commerceBadges = useMemo(() => getListingCommerceBadges(product), [product]);
+  const priceDisplay = useMemo(() => getProductPriceDisplay(product), [product]);
+  const rentOnly = isRentOnlyListing(product);
+  const showRentalBooking = isRentableListing(product) && !product?.isSample;
+  const rentalPolicySummary = useMemo(
+    () => (Array.isArray(store?.rentalPolicySummary) ? store.rentalPolicySummary : []),
+    [store?.rentalPolicySummary],
+  );
+
+  useEffect(() => {
+    if (!showRentalBooking) return;
+    setBookingForm((current) => ({
+      ...current,
+      name: current.name || storefrontCustomer?.name || '',
+      phone: current.phone || storefrontCustomer?.phone || '',
+      email: current.email || storefrontCustomer?.email || '',
+    }));
+  }, [showRentalBooking, storefrontCustomer?.email, storefrontCustomer?.name, storefrontCustomer?.phone]);
+
+  const updateBookingField = useCallback((field, value) => {
+    setBookingForm((current) => ({ ...current, [field]: value }));
+    setBookingFormErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }, []);
+
+  const rentalDayCount = useMemo(
+    () => getRentalDayCount(bookingForm.startDate, bookingForm.endDate),
+    [bookingForm.endDate, bookingForm.startDate],
+  );
+
+  const rentalEstimatedTotal = useMemo(() => {
+    if (rentalAvailability?.estimatedTotal != null) {
+      return rentalAvailability.estimatedTotal;
+    }
+    const rate = Number.parseFloat(product?.rentalRatePerDay ?? 0);
+    const quantity = Number.parseInt(bookingForm.quantity, 10) || 0;
+    if (!rate || !quantity || !rentalDayCount) return null;
+    return Number((rate * quantity * rentalDayCount).toFixed(2));
+  }, [bookingForm.quantity, product?.rentalRatePerDay, rentalAvailability?.estimatedTotal, rentalDayCount]);
+
+  const rentalCanFulfill = useMemo(() => {
+    if (rentalAvailabilityLoading) return null;
+    if (rentalAvailability?.canFulfill != null) return rentalAvailability.canFulfill;
+    return null;
+  }, [rentalAvailability?.canFulfill, rentalAvailabilityLoading]);
+
+  useEffect(() => {
+    if (!showRentalBooking || !product?.id || !storeSlug || bookingSubmitted) {
+      setRentalAvailability(null);
+      setRentalAvailabilityError(null);
+      return undefined;
+    }
+
+    const dateErrors = validateRentalBookingForm({
+      name: 'placeholder',
+      phone: 'placeholder',
+      startDate: bookingForm.startDate,
+      endDate: bookingForm.endDate,
+      quantity: bookingForm.quantity,
+    });
+    if (dateErrors.startDate || dateErrors.endDate || dateErrors.quantity) {
+      setRentalAvailability(null);
+      setRentalAvailabilityError(null);
+      setRentalAvailabilityLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setRentalAvailabilityLoading(true);
+      setRentalAvailabilityError(null);
+      try {
+        const response = await storeService.getRentalAvailability(storeSlug, {
+          listingId: product.id,
+          startDate: bookingForm.startDate,
+          endDate: bookingForm.endDate,
+          quantity: Number.parseInt(bookingForm.quantity, 10) || 1,
+        });
+        if (cancelled) return;
+        setRentalAvailability(unwrapData(response));
+      } catch (error) {
+        if (cancelled) return;
+        setRentalAvailability(null);
+        setRentalAvailabilityError(
+          error?.response?.data?.message || 'Could not check availability for these dates.',
+        );
+      } finally {
+        if (!cancelled) {
+          setRentalAvailabilityLoading(false);
+        }
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    bookingForm.endDate,
+    bookingForm.quantity,
+    bookingForm.startDate,
+    bookingSubmitted,
+    product?.id,
+    showRentalBooking,
+    storeSlug,
+  ]);
+
+  const handleSubmitRentalBooking = useCallback(async (event) => {
+    event.preventDefault();
+    const values = {
+      name: bookingForm.name.trim(),
+      phone: bookingForm.phone.trim(),
+      email: bookingForm.email.trim(),
+      startDate: bookingForm.startDate,
+      endDate: bookingForm.endDate,
+      quantity: bookingForm.quantity,
+    };
+    const errors = validateRentalBookingForm(values);
+    if (Object.keys(errors).length) {
+      setBookingFormErrors(errors);
+      return;
+    }
+
+    setBookingSubmitting(true);
+    try {
+      await storeService.submitRentalBookingRequest(storeSlug, {
+        listingId: product?.id,
+        name: values.name,
+        phone: values.phone,
+        email: values.email || undefined,
+        startDate: values.startDate,
+        endDate: values.endDate,
+        quantity: Number.parseInt(values.quantity, 10) || 1,
+        notes: bookingForm.notes.trim() || undefined,
+      });
+      setBookingSubmitted(true);
+      showSuccess('Booking request sent. The store will contact you to confirm.');
+    } catch (error) {
+      showError(error, 'Could not send your booking request.');
+    } finally {
+      setBookingSubmitting(false);
+    }
+  }, [bookingForm, product?.id, storeSlug]);
 
   const whatsappHref = useMemo(() => {
     const message = whatsappProductInterestMessage(product, store?.displayName, {
@@ -716,6 +917,15 @@ const PublicStoreProduct = () => {
                       Sample
                     </Badge>
                   ) : null}
+                  {commerceBadges.map((badge) => (
+                    <Badge
+                      key={badge}
+                      variant="outline"
+                      className="border-green-200 bg-green-50 text-green-800"
+                    >
+                      {badge}
+                    </Badge>
+                  ))}
                 </div>
                 <h2 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl md:text-4xl">{product.title}</h2>
                 <div className="mt-3">
@@ -732,15 +942,180 @@ const PublicStoreProduct = () => {
               <div className="flex flex-wrap items-baseline gap-2">
                 {softenPrice ? (
                   <span className="text-2xl font-black text-slate-700 sm:text-3xl">Contact for price</span>
-                ) : (
+                ) : priceDisplay.amount != null ? (
                   <>
-                    <span className="text-2xl font-black text-green-800 sm:text-3xl">{formatAmount(product.publicPrice || 0, currency)}</span>
-                    {Number(product.compareAtPrice || 0) > 0 ? (
+                    <span className="text-2xl font-black text-green-800 sm:text-3xl">
+                      {formatAmount(priceDisplay.amount, currency)}
+                      {priceDisplay.suffix ? (
+                        <span className="ml-1 text-lg font-bold text-slate-500">{priceDisplay.suffix}</span>
+                      ) : null}
+                    </span>
+                    {priceDisplay.secondaryAmount != null && priceDisplay.secondaryAmount > 0 ? (
+                      <span className="text-base font-semibold text-slate-600">
+                        or {formatAmount(priceDisplay.secondaryAmount, currency)}{priceDisplay.secondarySuffix} to rent
+                      </span>
+                    ) : null}
+                    {!rentOnly && Number(product.compareAtPrice || 0) > 0 ? (
                       <span className="text-sm text-slate-400 line-through">{formatAmount(product.compareAtPrice, currency)}</span>
                     ) : null}
                   </>
+                ) : (
+                  <span className="text-2xl font-black text-slate-700 sm:text-3xl">Price on request</span>
                 )}
               </div>
+
+              {showRentalBooking ? (
+                <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-green-800">Request a rental</p>
+                  {bookingSubmitted ? (
+                    <Alert className="mt-3 border-green-200 bg-white">
+                      <AlertDescription className="text-sm leading-6 text-green-950">
+                        Your booking request has been sent. {store.displayName} will review availability and contact you to confirm — no payment is taken online yet.
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <form onSubmit={handleSubmitRentalBooking} className="mt-3 space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="block text-sm font-medium text-green-950">
+                          Start date
+                          <Input
+                            type="date"
+                            min={getTodayDateInputValue()}
+                            value={bookingForm.startDate}
+                            onChange={(event) => updateBookingField('startDate', event.target.value)}
+                            className="mt-1 bg-white"
+                          />
+                          {bookingFormErrors.startDate ? (
+                            <p className="mt-1 text-sm text-red-600">{bookingFormErrors.startDate}</p>
+                          ) : null}
+                        </label>
+                        <label className="block text-sm font-medium text-green-950">
+                          End date
+                          <Input
+                            type="date"
+                            min={bookingForm.startDate || getTodayDateInputValue()}
+                            value={bookingForm.endDate}
+                            onChange={(event) => updateBookingField('endDate', event.target.value)}
+                            className="mt-1 bg-white"
+                          />
+                          {bookingFormErrors.endDate ? (
+                            <p className="mt-1 text-sm text-red-600">{bookingFormErrors.endDate}</p>
+                          ) : null}
+                        </label>
+                      </div>
+                      <label className="block text-sm font-medium text-green-950">
+                        Quantity
+                        <Input
+                          type="number"
+                          min={1}
+                          value={bookingForm.quantity}
+                          onChange={(event) => updateBookingField('quantity', event.target.value)}
+                          className="mt-1 bg-white"
+                        />
+                        {bookingFormErrors.quantity ? (
+                          <p className="mt-1 text-sm text-red-600">{bookingFormErrors.quantity}</p>
+                        ) : null}
+                      </label>
+                      {rentalAvailabilityLoading ? (
+                        <p className="flex items-center gap-2 text-sm text-green-900">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Checking availability…
+                        </p>
+                      ) : null}
+                      {!rentalAvailabilityLoading && rentalAvailabilityError ? (
+                        <Alert variant="destructive" className="border-red-200 bg-white">
+                          <AlertDescription className="text-sm">{rentalAvailabilityError}</AlertDescription>
+                        </Alert>
+                      ) : null}
+                      {!rentalAvailabilityLoading && rentalAvailability && !rentalAvailabilityError ? (
+                        <p className={`text-sm font-semibold ${rentalCanFulfill === false ? 'text-red-700' : 'text-green-900'}`}>
+                          {rentalCanFulfill === false
+                            ? `Only ${rentalAvailability.availableQty} available for these dates — reduce quantity or change dates`
+                            : `${rentalAvailability.availableQty} available for these dates`}
+                        </p>
+                      ) : null}
+                      {rentalEstimatedTotal != null ? (
+                        <p className="text-sm font-semibold text-green-900">
+                          Estimated total: {formatAmount(rentalEstimatedTotal, currency)}
+                          {rentalDayCount ? ` (${rentalDayCount} day${rentalDayCount === 1 ? '' : 's'})` : ''}
+                        </p>
+                      ) : null}
+                      <label className="block text-sm font-medium text-green-950">
+                        Your name
+                        <Input
+                          value={bookingForm.name}
+                          onChange={(event) => updateBookingField('name', event.target.value)}
+                          className="mt-1 bg-white"
+                        />
+                        {bookingFormErrors.name ? (
+                          <p className="mt-1 text-sm text-red-600">{bookingFormErrors.name}</p>
+                        ) : null}
+                      </label>
+                      <label className="block text-sm font-medium text-green-950">
+                        Phone
+                        <Input
+                          value={bookingForm.phone}
+                          onChange={(event) => updateBookingField('phone', event.target.value)}
+                          className="mt-1 bg-white"
+                        />
+                        {bookingFormErrors.phone ? (
+                          <p className="mt-1 text-sm text-red-600">{bookingFormErrors.phone}</p>
+                        ) : null}
+                      </label>
+                      <label className="block text-sm font-medium text-green-950">
+                        Email (optional)
+                        <Input
+                          type="email"
+                          value={bookingForm.email}
+                          onChange={(event) => updateBookingField('email', event.target.value)}
+                          className="mt-1 bg-white"
+                        />
+                      </label>
+                      <label className="block text-sm font-medium text-green-950">
+                        Notes (optional)
+                        <textarea
+                          rows={3}
+                          value={bookingForm.notes}
+                          onChange={(event) => updateBookingField('notes', event.target.value)}
+                          className="mt-1 min-h-[88px] w-full rounded-md border border-input bg-white px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                      </label>
+                      <Button
+                        type="submit"
+                        className="w-full rounded-full bg-green-700 hover:bg-green-800 sm:w-auto"
+                        disabled={
+                          bookingSubmitting
+                          || !availability.available
+                          || rentalAvailabilityLoading
+                          || rentalCanFulfill === false
+                          || Boolean(rentalAvailabilityError)
+                        }
+                      >
+                        {bookingSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Request booking
+                      </Button>
+                    </form>
+                  )}
+                </div>
+              ) : null}
+
+              {product.rentalTerms ? (
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Rental terms</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">{product.rentalTerms}</p>
+                </div>
+              ) : null}
+
+              {!product.rentalTerms && rentalPolicySummary.length ? (
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Rental policy</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-700">
+                    {rentalPolicySummary.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 {availability.message}

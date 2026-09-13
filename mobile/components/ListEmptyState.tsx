@@ -47,9 +47,15 @@ const actionButtonStyles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderRadius: 12,
-    alignSelf: 'center',
-    minWidth: 200,
-    maxWidth: 280,
+  },
+  emptyButton: {
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  listButton: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    alignSelf: 'stretch',
   },
   buttonPressed: { opacity: 0.88 },
   buttonDisabled: { opacity: 0.6 },
@@ -71,7 +77,8 @@ export function EmptyStateActionButton({
       disabled={disabled}
       style={({ pressed }) => [
         actionButtonStyles.button,
-        { backgroundColor, marginTop: 20 },
+        actionButtonStyles.emptyButton,
+        { backgroundColor },
         style,
         pressed && actionButtonStyles.buttonPressed,
         disabled && actionButtonStyles.buttonDisabled,
@@ -98,7 +105,8 @@ export function ListActionButton({
       disabled={disabled}
       style={({ pressed }) => [
         actionButtonStyles.button,
-        { backgroundColor, marginHorizontal: 16, marginBottom: 12, alignSelf: 'stretch', maxWidth: undefined },
+        actionButtonStyles.listButton,
+        { backgroundColor },
         style,
         pressed && actionButtonStyles.buttonPressed,
         disabled && actionButtonStyles.buttonDisabled,
@@ -142,7 +150,7 @@ export function ListEmptyState({
       {subtitle ? (
         <Text style={[styles.emptySubtitle, { color: resolvedSubtitleColor }]}>{subtitle}</Text>
       ) : null}
-      {children}
+      {children ? <View style={styles.actions}>{children}</View> : null}
     </View>
   );
 }
@@ -180,5 +188,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 8,
     textAlign: 'center',
+  },
+  actions: {
+    alignSelf: 'stretch',
+    width: '100%',
+    marginTop: 20,
+    gap: 8,
   },
 });

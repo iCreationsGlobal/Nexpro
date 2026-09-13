@@ -1355,6 +1355,58 @@ const paystackBankLinkedEmail = ({ businessName, last4Digits }, company = {}) =>
 };
 
 /**
+ * Money settled into seller's linked Paystack subaccount (platform email).
+ */
+const paystackSubaccountPaymentReceivedEmail = ({ amount, currency = 'GHS', customerEmail, reference, paidAt, channel }, company = {}) => {
+  const companyName = company.name || process.env.APP_NAME || 'African Business Suite';
+  const primaryColor = company.primaryColor || EMAIL_DESIGN.primaryColor;
+  const logoUrl = company.logoUrl || '';
+  const d = EMAIL_DESIGN;
+  const paidGreen = '#065f46';
+  const paidBg = '#d1fae5';
+  const amountLabel = formatCurrency(amount, currency);
+  const dateLabel = formatDate(paidAt || new Date());
+
+  const rows = [
+    reference ? `<tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};"><strong>Reference</strong></td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${escapeHtml(reference)}</td></tr>` : '',
+    `<tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};"><strong>Date</strong></td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${dateLabel}</td></tr>`,
+    channel ? `<tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};"><strong>Channel</strong></td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${escapeHtml(channel)}</td></tr>` : '',
+    customerEmail ? `<tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};"><strong>From</strong></td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${escapeHtml(customerEmail)}</td></tr>` : '',
+  ].join('');
+
+  const inner = `
+    <h1 style="margin: 0 0 24px 0; font-size: ${d.headingSize}; font-weight: bold; color: ${d.headingColor}; line-height: 1.3;">Money received</h1>
+    <p style="margin: 0 0 24px 0; font-size: ${d.bodySize}; line-height: 1.6; color: ${d.bodyColor}; text-align: center;">A payment has just been credited to your Paystack account.</p>
+    <div style="background-color: ${paidBg}; padding: 24px; border-radius: ${d.borderRadius}; margin: 24px 0; text-align: center;">
+      <p style="margin: 0 0 8px 0; font-size: 14px; color: ${paidGreen};">Amount received</p>
+      <p style="margin: 0; font-size: 28px; font-weight: 700; color: ${paidGreen};">${amountLabel}</p>
+    </div>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+      ${rows}
+    </table>
+    <p style="margin: 0; font-size: ${d.footnoteSize}; color: ${d.footerColor};">This is your share of the payment after fees. Settlement to your linked bank/MoMo account follows Paystack&apos;s schedule.</p>
+  `;
+  const html = sellfyCardTemplate(inner, { companyName, primaryColor, logoUrl });
+  const text = `
+Money received - ${amountLabel}
+
+A payment has just been credited to your Paystack account.
+
+${reference ? `Reference: ${reference}\n` : ''}Date: ${dateLabel}
+${channel ? `Channel: ${channel}\n` : ''}${customerEmail ? `From: ${customerEmail}\n` : ''}
+This is your share of the payment after fees. Settlement to your linked bank/MoMo account follows Paystack's schedule.
+
+${companyName}
+  `.trim();
+
+  return {
+    subject: `Money received - ${amountLabel}`,
+    html,
+    text
+  };
+};
+
+/**
  * POS / sale receipt email (tenant sendMessage).
  * @param {Object} sale - sale with saleNumber, createdAt, total, items[]
  * @param {Object} [company] - { name, primaryColor, logoUrl }
@@ -1701,6 +1753,158 @@ const orderCreatedEmail = (sale, customer = {}, company = {}, trackingLink = nul
 };
 
 /**
+ * Customer rental due/overdue reminder email.
+ * @param {Object} rental
+ * @param {Object} customer
+ * @param {Array} items
+ * @param {Object} company
+ * @param {'tomorrow'|'today'|'overdue'} reminderType
+ * @param {string} rentalUrl
+ * @returns {{ subject: string, html: string, text: string }}
+ */
+const rentalDueReminder = (rental, customer, items = [], company = {}, reminderType = 'today', rentalUrl = '') => {
+  const customerName = escapeHtml(customer?.name || customer?.company || 'Valued Customer');
+  const companyName = company.name || 'African Business Suite';
+  const primaryColor = company.primaryColor || EMAIL_DESIGN.primaryColor;
+  const logoUrl = company.logo || '';
+  const d = EMAIL_DESIGN;
+  const endDateLabel = formatDate(rental?.endDate || new Date());
+  const startDateLabel = formatDate(rental?.startDate || new Date());
+
+  const itemLines = (items || [])
+    .slice(0, 5)
+    .map((row) => {
+      const productName = escapeHtml(row?.product?.name || row?.productName || 'Item');
+      const qty = Number(row?.quantity || 1);
+      return `<tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${productName}</td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${qty}</td></tr>`;
+    })
+    .join('');
+
+  let heading;
+  let bodyMessage;
+  let subjectPrefix;
+  let boxBg = '#fef3c7';
+  let boxColor = '#92400e';
+  let badgeText = 'DUE BACK';
+
+  switch (reminderType) {
+    case 'tomorrow':
+      heading = 'Rental due back tomorrow';
+      bodyMessage = `This is a friendly reminder that your rental with ${escapeHtml(companyName)} is due back tomorrow (${endDateLabel}).`;
+      subjectPrefix = 'Rental Due Tomorrow';
+      badgeText = 'DUE TOMORROW';
+      break;
+    case 'overdue':
+      heading = 'Rental overdue';
+      bodyMessage = `Your rental with ${escapeHtml(companyName)} was due back on ${endDateLabel} and is now overdue. Please return the items or contact us as soon as possible.`;
+      subjectPrefix = 'Overdue Rental';
+      boxBg = '#fee2e2';
+      boxColor = '#991b1b';
+      badgeText = 'OVERDUE';
+      break;
+    default:
+      heading = 'Rental due back today';
+      bodyMessage = `Your rental with ${escapeHtml(companyName)} is due back today (${endDateLabel}).`;
+      subjectPrefix = 'Rental Due Today';
+      badgeText = 'DUE TODAY';
+  }
+
+  const inner = `
+    <h1 style="margin: 0 0 24px 0; font-size: ${d.headingSize}; font-weight: bold; color: ${d.headingColor}; line-height: 1.3;">${heading}</h1>
+    <p style="margin: 0 0 16px 0; font-size: ${d.bodySize}; line-height: 1.6; color: ${d.bodyColor}; text-align: center;">Hi ${customerName},</p>
+    <p style="margin: 0 0 24px 0; font-size: ${d.bodySize}; line-height: 1.6; color: ${d.bodyColor}; text-align: center;">${bodyMessage}</p>
+    <div style="background-color: ${boxBg}; padding: 24px; border-radius: ${d.borderRadius}; margin: 24px 0; text-align: center;">
+      <p style="margin: 0 0 8px 0; font-size: 14px; color: ${boxColor};">${badgeText}</p>
+      <p style="margin: 0; font-size: 18px; font-weight: 700; color: ${boxColor};">Return by ${endDateLabel}</p>
+    </div>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+      <tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};"><strong>Rental period</strong></td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${startDateLabel} → ${endDateLabel}</td></tr>
+    </table>
+    ${itemLines ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;"><tr><th style="padding: 12px; border-bottom: 1px solid ${d.borderColor}; text-align: left;">Item</th><th style="padding: 12px; border-bottom: 1px solid ${d.borderColor}; text-align: left;">Qty</th></tr>${itemLines}</table>` : ''}
+    ${rentalUrl ? `<table border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 24px auto 32px;"><tr><td align="center" style="border-radius: ${d.buttonRadius}; background-color: ${primaryColor};"><a href="${rentalUrl}" target="_blank" style="display: inline-block; padding: ${d.buttonPadding}; color: #ffffff !important; font-size: ${d.buttonSize}; font-weight: bold; text-decoration: none;">View rental</a></td></tr></table>` : ''}
+    <p style="margin: 0; font-size: ${d.footnoteSize}; color: ${d.footerColor};">This message was sent by ${escapeHtml(companyName)}.</p>
+  `;
+  const html = sellfyCardTemplate(inner, { companyName, primaryColor, logoUrl });
+
+  const plainItems = (items || [])
+    .slice(0, 5)
+    .map((row) => `- ${row?.product?.name || row?.productName || 'Item'} x${Number(row?.quantity || 1)}`)
+    .join('\n');
+
+  const text = [
+    `Hi ${customer?.name || customer?.company || 'Valued Customer'},`,
+    '',
+    bodyMessage.replace(/<[^>]+>/g, ''),
+    '',
+    `Rental period: ${startDateLabel} → ${endDateLabel}`,
+    plainItems ? `Items:\n${plainItems}` : '',
+    rentalUrl ? `View rental: ${rentalUrl}` : '',
+    '',
+    companyName,
+  ].filter(Boolean).join('\n');
+
+  return {
+    subject: `${subjectPrefix} — ${companyName}`,
+    html,
+    text,
+  };
+};
+
+/**
+ * Staff alert for rental operational events (damage, overdue, pre-booking).
+ * @param {Object} params
+ * @returns {{ subject: string, html: string, text: string }}
+ */
+const rentalStaffAlert = ({
+  recipientName = 'Team',
+  title = 'Rental alert',
+  message = '',
+  actionUrl = null,
+  details = [],
+  company = {},
+} = {}) => {
+  const companyName = company.name || 'African Business Suite';
+  const primaryColor = company.primaryColor || EMAIL_DESIGN.primaryColor;
+  const logoUrl = company.logo || '';
+  const d = EMAIL_DESIGN;
+  const safeTitle = escapeHtml(title);
+  const safeMessage = escapeHtml(message);
+  const safeRecipient = escapeHtml(recipientName || 'Team');
+
+  const detailRows = (details || [])
+    .map((row) => `<tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};"><strong>${escapeHtml(row.label || '')}</strong></td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${escapeHtml(row.value || '')}</td></tr>`)
+    .join('');
+
+  const inner = `
+    <h1 style="margin: 0 0 24px 0; font-size: ${d.headingSize}; font-weight: bold; color: ${d.headingColor}; line-height: 1.3;">${safeTitle}</h1>
+    <p style="margin: 0 0 16px 0; font-size: ${d.bodySize}; line-height: 1.6; color: ${d.bodyColor}; text-align: center;">Hi ${safeRecipient},</p>
+    <p style="margin: 0 0 24px 0; font-size: ${d.bodySize}; line-height: 1.6; color: ${d.bodyColor}; text-align: center;">${safeMessage}</p>
+    ${detailRows ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">${detailRows}</table>` : ''}
+    ${actionUrl ? `<table border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 24px auto 32px;"><tr><td align="center" style="border-radius: ${d.buttonRadius}; background-color: ${primaryColor};"><a href="${actionUrl}" target="_blank" style="display: inline-block; padding: ${d.buttonPadding}; color: #ffffff !important; font-size: ${d.buttonSize}; font-weight: bold; text-decoration: none;">Open in ABS</a></td></tr></table>` : ''}
+    <p style="margin: 0; font-size: ${d.footnoteSize}; color: ${d.footerColor};">Staff alert from ${escapeHtml(companyName)}.</p>
+  `;
+  const html = sellfyCardTemplate(inner, { companyName, primaryColor, logoUrl });
+
+  const textLines = (details || []).map((row) => `${row.label}: ${row.value}`);
+  const text = [
+    `Hi ${recipientName || 'Team'},`,
+    '',
+    title,
+    message,
+    ...textLines,
+    actionUrl ? `Open: ${actionUrl}` : '',
+    '',
+    companyName,
+  ].filter(Boolean).join('\n');
+
+  return {
+    subject: `${title} — ${companyName}`,
+    html,
+    text,
+  };
+};
+
+/**
  * Workspace task assigned (tenant sendMessage).
  * @returns {{ subject: string, html: string, text: string }}
  */
@@ -1750,6 +1954,58 @@ const workspaceTaskAssignedEmail = (assignee, actor, task, company = {}) => {
   };
 };
 
+/**
+ * Workspace task due / overdue reminder (tenant sendMessage).
+ * @returns {{ subject: string, html: string, text: string }}
+ */
+const workspaceTaskDueReminderEmail = (assignee, task, company = {}, kind = 'due') => {
+  const companyName = company.name || 'African Business Suite';
+  const primaryColor = company.primaryColor || EMAIL_DESIGN.primaryColor;
+  const logoUrl = company.logoUrl || company.logo || '';
+  const d = EMAIL_DESIGN;
+  const assigneeName = assignee?.name || 'there';
+  const dueDateText = task?.dueDate ? formatDate(task.dueDate) : 'Not set';
+  const title = task?.title || 'Task';
+  const isOverdue = kind === 'overdue';
+  const heading = isOverdue ? 'Task overdue' : 'Task due today';
+  const intro = isOverdue
+    ? 'This task is past its due date and still open.'
+    : 'This task is due today.';
+
+  const inner = `
+    <h1 style="margin: 0 0 24px 0; font-size: ${d.headingSize}; font-weight: bold; color: ${d.headingColor}; line-height: 1.3;">${heading}</h1>
+    <p style="margin: 0 0 16px 0; font-size: ${d.bodySize}; line-height: 1.6; color: ${d.bodyColor}; text-align: center;">Hi ${escapeHtml(assigneeName)},</p>
+    <p style="margin: 0 0 24px 0; font-size: ${d.bodySize}; line-height: 1.6; color: ${d.bodyColor}; text-align: center;">${intro}</p>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+      <tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};"><strong>Task</strong></td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${escapeHtml(title)}</td></tr>
+      <tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};"><strong>Status</strong></td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${escapeHtml(task?.status || 'todo')}</td></tr>
+      <tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};"><strong>Priority</strong></td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${escapeHtml(task?.priority || 'Not set')}</td></tr>
+      <tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};"><strong>Due date</strong></td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${escapeHtml(dueDateText)}</td></tr>
+    </table>
+    <p style="margin: 0; font-size: ${d.smallSize}; color: ${d.mutedColor}; text-align: center;">Open <strong>Tasks</strong> in your workspace to update progress.</p>
+  `;
+  const html = sellfyCardTemplate(inner, { companyName, primaryColor, logoUrl });
+  const text = [
+    `Hi ${assigneeName},`,
+    '',
+    intro,
+    `Task: ${title}`,
+    `Status: ${task?.status || 'todo'}`,
+    `Priority: ${task?.priority || 'Not set'}`,
+    `Due date: ${dueDateText}`,
+    '',
+    'Open Tasks in your workspace to update progress.',
+    '',
+    companyName
+  ].join('\n');
+
+  return {
+    subject: `${isOverdue ? 'Overdue' : 'Due today'}: ${title}`,
+    html,
+    text
+  };
+};
+
 module.exports = {
   baseTemplate,
   sellfyCardTemplate,
@@ -1760,9 +2016,11 @@ module.exports = {
   marketingPlainMessageDisclaimer,
   paystackMomoLinkedEmail,
   paystackBankLinkedEmail,
+  paystackSubaccountPaymentReceivedEmail,
   saleReceiptEmail,
   orderCreatedEmail,
   workspaceTaskAssignedEmail,
+  workspaceTaskDueReminderEmail,
   formatCurrency,
   formatDate,
   invoiceNotification,
@@ -1771,6 +2029,8 @@ module.exports = {
   jobAssignedNotifyAssignee,
   invoicePaidConfirmation,
   paymentReminder,
+  rentalDueReminder,
+  rentalStaffAlert,
   quoteNotification,
   quoteAcceptedNotifyTenant,
   welcomeEmail,

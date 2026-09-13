@@ -1267,12 +1267,21 @@ exports.getSMSSettings = async (req, res, next) => {
       };
     }
 
+    let absCredits = null;
+    try {
+      const { getTenantCreditsSummary } = require('../services/absCreditsService');
+      absCredits = await getTenantCreditsSummary(req.tenantId);
+    } catch (_) {
+      absCredits = null;
+    }
+
     const safeSettings = {
       ...smsSettings,
       authToken: smsSettings.authToken ? '***' : '',
       apiKey: smsSettings.apiKey ? '***' : '',
       smsMode,
       platformSms,
+      absCredits,
     };
 
     res.status(200).json({
@@ -1693,7 +1702,8 @@ exports.getNotificationChannels = async (req, res, next) => {
       autoSendInvoiceToCustomer: prefs.autoSendInvoiceToCustomer !== false,
       autoSendReceiptToCustomer: prefs.autoSendReceiptToCustomer === true,
       sendPaymentReminderEmail: prefs.sendPaymentReminderEmail === true,
-      sendInvoicePaidConfirmationToCustomer: prefs.sendInvoicePaidConfirmationToCustomer !== false
+      sendInvoicePaidConfirmationToCustomer: prefs.sendInvoicePaidConfirmationToCustomer !== false,
+      acceptOnlinePayments: prefs.acceptOnlinePayments === true
     };
 
     setCacheValue(cacheKey, data, 30, req.tenantId);
@@ -1770,19 +1780,63 @@ exports.updateDeliverySettings = async (req, res, next) => {
   }
 };
 
+// @desc    Get rental workspace settings (late fees, deposits, pre-booking)
+// @route   GET /api/settings/rental
+// @access  Private (admin/manager)
+exports.getRentalSettings = async (req, res, next) => {
+  try {
+    const rentalSettingsService = require('../services/rentalSettingsService');
+    const data = await rentalSettingsService.getRentalSettings(req.tenantId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update rental workspace settings
+// @route   PUT /api/settings/rental
+// @access  Private (admin/manager)
+exports.updateRentalSettings = async (req, res, next) => {
+  try {
+    const tenant = await Tenant.findByPk(req.tenantId, { attributes: ['id', 'businessType'] });
+    if (!tenant) {
+      return res.status(404).json({ success: false, message: 'Workspace not found' });
+    }
+    if (tenant.businessType !== 'rental') {
+      return res.status(400).json({
+        success: false,
+        message: 'Rental settings are only available for rental workspaces',
+      });
+    }
+
+    const rentalSettingsService = require('../services/rentalSettingsService');
+    const data = await rentalSettingsService.saveRentalSettings(
+      req.tenantId,
+      sanitizePayload(req.body || {})
+    );
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Invalid rental settings',
+    });
+  }
+};
+
 // @desc    Update customer notification preferences (auto-send invoice, auto-send receipt).
 // @route   PUT /api/settings/customer-notification-preferences
 // @access  Private
 exports.updateCustomerNotificationPreferences = async (req, res, next) => {
   try {
-    const { autoSendInvoiceToCustomer, autoSendReceiptToCustomer, sendPaymentReminderEmail, sendInvoicePaidConfirmationToCustomer } = sanitizePayload(req.body);
+    const { autoSendInvoiceToCustomer, autoSendReceiptToCustomer, sendPaymentReminderEmail, sendInvoicePaidConfirmationToCustomer, acceptOnlinePayments } = sanitizePayload(req.body);
     const existing = await getSettingValue(req.tenantId, 'customer-notification-preferences', {});
     const updated = {
       ...existing,
       ...(typeof autoSendInvoiceToCustomer === 'boolean' && { autoSendInvoiceToCustomer }),
       ...(typeof autoSendReceiptToCustomer === 'boolean' && { autoSendReceiptToCustomer }),
       ...(typeof sendPaymentReminderEmail === 'boolean' && { sendPaymentReminderEmail }),
-      ...(typeof sendInvoicePaidConfirmationToCustomer === 'boolean' && { sendInvoicePaidConfirmationToCustomer })
+      ...(typeof sendInvoicePaidConfirmationToCustomer === 'boolean' && { sendInvoicePaidConfirmationToCustomer }),
+      ...(typeof acceptOnlinePayments === 'boolean' && { acceptOnlinePayments })
     };
     let record = await Setting.findOne({ where: { tenantId: req.tenantId, key: 'customer-notification-preferences' } });
     if (record) {
@@ -1797,7 +1851,8 @@ exports.updateCustomerNotificationPreferences = async (req, res, next) => {
         autoSendInvoiceToCustomer: updated.autoSendInvoiceToCustomer !== false,
         autoSendReceiptToCustomer: updated.autoSendReceiptToCustomer === true,
         sendPaymentReminderEmail: updated.sendPaymentReminderEmail === true,
-        sendInvoicePaidConfirmationToCustomer: updated.sendInvoicePaidConfirmationToCustomer !== false
+        sendInvoicePaidConfirmationToCustomer: updated.sendInvoicePaidConfirmationToCustomer !== false,
+        acceptOnlinePayments: updated.acceptOnlinePayments === true
       }
     });
   } catch (error) {

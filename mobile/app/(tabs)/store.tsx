@@ -23,6 +23,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { useIsStoreSetupRoute } from '@/hooks/useIsStoreSetupRoute';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 import { useOnlineStoreOrderAttention } from '@/hooks/useOnlineStoreOrderAttention';
 import { useRegisterPageSearch } from '@/hooks/useRegisterPageSearch';
 import { storeService } from '@/services/storeService';
@@ -422,13 +423,15 @@ const styles = StyleSheet.create({
   linkBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    alignSelf: 'flex-start',
+    ...standaloneFullWidth,
     borderWidth: 1,
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     marginTop: 4,
+    minHeight: 44,
   },
   linkBtnText: { fontSize: 14, fontWeight: '600', flexShrink: 1 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },

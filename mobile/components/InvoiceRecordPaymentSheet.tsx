@@ -16,12 +16,14 @@ import {
   isValidDirectMomoPhone,
   type DirectMomoProvider,
 } from '@/utils/paymentCollection';
+import {
+  MANUAL_PAYMENT_METHODS,
+  parsePaymentAmount,
+  validateRecordedPaymentAmount,
+  type PaymentAmountType,
+} from '@/utils/recordPayment';
 
-const PAYMENT_METHODS = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'mobile_money', label: 'Mobile money' },
-  { value: 'card', label: 'Card' },
-] as const;
+const PAYMENT_METHODS = MANUAL_PAYMENT_METHODS;
 
 type PaymentMethod = (typeof PAYMENT_METHODS)[number]['value'];
 type PaymentFlow = 'direct' | 'manual';
@@ -82,6 +84,7 @@ export function InvoiceRecordPaymentSheet({
   tintColor,
 }: InvoiceRecordPaymentSheetProps) {
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentType, setPaymentType] = useState<PaymentAmountType>('full');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentDate, setPaymentDate] = useState(todayIsoDate());
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
@@ -106,6 +109,7 @@ export function InvoiceRecordPaymentSheet({
   useEffect(() => {
     if (!visible) return;
     setPaymentAmount(balance > 0 ? balance.toFixed(2) : '');
+    setPaymentType('full');
     setPaymentReference('');
     setPaymentDate(todayIsoDate());
     setPaymentMethod('cash');
@@ -113,17 +117,32 @@ export function InvoiceRecordPaymentSheet({
     setDirectPhoneNumber('');
     setDirectProvider(availableDirectProviders[0]?.value ?? 'MTN');
     setDirectOtp('');
-  }, [availableDirectProviders, balance, canUseDirect, visible]);
+    // Reset only when the sheet opens so provider/settings loads do not wipe a part payment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initialize once per open
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible || availableDirectProviders.length === 0) return;
+    setDirectProvider((current) => (
+      availableDirectProviders.some((provider) => provider.value === current)
+        ? current
+        : availableDirectProviders[0].value
+    ));
+  }, [availableDirectProviders, visible]);
 
   useEffect(() => {
     if (!isAwaitingOtp) setDirectOtp('');
   }, [isAwaitingOtp]);
 
+  const resolvedAmount = paymentType === 'full' ? balance : parsePaymentAmount(paymentAmount);
+  const manualPaymentError = isDirectSelected
+    ? null
+    : validateRecordedPaymentAmount(resolvedAmount, balance, paymentType);
+
   const handleSubmit = () => {
-    const amount = parseFloat(paymentAmount);
-    if (!amount || amount <= 0) return;
+    if (manualPaymentError) return;
     onSubmit({
-      amount,
+      amount: resolvedAmount,
       paymentMethod,
       referenceNumber: paymentReference.trim() || undefined,
       paymentDate: paymentDate.trim(),
@@ -174,6 +193,7 @@ export function InvoiceRecordPaymentSheet({
               isLocked
               || (isDirectSelected && isAwaitingOtp && !otpReady)
               || (isDirectSelected && !isAwaitingOtp && !canStartDirect)
+              || (!isDirectSelected && Boolean(manualPaymentError))
             }
             style={[
               styles.sheetButton,
@@ -181,7 +201,8 @@ export function InvoiceRecordPaymentSheet({
               { backgroundColor: tintColor, borderColor: tintColor },
               (isLocked
                 || (isDirectSelected && isAwaitingOtp && !otpReady)
-                || (isDirectSelected && !isAwaitingOtp && !canStartDirect))
+                || (isDirectSelected && !isAwaitingOtp && !canStartDirect)
+                || (!isDirectSelected && Boolean(manualPaymentError)))
                 && styles.disabledButton,
             ]}
           >
@@ -345,17 +366,62 @@ export function InvoiceRecordPaymentSheet({
       ) : (
         <>
           <View style={styles.formGroup}>
-            <Text style={[styles.label, { color: mutedColor }]}>Amount</Text>
+            <Text style={[styles.label, { color: mutedColor }]}>Payment type</Text>
+            <View style={styles.methodRow}>
+              {([
+                { value: 'full', label: 'Full payment' },
+                { value: 'partial', label: 'Part payment' },
+              ] as const).map((option) => (
+                <Pressable
+                  key={option.value}
+                  onPress={() => {
+                    setPaymentType(option.value);
+                    setPaymentAmount(option.value === 'full' && balance > 0 ? balance.toFixed(2) : '');
+                  }}
+                  disabled={isLocked}
+                  style={[
+                    styles.methodChip,
+                    { borderColor },
+                    paymentType === option.value && { backgroundColor: tintColor, borderColor: tintColor },
+                    isLocked && styles.disabledButton,
+                  ]}
+                >
+                  <Text
+                    numberOfLines={2}
+                    style={[
+                      styles.methodChipText,
+                      { color: paymentType === option.value ? '#fff' : textColor },
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+          <View style={styles.formGroup}>
+            <Text style={[styles.label, { color: mutedColor }]}>
+              {paymentType === 'partial' ? 'Amount paid now' : 'Amount'}
+            </Text>
             <TextInput
               style={[styles.input, { color: textColor, borderColor, backgroundColor: cardBg }]}
-              value={paymentAmount}
-              onChangeText={setPaymentAmount}
+              value={paymentType === 'full' && balance > 0 ? balance.toFixed(2) : paymentAmount}
+              onChangeText={(value) => {
+                setPaymentType('partial');
+                setPaymentAmount(value);
+              }}
               keyboardType="decimal-pad"
               placeholder={balance.toFixed(2)}
               placeholderTextColor={mutedColor}
               returnKeyType="done"
               editable={!isLocked}
             />
+            {paymentType === 'partial' && !manualPaymentError ? (
+              <Text style={[styles.flowCopy, { color: mutedColor }]}>
+                Remaining after this payment: {formatCurrency(Math.max(0, balance - (Number.isFinite(resolvedAmount) ? resolvedAmount : 0)))}
+              </Text>
+            ) : null}
+            {manualPaymentError ? <Text style={styles.unavailableText}>{manualPaymentError}</Text> : null}
           </View>
           <View style={styles.formGroup}>
             <Text style={[styles.label, { color: mutedColor }]}>Payment method</Text>

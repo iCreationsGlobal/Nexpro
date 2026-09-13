@@ -1,3 +1,4 @@
+const marketerPayment = require('../utils/marketerPayment');
 const jwt = require('jsonwebtoken');
 const {
   Marketer,
@@ -13,11 +14,12 @@ const partnerProgramService = require('../services/partnerProgramService');
 const partnerCommissionService = require('../services/partnerCommissionService');
 const partnerReferralService = require('../services/partnerReferralService');
 const partnerCashoutService = require('../services/partnerCashoutService');
+const partnerRemittanceService = require('../services/partnerRemittanceService');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const signMarketerToken = (marketer) =>
-  jwt.sign({ id: marketer.id, type: 'sabito_marketer' }, config.jwt.secret, {
+  jwt.sign({ id: marketer.id, type: 'sabito_marketer', version: marketer.metadata?.authVersion || 0 }, config.jwt.secret, {
     expiresIn: config.jwt.expire,
   });
 
@@ -28,6 +30,7 @@ const toSafeMarketer = (marketer) => ({
   phone: marketer.phone || null,
   momoNumber: marketer.momoNumber || null,
   bankDetails: marketer.bankDetails || null,
+  ...marketerPayment(marketer),
 });
 
 const authResponse = (marketer) => ({
@@ -142,6 +145,17 @@ exports.updateMarketerProfile = async (req, res, next) => {
     }
     if (req.body?.bankDetails !== undefined) {
       updates.bankDetails = req.body.bankDetails ? String(req.body.bankDetails).trim() : null;
+    }
+    if (req.body?.paymentProvider !== undefined || req.body?.accountName !== undefined) {
+      const previous = marketerPayment(req.marketer);
+      const provider = String(req.body.paymentProvider ?? previous.paymentProvider ?? '').trim();
+      const accountName = String(req.body.accountName ?? previous.accountName ?? '').trim();
+      if (!provider || provider.length > 80 || !accountName || accountName.length > 160) {
+        return res.status(400).json({ success: false, message: 'Enter a valid payment provider and account name.' });
+      }
+      updates.metadata = { ...req.marketer.metadata, payment: { provider, accountName } };
+      // Preserve the destination shown by existing ABS payout screens.
+      updates.bankDetails = `${provider}|${accountName}`;
     }
     await req.marketer.update(updates);
     res.status(200).json({ success: true, data: { marketer: toSafeMarketer(req.marketer) } });
@@ -495,6 +509,7 @@ exports.listPartnerCommissions = async (req, res, next) => {
       marketerId: req.query.marketerId,
       month: req.query.month,
       year: req.query.year,
+      remittanceStatus: req.query.remittanceStatus,
     });
     res.status(200).json({ success: true, data });
   } catch (error) {
@@ -504,16 +519,54 @@ exports.listPartnerCommissions = async (req, res, next) => {
 
 exports.markPartnerCommissionsPaid = async (req, res, next) => {
   try {
-    const result = await partnerCommissionService.markCommissionsPaid({
+    const result = await partnerRemittanceService.createRemittance({
       tenantId: req.tenantId,
       commissionIds: req.body?.commissionIds || req.body?.ids || [],
-      paidBy: req.user?.id,
-      paidNote: req.body?.paidNote,
+      paidByUserId: req.user?.id,
+      recordedByUserId: req.user?.id,
+      payoutReference: req.body?.payoutReference,
+      notes: req.body?.paidNote || req.body?.notes,
     });
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     if (error.statusCode) {
-      return res.status(error.statusCode).json({ success: false, message: error.message });
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+        errorCode: error.errorCode,
+      });
+    }
+    next(error);
+  }
+};
+
+exports.listPartnerRemittances = async (req, res, next) => {
+  try {
+    const data = await partnerRemittanceService.listRemittancesForTenant(req.tenantId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.createPartnerRemittance = async (req, res, next) => {
+  try {
+    const data = await partnerRemittanceService.createRemittance({
+      tenantId: req.tenantId,
+      commissionIds: req.body?.commissionIds || req.body?.ids || [],
+      paidByUserId: req.user?.id,
+      recordedByUserId: req.user?.id,
+      payoutReference: req.body?.payoutReference,
+      notes: req.body?.notes || req.body?.paidNote,
+    });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+        errorCode: error.errorCode,
+      });
     }
     next(error);
   }
@@ -582,24 +635,10 @@ exports.rejectPartnerCashout = async (req, res, next) => {
   }
 };
 
-exports.markPartnerCashoutPaid = async (req, res, next) => {
-  try {
-    const data = await partnerCashoutService.markCashoutPaid({
-      tenantId: req.tenantId,
-      cashoutId: req.params.id,
-      processedByUserId: req.user?.id,
-      notes: req.body?.notes,
-      payoutReference: req.body?.payoutReference,
-    });
-    res.status(200).json({ success: true, data });
-  } catch (error) {
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({
-        success: false,
-        message: error.message,
-        errorCode: error.errorCode,
-      });
-    }
-    next(error);
-  }
+exports.markPartnerCashoutPaid = async (req, res) => {
+  res.status(403).json({
+    success: false,
+    message: 'ABS pays marketers after you Pay Sabito. Use Due commissions to remit the full marketer commission.',
+    errorCode: 'TENANT_CASHOUT_PAY_DISABLED',
+  });
 };

@@ -110,6 +110,15 @@ const summarizeAssistantContext = (context, tier = 'full') => {
   }
 
   if (context.jobs) summarized.jobs = context.jobs;
+  if (context.rentals) {
+    summarized.rentals = {
+      kpis: context.rentals.kpis,
+      dueBackToday: context.rentals.dueBackToday,
+      overdueRentals: context.rentals.overdueRentals,
+      revenueThisMonth: context.rentals.revenueThisMonth,
+      topDamageProducts: (context.rentals.topDamageProducts || []).slice(0, 5),
+    };
+  }
   if (context.recentSales?.length) {
     summarized.recentSales = context.recentSales.slice(0, 3);
   }
@@ -588,6 +597,7 @@ Formatting rules:
 - For predictions, end with: "This is an estimate, not a guarantee."
 - For receivables: if totalOutstanding is high vs (selectedPeriod?.revenue ?? thisMonth.revenue), recommend specific collection actions and name topDebtors when present.
 - For low stock: use inventory.lowStockProducts when present.
+- For rental workspaces: use rentals.kpis, rentals.dueBackToday, rentals.overdueRentals, rentals.revenueThisMonth, and rentals.topDamageProducts when present. Do not mention jobs, POS sales, or retail stock for rental tenants unless the user explicitly asks.
 - Email/SMS drafts: first line \`Subject: ...\`, blank line, then body. Sign with business name and contact when available.
 - Keep replies concise. If data is missing, say what is missing instead of guessing.`;
 }

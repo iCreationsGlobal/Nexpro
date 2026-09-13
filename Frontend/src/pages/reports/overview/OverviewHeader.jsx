@@ -8,13 +8,16 @@ import { formatPeriodLabel } from '../../../utils/formatPeriodLabel';
  * Reports Overview page header with date range and actions.
  */
 export default function OverviewHeader({
+  title = 'Reports Overview',
+  subtitle,
   dateRange,
   onDateRangeSelect,
   onPresetSelect,
   activePreset,
   onCustomize,
   onDownload,
-  downloading = false
+  downloading = false,
+  downloadLabel = 'Download Report',
 }) {
   const pickerRange = useMemo(
     () => (dateRange?.[0] && dateRange?.[1]
@@ -26,9 +29,9 @@ export default function OverviewHeader({
   return (
     <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">
       <div className="min-w-0">
-        <h2 className="text-2xl font-semibold text-foreground">Reports Overview</h2>
+        <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Executive summary for {formatPeriodLabel(activePreset, dateRange)}
+          {subtitle || `Executive summary for ${formatPeriodLabel(activePreset, dateRange)}`}
         </p>
       </div>
       <div className="flex flex-col w-full lg:w-auto gap-2">
@@ -55,7 +58,7 @@ export default function OverviewHeader({
             disabled={downloading}
           >
             <Download className="mr-2 h-4 w-4 shrink-0" aria-hidden />
-            {downloading ? 'Generating…' : 'Download Report'}
+            {downloading ? 'Generating…' : downloadLabel}
           </Button>
         </div>
       </div>

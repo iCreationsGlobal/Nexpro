@@ -204,6 +204,37 @@ const publicFeedbackSubmitLimiter = rateLimit({
   validate: false,
 });
 
+/**
+ * Public storefront rental booking request (POST) — per IP + store slug
+ */
+const publicRentalBookingSubmitLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    const slug = typeof req.params?.slug === 'string' ? req.params.slug.trim().slice(0, 150) : '';
+    return `${ip}:${slug || 'no-slug'}`;
+  },
+  handler: createErrorHandler('Too many booking requests. Please wait and try again.'),
+  validate: false,
+});
+
+const publicRentalAvailabilityLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    const slug = typeof req.params?.slug === 'string' ? req.params.slug.trim().slice(0, 150) : '';
+    return `${ip}:${slug || 'no-slug'}`;
+  },
+  handler: createErrorHandler('Too many availability checks. Please wait and try again.'),
+  validate: false,
+});
+
 module.exports = {
   generalLimiter,
   authLimiter,
@@ -216,5 +247,7 @@ module.exports = {
   publicTrackingLookupLimiter,
   publicTrackBrandingLimiter,
   publicFeedbackSubmitLimiter,
+  publicRentalBookingSubmitLimiter,
+  publicRentalAvailabilityLimiter,
   marketerWriteLimiter,
 };

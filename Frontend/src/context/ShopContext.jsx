@@ -17,14 +17,15 @@ const STORAGE_KEY = ACTIVE_SHOP_STORAGE_KEY;
 const ShopContext = createContext(null);
 
 /**
- * Provides shop list and active shop for retail (shop) workspaces.
+ * Provides shop/branch list and active location for retail and rental workspaces.
  */
 export function ShopProvider({ children }) {
   const { activeTenant, activeTenantId, hasFeature } = useAuth();
   const queryClient = useQueryClient();
 
   const isShopWorkspace = useMemo(() => {
-    return activeTenant?.businessType === 'shop' && hasFeature('shopsModule');
+    const businessType = activeTenant?.businessType;
+    return (businessType === 'shop' || businessType === 'rental') && hasFeature('shopsModule');
   }, [activeTenant?.businessType, hasFeature]);
 
   const [activeShopId, setActiveShopIdState] = useState(() => {

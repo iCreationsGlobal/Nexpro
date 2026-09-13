@@ -106,6 +106,35 @@ function classifyIntent(message, options = {}) {
     return { intent: 'new_customers', confidence: 0.88, route: 'analysis' };
   }
 
+  // Rental operations — before studio jobs / generic stock
+  if (
+    /\b(rentals?|hire|hired)\b/.test(text)
+    && /\b(due back|due today|return(ing)? today|back today)\b/.test(text)
+  ) {
+    return { intent: 'rentals_due_today', confidence: 0.92, route: 'analysis' };
+  }
+
+  if (
+    /\b(overdue rentals?|rentals? (are )?overdue|show overdue rentals?)\b/.test(text)
+    || (/\boverdue\b/.test(text) && /\brentals?\b/.test(text))
+  ) {
+    return { intent: 'rentals_overdue', confidence: 0.92, route: 'analysis' };
+  }
+
+  if (
+    /\b(damage|damaged|repair)\b/.test(text)
+    && /\b(items?|products?|equipment|most)\b/.test(text)
+  ) {
+    return { intent: 'rental_damage', confidence: 0.9, route: 'analysis' };
+  }
+
+  if (
+    /\brental revenue\b/.test(text)
+    || (/\b(rentals?|hire)\b/.test(text) && /\b(revenue|income|earned)\b/.test(text))
+  ) {
+    return { intent: 'rental_revenue_month', confidence: 0.9, route: 'analysis' };
+  }
+
   // Studio job pipeline — analysis (not support/Anthropic)
   if (
     /\b(open jobs?|job pipeline|jobs? (still )?need|which jobs|outstanding jobs?|summarize (my )?open jobs?|jobs? (awaiting|pending|in progress))\b/.test(text)

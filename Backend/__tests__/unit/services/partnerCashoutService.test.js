@@ -91,6 +91,11 @@ describe('partnerCashoutService', () => {
       }),
       expect.any(Object)
     );
+    expect(PartnerCommission.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ remittanceStatus: 'collected' }),
+      })
+    );
     expect(PartnerCommission.update).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'cashout_pending', cashoutRequestId: 'cash1' }),
       expect.any(Object)
@@ -149,7 +154,8 @@ describe('partnerCashoutService', () => {
     PartnerCommission.findAll
       .mockResolvedValueOnce([{ amount: 10 }, { amount: 5 }])
       .mockResolvedValueOnce([{ amount: 3 }])
-      .mockResolvedValueOnce([{ amount: 20 }]);
+      .mockResolvedValueOnce([{ amount: 20 }])
+      .mockResolvedValueOnce([]);
     PartnerCashoutRequest.count.mockResolvedValue(1);
     Partnership.count.mockResolvedValue(2);
     PartnerReferral.count
@@ -161,6 +167,7 @@ describe('partnerCashoutService', () => {
     const dash = await getMarketerDashboard('m1');
     expect(dash.availableBalance).toBe(15);
     expect(dash.pendingCashoutAmount).toBe(3);
+    expect(dash.pendingRemittanceAmount).toBe(0);
     expect(dash.totalEarned).toBe(38);
     expect(dash.referrals).toEqual({
       total: 3,

@@ -26,6 +26,7 @@ import dayjs from 'dayjs';
  * @param {Function} getDueDateStatus - Function to get due date status (color, label, formatted)
  * @param {number} pageSize - Number of items per page (default: 5)
  * @param {boolean} isSalesTable - Whether this is showing sales data (different columns)
+ * @param {boolean} isRentalTable - Whether this is showing rental activity
  * @param {Function} onAddProduct - Callback when "Add Product" button is clicked (shown when no sales and isSalesTable)
  * @param {Function} onOpenPOS - Callback to open point of sale (shown when no sales but products exist)
  * @param {boolean} hasProducts - Whether the tenant has any products (to show appropriate empty message)
@@ -41,6 +42,7 @@ const DashboardJobsTable = memo(({
   getDueDateStatus,
   pageSize = 5,
   isSalesTable = false,
+  isRentalTable = false,
   onAddProduct,
   onOpenPOS,
   hasProducts = true,
@@ -83,6 +85,22 @@ const DashboardJobsTable = memo(({
             {isSearchFiltered && onClearSearch ? (
               <EmptyState
                 {...getSearchNoResultsEmptyStateProps(searchQuery, onClearSearch)}
+                size="sm"
+                className="w-full max-w-md py-6"
+              />
+            ) : isRentalTable && !hasProducts && !productsLoading && onAddProduct ? (
+              <EmptyState
+                {...getEmptyStateProps(EMPTY_STATES.RENTAL_NO_PRODUCTS, {
+                  primary: onAddProduct,
+                })}
+                size="sm"
+                className="w-full max-w-md py-6"
+              />
+            ) : isRentalTable ? (
+              <EmptyState
+                {...getEmptyStateProps(EMPTY_STATES.RENTALS, {
+                  primary: onAddProduct,
+                })}
                 size="sm"
                 className="w-full max-w-md py-6"
               />

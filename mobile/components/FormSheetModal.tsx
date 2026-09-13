@@ -8,7 +8,7 @@ import {
 
 export const FORM_SHEET_HEIGHT = APP_SHEET_HEIGHT_TALL;
 
-export type FormSheetModalProps = Omit<AppBottomSheetProps, 'height' | 'scrollable' | 'hideHandle'> & {
+export type FormSheetModalProps = Omit<AppBottomSheetProps, 'height' | 'hideHandle'> & {
   keyboardVerticalOffset?: number;
 };
 
@@ -22,6 +22,7 @@ export function FormSheetModal({
   children,
   footer,
   keyboardVerticalOffset = 0,
+  scrollable = true,
   cardBg,
   borderColor,
   textColor,
@@ -35,7 +36,7 @@ export function FormSheetModal({
       onClose={onClose}
       footer={footer}
       height={APP_SHEET_HEIGHT_TALL}
-      scrollable
+      scrollable={scrollable}
       keyboardVerticalOffset={keyboardVerticalOffset}
       cardBg={cardBg}
       borderColor={borderColor}

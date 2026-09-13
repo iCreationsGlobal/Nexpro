@@ -2,6 +2,30 @@
  * Extract clear, user-friendly error messages from API/network errors
  */
 
+const NETWORK_ERROR_HINT =
+  'Cannot reach the API server. Ensure the Backend is running, then check EXPO_PUBLIC_API_URL in mobile/.env.';
+
+const NETWORK_ERROR_HINT_DEV =
+  'Cannot reach the API server. On a physical device, localhost will not work — run npm run show-api-url in mobile/, set EXPO_PUBLIC_API_URL to your Mac LAN IP, ensure the Backend is running, then restart Expo (npx expo start -c).';
+
+function isNetworkFailure(err: { message?: string; code?: string }): boolean {
+  const message = err.message?.toLowerCase() || '';
+  return (
+    err.code === 'NETWORK_ERROR' ||
+    err.code === 'ECONNREFUSED' ||
+    err.code === 'ECONNABORTED' ||
+    message === 'network error' ||
+    message.includes('network error') ||
+    message.includes('timeout') ||
+    message.includes('econnrefused') ||
+    message.includes('econnaborted')
+  );
+}
+
+export function getNetworkErrorMessage(): string {
+  return __DEV__ ? NETWORK_ERROR_HINT_DEV : NETWORK_ERROR_HINT;
+}
+
 export function getErrorMessage(
   error: unknown,
   defaultMessage = 'Something went wrong. Please try again.'
@@ -27,16 +51,12 @@ export function getErrorMessage(
     }
   }
 
-  if (err?.message) {
-    const technical = ['Network Error', 'Request failed', 'timeout', 'ECONNABORTED'];
-    if (technical.some((t) => err.message?.includes(t))) {
-      return 'Cannot connect to server. Check your internet and that the backend is running.';
-    }
-    return err.message;
+  if (isNetworkFailure(err)) {
+    return getNetworkErrorMessage();
   }
 
-  if (err?.code === 'NETWORK_ERROR' || err?.code === 'ECONNREFUSED') {
-    return 'Cannot connect to server. Is the backend running? Use your LAN IP for physical devices.';
+  if (err?.message) {
+    return err.message;
   }
 
   return defaultMessage;

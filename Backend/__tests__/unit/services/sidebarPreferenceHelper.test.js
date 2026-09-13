@@ -59,7 +59,9 @@ describe('sidebarPreferenceHelper', () => {
   describe('isSidebarMenuKeyAllowedForBusinessType', () => {
     it('allows shop keys only for shop workspaces', () => {
       expect(isSidebarMenuKeyAllowedForBusinessType('/shops', 'shop')).toBe(true);
+      expect(isSidebarMenuKeyAllowedForBusinessType('/shops', 'rental')).toBe(true);
       expect(isSidebarMenuKeyAllowedForBusinessType('/shops', 'printing_press')).toBe(false);
+      expect(isSidebarMenuKeyAllowedForBusinessType('/store/listings', 'rental')).toBe(false);
     });
 
     it('allows pharmacy keys only for pharmacy workspaces', () => {

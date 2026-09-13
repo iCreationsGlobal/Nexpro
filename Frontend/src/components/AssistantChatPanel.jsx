@@ -11,7 +11,7 @@ import { formatAssistantMessage } from '@/utils/assistantMessageFormatter';
 import { useAuth } from '@/context/AuthContext';
 import { getAssistantPromptSets } from '@/constants/assistantPrompts';
 import { resolveAssistantPeriodForMessage } from '@/utils/assistantPeriod';
-import { IBIS_ASK_LABEL, IBIS_NAME, IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY, sanitizeAssistantDisplayName } from '@/constants/ibis';
+import { IBIS_ASK_LABEL, IBIS_NAME, IBIS_WELCOME_GREETING, getIbisWelcomeSubcopy, sanitizeAssistantDisplayName } from '@/constants/ibis';
 import { IbisMoreMenu } from '@/components/IbisMoreMenu';
 import { useIbisChatPreferences } from '@/hooks/useIbisChatPreferences';
 
@@ -150,6 +150,8 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
     () => getAssistantPromptSets({ businessType, shopType }),
     [businessType, shopType]
   );
+
+  const welcomeSubcopy = useMemo(() => getIbisWelcomeSubcopy(businessType), [businessType]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -326,7 +328,7 @@ export default function AssistantChatPanel({ open, onOpenChange, pageContext }) 
             <div className="space-y-4 px-3 py-4">
               <div className="mx-auto max-w-[92%] space-y-2 rounded-2xl bg-white/90 px-3 py-3 text-center text-sm leading-relaxed text-[#111b21]">
                 <p>{IBIS_WELCOME_GREETING}</p>
-                <p className="text-xs text-[#667781]">{IBIS_WELCOME_SUBCOPY}</p>
+                <p className="text-xs text-[#667781]">{welcomeSubcopy}</p>
               </div>
               {showSuggestionChips ? (
                 <>

@@ -13,6 +13,19 @@ const {
   isConfigurationSupportMode,
 } = require('../utils/supportAccess');
 const { enforceBillingAccess } = require('./billingEnforcement');
+const { getWorkspaceManifest } = require('../services/tenantProvisioningService');
+
+/**
+ * Attach pre-provisioned workspace manifest fields for fast feature/branch resolution.
+ * @param {import('express').Request} req
+ */
+const attachWorkspaceContext = (req) => {
+  const manifest = getWorkspaceManifest(req.tenant);
+  req.workspaceManifest = manifest || null;
+  req.enabledFeatures = Array.isArray(manifest?.enabledFeatures) ? manifest.enabledFeatures : null;
+  req.defaultBranchId = manifest?.defaultBranchId || null;
+  req.workspaceKind = manifest?.kind || null;
+};
 
 const resolveTenantId = (req) => {
   const headerTenant =
@@ -102,6 +115,7 @@ const tenantContext = async (req, res, next) => {
       req.tenantId = supportCtx.tenantId;
       req.tenant = supportCtx.tenant;
       req.tenantRole = supportCtx.tenantRole;
+      attachWorkspaceContext(req);
       req.isSupportAccess = true;
       req.supportAccessSession = supportCtx.supportAccessSession;
       req.supportAccessMode = supportCtx.supportAccessMode;
@@ -187,6 +201,7 @@ const tenantContext = async (req, res, next) => {
     req.tenantMembership = membership;
     req.tenantRole = membership.role;
     req.tenant = normalizeTenantInstanceForRequest(membership.tenant || (await membership.getTenant()));
+    attachWorkspaceContext(req);
 
     if (req.tenant?.status === 'suspended') {
       return res.status(403).json({
@@ -237,7 +252,8 @@ const tenantContext = async (req, res, next) => {
 };
 
 module.exports = {
-  tenantContext
+  tenantContext,
+  attachWorkspaceContext,
 };
 
 

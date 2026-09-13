@@ -34,6 +34,10 @@ export type Marketer = {
   bankDetails?: string | null;
 };
 
+export class ApiError extends Error {
+  constructor(message: string, public status: number) { super(message); this.name = "ApiError"; }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit & { auth?: boolean } = {}
@@ -55,7 +59,7 @@ async function request<T>(
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     const message = json?.message || json?.error || `Request failed (${res.status})`;
-    throw new Error(message);
+    throw new ApiError(message, res.status);
   }
   return json as T;
 }

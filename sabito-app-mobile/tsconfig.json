@@ -5,8 +5,8 @@
       "esnext"
     ],
     "jsx": "react-native",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "noEmit": true,
     "isolatedModules": true,
     "esModuleInterop": true,

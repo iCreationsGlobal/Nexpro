@@ -86,6 +86,8 @@ import { formatAmount, formatDecimal, formatInteger } from '../utils/formatNumbe
 import dayjs from 'dayjs';
 import { RechartsModuleProvider, useRechartsModule } from '@/components/charts/RechartsModuleContext';
 import ReportsOverviewDashboard from './reports/overview/ReportsOverviewDashboard';
+import { getReportsOverviewFetchPlan } from './reports/overview/reportsOverviewFetchPlan';
+import RentalReportsOverview from './reports/rental/RentalReportsOverview';
 import SmartReportDetail from './reports/smart-report/SmartReportDetail';
 import WelcomeSection from '../components/WelcomeSection';
 import ComplianceIntroBanner from './compliance/ComplianceIntroBanner';
@@ -283,6 +285,11 @@ function ReportsInner() {
   const isPrintingPress = businessType === 'printing_press';
   const isShop = businessType === 'shop';
   const isPharmacy = businessType === 'pharmacy';
+  const isRental = businessType === 'rental';
+  const smartReportTypeContext = useMemo(
+    () => ({ isShop, isPharmacy, isStudio, isRental }),
+    [isShop, isPharmacy, isStudio, isRental]
+  );
   const isRestaurant =
     isShop &&
     ((metadata?.businessSubType || metadata?.shopType) === 'restaurant');
@@ -332,7 +339,7 @@ function ReportsInner() {
     },
   });
   const [selectedReportTypes, setSelectedReportTypes] = useState(() =>
-    getDefaultSmartReportTypeSelection({ isShop: false, isPharmacy: false, isStudio: false })
+    getDefaultSmartReportTypeSelection({ isShop: false, isPharmacy: false, isStudio: false, isRental: false })
   );
   const [reportDateFilter, setReportDateFilter] = useState('last6months');
 
@@ -566,14 +573,21 @@ function ReportsInner() {
       const endDate = dateRange[1].endOf('day').format('YYYY-MM-DD');
       const groupBy = getGroupByForFilter(dateFilter, dateRange);
       const businessType = activeTenant?.businessType || 'printing_press';
-      const isShopOrPharmacy = businessType === 'shop' || businessType === 'pharmacy';
+      const fetchPlan = getReportsOverviewFetchPlan({ businessType });
+      const { isRental: fetchIsRental, isShopOrPharmacy, includeProductSales, fetchRentalOverview } = fetchPlan;
 
       const currentPeriodStart = dayjs(dateRange[0]);
       const currentPeriodEnd = dayjs(dateRange[1]);
       const previousPeriod = getPreviousPeriod(dateFilter || 'custom', [currentPeriodStart, currentPeriodEnd]);
       const comparisonLabel = previousPeriod.label || 'vs previous period';
 
-      const phase1Res = await reportService.getOverviewPhase1(startDate, endDate, groupBy, isShopOrPharmacy).catch(() => ({ data: null }));
+      const [phase1Res, rentalRes] = await Promise.all([
+        reportService.getOverviewPhase1(startDate, endDate, groupBy, includeProductSales).catch(() => ({ data: null })),
+        fetchRentalOverview
+          ? reportService.getRentalReportsOverview(startDate, endDate, groupBy).catch(() => ({ data: null }))
+          : Promise.resolve({ data: null }),
+      ]);
+      const rentalOverview = rentalRes?.data || null;
       const phase1 = phase1Res?.data || {};
       const revenue = phase1.revenue ?? { totalRevenue: 0, byPeriod: [], byCustomer: [] };
       const expenses = phase1.expenses ?? { totalExpenses: 0, byCategory: [], byDate: [] };
@@ -593,7 +607,10 @@ function ReportsInner() {
         extendedKpis: null,
         profitLossDetail: null,
         cashFlow: null,
-        comparisonLabel
+        comparisonLabel,
+        rental: rentalOverview,
+        isRental: fetchIsRental,
+        businessType,
       });
       setLoading(false);
 
@@ -722,7 +739,9 @@ function ReportsInner() {
         },
         revenueGrowth: extendedKpis?.comparison?.totalRevenue ?? 0,
         periodTypeLabel: comparisonLabel,
-        comparisonLabel
+        comparisonLabel,
+        rental: rentalOverview,
+        isRental: fetchIsRental,
       });
     } catch (error) {
       console.error('Error fetching overview stats:', error);
@@ -777,9 +796,13 @@ function ReportsInner() {
         showError(null, 'Report content not found');
         return;
       }
+      const dateSuffix = `${dateRange[0].format('YYYY-MM-DD')}_${dateRange[1].format('YYYY-MM-DD')}`;
+      const filename = isRental
+        ? `rental_reports_overview_${dateSuffix}.pdf`
+        : `reports_overview_${dateSuffix}.pdf`;
       await html2pdf().set({
         margin: 10,
-        filename: `reports_overview_${dateRange[0].format('YYYY-MM-DD')}_${dateRange[1].format('YYYY-MM-DD')}.pdf`,
+        filename,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -793,7 +816,7 @@ function ReportsInner() {
     } finally {
       setOverviewDownloading(false);
     }
-  }, [dateRange]);
+  }, [dateRange, isRental]);
 
   const handleOpenCreateReportModal = () => {
     const selectedRange = dateFilter === 'custom' && dateRange?.[0] && dateRange?.[1]
@@ -805,7 +828,7 @@ function ReportsInner() {
     });
     setAiPrompt('');
     setCreateReportMode(SMART_REPORT_GENERATION_MODES.SECTIONS);
-    setSelectedReportTypes(getDefaultSmartReportTypeSelection({ isShop, isPharmacy, isStudio }));
+    setSelectedReportTypes(getDefaultSmartReportTypeSelection(smartReportTypeContext));
     setCreateReportModalVisible(true);
   };
 
@@ -845,7 +868,7 @@ function ReportsInner() {
     }
 
     const reportTypesForRun = isFreeText
-      ? getDefaultSmartReportTypeSelection({ isShop, isPharmacy, isStudio })
+      ? getDefaultSmartReportTypeSelection(smartReportTypeContext)
       : selectedReportTypes;
 
     creatingReportRef.current = true;
@@ -982,12 +1005,18 @@ function ReportsInner() {
       const endDate = rangeEnd.format('YYYY-MM-DD');
 
       // Fetch real data for the report - conditionally fetch product/inventory data for shop/pharmacy
+      const emptySales = { data: { totalSales: 0, totalJobs: 0, byJobType: [], byCustomer: [], byDate: [], byStatus: [] } };
+      const emptyServiceAnalytics = { data: { totalRevenue: 0, byCategory: [], byDate: [], byCustomer: [] } };
       const fetchPromises = [
         reportService.getRevenueReport(startDate, endDate, 'day').catch(() => ({ data: { totalRevenue: 0, byPeriod: [] } })),
         reportService.getExpenseReport(startDate, endDate).catch(() => ({ data: { totalExpenses: 0, byCategory: [] } })),
-        reportService.getSalesReport(startDate, endDate, 'day').catch(() => ({ data: { totalSales: 0, byJobType: [], byCustomer: [], byDate: [], byStatus: [] } })),
+        isRental
+          ? Promise.resolve(emptySales)
+          : reportService.getSalesReport(startDate, endDate, 'day').catch(() => emptySales),
         reportService.getOutstandingPaymentsReport(startDate, endDate).catch(() => ({ data: { totalOutstanding: 0, invoices: [] } })),
-        reportService.getServiceAnalyticsReport(startDate, endDate).catch(() => ({ data: { totalRevenue: 0, byCategory: [], byDate: [], byCustomer: [] } }))
+        isRental
+          ? Promise.resolve(emptyServiceAnalytics)
+          : reportService.getServiceAnalyticsReport(startDate, endDate).catch(() => emptyServiceAnalytics)
       ];
 
       // Add product sales and inventory data for shop/pharmacy
@@ -1012,7 +1041,10 @@ function ReportsInner() {
         reportService.getCashFlowReport(startDate, endDate).catch(() => ({ data: {} })),
         reportService.getProfitLossReport(startDate, endDate).catch(() => ({ data: {} })),
         reportService.getFinancialPositionReport(endDate).catch(() => ({ data: {} })),
-        reportService.getRevenueByChannel(startDate, endDate).catch(() => ({ data: {} }))
+        reportService.getRevenueByChannel(startDate, endDate).catch(() => ({ data: {} })),
+        isRental
+          ? reportService.getRentalSmartReport(startDate, endDate, 'day').catch(() => ({ data: null }))
+          : Promise.resolve(null)
       );
 
       const [
@@ -1028,7 +1060,9 @@ function ReportsInner() {
         profitLossData,
         financialPositionData,
         revenueByChannelData,
+        rentalOverviewResult,
       ] = await Promise.all(fetchPromises);
+      const rentalOverviewPayload = rentalOverviewResult?.data || rentalOverviewResult || null;
       const phase2 = phase2Data?.data || {};
       const cashFlowPayload = cashFlowData?.data || cashFlowData || {};
       const profitLossPayload = profitLossData?.data || profitLossData || {};
@@ -1127,6 +1161,13 @@ function ReportsInner() {
               quantity: parseFloat(item.quantitySold || 0)
             }));
           }
+          if (isRental) {
+            return (rentalOverviewPayload?.revenue?.byProduct || []).slice(0, 5).map((item) => ({
+              name: item.productName,
+              revenue: parseFloat(item.revenue || 0),
+              quantity: parseFloat(item.quantityRented || 0)
+            }));
+          }
           return (serviceAnalyticsData.data?.byCategory || salesData.data?.byJobType || []).slice(0, 5).map(item => ({
             name: item.category || item.jobType,
             revenue: parseFloat(item.totalRevenue || item.totalSales || 0),
@@ -1147,6 +1188,14 @@ function ReportsInner() {
             : null;
         })(),
         outstandingPayments: outstandingData.data?.totalOutstanding || 0,
+        rentalMetrics: isRental ? {
+          collected: revenue,
+          hireBooked: parseFloat(rentalOverviewPayload?.revenue?.totalRevenue || 0),
+          rentalCount: parseFloat(rentalOverviewPayload?.revenue?.rentalCount || 0),
+          utilizationRate: parseFloat(rentalOverviewPayload?.utilization?.overallUtilizationRate || 0),
+          lateReturnCount: parseFloat(rentalOverviewPayload?.lateReturns?.summary?.lateReturnCount || 0),
+          damageCost: parseFloat(rentalOverviewPayload?.damageTrends?.totalCost || 0),
+        } : null,
         studioMetrics: isStudio ? {
           collectedRevenue: revenue,
           bookedJobValue,
@@ -1214,7 +1263,7 @@ function ReportsInner() {
             prevProfit,
             comparisonLabel: previousPeriodForComparison.label,
             metrics: [
-              { label: 'Total Revenue', value: revenue, prevValue: prevRevenue, change: Math.abs(revenueChange), trend: revenueChange >= 0 ? 'up' : 'down', color: 'var(--color-primary)' },
+              { label: isRental ? 'Collected' : 'Total Revenue', value: revenue, prevValue: prevRevenue, change: Math.abs(revenueChange), trend: revenueChange >= 0 ? 'up' : 'down', color: 'var(--color-primary)' },
               ...(isShop || isPharmacy ? [
                 // Cost of Goods Sold is kept separate from Operating Expenses — it's the cost of
                 // products/materials sold, not an Expenses table entry.
@@ -1224,8 +1273,8 @@ function ReportsInner() {
               { label: 'Net Profit', value: profit, prevValue: prevProfit, change: Math.abs(profitChange), trend: profitChange >= 0 ? 'up' : 'down', color: 'var(--color-primary)' }
             ],
             note: (revenueChange > 0)
-              ? `Your revenue is up ${revenueChange.toFixed(1)}% (${formatAmount(revenue - prevRevenue)}) from the previous period.`
-              : `Your revenue is down ${Math.abs(revenueChange).toFixed(1)}% (${formatAmount(prevRevenue - revenue)}) from the previous period.`
+              ? `Your ${isRental ? 'collections are' : 'revenue is'} up ${revenueChange.toFixed(1)}% (${formatAmount(revenue - prevRevenue)}) from the previous period.`
+              : `Your ${isRental ? 'collections are' : 'revenue is'} down ${Math.abs(revenueChange).toFixed(1)}% (${formatAmount(prevRevenue - revenue)}) from the previous period.`
           }
       ];
       const conditionalSections = reportTypes.length > 0 ? [
@@ -1296,7 +1345,7 @@ function ReportsInner() {
               })()
             }] : []),
             // Service analytics (printing press/studio)
-            ...(!isShop && !isPharmacy ? [{
+            ...(!isShop && !isPharmacy && !isRental ? [{
               type: 'service-analytics',
               title: terminology.analyticsTitle,
               description: terminology.analyticsDescription,
@@ -1525,7 +1574,7 @@ function ReportsInner() {
             })),
             recommendations: []
           }] : []),
-          ...(reportTypes.includes('sales-summary') ? [{
+          ...(reportTypes.includes('sales-summary') && !isRental ? [{
             type: 'sales-summary',
             title: isStudio ? 'Jobs Summary' : 'Sales Summary',
             description: isStudio ? 'Job volume and status in the period.' : 'Sales volume and status in the period.',
@@ -1551,7 +1600,7 @@ function ReportsInner() {
             },
             recommendations: []
           }] : []),
-          ...(reportTypes.includes('pipeline') ? [{
+          ...(reportTypes.includes('pipeline') && !isRental ? [{
             type: 'pipeline',
             title: 'Pipeline',
             description: 'Open pipeline (current) plus activity created in the selected period.',
@@ -1603,9 +1652,11 @@ function ReportsInner() {
             title: 'AI-Powered Insights',
             points: [
               (revenueChange > 0)
-                ? `Revenue has ${(revenueChange > 0) ? 'increased' : 'decreased'} by ${Math.abs(revenueChange).toFixed(1)}% compared to the previous period.`
-                : 'Revenue remains stable compared to the previous period.',
-              ...((isStudio && salesData.data?.byJobType?.length > 0)
+                ? `${isRental ? 'Collections have' : 'Revenue has'} ${(revenueChange > 0) ? 'increased' : 'decreased'} by ${Math.abs(revenueChange).toFixed(1)}% compared to the previous period.`
+                : `${isRental ? 'Collections remain' : 'Revenue remains'} stable compared to the previous period.`,
+              ...((isRental && rentalOverviewPayload?.revenue?.byProduct?.length > 0)
+                ? [`Your top hire item (${rentalOverviewPayload.revenue.byProduct[0]?.productName || 'N/A'}) accounts for ${(revenue > 0) ? ((parseFloat(rentalOverviewPayload.revenue.byProduct[0]?.revenue || 0) / revenue) * 100).toFixed(1) : 0}% of collections.`]
+                : (isStudio && salesData.data?.byJobType?.length > 0)
                 ? [`Your top ${terminology.topCategoryInsightLabel} (${salesData.data.byJobType[0]?.jobType || 'N/A'}) accounts for ${(revenue > 0) ? ((parseFloat(salesData.data.byJobType[0]?.totalSales || 0) / revenue) * 100).toFixed(1) : 0}% of total revenue.`]
                 : ((isShop || isPharmacy) && productSalesData?.data?.products?.length > 0)
                 ? [`Your top ${terminology.topCategoryInsightLabel} (${productSalesData.data.products[0]?.productName || 'N/A'}) accounts for ${(revenue > 0) ? ((parseFloat(productSalesData.data.products[0]?.revenue || 0) / revenue) * 100).toFixed(1) : 0}% of total revenue.`]
@@ -1614,7 +1665,7 @@ function ReportsInner() {
                 ? `Outstanding payments total ${formatAmount(outstandingData.data.totalOutstanding)}. Consider implementing automated payment reminders.`
                 : 'All payments are up to date.',
               (profitMargin > 0)
-                ? `Operating expenses are ${(expenses > 0) ? ((expenses / revenue) * 100).toFixed(1) : 0}% of revenue, with a profit margin of ${profitMargin.toFixed(1)}%.`
+                ? `Operating expenses are ${(expenses > 0) ? ((expenses / revenue) * 100).toFixed(1) : 0}% of ${isRental ? 'collections' : 'revenue'}, with a profit margin of ${profitMargin.toFixed(1)}%.`
                 : 'Monitor expense ratios to improve profitability.',
               'Continue analyzing business patterns to identify optimization opportunities.'
             ]
@@ -1732,6 +1783,8 @@ function ReportsInner() {
           isShop,
           isPharmacy,
           isStudio,
+          isRental,
+          rentalData: isRental ? rentalOverviewPayload : null,
           terminology,
         }),
       };
@@ -2765,8 +2818,8 @@ function ReportsInner() {
 
   // Smart Report section options — ids match detail page tabs
   const reportTypeOptionsGrouped = useMemo(
-    () => getSmartReportTypeOptionsGrouped({ isShop, isPharmacy, isStudio }),
-    [isShop, isPharmacy, isStudio]
+    () => getSmartReportTypeOptionsGrouped(smartReportTypeContext),
+    [smartReportTypeContext]
   );
 
   const reportTypeOptions = useMemo(
@@ -2807,12 +2860,12 @@ function ReportsInner() {
   const renderGeneratedReports = () => {
     // Map report types to display names and icons
     const getReportTypeDisplay = (reportType) => {
-      const meta = getSmartReportTabMeta(reportType);
+      const meta = getSmartReportTabMeta(reportType, smartReportTypeContext);
       return { label: meta.label, icon: meta.icon || FileText };
     };
 
     const getReportTypes = (report) => {
-      return resolveSmartReportTabs(report, { isShop, isPharmacy, isStudio }).map((tab) => tab.id);
+      return resolveSmartReportTabs(report, smartReportTypeContext).map((tab) => tab.id);
     };
 
     // Determine status from actual status field (default to 'ready' if not set for backward compatibility)
@@ -3757,7 +3810,7 @@ function ReportsInner() {
             })()}
 
             {/* Sales / Jobs Summary Section */}
-            {generatedReport.insights.find(i => i.type === 'sales-summary') && (() => {
+            {!isRental && generatedReport.insights.find(i => i.type === 'sales-summary') && (() => {
               const section = generatedReport.insights.find(i => i.type === 'sales-summary');
               const d = section.data || {};
               return (
@@ -4037,7 +4090,7 @@ function ReportsInner() {
                     setCreateReportMode(value);
                     if (value === SMART_REPORT_GENERATION_MODES.FREE_TEXT) {
                       setSelectedReportTypes(
-                        getDefaultSmartReportTypeSelection({ isShop, isPharmacy, isStudio })
+                        getDefaultSmartReportTypeSelection(smartReportTypeContext)
                       );
                     }
                   }}
@@ -4265,20 +4318,30 @@ function ReportsInner() {
               </Card>
             </div>
           ) : overviewStats ? (
-                <ReportsOverviewDashboard
-                  overviewStats={overviewStats}
+            <>
+              <ReportsOverviewDashboard
+                overviewStats={overviewStats}
+                dateRange={dateRange}
+                dateFilter={dateFilter}
+                onDateRangeSelect={handleOverviewDateRangeSelect}
+                onPresetSelect={handleOverviewPresetSelect}
+                onCustomize={handleOverviewCustomize}
+                onDownload={handleOverviewDownload}
+                downloading={overviewDownloading}
+                isShop={isShop}
+                isPharmacy={isPharmacy}
+                isStudio={isStudio}
+                isRental={isRental}
+                businessType={businessType}
+              />
+              {isRental && (
+                <RentalReportsOverview
+                  embedded
+                  rentalStats={overviewStats.rental}
                   dateRange={dateRange}
-                  dateFilter={dateFilter}
-                  onDateRangeSelect={handleOverviewDateRangeSelect}
-                  onPresetSelect={handleOverviewPresetSelect}
-                  onCustomize={handleOverviewCustomize}
-                  onDownload={handleOverviewDownload}
-                  downloading={overviewDownloading}
-                  isShop={isShop}
-                  isPharmacy={isPharmacy}
-                  isStudio={isStudio}
-                  businessType={businessType}
                 />
+              )}
+            </>
           ) : null}
         </div>
       ) : isCompliance ? (
@@ -4293,6 +4356,7 @@ function ReportsInner() {
               isStudio={isStudio}
               isShop={isShop}
               isPharmacy={isPharmacy}
+              isRental={isRental}
             />
           ) : (
             <div className="p-0 md:p-6">

@@ -16,6 +16,27 @@ const logDashboardDebug = (...args) => {
   }
 };
 
+/** SQL fragment for rental branch scoping (branchId maps to shop scope). */
+const getBranchSqlFragment = (req, tableAlias = '') => {
+  const col = tableAlias ? `${tableAlias}."branchId"` : '"branchId"';
+  if (!req.shopScoped) {
+    return { sql: '', replacements: {} };
+  }
+  if (req.shopFilterId) {
+    return {
+      sql: ` AND (${col} = :shopFilterId OR ${col} IS NULL)`,
+      replacements: { shopFilterId: req.shopFilterId },
+    };
+  }
+  if (!req.canAccessAllShops && req.allowedShopIds?.length) {
+    return {
+      sql: ` AND (${col} IN (:allowedShopIds) OR ${col} IS NULL)`,
+      replacements: { allowedShopIds: req.allowedShopIds },
+    };
+  }
+  return { sql: '', replacements: {} };
+};
+
 // Simple in-memory cache for dashboard data
 // TTL: 30 seconds - dashboard data doesn't need real-time updates
 const dashboardCache = new Map();
@@ -107,6 +128,9 @@ function buildEmptyOverviewPayload(tenantId, businessType = 'shop', startDate = 
     allTime: { revenue: 0, expenses: 0, profit: 0 },
     recentJobs: [],
     shopData: null,
+    rentalData: businessType === 'rental'
+      ? { activeRentals: 0, overdueRentals: 0, dueBackToday: 0, upcomingPreBookings: 0 }
+      : null,
     businessType
   };
 
@@ -163,6 +187,7 @@ exports.getDashboardOverview = async (req, res, next) => {
   }
 
   const isRetailWorkspace = businessType === 'shop' || businessType === 'pharmacy';
+  const isRentalWorkspace = businessType === 'rental';
 
   try {
     const today = new Date();
@@ -220,6 +245,9 @@ exports.getDashboardOverview = async (req, res, next) => {
     const saleCogsShopFrag = getShopSqlFragment(req, 's');
     const expenseShopFrag = getShopSqlFragment(req);
     const expenseStudioFrag = getStudioLocationSqlFragment(req);
+    const rentalBranchFrag = getBranchSqlFragment(req);
+    const preBookingBranchFrag = getBranchSqlFragment(req, 'pb');
+    const todayDate = todayStart.toISOString().slice(0, 10);
     const customerCountSql = (baseWhere) =>
       `(SELECT COUNT(*) FROM customers WHERE "tenantId" = :tenantId${customerShopFrag.sql}${customerStudioFrag.sql} AND ${baseWhere})`;
 
@@ -460,7 +488,37 @@ exports.getDashboardOverview = async (req, res, next) => {
           AND (metadata->>'expiryDate')::date <= CURRENT_DATE + INTERVAL '30 days'
         ORDER BY (metadata->>'expiryDate')::date ASC
         LIMIT 20
-      `, { replacements: { tenantId }, type: sequelize.QueryTypes.SELECT }) : Promise.resolve([]))
+      `, { replacements: { tenantId }, type: sequelize.QueryTypes.SELECT }) : Promise.resolve([])),
+      // Rental revenue + operational KPIs (rental business type)
+      safeQuery(isRentalWorkspace ? sequelize.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN status != 'cancelled' THEN amount ELSE 0 END), 0) as "totalRentalRevenue",
+          COALESCE(SUM(CASE WHEN status != 'cancelled' AND "createdAt" BETWEEN :monthStart AND :monthEnd THEN amount ELSE 0 END), 0) as "monthRentalRevenue",
+          COUNT(CASE WHEN status = 'active' THEN 1 END) as "activeRentals",
+          COUNT(CASE WHEN status = 'overdue' THEN 1 END) as "overdueRentals",
+          COUNT(CASE WHEN status IN ('active', 'confirmed', 'overdue') AND "endDate" = :todayDate THEN 1 END) as "dueBackToday"
+          ${hasDateFilter ? `,COALESCE(SUM(CASE WHEN status != 'cancelled' AND "createdAt" BETWEEN :filterStart AND :filterEnd THEN amount ELSE 0 END), 0) as "filteredRentalRevenue"` : ''}
+          ${prevPeriod ? `,COALESCE(SUM(CASE WHEN status != 'cancelled' AND "createdAt" BETWEEN :prevStart AND :prevEnd THEN amount ELSE 0 END), 0) as "prevRentalRevenue"` : ''},
+          (
+            SELECT COUNT(*)
+            FROM pre_bookings pb
+            WHERE pb."tenantId" = :tenantId AND pb.status = 'pending'${preBookingBranchFrag.sql}
+          ) as "upcomingPreBookings"
+        FROM rentals
+        WHERE "tenantId" = :tenantId${rentalBranchFrag.sql}
+      `, {
+        replacements: {
+          tenantId,
+          monthStart: firstDayOfMonth,
+          monthEnd: lastDayOfMonth,
+          todayDate,
+          ...rentalBranchFrag.replacements,
+          ...preBookingBranchFrag.replacements,
+          ...(hasDateFilter ? { filterStart, filterEnd } : {}),
+          ...(prevPeriod ? { prevStart: prevPeriod.start, prevEnd: prevPeriod.end } : {}),
+        },
+        type: sequelize.QueryTypes.SELECT,
+      }) : Promise.resolve([{}]))
     ];
 
     const results = await Promise.all(batch);
@@ -478,7 +536,8 @@ exports.getDashboardOverview = async (req, res, next) => {
       recentSales,
       topProducts,
       lowStockProductsResult,
-      expiringProductsResult
+      expiringProductsResult,
+      rentalStatsResult
     ] = results;
 
     // Parse consolidated results (handle array vs object)
@@ -489,6 +548,7 @@ exports.getDashboardOverview = async (req, res, next) => {
     const salesStats = Array.isArray(salesStatsResult) ? salesStatsResult[0] : (salesStatsResult || {});
     const salesCogsStats = Array.isArray(salesCogsStatsResult) ? salesCogsStatsResult[0] : (salesCogsStatsResult || {});
     const inventoryStats = Array.isArray(inventoryStatsResult) ? inventoryStatsResult[0] : (inventoryStatsResult || {});
+    const rentalStats = Array.isArray(rentalStatsResult) ? rentalStatsResult[0] : (rentalStatsResult || {});
 
     // Map consolidated results to original variable names
     const totalCustomers = parseInt(entityCounts.totalCustomers) || 0;
@@ -526,6 +586,10 @@ exports.getDashboardOverview = async (req, res, next) => {
     const totalSales = parseInt(salesStats.totalSales) || 0;
     const todaySalesCount = parseInt(salesStats.todaySalesCount) || 0;
     const filteredSalesRevenue = hasDateFilter ? (parseFloat(salesStats.filteredSalesRevenue) || 0) : 0;
+
+    const totalRentalRevenue = parseFloat(rentalStats.totalRentalRevenue) || 0;
+    const monthRentalRevenue = parseFloat(rentalStats.monthRentalRevenue) || 0;
+    const filteredRentalRevenue = hasDateFilter ? (parseFloat(rentalStats.filteredRentalRevenue) || 0) : 0;
 
     // Cost of goods sold for the same periods (0 for non-retail business types, no products/sale_items to cost).
     const monthCogs = parseFloat(salesCogsStats.monthCogs) || 0;
@@ -566,9 +630,11 @@ exports.getDashboardOverview = async (req, res, next) => {
 
     // Previous period comparison values
     const prevRevenue = prevPeriod ? (
-      (businessType === 'shop' || businessType === 'pharmacy') 
-        ? (parseFloat(salesStats.prevSalesRevenue) || 0) 
-        : (parseFloat(invoiceStats.prevRevenue) || 0)
+      isRetailWorkspace
+        ? (parseFloat(salesStats.prevSalesRevenue) || 0)
+        : isRentalWorkspace
+          ? (parseFloat(rentalStats.prevRentalRevenue) || 0)
+          : (parseFloat(invoiceStats.prevRevenue) || 0)
     ) : 0;
     const prevExpenses = prevPeriod ? (parseFloat(expenseStats.prevExpenses) || 0) : 0;
     const prevCogs = prevPeriod ? (parseFloat(salesCogsStats.prevCogs) || 0) : 0;
@@ -582,7 +648,11 @@ exports.getDashboardOverview = async (req, res, next) => {
     }
     logDashboardDebug('In-progress jobs fetched', { count: recentJobs?.length ?? 0 });
 
-    let currentMonthRevenueValue = (businessType === 'shop' || businessType === 'pharmacy') ? (monthSalesRevenue ?? 0) : (thisMonthRevenue ?? 0);
+    let currentMonthRevenueValue = isRetailWorkspace
+      ? (monthSalesRevenue ?? 0)
+      : isRentalWorkspace
+        ? (monthRentalRevenue ?? 0)
+        : (thisMonthRevenue ?? 0);
     
     const currentMonthSummary = {
       jobs: thisMonthJobs ?? 0,
@@ -597,10 +667,11 @@ exports.getDashboardOverview = async (req, res, next) => {
       }
     };
 
+    const allTimeRevenueValue = isRentalWorkspace ? totalRentalRevenue : (totalRevenue ?? 0);
     const allTimeSummary = {
-      revenue: Number(parseFloat(totalRevenue ?? 0).toFixed(2)),
+      revenue: Number(parseFloat(allTimeRevenueValue ?? 0).toFixed(2)),
       expenses: Number(parseFloat(totalExpenses ?? 0).toFixed(2)),
-      profit: Number(parseFloat((totalRevenue ?? 0) - (totalExpenses ?? 0) - (totalCogs ?? 0)).toFixed(2))
+      profit: Number(parseFloat((allTimeRevenueValue ?? 0) - (totalExpenses ?? 0) - (totalCogs ?? 0)).toFixed(2))
     };
 
     // Shop-specific data (from batch)
@@ -685,6 +756,16 @@ exports.getDashboardOverview = async (req, res, next) => {
       }
     }
 
+    let rentalData = null;
+    if (isRentalWorkspace) {
+      rentalData = {
+        activeRentals: parseInt(rentalStats.activeRentals, 10) || 0,
+        overdueRentals: parseInt(rentalStats.overdueRentals, 10) || 0,
+        dueBackToday: parseInt(rentalStats.dueBackToday, 10) || 0,
+        upcomingPreBookings: parseInt(rentalStats.upcomingPreBookings, 10) || 0,
+      };
+    }
+
     const responseData = {
       summary: {
         totalCustomers: totalCustomers ?? 0,
@@ -704,13 +785,18 @@ exports.getDashboardOverview = async (req, res, next) => {
       allTime: allTimeSummary,
       recentJobs: Array.isArray(recentJobs) ? recentJobs : [],
       shopData,
+      rentalData,
       ...(stockAlerts ? { stockAlerts } : {})
     };
 
     // Add filtered period data if date filter is applied
     if (hasDateFilter) {
       const filteredRevenueValue = Number(parseFloat(
-        (businessType === 'shop' || businessType === 'pharmacy') ? (filteredSalesRevenue || 0) : (filteredRevenue || 0)
+        isRetailWorkspace
+          ? (filteredSalesRevenue || 0)
+          : isRentalWorkspace
+            ? (filteredRentalRevenue || 0)
+            : (filteredRevenue || 0)
       ).toFixed(2));
       const filteredExpensesValue = Number(parseFloat(filteredExpenses || 0).toFixed(2));
       const filteredCogsValue = Number(parseFloat(filteredCogs || 0).toFixed(2));

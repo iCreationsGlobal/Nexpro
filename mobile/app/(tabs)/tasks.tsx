@@ -33,6 +33,7 @@ import { FilterChipRow } from '@/components/FilterChip';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListResponse';
 import { refreshAfterTaskChange } from '@/utils/queryInvalidation';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 
 const STATUS_FILTERS = ['all', 'todo', 'in_progress', 'on_hold', 'completed'] as const;
 
@@ -338,6 +339,12 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, marginBottom: 12 },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 8 },
   secondaryBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1 },
-  primaryBtn: { paddingVertical: 14, paddingHorizontal: 20, borderRadius: 10, alignItems: 'center' },
+  primaryBtn: {
+    ...standaloneFullWidth,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
   primaryTxt: { fontWeight: '700' },
 });

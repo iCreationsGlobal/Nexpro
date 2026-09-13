@@ -12,6 +12,7 @@ describe('automationBusinessType', () => {
   const restaurantTenant = { businessType: 'shop', metadata: { shopType: 'restaurant' } };
   const pharmacyTenant = { businessType: 'pharmacy', metadata: {} };
   const printingPressTenant = { businessType: 'printing_press', metadata: {} };
+  const rentalTenant = { businessType: 'rental', metadata: {} };
 
   it('resolves legacy studio-like types as studio', () => {
     expect(getTenantAutomationContext(printingPressTenant).resolvedType).toBe('studio');
@@ -62,6 +63,22 @@ describe('automationBusinessType', () => {
     const keys = filterTemplatesForTenant(getTemplates(), pharmacyTenant).map((t) => t.key);
     expect(keys).toContain('prescription_refill_reminder');
     expect(keys).not.toContain('low_stock_alert');
+  });
+
+  it('allows invoice and rental triggers for rental tenants, not shop sales', () => {
+    expect(isTriggerAllowedForTenant('payment_received', rentalTenant)).toBe(true);
+    expect(isTriggerAllowedForTenant('invoice_sent', rentalTenant)).toBe(true);
+    expect(isTriggerAllowedForTenant('rental_created', rentalTenant)).toBe(true);
+    expect(isTriggerAllowedForTenant('rental_due_in_days', rentalTenant)).toBe(true);
+    expect(isTriggerAllowedForTenant('sale_completed', rentalTenant)).toBe(false);
+    expect(isTriggerAllowedForTenant('job_created', rentalTenant)).toBe(false);
+
+    const keys = filterTemplatesForTenant(getTemplates(), rentalTenant).map((t) => t.key);
+    expect(keys).toContain('payment_received_thank_you');
+    expect(keys).toContain('rental_created_confirmation');
+    expect(keys).toContain('invoice_due_reminder');
+    expect(keys).not.toContain('sale_completed_receipt');
+    expect(keys).not.toContain('job_completed_notification');
   });
 
   it('filters trigger type lists for OpenAI / builder use', () => {

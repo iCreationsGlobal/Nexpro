@@ -4,6 +4,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 
 import { AppIcon } from '@/components/AppIcon';
+import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -108,8 +109,8 @@ export function GoogleSignInButton({
 
 const styles = StyleSheet.create({
   button: {
-    height: 48,
-    borderWidth: 1,
+    height: TOUCH_TARGET.standard,
+    borderWidth: BORDER_WIDTH.standard,
     borderColor: '#d1d5db',
     borderRadius: 8,
     alignItems: 'center',

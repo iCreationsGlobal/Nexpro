@@ -13,9 +13,18 @@ jest.mock('../../../services/platformSmsUsageService', () => ({
   incrementPlatformSmsUsage: jest.fn(),
 }));
 
+jest.mock('../../../services/absCreditsService', () => ({
+  resolvePlatformSmsBilling: jest.fn(),
+  debitForSend: jest.fn(),
+}));
+
 const { Setting } = require('../../../models');
 const { getSavedPlatformSmsConfig } = require('../../../services/platformSmsSettingsService');
-const { checkPlatformSmsLimit, incrementPlatformSmsUsage } = require('../../../services/platformSmsUsageService');
+const { incrementPlatformSmsUsage } = require('../../../services/platformSmsUsageService');
+const {
+  resolvePlatformSmsBilling,
+  debitForSend,
+} = require('../../../services/absCreditsService');
 const smsService = require('../../../services/smsService');
 const axios = require('axios');
 
@@ -25,8 +34,14 @@ describe('smsService config resolution', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getSavedPlatformSmsConfig.mockResolvedValue(null);
-    checkPlatformSmsLimit.mockResolvedValue({ allowed: true, summary: {} });
+    resolvePlatformSmsBilling.mockResolvedValue({
+      allowed: true,
+      billType: 'free',
+      freeSummary: {},
+      creditsBalance: 0,
+    });
     incrementPlatformSmsUsage.mockResolvedValue(1);
+    debitForSend.mockResolvedValue({ balance: 0 });
   });
 
   it('prefers tenant SMS when enabled with valid credentials', async () => {
@@ -65,7 +80,7 @@ describe('smsService config resolution', () => {
     expect(config.senderId).toBe('ABS');
   });
 
-  it('returns PLATFORM_SMS_MONTHLY_LIMIT when platform quota is exceeded', async () => {
+  it('returns ABS_CREDITS_INSUFFICIENT when free quota and credits are exhausted', async () => {
     Setting.findOne.mockResolvedValue({ value: { enabled: false } });
     getSavedPlatformSmsConfig.mockResolvedValue({
       enabled: true,
@@ -75,17 +90,19 @@ describe('smsService config resolution', () => {
       source: 'platform',
       limited: true,
     });
-    checkPlatformSmsLimit.mockResolvedValue({
+    resolvePlatformSmsBilling.mockResolvedValue({
       allowed: false,
-      errorCode: 'PLATFORM_SMS_MONTHLY_LIMIT',
-      error: 'limit reached',
-      summary: { sentCount: 100, monthlyLimit: 100 },
+      billType: null,
+      errorCode: 'ABS_CREDITS_INSUFFICIENT',
+      error: 'credits exhausted',
+      freeSummary: { sentCount: 100, monthlyLimit: 100 },
+      creditsBalance: 0,
     });
 
     const result = await smsService.sendMessage('tenant-1', '+233241234567', 'Hello');
 
     expect(result.success).toBe(false);
-    expect(result.errorCode).toBe('PLATFORM_SMS_MONTHLY_LIMIT');
+    expect(result.errorCode).toBe('ABS_CREDITS_INSUFFICIENT');
     expect(axios.post).not.toHaveBeenCalled();
   });
 
@@ -99,11 +116,42 @@ describe('smsService config resolution', () => {
       source: 'platform',
       limited: true,
     });
-    axios.post.mockResolvedValue({ data: { data: [{ id: 'msg-1' }] } });
+    axios.post.mockResolvedValue({
+      status: 200,
+      data: { status: 'success', data: { id: 'msg-1' } },
+    });
 
     const result = await smsService.sendMessage('tenant-1', '+233241234567', 'Hello');
 
     expect(result.success).toBe(true);
-    expect(incrementPlatformSmsUsage).toHaveBeenCalledWith('tenant-1', 1);
+    expect(incrementPlatformSmsUsage).toHaveBeenCalled();
+  });
+
+  it('debits ABS Credits when platform billing type is credits', async () => {
+    Setting.findOne.mockResolvedValue({ value: { enabled: false } });
+    getSavedPlatformSmsConfig.mockResolvedValue({
+      enabled: true,
+      provider: 'arkesel',
+      apiKey: 'platform-key',
+      senderId: 'ABS',
+      source: 'platform',
+      limited: true,
+    });
+    resolvePlatformSmsBilling.mockResolvedValue({
+      allowed: true,
+      billType: 'credits',
+      freeSummary: {},
+      creditsBalance: 10,
+    });
+    axios.post.mockResolvedValue({
+      status: 200,
+      data: { status: 'success', data: { id: 'msg-2' } },
+    });
+
+    const result = await smsService.sendMessage('tenant-1', '+233241234567', 'Hello');
+
+    expect(result.success).toBe(true);
+    expect(result.platformBillType).toBe('credits');
+    expect(debitForSend).toHaveBeenCalled();
   });
 });

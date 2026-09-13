@@ -398,7 +398,7 @@ exports.register = async (req, res, next) => {
 
         await transaction.commit();
 
-        seedDefaultCategories(tenant.id, 'shop', null, null, true)
+        seedDefaultCategories(tenant.id, 'shop', null, null, null, true)
           .then(() => console.log('[Auth] Seeded default categories for new_tenant'))
           .catch((err) => console.error('[Auth] seedDefaultCategories (new_tenant):', err?.message));
         seedDefaultChartOfAccounts(tenant.id, true)
@@ -1058,7 +1058,7 @@ exports.googleAuth = async (req, res, next) => {
     user = await findUserForAuthResponse(newUser.id);
     const shopType = metadata?.shopType || null;
     const studioType = metadata?.studioType || null;
-    seedDefaultCategories(tenant.id, finalBusinessType, shopType, studioType, true)
+    seedDefaultCategories(tenant.id, finalBusinessType, shopType, studioType, null, true)
       .then(() => console.log(`[Google Auth] Seeded default categories for tenant ${tenant.id}`))
       .catch((err) => console.error('[Google Auth] seedDefaultCategories error:', err.message));
     seedDefaultChartOfAccounts(tenant.id, true)
@@ -1238,15 +1238,33 @@ const buildTenantBootstrapPayload = async ({ userId, membership }) => {
     return {
       activeTenantId: null,
       activeTenant: null,
+      workspace: null,
       settings: {},
-      access: { shops: [], studioLocations: [] },
+      access: { shops: [], studioLocations: [], defaultBranchId: null },
       onlineStore: null,
     };
   }
 
   const tenantId = membership.tenantId;
   const tenant = membership.tenant || null;
+  const tenantJson = tenant && typeof tenant.toJSON === 'function' ? tenant.toJSON() : tenant;
+  const { getWorkspaceManifest } = require('../services/tenantProvisioningService');
+  const workspace = getWorkspaceManifest(tenantJson);
+  const isRentalTenant = workspace?.kind === 'rental'
+    || resolveBusinessType(tenantJson?.businessType) === 'rental';
   const role = membership.role || null;
+
+  const settingsKeys = [
+    'organization',
+    'subscription',
+    'payment-collection',
+    'paymentCollection',
+    'customer-notification-preferences',
+  ];
+  if (isRentalTenant) {
+    settingsKeys.push('rental_settings');
+  }
+
   const [
     settingsRows,
     shopIds,
@@ -1257,13 +1275,7 @@ const buildTenantBootstrapPayload = async ({ userId, membership }) => {
       where: {
         tenantId,
         key: {
-          [Op.in]: [
-            'organization',
-            'subscription',
-            'payment-collection',
-            'paymentCollection',
-            'customer-notification-preferences',
-          ],
+          [Op.in]: settingsKeys,
         },
       },
       attributes: ['key', 'value'],
@@ -1304,14 +1316,29 @@ const buildTenantBootstrapPayload = async ({ userId, membership }) => {
       : [],
   ]);
 
+  const settings = indexSettingsByKey(settingsRows);
+  if (settings.rental_settings) {
+    settings.rental = settings.rental_settings;
+    delete settings.rental_settings;
+  } else if (workspace?.settingsKeys?.rental) {
+    settings.rental = workspace.settingsKeys.rental;
+  }
+
+  const defaultBranchId = workspace?.defaultBranchId
+    || shops.find((shop) => shop.isDefault)?.id
+    || shops[0]?.id
+    || null;
+
   return {
     activeTenantId: tenantId,
     activeTenant: tenant,
     tenantRole: role,
-    settings: indexSettingsByKey(settingsRows),
+    workspace: workspace || null,
+    settings,
     access: {
       shops,
       studioLocations,
+      defaultBranchId,
     },
     onlineStore,
   };

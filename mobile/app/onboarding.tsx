@@ -34,8 +34,9 @@ import {
 } from '@/components/AppBottomSheet';
 import { BRAND_GREEN } from '@/constants/brand';
 import { FontFamily, FontSize } from '@/constants/typography';
+import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
 
-/** Icon name per business group (retail = cart; matches web concepts: Briefcase, Scissors, Car, UtensilsCrossed, Pill). */
+/** Icon name per business group (retail = cart; matches web concepts: Briefcase, Scissors, Car, UtensilsCrossed, Pill, Package). */
 function getBusinessGroupIconName(groupKey: string): AppIconName {
   switch (groupKey) {
     case BUSINESS_GROUPS.RETAIL:
@@ -50,6 +51,8 @@ function getBusinessGroupIconName(groupKey: string): AppIconName {
       return 'restaurant-outline';
     case BUSINESS_GROUPS.HEALTH:
       return 'medical-outline';
+    case BUSINESS_GROUPS.RENTAL:
+      return 'package-outline';
     case BUSINESS_GROUPS.SERVICES:
     default:
       return 'briefcase-outline';
@@ -498,12 +501,15 @@ const styles = StyleSheet.create({
   optionLabelSelected: { color: BRAND_GREEN },
   optionDesc: { fontSize: 13, color: '#6b7280', marginTop: 2 },
   setupLaterButtonFooter: {
+    minHeight: TOUCH_TARGET.standard,
     paddingVertical: 12,
     paddingHorizontal: 12,
     minWidth: 80,
-    borderWidth: 1,
+    borderWidth: BORDER_WIDTH.standard,
     borderColor: '#d1d5db',
     borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   setupLaterButtonText: { fontSize: 16, color: '#6b7280', fontWeight: '500' },
   form: { gap: 12 },
@@ -572,17 +578,20 @@ const styles = StyleSheet.create({
   error: { color: '#dc2626', fontSize: 14 },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 24, paddingBottom: 32, borderTopWidth: 1, borderTopColor: '#e5e7eb' },
   backButton: {
+    minHeight: TOUCH_TARGET.standard,
     minWidth: 80,
     paddingVertical: 10,
     paddingHorizontal: 16,
-    borderWidth: 1,
+    borderWidth: BORDER_WIDTH.standard,
     borderColor: '#d1d5db',
     borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   backButtonText: { fontSize: 16, color: BRAND_GREEN, fontWeight: '600' },
   nextButton: {
     flex: 1,
-    height: 48,
+    height: TOUCH_TARGET.standard,
     backgroundColor: BRAND_GREEN,
     borderRadius: 8,
     alignItems: 'center',

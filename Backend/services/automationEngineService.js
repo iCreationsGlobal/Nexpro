@@ -16,6 +16,8 @@ const {
   Tenant,
   User,
   UserTask,
+  Rental,
+  RentalItem,
 } = require('../models');
 const { loadTenantOrganization } = require('../utils/documentOrganizationUtils');
 const emailService = require('./emailService');
@@ -55,6 +57,9 @@ const STICKY_TRIGGER_TYPES = new Set([
   'out_of_stock_detected',
   'low_stock_on_change',
   'job_due_in_hours',
+  'rental_due_in_days',
+  'rental_overdue',
+  'rental_overdue_staff',
 ]);
 
 const MESSAGING_ACTION_TYPES = new Set([
@@ -116,7 +121,7 @@ function getTemplates() {
       name: 'Invoice due reminder',
       description: 'Email customers before an invoice is due.',
       triggerType: 'invoice_due_in_days',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       defaultForBusiness: true,
       triggerConfig: { daysBeforeDue: 2 },
       actionConfig: {
@@ -160,7 +165,7 @@ function getTemplates() {
       name: 'Win-back campaign',
       description: 'Email customers after a period of inactivity.',
       triggerType: 'customer_inactive_days',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       defaultForBusiness: true,
       triggerConfig: { inactiveDays: 30 },
       actionConfig: {
@@ -184,7 +189,7 @@ function getTemplates() {
       name: 'Birthday greeting',
       description: 'Send customers a birthday message on their birthday.',
       triggerType: 'customer_birthday',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
@@ -208,7 +213,7 @@ function getTemplates() {
       name: 'Overdue invoice reminder',
       description: 'Send a payment reminder after an invoice is overdue.',
       triggerType: 'invoice_overdue',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       defaultForBusiness: true,
       triggerConfig: { daysAfterDue: 1 },
       scheduleConfig: { frequency: 'weekly', cooldownHours: 168 },
@@ -235,7 +240,7 @@ function getTemplates() {
       name: 'Quote follow-up',
       description: 'Email customers when a sent quote has no response.',
       triggerType: 'quote_no_response',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       requiresQuotes: true,
       defaultForBusiness: true,
       triggerConfig: { silentDays: 3 },
@@ -255,7 +260,7 @@ function getTemplates() {
       name: 'Payment received thank-you',
       description: 'Thank customers after a payment is recorded.',
       triggerType: 'payment_received',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
@@ -332,7 +337,7 @@ function getTemplates() {
       name: 'Review request',
       description: 'Ask customers for a review after a job, sale, or paid invoice.',
       triggerType: 'review_request',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       triggerConfig: {},
       scheduleConfig: { cooldownHours: 168, delayMinutes: DEFAULT_REVIEW_REQUEST_DELAY_MINUTES },
       actionConfig: {
@@ -371,7 +376,7 @@ function getTemplates() {
       description: 'Notify the team when a new lead is created.',
       triggerType: 'new_lead',
       audience: 'internal',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       triggerConfig: {},
       actionConfig: {
         audience: 'internal',
@@ -397,7 +402,7 @@ function getTemplates() {
       description: 'Email staff when a new lead is created (does not message the lead).',
       triggerType: 'new_lead_staff',
       audience: 'internal',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
@@ -418,7 +423,7 @@ function getTemplates() {
       description: 'Alert managers when an invoice exceeds a set amount.',
       triggerType: 'high_value_invoice',
       audience: 'internal',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       triggerConfig: { minAmount: 1000 },
       actionConfig: {
         audience: 'internal',
@@ -443,7 +448,7 @@ function getTemplates() {
       name: 'New customer welcome',
       description: 'Welcome new customers by email, SMS, or WhatsApp.',
       triggerType: 'customer_created',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
@@ -467,7 +472,7 @@ function getTemplates() {
       name: 'Lead follow-up',
       description: 'Follow up when a lead has had no contact for a set time.',
       triggerType: 'lead_no_contact_days',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       triggerConfig: { noContactDays: 3 },
       actionConfig: {
         actions: [{
@@ -488,7 +493,7 @@ function getTemplates() {
       name: 'Invoice sent',
       description: 'Notify the customer when an invoice is sent.',
       triggerType: 'invoice_sent',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       defaultForBusiness: true,
       triggerConfig: {},
       actionConfig: {
@@ -598,7 +603,7 @@ function getTemplates() {
       name: 'Quote sent',
       description: 'Notify the customer when a quote is sent.',
       triggerType: 'quote_sent',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       requiresQuotes: true,
       defaultForBusiness: true,
       triggerConfig: {},
@@ -755,7 +760,7 @@ function getTemplates() {
       description: 'Notify owners and managers when a payment is recorded.',
       triggerType: 'payment_received_staff',
       audience: 'internal',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       triggerConfig: {},
       actionConfig: {
         audience: 'internal',
@@ -775,7 +780,7 @@ function getTemplates() {
       description: 'Notify owners and managers when an invoice is fully paid.',
       triggerType: 'invoice_paid_staff',
       audience: 'internal',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       triggerConfig: {},
       actionConfig: {
         audience: 'internal',
@@ -795,7 +800,7 @@ function getTemplates() {
       description: 'Notify staff when an invoice becomes overdue.',
       triggerType: 'invoice_overdue_staff',
       audience: 'internal',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       triggerConfig: { daysAfterDue: 1 },
       scheduleConfig: { frequency: 'weekly', cooldownHours: 168 },
       actionConfig: {
@@ -858,7 +863,7 @@ function getTemplates() {
       description: 'Notify the team when a customer accepts a quote.',
       triggerType: 'quote_accepted_staff',
       audience: 'internal',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       requiresQuotes: true,
       triggerConfig: {},
       actionConfig: {
@@ -939,7 +944,7 @@ function getTemplates() {
       description: 'Notify the assignee when a lead is assigned.',
       triggerType: 'lead_assigned_staff',
       audience: 'internal',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       triggerConfig: {},
       actionConfig: {
         audience: 'internal',
@@ -959,7 +964,7 @@ function getTemplates() {
       description: 'Notify assignees when a workspace task is assigned to them.',
       triggerType: 'task_assigned_staff',
       audience: 'internal',
-      allowedBusinessTypes: ['shop', 'studio', 'pharmacy'],
+      allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       triggerConfig: {},
       actionConfig: {
         audience: 'internal',
@@ -970,6 +975,181 @@ function getTemplates() {
           recipient: { type: 'assignee' },
           subject: 'Task assigned: {{taskTitle}}',
           body: 'Hi {{assigneeName}},\n\n{{assignedByName}} assigned you the task "{{taskTitle}}".\n\nPriority: {{taskPriority}}\nDue: {{dueDate}}\n\n{{taskDescription}}\n\nOpen tasks: {{taskLink}}\n\n— {{businessName}}',
+        }]
+      }
+    },
+    {
+      key: 'rental_created_confirmation',
+      name: 'Rental confirmation',
+      description: 'Confirm a rental booking with the customer.',
+      triggerType: 'rental_created',
+      allowedBusinessTypes: ['rental'],
+      defaultForBusiness: true,
+      triggerConfig: {},
+      actionConfig: {
+        actions: [{
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, your rental is booked from {{startDate}} to {{endDate}}. Total {{totalAmountFormatted}}. Invoice {{invoiceNumber}}. — {{businessName}}',
+        }, {
+          type: 'send_email_platform',
+          subject: 'Rental confirmed — {{invoiceNumber}}',
+          body: 'Hi {{customerName}},\n\nYour rental is confirmed from {{startDate}} to {{endDate}}.\n\nItems: {{itemList}}\nTotal: {{totalAmountFormatted}}\nBalance: {{balance}}\nInvoice: {{invoiceNumber}}\n\nThank you,\n{{businessName}}',
+        }]
+      }
+    },
+    {
+      key: 'rental_created_staff',
+      name: 'Rental created — staff alert',
+      description: 'Notify staff when a rental is created.',
+      triggerType: 'rental_created_staff',
+      audience: 'internal',
+      allowedBusinessTypes: ['rental'],
+      triggerConfig: {},
+      actionConfig: {
+        audience: 'internal',
+        defaultRecipient: { type: 'role', roles: ['owner', 'manager'] },
+        actions: [{
+          type: 'send_email_platform',
+          audience: 'internal',
+          recipient: { type: 'role', roles: ['owner', 'manager'] },
+          subject: 'New rental for {{customerName}}',
+          body: '{{customerName}} booked a rental {{startDate}} to {{endDate}} — {{totalAmountFormatted}}.\n\nItems: {{itemList}}\n\n— {{businessName}}',
+        }]
+      }
+    },
+    {
+      key: 'rental_checked_out_notification',
+      name: 'Rental handover',
+      description: 'Notify customers when items are handed over.',
+      triggerType: 'rental_checked_out',
+      allowedBusinessTypes: ['rental'],
+      defaultForBusiness: true,
+      triggerConfig: {},
+      actionConfig: {
+        actions: [{
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, your rental items are out. Due back {{endDate}}. — {{businessName}}',
+        }, {
+          type: 'send_email_platform',
+          subject: 'Your rental is out — due {{endDate}}',
+          body: 'Hi {{customerName}},\n\nYour rental items have been handed over.\n\nDue back: {{endDate}}\nItems: {{itemList}}\n\n{{businessName}}',
+        }]
+      }
+    },
+    {
+      key: 'rental_returned_notification',
+      name: 'Rental return confirmation',
+      description: 'Confirm a rental return and remaining balance.',
+      triggerType: 'rental_returned',
+      allowedBusinessTypes: ['rental'],
+      defaultForBusiness: true,
+      triggerConfig: {},
+      actionConfig: {
+        actions: [{
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, we recorded your return. Balance {{balance}}. Invoice {{invoiceNumber}}. — {{businessName}}',
+        }, {
+          type: 'send_email_platform',
+          subject: 'Rental returned — {{invoiceNumber}}',
+          body: 'Hi {{customerName}},\n\nWe recorded the return of your rental.\n\nInvoice: {{invoiceNumber}}\nBalance: {{balance}}\n\nThank you,\n{{businessName}}',
+        }]
+      }
+    },
+    {
+      key: 'rental_returned_staff',
+      name: 'Rental returned — staff alert',
+      description: 'Notify staff when a rental is returned.',
+      triggerType: 'rental_returned_staff',
+      audience: 'internal',
+      allowedBusinessTypes: ['rental'],
+      triggerConfig: {},
+      actionConfig: {
+        audience: 'internal',
+        defaultRecipient: { type: 'role', roles: ['owner', 'manager'] },
+        actions: [{
+          type: 'send_email_platform',
+          audience: 'internal',
+          recipient: { type: 'role', roles: ['owner', 'manager'] },
+          subject: 'Rental returned — {{customerName}}',
+          body: '{{customerName}} returned a rental. Balance {{balance}}. Invoice {{invoiceNumber}}.\n\n— {{businessName}}',
+        }]
+      }
+    },
+    {
+      key: 'rental_cancelled_notification',
+      name: 'Rental cancelled',
+      description: 'Notify customers when a rental is cancelled.',
+      triggerType: 'rental_cancelled',
+      allowedBusinessTypes: ['rental'],
+      triggerConfig: {},
+      actionConfig: {
+        actions: [{
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, your rental from {{startDate}} to {{endDate}} was cancelled. — {{businessName}}',
+        }, {
+          type: 'send_email_platform',
+          subject: 'Rental cancelled',
+          body: 'Hi {{customerName}},\n\nYour rental from {{startDate}} to {{endDate}} has been cancelled.\n\n{{businessName}}',
+        }]
+      }
+    },
+    {
+      key: 'rental_due_reminder',
+      name: 'Rental due reminder',
+      description: 'Remind customers before a rental is due back.',
+      triggerType: 'rental_due_in_days',
+      allowedBusinessTypes: ['rental'],
+      defaultForBusiness: true,
+      triggerConfig: { daysBeforeDue: 1 },
+      actionConfig: {
+        actions: [{
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, your rental is due back on {{endDate}}. — {{businessName}}',
+        }, {
+          type: 'send_email_platform',
+          subject: 'Rental due {{endDate}}',
+          body: 'Hi {{customerName}},\n\nYour rental is due back on {{endDate}}.\n\nItems: {{itemList}}\n\n{{businessName}}',
+        }]
+      }
+    },
+    {
+      key: 'rental_overdue_reminder',
+      name: 'Rental overdue reminder',
+      description: 'Remind customers when a rental is overdue.',
+      triggerType: 'rental_overdue',
+      allowedBusinessTypes: ['rental'],
+      defaultForBusiness: true,
+      triggerConfig: { daysAfterDue: 0 },
+      scheduleConfig: { frequency: 'daily', cooldownHours: 24 },
+      actionConfig: {
+        actions: [{
+          type: 'send_sms',
+          body: 'Hi {{customerName}}, your rental was due back on {{endDate}}. Please return it as soon as possible. — {{businessName}}',
+        }, {
+          type: 'send_email_platform',
+          subject: 'Overdue rental — due {{endDate}}',
+          body: 'Hi {{customerName}},\n\nYour rental was due back on {{endDate}}.\n\nItems: {{itemList}}\nPlease return the items as soon as possible.\n\n{{businessName}}',
+        }]
+      }
+    },
+    {
+      key: 'rental_overdue_staff',
+      name: 'Rental overdue — staff alert',
+      description: 'Alert staff when a rental is overdue.',
+      triggerType: 'rental_overdue_staff',
+      audience: 'internal',
+      allowedBusinessTypes: ['rental'],
+      triggerConfig: { daysAfterDue: 0 },
+      scheduleConfig: { frequency: 'daily', cooldownHours: 24 },
+      actionConfig: {
+        audience: 'internal',
+        defaultRecipient: { type: 'role', roles: ['owner', 'manager'] },
+        actions: [{
+          type: 'send_email_platform',
+          audience: 'internal',
+          recipient: { type: 'role', roles: ['owner', 'manager'] },
+          subject: 'Overdue rental — {{customerName}}',
+          body: '{{customerName}} has an overdue rental due {{endDate}}.\n\nItems: {{itemList}}\n\n— {{businessName}}',
         }]
       }
     },
@@ -2715,6 +2895,68 @@ async function getTriggerContextsForRule(rule, now = new Date()) {
     }));
   }
 
+  if (triggerType === 'rental_due_in_days') {
+    const daysBeforeDue = toNumber(triggerConfig.daysBeforeDue, 1);
+    const target = addDays(now, daysBeforeDue);
+    const targetKey = target.toISOString().slice(0, 10);
+    const rentals = await Rental.findAll({
+      where: {
+        tenantId,
+        status: { [Op.in]: ['confirmed', 'active'] },
+        endDate: targetKey,
+        ...(rule.shopId ? { branchId: rule.shopId } : {}),
+      },
+      include: [
+        { model: Customer, as: 'customer', attributes: ['id', 'name', 'company', 'phone', 'email', 'whatsappConsent', 'smsConsent', 'marketingConsent'] },
+        { model: RentalItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name'] }] },
+      ],
+      limit: MAX_SUBJECTS_PER_RULE,
+      order: [['endDate', 'ASC']],
+    });
+    return finalizeTriggerContexts(tenantId, rentals.map((rental) => buildRentalTriggerContext({
+      rental,
+      customer: rental.customer,
+      kind: 'rental_due',
+    })));
+  }
+
+  if (triggerType === 'rental_overdue' || triggerType === 'rental_overdue_staff') {
+    const daysAfterDue = toNumber(triggerConfig.daysAfterDue, 0);
+    const cutoffKey = addDays(now, -daysAfterDue).toISOString().slice(0, 10);
+    const rentals = await Rental.findAll({
+      where: {
+        tenantId,
+        status: { [Op.in]: ['active', 'overdue'] },
+        endDate: { [Op.lte]: cutoffKey },
+        ...(rule.shopId ? { branchId: rule.shopId } : {}),
+      },
+      include: [
+        { model: Customer, as: 'customer', attributes: ['id', 'name', 'company', 'phone', 'email', 'whatsappConsent', 'smsConsent', 'marketingConsent'] },
+        { model: RentalItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name'] }] },
+      ],
+      limit: MAX_SUBJECTS_PER_RULE,
+      order: [['endDate', 'ASC']],
+    });
+    const kind = triggerType === 'rental_overdue_staff' ? 'rental_overdue_staff' : 'rental_overdue';
+    return finalizeTriggerContexts(tenantId, rentals.map((rental) => {
+      const ctx = buildRentalTriggerContext({
+        rental,
+        customer: rental.customer,
+        kind,
+      });
+      if (triggerType === 'rental_overdue_staff') {
+        return {
+          ...ctx,
+          customerEmail: ctx.email || null,
+          customerPhone: ctx.phone || null,
+          email: null,
+          phone: null,
+        };
+      }
+      return ctx;
+    }));
+  }
+
   if (triggerType === 'prescription_refill_due') {
     const daysBeforeDue = toNumber(triggerConfig.daysBeforeDue, 3);
     const windowEnd = endOfDay(addDays(now, daysBeforeDue));
@@ -4214,6 +4456,161 @@ function buildTaskAssignedStaffTriggerContext({
   };
 }
 
+function buildRentalItemList(rental) {
+  const items = rental?.items || [];
+  const names = items
+    .map((item) => item?.product?.name || 'Rental item')
+    .filter(Boolean);
+  if (!names.length) return 'Items';
+  if (names.length <= 3) return names.join(', ');
+  return `${names.slice(0, 3).join(', ')} +${names.length - 3} more`;
+}
+
+function buildRentalTriggerContext({
+  rental,
+  customer = null,
+  invoice = null,
+  kind = 'rental',
+} = {}) {
+  const customerObj = customer || rental?.customer || {};
+  const metadata = rental?.metadata && typeof rental.metadata === 'object' ? rental.metadata : {};
+  const invoiceNumber = invoice?.invoiceNumber || null;
+  const totalDue = toNumber(rental?.totalDue ?? rental?.amount, 0);
+  const amountPaid = toNumber(rental?.amountPaid, 0);
+  const invoiceBalance = invoice
+    ? toNumber(invoice.balance ?? (toNumber(invoice.totalAmount) - toNumber(invoice.amountPaid)), 0)
+    : Math.max(0, totalDue - amountPaid);
+  const startDate = formatAutomationDate(rental?.startDate);
+  const endDate = formatAutomationDate(rental?.endDate);
+  const itemList = buildRentalItemList(rental);
+  const customerName = customerObj.name || customerObj.company || 'Customer';
+
+  return {
+    subjectKey: `${kind}:${rental?.id}`,
+    rentalId: rental?.id || null,
+    customerId: customerObj.id || rental?.customerId || null,
+    customerName,
+    startDate,
+    endDate,
+    itemList,
+    invoiceNumber: invoiceNumber || 'pending',
+    invoiceId: invoice?.id || metadata.invoiceId || null,
+    totalAmount: totalDue,
+    totalAmountFormatted: `₵ ${totalDue.toFixed(2)}`,
+    amountPaid,
+    balance: `₵ ${invoiceBalance.toFixed(2)}`,
+    rentalStatus: rental?.status || null,
+    email: customerObj.email || null,
+    phone: customerObj.phone || null,
+    customerHasPhone: Boolean(customerObj.phone),
+    customerHasEmail: Boolean(customerObj.email),
+    whatsappConsent: customerObj.whatsappConsent === true,
+    smsConsent: customerObj.smsConsent === true,
+    marketingConsent: customerObj.marketingConsent === true,
+    customer: {
+      id: customerObj.id || rental?.customerId || null,
+      name: customerObj.name || null,
+      company: customerObj.company || null,
+      email: customerObj.email || null,
+      phone: customerObj.phone || null,
+    },
+    shopId: rental?.branchId || null,
+    message: `Rental for ${customerName} ${startDate} to ${endDate}.`,
+  };
+}
+
+async function runRentalCreatedAutomations({ tenantId, rental, invoice = null, actorUserId = null }) {
+  if (!tenantId || !rental?.id) return { skipped: true, reason: 'missing_rental' };
+  return executeMatchingRules({
+    tenantId,
+    triggerType: 'rental_created',
+    triggerContext: buildRentalTriggerContext({
+      rental,
+      customer: rental.customer,
+      invoice,
+      kind: 'rental_created',
+    }),
+    actorUserId,
+  });
+}
+
+async function runRentalCreatedStaffAutomations({ tenantId, rental, invoice = null, actorUserId = null }) {
+  if (!tenantId || !rental?.id) return { skipped: true, reason: 'missing_rental' };
+  const ctx = buildRentalTriggerContext({
+    rental,
+    customer: rental.customer,
+    invoice,
+    kind: 'rental_created_staff',
+  });
+  return executeMatchingRules({
+    tenantId,
+    triggerType: 'rental_created_staff',
+    triggerContext: { ...ctx, email: null, phone: null },
+    actorUserId,
+  });
+}
+
+async function runRentalCheckedOutAutomations({ tenantId, rental, invoice = null, actorUserId = null }) {
+  if (!tenantId || !rental?.id) return { skipped: true, reason: 'missing_rental' };
+  return executeMatchingRules({
+    tenantId,
+    triggerType: 'rental_checked_out',
+    triggerContext: buildRentalTriggerContext({
+      rental,
+      customer: rental.customer,
+      invoice,
+      kind: 'rental_checked_out',
+    }),
+    actorUserId,
+  });
+}
+
+async function runRentalReturnedAutomations({ tenantId, rental, invoice = null, actorUserId = null }) {
+  if (!tenantId || !rental?.id) return { skipped: true, reason: 'missing_rental' };
+  return executeMatchingRules({
+    tenantId,
+    triggerType: 'rental_returned',
+    triggerContext: buildRentalTriggerContext({
+      rental,
+      customer: rental.customer,
+      invoice,
+      kind: 'rental_returned',
+    }),
+    actorUserId,
+  });
+}
+
+async function runRentalReturnedStaffAutomations({ tenantId, rental, invoice = null, actorUserId = null }) {
+  if (!tenantId || !rental?.id) return { skipped: true, reason: 'missing_rental' };
+  const ctx = buildRentalTriggerContext({
+    rental,
+    customer: rental.customer,
+    invoice,
+    kind: 'rental_returned_staff',
+  });
+  return executeMatchingRules({
+    tenantId,
+    triggerType: 'rental_returned_staff',
+    triggerContext: { ...ctx, email: null, phone: null },
+    actorUserId,
+  });
+}
+
+async function runRentalCancelledAutomations({ tenantId, rental, invoice = null, actorUserId = null }) {
+  if (!tenantId || !rental?.id) return { skipped: true, reason: 'missing_rental' };
+  return executeMatchingRules({
+    tenantId,
+    triggerType: 'rental_cancelled',
+    triggerContext: buildRentalTriggerContext({
+      rental,
+      customer: rental.customer,
+      invoice,
+      kind: 'rental_cancelled',
+    }),
+    actorUserId,
+  });
+}
+
 async function runTaskAssignedStaffAutomations({
   tenantId,
   task,
@@ -4261,6 +4658,7 @@ module.exports = {
   buildOrderStatusStaffTriggerContext,
   buildLeadAssignedStaffTriggerContext,
   buildTaskAssignedStaffTriggerContext,
+  buildRentalTriggerContext,
   buildDailySalesSummaryContext,
   buildLeadTriggerContext,
   buildCustomerCreatedTriggerContext,
@@ -4288,6 +4686,12 @@ module.exports = {
   runSaleCompletedStaffAutomations,
   runLeadAssignedStaffAutomations,
   runTaskAssignedStaffAutomations,
+  runRentalCreatedAutomations,
+  runRentalCreatedStaffAutomations,
+  runRentalCheckedOutAutomations,
+  runRentalReturnedAutomations,
+  runRentalReturnedStaffAutomations,
+  runRentalCancelledAutomations,
   runNewLeadAutomations,
   runCustomerCreatedAutomations,
   runInvoiceSentAutomations,

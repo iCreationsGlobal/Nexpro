@@ -90,6 +90,48 @@ const isLocalHostname = (hostname) =>
 
 const PRODUCTION_API_HOSTS = new Set(['api.africanbusinesssuite.com']);
 
+/** Long POSTs that must not trigger a proxy port flap. */
+export const LONG_WATCH_PROXY_PATHS = [
+  '/api/watch/clips/process',
+  '/api/watch/demo-clip',
+];
+
+/**
+ * @param {string} [url]
+ * @returns {boolean}
+ */
+export function isLongWatchProxyPath(url) {
+  const path = String(url || '').split('?')[0];
+  return path.includes('/watch/clips/process') || path.includes('/watch/demo-clip');
+}
+
+/**
+ * @param {Error|{ code?: string, message?: string }} [err]
+ * @returns {boolean}
+ */
+export function isTransientProxyError(err) {
+  const code = err?.code;
+  const message = String(err?.message || '');
+  return (
+    code === 'ECONNRESET'
+    || code === 'ETIMEDOUT'
+    || code === 'EPIPE'
+    || /socket hang up|timed out|timeout/i.test(message)
+  );
+}
+
+/**
+ * Hang-up on Watch detect must not retarget 5001↔5002. Only ECONNREFUSED / dead backend should.
+ *
+ * @param {{ err?: Error, reqUrl?: string }} args
+ * @returns {boolean}
+ */
+export function shouldRetargetAfterProxyError({ err, reqUrl } = {}) {
+  if (isLongWatchProxyPath(reqUrl)) return false;
+  if (isTransientProxyError(err)) return false;
+  return true;
+}
+
 /**
  * Resolve the backend origin for local development (Vite proxy target).
  * @param {{ envUrl?: string }} [options]

@@ -7,6 +7,10 @@ const {
 } = require('../services/sidebarPreferenceHelper');
 const { JOB_INVOICE_DEFAULTS } = require('../services/jobCustomerTrackingService');
 const {
+  DEFAULT_RENTAL_SETTINGS,
+  normalizeRentalSettings,
+} = require('../services/rentalSettingsService');
+const {
   invalidateCache,
   invalidateAuthBootstrapCache,
 } = require('../middleware/cache');
@@ -16,6 +20,7 @@ const CUSTOMER_NOTIFICATION_DEFAULTS = {
   autoSendReceiptToCustomer: false,
   sendPaymentReminderEmail: false,
   sendInvoicePaidConfirmationToCustomer: true,
+  acceptOnlinePayments: false,
 };
 
 const INVOICE_ORGANIZATION_FIELDS = [
@@ -86,6 +91,12 @@ const buildCustomerNotificationPayload = (value = {}) => ({
   autoSendReceiptToCustomer: value.autoSendReceiptToCustomer === true,
   sendPaymentReminderEmail: value.sendPaymentReminderEmail === true,
   sendInvoicePaidConfirmationToCustomer: value.sendInvoicePaidConfirmationToCustomer !== false,
+  acceptOnlinePayments: value.acceptOnlinePayments === true,
+});
+
+const buildRentalSettingsPayload = (value = {}) => normalizeRentalSettings({
+  ...DEFAULT_RENTAL_SETTINGS,
+  ...(value && typeof value === 'object' ? value : {}),
 });
 
 /**
@@ -101,10 +112,11 @@ const getTenantAdminSettings = async (tenantId) => {
   }
 
   const tenant = normalizeTenantInstanceForRequest(tenantRow);
-  const [organizationSetting, jobInvoiceSetting, customerNotificationsSetting] = await Promise.all([
+  const [organizationSetting, jobInvoiceSetting, customerNotificationsSetting, rentalSetting] = await Promise.all([
     getSettingValue(tenantId, 'organization', {}),
     getSettingValue(tenantId, 'job-invoice', JOB_INVOICE_DEFAULTS),
     getSettingValue(tenantId, 'customer-notification-preferences', CUSTOMER_NOTIFICATION_DEFAULTS),
+    getSettingValue(tenantId, 'rental_settings', DEFAULT_RENTAL_SETTINGS),
   ]);
 
   return {
@@ -117,11 +129,17 @@ const getTenantAdminSettings = async (tenantId) => {
     organization: pickInvoiceOrganizationFields(organizationSetting),
     jobInvoice: buildJobInvoicePayload(jobInvoiceSetting),
     customerNotifications: buildCustomerNotificationPayload(customerNotificationsSetting),
+    ...(tenant.businessType === 'rental' ? {
+      rental: buildRentalSettingsPayload(rentalSetting),
+    } : {}),
     sidebarDefaults: {
       hiddenSidebarKeys: getTenantDefaultHiddenSidebarKeys(
         tenant.metadata,
         tenant.businessType,
-        tenant.metadata?.businessSubType || tenant.metadata?.shopType || null
+        tenant.metadata?.businessSubType ||
+          tenant.metadata?.shopType ||
+          tenant.metadata?.rentalType ||
+          null
       ),
     },
   };
@@ -227,9 +245,28 @@ const updateTenantAdminSettings = async ({ tenantId, actorUserId, payload, reaso
     auditSections.push('customerNotifications');
   }
 
+  if (incoming.rental && typeof incoming.rental === 'object' && tenantRow.businessType === 'rental') {
+    const patch = sanitizePayload(incoming.rental);
+    const existing = await getSettingValue(tenantId, 'rental_settings', DEFAULT_RENTAL_SETTINGS);
+    const value = buildRentalSettingsPayload({
+      ...existing,
+      ...patch,
+    });
+    await upsertSettingValue(
+      tenantId,
+      'rental_settings',
+      value,
+      'Rental late fees, deposits, and booking defaults'
+    );
+    auditSections.push('rental');
+  }
+
   if (incoming.sidebarDefaults && typeof incoming.sidebarDefaults === 'object') {
     const shopType =
-      tenantRow.metadata?.businessSubType || tenantRow.metadata?.shopType || null;
+      tenantRow.metadata?.businessSubType ||
+      tenantRow.metadata?.shopType ||
+      tenantRow.metadata?.rentalType ||
+      null;
     const sanitized = sanitizeHiddenSidebarKeys(
       incoming.sidebarDefaults.hiddenSidebarKeys,
       tenantRow.businessType,

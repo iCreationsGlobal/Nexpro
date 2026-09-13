@@ -73,6 +73,39 @@ const buildActivityEntry = (type, payload = {}) => ({
   ...payload
 });
 
+const normalizeTaskChecklistsInput = (value) => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === 'object')
+    .slice(0, 50)
+    .map((item, index) => ({
+      id: String(item.id || `cl_${Date.now()}_${index}`).slice(0, 80),
+      text: String(item.text || '').trim().slice(0, 300),
+      done: Boolean(item.done),
+      createdAt: item.createdAt || new Date().toISOString()
+    }))
+    .filter((item) => item.text);
+};
+
+const normalizeTaskTagsInput = (value) => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const tags = [];
+  for (const raw of value) {
+    const tag = String(raw || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-_]/g, '')
+      .slice(0, 32);
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    tags.push(tag);
+    if (tags.length >= 5) break;
+  }
+  return tags;
+};
+
 const sendTaskAssignmentEmail = async ({
   tenantId,
   assignee,
@@ -437,7 +470,7 @@ exports.createTask = async (req, res, next) => {
 exports.updateTask = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { title, status, dueDate, startDate, priority, description, isPrivate, assigneeId } = req.body;
+    const { title, status, dueDate, startDate, priority, description, isPrivate, assigneeId, checklists, tags } = req.body;
 
     if (!req.tenantId) {
       return res.status(400).json({
@@ -515,8 +548,24 @@ exports.updateTask = async (req, res, next) => {
       task.isPrivate = Boolean(isPrivate);
     }
 
+    const metadata = normalizeTaskMetadata(task.metadata);
+    let metadataChanged = false;
+
+    if (checklists !== undefined) {
+      const normalized = normalizeTaskChecklistsInput(checklists);
+      metadata.checklists = normalized;
+      metadataChanged = true;
+      changes.push('checklists');
+    }
+
+    if (tags !== undefined) {
+      const normalizedTags = normalizeTaskTagsInput(tags);
+      metadata.tags = normalizedTags;
+      metadataChanged = true;
+      changes.push('tags');
+    }
+
     if (changes.length > 0) {
-      const metadata = normalizeTaskMetadata(task.metadata);
       const activityLog = normalizeTaskActivity(metadata);
       const actor = req.user.name || req.user.email || 'User';
       metadata.activityLog = [
@@ -528,6 +577,10 @@ exports.updateTask = async (req, res, next) => {
           changes
         })
       ].slice(-300);
+      metadataChanged = true;
+    }
+
+    if (metadataChanged) {
       task.set('metadata', metadata);
       task.changed('metadata', true);
     }

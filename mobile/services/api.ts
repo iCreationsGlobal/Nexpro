@@ -1,6 +1,7 @@
 import axios, { CancelTokenSource, AxiosRequestConfig } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import * as Device from 'expo-device';
 import * as SecureStore from 'expo-secure-store';
 
 import { logger } from '@/utils/logger';
@@ -33,6 +34,13 @@ const API_BASE_URL =
   'https://api.africanbusinesssuite.com';
 
 logger.info('API', 'Base URL:', API_BASE_URL);
+
+if (__DEV__ && Device.isDevice && /localhost|127\.0\.0\.1/i.test(API_BASE_URL)) {
+  logger.warn(
+    'API',
+    'EXPO_PUBLIC_API_URL uses localhost on a physical device — requests will fail. Run npm run show-api-url, update mobile/.env with your Mac LAN IP, then restart Expo.'
+  );
+}
 
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,

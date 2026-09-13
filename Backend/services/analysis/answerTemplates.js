@@ -290,7 +290,115 @@ function templateJobPipeline(metrics) {
   return lines.join('\n');
 }
 
+function templateRentalsDueToday(metrics) {
+  const count = Number(metrics.count || 0);
+  if (count === 0) {
+    return `No rentals are scheduled to return today (**${metrics.asOfDate || 'today'}**).`;
+  }
+  const lines = (metrics.rentals || []).map((rental, index) => {
+    const balance =
+      rental.balanceDue > 0 ? ` — balance due ${money(rental.balanceDue)}` : '';
+    return `${index + 1}. **${rental.customerName}** (${String(rental.status).replace(/_/g, ' ')}) — due ${rental.endDate}${balance}`;
+  });
+  return [
+    `**${count}** rental${count === 1 ? '' : 's'} ${count === 1 ? 'is' : 'are'} due back today.`,
+    ...(lines.length ? ['', ...lines] : []),
+  ].join('\n');
+}
+
+function templateRentalsOverdue(metrics) {
+  const count = Number(metrics.count || 0);
+  if (count === 0) {
+    return 'Good news — you have **no overdue rentals** right now.';
+  }
+  const lines = (metrics.rentals || []).map((rental, index) => {
+    const balance =
+      rental.balanceDue > 0 ? ` — balance due ${money(rental.balanceDue)}` : '';
+    return `${index + 1}. **${rental.customerName}** — was due ${rental.endDate}${balance}`;
+  });
+  return [
+    `You have **${count}** overdue rental${count === 1 ? '' : 's'} to follow up on.`,
+    ...(lines.length ? ['', ...lines] : []),
+    '',
+    'Consider contacting these customers about return or payment.',
+  ].join('\n');
+}
+
+function templateRentalDamage(metrics) {
+  const products = metrics.products || [];
+  if (products.length === 0) {
+    return 'No damage incidents are recorded yet for your rental items.';
+  }
+  const lines = products.map(
+    (product, index) =>
+      `${index + 1}. **${product.productName}** — ${product.incidentCount} incident${product.incidentCount === 1 ? '' : 's'} (${money(product.totalRepairCost)} repair cost)`
+  );
+  return ['Items with the most damage:', '', ...lines].join('\n');
+}
+
+function templateRentalRevenue(metrics) {
+  const period = metrics.period || {};
+  if (!(period.revenue > 0)) {
+    return `No booked rental revenue for **${period.label || 'this period'}** yet.`;
+  }
+  return [
+    `For **${period.label || 'this period'}**, booked rental revenue is **${money(period.revenue)}** across **${period.rentalCount || 0}** rental${period.rentalCount === 1 ? '' : 's'}.`,
+    '',
+    'This uses hire amounts on rentals overlapping the period (not invoice payments alone).',
+  ].join('\n');
+}
+
+function templateRentalPerformanceSummary(metrics) {
+  const { kpis = {}, dueToday, overdue, revenue, receivables } = metrics;
+  const lines = [
+    `Here's your rental snapshot for **${revenue?.label || 'this period'}**:`,
+    `- Active rentals: **${kpis.activeRentals || 0}**`,
+    `- Due back today: **${kpis.dueBackToday || 0}**`,
+    `- Overdue rentals: **${kpis.overdueRentals || 0}**`,
+    `- Booked rental revenue: **${money(revenue?.revenue || 0)}**`,
+  ];
+
+  if (receivables?.totalOutstanding > 0) {
+    lines.push(`- Outstanding receivables: **${money(receivables.totalOutstanding)}**`);
+  }
+  if (kpis.upcomingPreBookings > 0) {
+    lines.push(`- Pending pre-bookings: **${kpis.upcomingPreBookings}**`);
+  }
+
+  const focus = [];
+  if ((kpis.overdueRentals || 0) > 0) {
+    focus.push('Follow up on overdue returns and any balances still due.');
+  }
+  if ((kpis.dueBackToday || 0) > 0) {
+    focus.push('Confirm today’s returns and inspect items on hand-back.');
+  }
+  if (receivables?.totalOutstanding > 0) {
+    focus.push('Chase outstanding invoices to improve cash flow.');
+  }
+  if (focus.length) {
+    lines.push('', 'What to work on:', ...focus.map((item) => `- ${item}`));
+  }
+
+  if ((dueToday?.rentals || []).length) {
+    lines.push('', 'Due back today:');
+    dueToday.rentals.forEach((rental, index) => {
+      lines.push(`${index + 1}. ${rental.customerName} (${rental.endDate})`);
+    });
+  }
+  if ((overdue?.rentals || []).length) {
+    lines.push('', 'Overdue:');
+    overdue.rentals.forEach((rental, index) => {
+      lines.push(`${index + 1}. ${rental.customerName} (due ${rental.endDate})`);
+    });
+  }
+
+  return lines.join('\n');
+}
+
 function templatePerformanceSummary(metrics) {
+  if (metrics.kpis) {
+    return templateRentalPerformanceSummary(metrics);
+  }
   const { current, prior, changes, lowStockCount, receivables } = metrics;
   const revPct = Number(changes.revenuePct) || 0;
   const direction =
@@ -389,6 +497,14 @@ function buildAnswerMarkdown(intent, metrics, extra = {}) {
       return templateInactiveCustomers(metrics);
     case 'job_pipeline':
       return templateJobPipeline(metrics);
+    case 'rentals_due_today':
+      return templateRentalsDueToday(metrics);
+    case 'rentals_overdue':
+      return templateRentalsOverdue(metrics);
+    case 'rental_damage':
+      return templateRentalDamage(metrics);
+    case 'rental_revenue_month':
+      return templateRentalRevenue(metrics);
     case 'receivables_summary':
       return templateReceivables(metrics);
     case 'who_owes_me':

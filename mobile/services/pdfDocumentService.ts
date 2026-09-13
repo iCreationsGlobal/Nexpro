@@ -4,6 +4,8 @@ import { File, Paths } from 'expo-file-system';
 
 import { API_BASE_URL } from './api';
 import { formatCurrency, formatDate, toNumber } from '@/utils/formatCurrency';
+import { formatLineItemQuantity } from '@/utils/documentLineItems';
+import { buildPrintableInvoiceHtml } from '@/utils/printableInvoiceHtml';
 import { logger } from '@/utils/logger';
 
 type AnyRecord = Record<string, unknown>;
@@ -212,11 +214,9 @@ function getLineItemUnitSymbol(item: AnyRecord): string {
   return '';
 }
 
+/** @deprecated Use formatLineItemQuantity from @/utils/documentLineItems */
 export function formatLineItemQuantityDisplay(item: AnyRecord, quantity?: number): string {
-  const qty = quantity ?? getItemQuantity(item);
-  const formatted = formatQuantity(qty);
-  const unit = getLineItemUnitSymbol(item);
-  return unit ? `${formatted} (${unit})` : formatted;
+  return formatLineItemQuantity(item, quantity ?? getItemQuantity(item));
 }
 
 function moneyValue(value: unknown, fallback = 0): number {
@@ -302,7 +302,7 @@ function renderItems(items: AnyRecord[], showProductCode = true): string {
           <div>${escapeHtml(getItemName(item))}</div>
           ${productCode ? `<div class="muted-light">Code: ${escapeHtml(productCode)}</div>` : ''}
         </td>
-        <td>${escapeHtml(formatLineItemQuantityDisplay(item, quantity))}</td>
+        <td>${escapeHtml(formatLineItemQuantity(item, quantity))}</td>
         <td>${escapeHtml(formatCurrency(unitPrice))}</td>
         <td>${escapeHtml(formatCurrency(lineTotal))}</td>
       </tr>`;
@@ -317,79 +317,88 @@ function renderItems(items: AnyRecord[], showProductCode = true): string {
   </table>`;
 }
 
-async function shareHtmlAsPdf(html: string, options: ShareDocumentOptions) {
-  const available = await Sharing.isAvailableAsync();
-  if (!available) {
-    throw new Error('PDF sharing is not available on this device.');
-  }
+export type PreparedPdfFile = {
+  uri: string;
+  filename: string;
+  title: string;
+};
 
+async function printHtmlToPdfFile(html: string, filename: string, title: string): Promise<PreparedPdfFile> {
   const file = await Print.printToFileAsync({
     html,
     base64: false,
   });
   const sourceFile = new File(file.uri);
-  const namedFile = new File(Paths.cache, filenameSafe(options.filename));
+  const namedFile = new File(Paths.cache, filenameSafe(filename));
   if (namedFile.exists) {
     namedFile.delete();
   }
   sourceFile.copy(namedFile);
 
-  await Sharing.shareAsync(namedFile.uri, {
+  return {
+    uri: namedFile.uri,
+    filename: filenameSafe(filename),
+    title,
+  };
+}
+
+export async function sharePreparedPdf(
+  prepared: PreparedPdfFile,
+  options: { dialogTitle?: string } = {}
+): Promise<void> {
+  const available = await Sharing.isAvailableAsync();
+  if (!available) {
+    throw new Error('PDF sharing is not available on this device.');
+  }
+
+  await Sharing.shareAsync(prepared.uri, {
     mimeType: 'application/pdf',
     UTI: 'com.adobe.pdf',
-    dialogTitle: options.dialogTitle || options.title,
+    dialogTitle: options.dialogTitle || prepared.title,
   });
+}
+
+async function shareHtmlAsPdf(html: string, options: ShareDocumentOptions) {
+  const prepared = await printHtmlToPdfFile(html, options.filename, options.title);
+  await sharePreparedPdf(prepared, { dialogTitle: options.dialogTitle || options.title });
 }
 
 export function getInvoicePdfFilename(invoice: AnyRecord): string {
   return `${filenameSafe(pickFirst(invoice.invoiceNumber, invoice.id, 'invoice'))}.pdf`;
 }
 
-export async function shareInvoicePdf(invoice: AnyRecord, options: { showProductCode?: boolean } = {}) {
-  const showProductCode = options.showProductCode !== false;
-  const customer = asRecord(invoice.customer);
-  const items = getItems(invoice);
-  const total = moneyValue(invoice.totalAmount ?? invoice.total);
-  const paid = moneyValue(invoice.amountPaid ?? invoice.paidAmount);
-  const balance = Math.max(0, total - paid);
-  const discount = moneyValue(invoice.discountAmount);
-  const tax = moneyValue(invoice.taxAmount);
+function buildInvoicePdfBody(
+  invoice: AnyRecord,
+  options: { showProductCode?: boolean; footerNote?: string; businessType?: string } = {}
+): { html: string; number: string } {
   const number = pickFirst(invoice.invoiceNumber, invoice.id);
-
-  const body = `${renderHeader(invoice, 'INVOICE', number)}
-    <div class="content">
-      <div class="grid">
-        <div class="box">
-          <div class="label">Bill to</div>
-          <div class="value">${escapeHtml(getCustomerName(customer))}</div>
-          ${customer.email ? `<div>${escapeHtml(customer.email)}</div>` : ''}
-          ${customer.phone ? `<div>${escapeHtml(customer.phone)}</div>` : ''}
-        </div>
-        <div class="box">
-          <div class="label">Invoice details</div>
-          <div class="value">Status: ${escapeHtml(invoice.status || 'Invoice')}</div>
-          <div>Date: ${escapeHtml(formatDate((invoice.invoiceDate ?? invoice.createdAt) as string | null | undefined))}</div>
-          ${invoice.dueDate ? `<div>Due: ${escapeHtml(formatDate(invoice.dueDate as string))}</div>` : ''}
-        </div>
-      </div>
-      ${renderItems(items, showProductCode)}
-      <div class="totals">
-        <div class="total-row"><span>Subtotal</span><strong>${escapeHtml(formatCurrency(moneyValue(invoice.subtotal, total)))}</strong></div>
-        ${discount > 0 ? `<div class="total-row"><span>Discount</span><strong>-${escapeHtml(formatCurrency(discount))}</strong></div>` : ''}
-        ${tax > 0 ? `<div class="total-row"><span>Tax</span><strong>${escapeHtml(formatCurrency(tax))}</strong></div>` : ''}
-        <div class="total-row grand"><span>Total</span><span>${escapeHtml(formatCurrency(total))}</span></div>
-        ${paid > 0 ? `<div class="total-row"><span>Paid</span><strong>${escapeHtml(formatCurrency(paid))}</strong></div>` : ''}
-        <div class="total-row"><span>Balance</span><strong>${escapeHtml(formatCurrency(balance))}</strong></div>
-      </div>
-      ${invoice.notes ? `<div class="footer">${escapeHtml(invoice.notes)}</div>` : ''}
-    </div>`;
-
-  logger.info('PDFDocuments', 'Sharing invoice PDF', { invoiceId: invoice.id, invoiceNumber: number });
-  await shareHtmlAsPdf(documentShell(`Invoice ${number}`, body), {
-    filename: getInvoicePdfFilename(invoice),
-    title: `Invoice ${number}`,
-    dialogTitle: 'Download Invoice',
+  const html = buildPrintableInvoiceHtml(invoice, getBaseAssetUrl(), {
+    showProductCode: options.showProductCode,
+    footerNote: options.footerNote,
+    businessType: options.businessType,
   });
+  return { html, number };
+}
+
+export async function prepareInvoicePdf(
+  invoice: AnyRecord,
+  options: { showProductCode?: boolean; footerNote?: string; businessType?: string } = {}
+): Promise<PreparedPdfFile> {
+  const { html, number } = buildInvoicePdfBody(invoice, options);
+  logger.info('PDFDocuments', 'Preparing invoice PDF', { invoiceId: invoice.id, invoiceNumber: number });
+  return printHtmlToPdfFile(html, getInvoicePdfFilename(invoice), `Invoice ${number}`);
+}
+
+export async function shareInvoicePdf(
+  invoice: AnyRecord,
+  options: { showProductCode?: boolean; businessType?: string } = {}
+) {
+  const prepared = await prepareInvoicePdf(invoice, options);
+  logger.info('PDFDocuments', 'Sharing invoice PDF', {
+    invoiceId: invoice.id,
+    invoiceNumber: pickFirst(invoice.invoiceNumber, invoice.id),
+  });
+  await sharePreparedPdf(prepared, { dialogTitle: 'Download Invoice' });
 }
 
 export function getReceiptPdfFilename(sale: AnyRecord): string {
@@ -442,7 +451,7 @@ export async function shareQuotePdf(quote: AnyRecord) {
   });
 }
 
-export async function shareReceiptPdf(sale: AnyRecord) {
+function buildReceiptPdfBody(sale: AnyRecord): { html: string; number: string } {
   const customer = asRecord(sale.customer);
   const items = getItems(sale);
   const total = moneyValue(sale.total ?? sale.totalAmount);
@@ -480,10 +489,17 @@ export async function shareReceiptPdf(sale: AnyRecord) {
       <div class="footer">Thank you for your purchase.</div>
     </div>`;
 
-  logger.info('PDFDocuments', 'Sharing receipt PDF', { saleId: sale.id, saleNumber: number });
-  await shareHtmlAsPdf(documentShell(`Receipt ${number}`, body), {
-    filename: getReceiptPdfFilename(sale),
-    title: `Receipt ${number}`,
-    dialogTitle: 'Download Receipt',
-  });
+  return { html: documentShell(`Receipt ${number}`, body), number };
+}
+
+export async function prepareReceiptPdf(sale: AnyRecord): Promise<PreparedPdfFile> {
+  const { html, number } = buildReceiptPdfBody(sale);
+  logger.info('PDFDocuments', 'Preparing receipt PDF', { saleId: sale.id, saleNumber: number });
+  return printHtmlToPdfFile(html, getReceiptPdfFilename(sale), `Receipt ${number}`);
+}
+
+export async function shareReceiptPdf(sale: AnyRecord) {
+  const prepared = await prepareReceiptPdf(sale);
+  logger.info('PDFDocuments', 'Sharing receipt PDF', { saleId: sale.id, saleNumber: prepared.title });
+  await sharePreparedPdf(prepared, { dialogTitle: 'Download Receipt' });
 }

@@ -17,16 +17,47 @@ export const ABS_BUSINESS_SIGNUP_URL = (
   process.env.NEXT_PUBLIC_ABS_BUSINESS_SIGNUP_URL || `${ABS_SITE_URL}`
 ).replace(/\/$/, "");
 
+const PRODUCTION_API_HOST = "api.africanbusinesssuite.com";
+
+function stripTrailingSlash(url: string): string {
+  return url.trim().replace(/\/$/, "");
+}
+
+function originFromEnv(): string {
+  const raw = (
+    process.env.ABS_API_ORIGIN ||
+    process.env.NEXT_PUBLIC_ABS_API_ORIGIN ||
+    "http://127.0.0.1:5002"
+  ).trim();
+  return stripTrailingSlash(raw).replace(/\/api$/i, "");
+}
+
 /**
  * ABS API base including `/api` suffix.
- * Prefer same-origin `/api` in the browser (Next rewrite) to avoid CORS.
- * Override with NEXT_PUBLIC_ABS_API_URL when needed (e.g. http://127.0.0.1:5002/api).
+ * In the browser on localhost, always use same-origin `/api` (Next proxies to the local backend).
+ * NEXT_PUBLIC_ABS_API_URL to production is ignored while the app runs on localhost.
  */
 export function getApiBaseUrl(): string {
-  const fromEnv = process.env.NEXT_PUBLIC_ABS_API_URL?.trim().replace(/\/$/, "");
-  if (fromEnv) return fromEnv;
-  if (typeof window !== "undefined") return "/api";
-  return "http://127.0.0.1:5002/api";
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    const onLocalhost =
+      host === "localhost" || host === "127.0.0.1" || host.startsWith("192.168.");
+    const fromEnv = process.env.NEXT_PUBLIC_ABS_API_URL?.trim().replace(/\/$/, "");
+    if (fromEnv && onLocalhost) {
+      try {
+        const envHost = new URL(
+          /^https?:\/\//i.test(fromEnv) ? fromEnv : `http://${fromEnv}`
+        ).hostname;
+        if (envHost === PRODUCTION_API_HOST) return "/api";
+      } catch {
+        return "/api";
+      }
+    }
+    if (fromEnv && !onLocalhost) return fromEnv;
+    return "/api";
+  }
+
+  return `${originFromEnv()}/api`;
 }
 
 /** @deprecated use getApiBaseUrl() — kept for older imports */

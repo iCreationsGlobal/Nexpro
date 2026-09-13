@@ -6,13 +6,13 @@ import { OVERVIEW_CARD_BORDER, formatOverviewCurrency } from './overviewUtils';
 /**
  * Revenue breakdown donut chart.
  */
-export default function RevenueByCategoryChart({ data, totalRevenue, onViewFullReport }) {
+export default function RevenueByCategoryChart({ data, totalRevenue, onViewFullReport, title = 'Revenue by Category' }) {
   const total = data.reduce((sum, item) => sum + item.value, 0) || totalRevenue || 0;
 
   return (
     <Card style={OVERVIEW_CARD_BORDER} className="bg-card h-full">
       <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base font-semibold">Revenue by Category</CardTitle>
+        <CardTitle className="text-base font-semibold">{title}</CardTitle>
         {onViewFullReport && (
           <Button variant="link" className="h-auto p-0 text-xs text-primary" onClick={onViewFullReport}>
             View Full Report

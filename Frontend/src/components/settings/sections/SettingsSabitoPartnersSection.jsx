@@ -7,15 +7,29 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '../../../context/AuthContext';
 import partnerProgramService from '../../../services/partnerProgramService';
 import { showError, showSuccess } from '../../../utils/toast';
+import {
+  getSabitoPartnerCategoryOptions,
+  getTenantSabitoSubtype,
+  resolveSabitoPartnerCategoryId,
+} from '../../../constants/businessTypes';
+import StatusChip from '../../StatusChip';
+
+const listingChipStatus = (settings) => {
+  const status = settings?.moderationStatus || 'draft';
+  if (status === 'approved' && settings.enabled && settings.listed) return 'live';
+  if (status === 'pending') return 'pending_review';
+  return status;
+};
 
 /**
  * ABS settings for Sabito Partner Program: enable, rates, applications, payouts.
  */
 const SettingsSabitoPartnersSection = () => {
-  const { isManager } = useAuth();
+  const { isManager, activeTenant } = useAuth();
   const canManage = isManager;
 
   const [loading, setLoading] = useState(true);
@@ -53,6 +67,7 @@ const SettingsSabitoPartnersSection = () => {
         partnerProgramService.listPartnerships({ status: 'active' }),
         partnerProgramService.listCommissions({
           status: 'due',
+          remittanceStatus: 'owed',
           month: payoutMonth,
           year: payoutYear,
         }),
@@ -99,12 +114,31 @@ const SettingsSabitoPartnersSection = () => {
     return [...templates, ...products];
   }, [catalog]);
 
+  const tenantSubtype = useMemo(() => getTenantSabitoSubtype(activeTenant), [activeTenant]);
+  const categoryOptions = useMemo(
+    () => getSabitoPartnerCategoryOptions(activeTenant?.businessType, { subtype: tenantSubtype }),
+    [activeTenant?.businessType, tenantSubtype]
+  );
+  const categoryValue = useMemo(
+    () =>
+      resolveSabitoPartnerCategoryId({
+        savedCategory: settings?.category,
+        subtype: tenantSubtype,
+        options: categoryOptions,
+      }),
+    [settings?.category, tenantSubtype, categoryOptions]
+  );
+
   const updateField = (key, value) => {
     setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
   };
 
   const handleSaveSettings = async () => {
     if (!settings) return;
+    if (settings.enabled && settings.listed && !categoryValue) {
+      showError(new Error('Select a category before listing on Sabito'));
+      return;
+    }
     setSaving(true);
     try {
       const services = catalogOptions
@@ -119,7 +153,7 @@ const SettingsSabitoPartnersSection = () => {
         listed: settings.listed,
         displayName: settings.displayName,
         pitch: settings.pitch,
-        category: settings.category,
+        category: categoryValue || settings.category || null,
         location: settings.location,
         logoUrl: settings.logoUrl,
         firstClientRatePercent: Number(settings.firstClientRatePercent),
@@ -130,7 +164,11 @@ const SettingsSabitoPartnersSection = () => {
         slug: settings.slug,
         services,
       });
-      showSuccess('Partner program settings saved');
+      showSuccess(
+        settings.enabled && settings.listed
+          ? 'Saved. Listing on Sabito is submitted for review unless it is already live.'
+          : 'Partner program settings saved'
+      );
       await loadAll();
     } catch (err) {
       showError(err, 'Failed to save settings');
@@ -165,15 +203,16 @@ const SettingsSabitoPartnersSection = () => {
       return;
     }
     try {
-      await partnerProgramService.markCommissionsPaid({
+      await partnerProgramService.paySabito({
         commissionIds: selectedCommissionIds,
         paidNote: paidNote || undefined,
+        payoutReference: payoutReference || undefined,
       });
-      showSuccess('Commissions marked paid');
+      showSuccess('Paid Sabito. ABS will pay marketers their share.');
       setPaidNote('');
       await loadAll();
     } catch (err) {
-      showError(err, 'Failed to mark paid');
+      showError(err, 'Failed to pay Sabito');
     }
   };
 
@@ -181,41 +220,6 @@ const SettingsSabitoPartnersSection = () => {
     setSelectedCommissionIds((prev) =>
       checked ? [...prev, id] : prev.filter((x) => x !== id)
     );
-  };
-
-  const handleApproveCashout = async (id) => {
-    try {
-      await partnerProgramService.approveCashout(id);
-      showSuccess('Cashout approved');
-      await loadAll();
-    } catch (err) {
-      showError(err, 'Failed to approve cashout');
-    }
-  };
-
-  const handleRejectCashout = async (id) => {
-    try {
-      await partnerProgramService.rejectCashout(id, { notes: 'Rejected by business' });
-      showSuccess('Cashout rejected; commissions released');
-      await loadAll();
-    } catch (err) {
-      showError(err, 'Failed to reject cashout');
-    }
-  };
-
-  const handleMarkCashoutPaid = async (id) => {
-    try {
-      await partnerProgramService.markCashoutPaid(id, {
-        notes: paidNote || undefined,
-        payoutReference: payoutReference || undefined,
-      });
-      showSuccess('Cashout marked paid');
-      setPaidNote('');
-      setPayoutReference('');
-      await loadAll();
-    } catch (err) {
-      showError(err, 'Failed to mark cashout paid');
-    }
   };
 
   if (!canManage) {
@@ -256,11 +260,20 @@ const SettingsSabitoPartnersSection = () => {
           <CardHeader>
             <CardTitle className="text-base">Program listing</CardTitle>
             <CardDescription>
-              Enable the program and list your business on Sabito App for marketers to apply.
+              Enable the program and submit your business for review. ABS approves listings before marketers can see them on Sabito App.
               Slots used: {settings.activePartners || 0} / {settings.maxMarketers}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div>
+                <Label>Listing status</Label>
+                <p className="text-xs text-muted-foreground">
+                  {settings.moderationNote ? settings.moderationNote : 'Draft until you list; Pending review until ABS approves.'}
+                </p>
+              </div>
+              <StatusChip status={listingChipStatus(settings)} />
+            </div>
             <div className="flex items-center justify-between rounded-lg border border-border p-3">
               <div>
                 <Label>Enable Partner Program</Label>
@@ -274,7 +287,9 @@ const SettingsSabitoPartnersSection = () => {
             <div className="flex items-center justify-between rounded-lg border border-border p-3">
               <div>
                 <Label>List on Sabito marketplace</Label>
-                <p className="text-xs text-muted-foreground">Marketers can browse and apply</p>
+                <p className="text-xs text-muted-foreground">
+                  Submit for review. Unlisting does not remove an existing approval.
+                </p>
               </div>
               <Switch
                 checked={!!settings.listed}
@@ -299,12 +314,26 @@ const SettingsSabitoPartnersSection = () => {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Category</Label>
-                <Input
-                  value={settings.category || ''}
-                  onChange={(e) => updateField('category', e.target.value)}
-                  placeholder="e.g. Studio/Services"
-                />
+                <Label>
+                  Category
+                  {settings.enabled && settings.listed ? '' : ' (optional)'}
+                </Label>
+                <Select
+                  value={categoryValue || undefined}
+                  onValueChange={(value) => updateField('category', value)}
+                  disabled={!canManage}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoryOptions.map((opt) => (
+                      <SelectItem key={opt.id} value={opt.id}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label>Location</Label>
@@ -376,7 +405,7 @@ const SettingsSabitoPartnersSection = () => {
               <Textarea
                 value={settings.payoutNotes || ''}
                 onChange={(e) => updateField('payoutNotes', e.target.value)}
-                placeholder="e.g. Paid by MoMo by the 5th of each month"
+                placeholder="Shown to marketers. You remit commissions to ABS; ABS pays marketers."
                 rows={2}
               />
             </div>
@@ -412,7 +441,11 @@ const SettingsSabitoPartnersSection = () => {
                 Reset
               </Button>
               <Button type="button" onClick={handleSaveSettings} disabled={saving}>
-                {saving ? 'Saving…' : 'Save settings'}
+                {saving
+                  ? 'Saving…'
+                  : settings.enabled && settings.listed
+                    ? 'Save / submit for review'
+                    : 'Save settings'}
               </Button>
             </div>
           </CardContent>
@@ -523,26 +556,10 @@ const SettingsSabitoPartnersSection = () => {
           <CardHeader>
             <CardTitle className="text-base">Cashout requests</CardTitle>
             <CardDescription>
-              Marketers request payouts against due commissions. Pay them outside ABS, then mark paid here.
+              Marketers request payout of their share after you Pay Sabito. ABS pays marketers from Control Center.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="space-y-1.5">
-              <Label>Payout note (optional)</Label>
-              <Input
-                value={paidNote}
-                onChange={(e) => setPaidNote(e.target.value)}
-                placeholder="e.g. Paid via MoMo"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Payout reference (optional)</Label>
-              <Input
-                value={payoutReference}
-                onChange={(e) => setPayoutReference(e.target.value)}
-                placeholder="e.g. MoMo ref ABC123"
-              />
-            </div>
             {cashouts.length === 0 ? (
               <p className="text-sm text-muted-foreground">No cashout requests yet.</p>
             ) : (
@@ -561,27 +578,7 @@ const SettingsSabitoPartnersSection = () => {
                       {Array.isArray(c.commissions) ? ` · ${c.commissions.length} commission(s)` : ''}
                     </p>
                   </div>
-                  {c.status === 'pending' || c.status === 'approved' ? (
-                    <div className="flex flex-wrap gap-2">
-                      {c.status === 'pending' ? (
-                        <>
-                          <Button type="button" variant="outline" size="sm" onClick={() => handleRejectCashout(c.id)}>
-                            Reject
-                          </Button>
-                          <Button type="button" variant="outline" size="sm" onClick={() => handleApproveCashout(c.id)}>
-                            Approve
-                          </Button>
-                        </>
-                      ) : (
-                        <Button type="button" variant="outline" size="sm" onClick={() => handleRejectCashout(c.id)}>
-                          Reject
-                        </Button>
-                      )}
-                      <Button type="button" size="sm" onClick={() => handleMarkCashoutPaid(c.id)}>
-                        Mark paid
-                      </Button>
-                    </div>
-                  ) : null}
+                  <StatusChip status={c.status} />
                 </div>
               ))
             )}
@@ -594,7 +591,7 @@ const SettingsSabitoPartnersSection = () => {
           <CardHeader>
             <CardTitle className="text-base">Due commissions</CardTitle>
             <CardDescription>
-              Commission accrues when customer payment is collected. Prefer cashout requests above; you can still mark individual due commissions paid here.
+              Accrues when a referred customer pays you. Remit the full marketer commission to ABS (Pay Sabito). ABS keeps the platform take and pays marketers.
               Due this filter: GHS {dueTotal.toFixed(2)}
             </CardDescription>
           </CardHeader>
@@ -664,10 +661,18 @@ const SettingsSabitoPartnersSection = () => {
                 placeholder="MoMo transaction ID or note"
               />
             </div>
+            <div className="space-y-1.5">
+              <Label>Payout reference (optional)</Label>
+              <Input
+                value={payoutReference}
+                onChange={(e) => setPayoutReference(e.target.value)}
+                placeholder="e.g. MoMo ref ABC123"
+              />
+            </div>
 
             <div className="flex justify-end">
               <Button type="button" onClick={handleMarkPaid} disabled={!selectedCommissionIds.length}>
-                Mark selected paid
+                Pay Sabito
               </Button>
             </div>
           </CardContent>

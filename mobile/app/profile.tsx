@@ -11,10 +11,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+
+import { useLocalSearchParams } from 'expo-router';
 
 import { AppIcon } from '@/components/AppIcon';
 import { useAuth } from '@/context/AuthContext';
@@ -25,6 +26,7 @@ import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
 import { StackPageHeader } from '@/components/StackPageHeader';
 import { logger } from '@/utils/logger';
+import { standaloneButtonStyles } from '@/styles/standaloneButton';
 
 type ProfileData = {
   name?: string;
@@ -37,11 +39,11 @@ const PROFILE_QUERY_KEY = ['settings', 'profile'] as const;
 const getStringValue = (value: unknown) => (typeof value === 'string' ? value : '');
 
 export default function ProfileScreen() {
-  const router = useRouter();
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
   const queryClient = useQueryClient();
-  const { user, refreshAuth, logout } = useAuth();
+  const { user, refreshAuth } = useAuth();
   const { colors, bg, cardBg, borderColor, textColor, mutedColor, inputBg } = useScreenColors();
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(() => edit === '1');
   const [name, setName] = useState(getStringValue(user?.name));
   const [email, setEmail] = useState(getStringValue(user?.email));
   const [profilePreview, setProfilePreview] = useState(
@@ -276,21 +278,6 @@ export default function ProfileScreen() {
     }
   }, [name, newPassword, currentPassword, queryClient, refreshAuth]);
 
-  const handleLogout = useCallback(() => {
-    Alert.alert('Log out?', 'You will need to sign in again to use the app.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Log out',
-        style: 'destructive',
-        onPress: async () => {
-          await logout();
-          // Same as Account: clear session then leave authenticated stack.
-          router.replace('/login');
-        },
-      },
-    ]);
-  }, [logout, router]);
-
   const inputDisabledBg = inputBg;
 
   const renderProfileSkeleton = () => (
@@ -303,13 +290,9 @@ export default function ProfileScreen() {
       <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
         <View style={[styles.skeletonLine, styles.skeletonTitle]} />
         <View style={[styles.skeletonLine, styles.skeletonLabel]} />
-        <View style={styles.skeletonInput} />
+        <View style={[styles.skeletonLine, styles.skeletonValue]} />
         <View style={[styles.skeletonLine, styles.skeletonLabel]} />
-        <View style={styles.skeletonInput} />
-      </View>
-      <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
-        <View style={[styles.skeletonLine, styles.skeletonTitle]} />
-        <View style={styles.skeletonButton} />
+        <View style={[styles.skeletonLine, styles.skeletonValue]} />
       </View>
     </View>
   );
@@ -368,115 +351,164 @@ export default function ProfileScreen() {
         <>
 
         <View style={styles.avatarSection}>
-          <View style={styles.avatarWrap}>
-            {profilePreviewUrl && !avatarLoadFailed ? (
-              <Image
-                source={{ uri: profilePreviewUrl }}
-                style={styles.avatar}
-                contentFit="cover"
-                onError={() => setAvatarLoadFailed(true)}
-                accessibilityLabel="Profile picture"
-              />
-            ) : (
-              <View style={[styles.avatarFallback, { backgroundColor: colors.tint }]}>
-                <AppIcon name="user" size={40} color="#fff" />
-              </View>
-            )}
-            {editing ? (
+          {editing ? (
+            <>
               <Pressable
                 onPress={handlePickPhoto}
-                disabled={uploadingPhoto}
+                disabled={uploadingPhoto || profileLoading}
                 accessibilityRole="button"
-                accessibilityLabel="Upload profile picture"
-                style={[styles.cameraButton, { backgroundColor: colors.tint, borderColor: bg }]}
+                accessibilityLabel="Update profile picture"
+                style={({ pressed }) => [styles.avatarWrap, pressed && styles.buttonPressed]}
               >
-                {uploadingPhoto ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                {profilePreviewUrl && !avatarLoadFailed ? (
+                  <Image
+                    source={{ uri: profilePreviewUrl }}
+                    style={styles.avatar}
+                    contentFit="cover"
+                    onError={() => setAvatarLoadFailed(true)}
+                    accessibilityLabel="Profile picture"
+                  />
                 ) : (
-                  <AppIcon name="camera" size={16} color="#fff" />
+                  <View style={[styles.avatarFallback, { backgroundColor: colors.tint }]}>
+                    <AppIcon name="user" size={40} color="#fff" />
+                  </View>
                 )}
+                <View
+                  style={[styles.cameraButton, { backgroundColor: colors.tint, borderColor: bg }]}
+                >
+                  {uploadingPhoto ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <AppIcon name="camera" size={16} color="#fff" />
+                  )}
+                </View>
               </Pressable>
-            ) : null}
-          </View>
-          {editing && (profilePreviewUrl || getStringValue(profilePreview).trim()) ? (
-            <Pressable
-              onPress={handleRemovePhoto}
-              disabled={uploadingPhoto}
-              accessibilityRole="button"
-              accessibilityLabel="Remove profile picture"
-              style={({ pressed }) => [styles.removePhotoBtn, pressed && styles.buttonPressed]}
-            >
-              <Text style={{ color: '#dc2626', fontWeight: '600', fontSize: 14 }}>Remove photo</Text>
-            </Pressable>
-          ) : null}
-          {editing ? (
-            <Text style={[styles.hint, { color: mutedColor, textAlign: 'center' }]}>
-              {uploadingPhoto
-                ? 'Uploading photo…'
-                : 'Tap the camera icon to take a photo or choose from your library.'}
-            </Text>
-          ) : null}
+              <Pressable
+                onPress={handlePickPhoto}
+                disabled={uploadingPhoto || profileLoading}
+                style={({ pressed }) => [
+                  styles.fullWidthButton,
+                  styles.secondaryButton,
+                  { borderColor },
+                  pressed && styles.buttonPressed,
+                  uploadingPhoto && styles.buttonDisabled,
+                ]}
+              >
+                <Text style={[styles.secondaryButtonText, { color: textColor }]}>
+                  {uploadingPhoto ? 'Uploading photo…' : 'Change photo'}
+                </Text>
+              </Pressable>
+              {(profilePreviewUrl || getStringValue(profilePreview).trim()) && !uploadingPhoto ? (
+                <Pressable
+                  onPress={handleRemovePhoto}
+                  disabled={uploadingPhoto}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove profile picture"
+                  style={({ pressed }) => [styles.removePhotoBtn, pressed && styles.buttonPressed]}
+                >
+                  <Text style={styles.removePhotoText}>Remove photo</Text>
+                </Pressable>
+              ) : null}
+              <Text style={[styles.hint, { color: mutedColor, textAlign: 'center' }]}>
+                Tap your photo or Change photo to use the camera or photo library.
+              </Text>
+            </>
+          ) : (
+            <View style={styles.avatarWrap} accessibilityLabel="Profile picture">
+              {profilePreviewUrl && !avatarLoadFailed ? (
+                <Image
+                  source={{ uri: profilePreviewUrl }}
+                  style={styles.avatar}
+                  contentFit="cover"
+                  onError={() => setAvatarLoadFailed(true)}
+                  accessibilityLabel="Profile picture"
+                />
+              ) : (
+                <View style={[styles.avatarFallback, { backgroundColor: colors.tint }]}>
+                  <AppIcon name="user" size={40} color="#fff" />
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Personal information</Text>
-          <Text style={[styles.label, { color: mutedColor }]}>Full name</Text>
-          <TextInput
-            ref={nameInputRef}
-            style={[
-              styles.input,
-              {
-                color: textColor,
-                borderColor,
-                backgroundColor: editing ? cardBg : inputDisabledBg,
-              },
-              fieldErrors.name && styles.inputError,
-            ]}
-            value={name}
-            onChangeText={(value) => {
-              setName(value);
-              if (fieldErrors.name) setFieldErrors((current) => ({ ...current, name: undefined }));
-            }}
-            placeholder="Your name"
-            placeholderTextColor={mutedColor}
-            autoCapitalize="words"
-            accessibilityLabel="Full name"
-            accessibilityHint={fieldErrors.name || 'Enter your full name'}
-            editable={editing && !saving}
-          />
-          {fieldErrors.name ? <Text style={styles.fieldError}>{fieldErrors.name}</Text> : null}
-          <Text style={[styles.label, { color: mutedColor, marginTop: 16 }]}>Email</Text>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                color: mutedColor,
-                borderColor,
-                backgroundColor: inputDisabledBg,
-              },
-            ]}
-            value={email}
-            editable={false}
-            placeholder="Email"
-            placeholderTextColor={mutedColor}
-            accessibilityLabel="Email address"
-          />
-          <Text style={[styles.hint, { color: mutedColor }]}>
-            Email cannot be changed here.
-          </Text>
+          {editing ? (
+            <>
+              <Text style={[styles.label, { color: mutedColor }]}>Full name</Text>
+              <TextInput
+                ref={nameInputRef}
+                style={[
+                  styles.input,
+                  {
+                    color: textColor,
+                    borderColor,
+                    backgroundColor: cardBg,
+                  },
+                  fieldErrors.name && styles.inputError,
+                ]}
+                value={name}
+                onChangeText={(value) => {
+                  setName(value);
+                  if (fieldErrors.name) setFieldErrors((current) => ({ ...current, name: undefined }));
+                }}
+                placeholder="Your name"
+                placeholderTextColor={mutedColor}
+                autoCapitalize="words"
+                accessibilityLabel="Full name"
+                accessibilityHint={fieldErrors.name || 'Enter your full name'}
+                editable={!saving}
+              />
+              {fieldErrors.name ? <Text style={styles.fieldError}>{fieldErrors.name}</Text> : null}
+              <Text style={[styles.label, { color: mutedColor, marginTop: 16 }]}>Email</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    color: mutedColor,
+                    borderColor,
+                    backgroundColor: inputDisabledBg,
+                  },
+                ]}
+                value={email}
+                editable={false}
+                placeholder="Email"
+                placeholderTextColor={mutedColor}
+                accessibilityLabel="Email address"
+              />
+              <Text style={[styles.hint, { color: mutedColor }]}>
+                Email cannot be changed here.
+              </Text>
+            </>
+          ) : (
+            <>
+              <View style={styles.viewField}>
+                <Text style={[styles.label, { color: mutedColor }]}>Full name</Text>
+                <Text style={[styles.viewValue, { color: textColor }]}>
+                  {name.trim() || '—'}
+                </Text>
+              </View>
+              <View style={styles.viewField}>
+                <Text style={[styles.label, { color: mutedColor }]}>Email</Text>
+                <Text style={[styles.viewValue, { color: textColor }]}>
+                  {email.trim() || '—'}
+                </Text>
+              </View>
+            </>
+          )}
         </View>
 
+        {editing ? (
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Change password</Text>
           {!showChangePassword ? (
             <Pressable
-              onPress={() => {
-                setShowChangePassword(true);
-                if (!editing) setEditing(true);
-              }}
+              onPress={() => setShowChangePassword(true)}
               style={({ pressed }) => [
                 styles.secondaryButton,
-                { borderColor, alignSelf: 'flex-start' },
+                styles.fullWidthButton,
+                { borderColor },
                 pressed && styles.buttonPressed,
               ]}
             >
@@ -507,7 +539,7 @@ export default function ProfileScreen() {
                   autoCapitalize="none"
                   accessibilityLabel="Current password"
                   accessibilityHint={fieldErrors.currentPassword || 'Enter your current password'}
-                  editable={editing && !saving}
+                  editable={!saving}
                 />
                 <Pressable
                   onPress={() => setShowCurrentPassword((v) => !v)}
@@ -546,7 +578,7 @@ export default function ProfileScreen() {
                   autoCapitalize="none"
                   accessibilityLabel="New password"
                   accessibilityHint={fieldErrors.newPassword || 'Enter a new password'}
-                  editable={editing && !saving}
+                  editable={!saving}
                 />
                 <Pressable
                   onPress={() => setShowNewPassword((v) => !v)}
@@ -568,27 +600,20 @@ export default function ProfileScreen() {
                   setCurrentPassword('');
                   setNewPassword('');
                 }}
-                style={({ pressed }) => [styles.cancelPasswordBtn, pressed && styles.buttonPressed]}
+                style={({ pressed }) => [
+                  standaloneButtonStyles.textLink,
+                  { marginTop: 12 },
+                  pressed && styles.buttonPressed,
+                ]}
               >
                 <Text style={{ color: mutedColor, fontWeight: '600' }}>Cancel password change</Text>
               </Pressable>
             </View>
           )}
         </View>
+        ) : null}
         </>
         )}
-
-        <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
-          <Pressable
-            onPress={handleLogout}
-            accessibilityRole="button"
-            accessibilityLabel="Log out"
-            style={({ pressed }) => [styles.logoutRow, pressed && styles.buttonPressed]}
-          >
-            <AppIcon name="logout" size={20} color="#dc2626" />
-            <Text style={styles.logoutText}>Log out</Text>
-          </Pressable>
-        </View>
       </ScrollView>
     </KeyboardAvoidingView>
     </ScreenShell>
@@ -608,8 +633,8 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
-  avatarSection: { alignItems: 'center', marginBottom: 24 },
-  avatarWrap: { position: 'relative' },
+  avatarSection: { alignItems: 'stretch', marginBottom: 24, gap: 12 },
+  avatarWrap: { position: 'relative', alignSelf: 'center' },
   avatar: { width: 96, height: 96, borderRadius: 48 },
   avatarFallback: {
     width: 96,
@@ -629,7 +654,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
   },
-  removePhotoBtn: { marginTop: 12, paddingVertical: 4 },
+  removePhotoBtn: { alignSelf: 'center', paddingVertical: 4 },
+  removePhotoText: { color: '#dc2626', fontWeight: '600', fontSize: 14 },
   card: {
     padding: 20,
     borderRadius: 12,
@@ -637,6 +663,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 16 },
+  viewField: { marginBottom: 16 },
+  viewValue: { fontSize: 16, fontWeight: '500', lineHeight: 22 },
   label: { fontSize: 14, fontWeight: '500', marginBottom: 8 },
   input: {
     borderWidth: 1,
@@ -664,26 +692,19 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
   },
-  cancelPasswordBtn: { marginTop: 12, alignSelf: 'flex-start', paddingVertical: 4 },
-  logoutRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    minHeight: 44,
-    paddingVertical: 12,
-  },
-  logoutText: {
-    color: '#dc2626',
-    fontSize: 16,
-    fontWeight: '600',
-  },
   hint: { fontSize: 12, marginTop: 6 },
   secondaryButton: {
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullWidthButton: {
+    alignSelf: 'stretch',
+    width: '100%',
   },
   secondaryButtonText: { fontSize: 14, fontWeight: '600' },
   primaryButtonSmall: {
@@ -708,16 +729,5 @@ const styles = StyleSheet.create({
   skeletonLine: { backgroundColor: '#e5e7eb', borderRadius: 8 },
   skeletonTitle: { width: '52%', height: 18, marginBottom: 18 },
   skeletonLabel: { width: '34%', height: 12, marginBottom: 8 },
-  skeletonInput: {
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: '#f1f5f9',
-    marginBottom: 16,
-  },
-  skeletonButton: {
-    width: 150,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: '#f1f5f9',
-  },
+  skeletonValue: { width: '68%', height: 16, marginBottom: 16 },
 });

@@ -66,7 +66,7 @@ const Tenant = sequelize.define('Tenant', {
     defaultValue: 'trial'
   },
   businessType: {
-    type: DataTypes.ENUM('shop', 'studio', 'pharmacy', 'printing_press', 'mechanic', 'barber', 'salon'),
+    type: DataTypes.ENUM('shop', 'studio', 'pharmacy', 'printing_press', 'mechanic', 'barber', 'salon', 'rental'),
     allowNull: true,
     defaultValue: null
   },

@@ -102,7 +102,7 @@ const CashoutRequestScreen: React.FC<CashoutRequestScreenProps> = ({ navigation,
         },
       }));
       setEarnings(availableEarnings);
-      setSelectedProjects(availableEarnings.map((e) => e.id));
+      setSelectedProjects([]);
     } catch (error: any) {
       setEarnings([]);
     }
@@ -113,7 +113,9 @@ const CashoutRequestScreen: React.FC<CashoutRequestScreenProps> = ({ navigation,
       if (prev.includes(projectId)) {
         return prev.filter(id => id !== projectId);
       } else {
-        return [...prev, projectId];
+        const chosen = earnings.find(e => e.id === projectId) as any;
+        const sameBusiness = prev.filter(id => (earnings.find(e => e.id === id) as any)?.tenantId === chosen?.tenantId);
+        return [...sameBusiness, projectId];
       }
     });
   };
@@ -130,14 +132,14 @@ const CashoutRequestScreen: React.FC<CashoutRequestScreenProps> = ({ navigation,
   const handleSubmit = (): void => {
     if (selectedProjects.length === 0) {
       showDialog({
-        title: 'No Projects Selected',
-        message: 'Please select at least one project to cashout',
+        title: 'No commissions selected',
+        message: 'Please select at least one commission to cash out',
         buttons: [{ text: 'OK', style: 'default', onPress: hideDialog }]
       });
       return;
     }
 
-    if (!user?.paymentMethod) {
+    if (!user?.momoNumber && !user?.bankDetails) {
       showDialog({
         title: 'Payment Method Required',
         message: 'Please set up your payment method in your profile before requesting a cashout.',
@@ -147,7 +149,7 @@ const CashoutRequestScreen: React.FC<CashoutRequestScreenProps> = ({ navigation,
             text: 'Go to Profile', 
             onPress: () => {
               hideDialog();
-              navigation.navigate('MarketerAccount');
+              navigation.navigate('PaymentMethodSetup');
             },
             style: 'default'
           }
@@ -234,16 +236,16 @@ const CashoutRequestScreen: React.FC<CashoutRequestScreenProps> = ({ navigation,
         <View style={[styles.balanceCard, { backgroundColor: COLORS.APP_GREEN }]}>
           <Wallet size={32} color="#FFFFFF" strokeWidth={2} />
           <Text style={styles.balanceLabel}>Available Balance</Text>
-          <Text style={styles.balanceAmount}>₵{availableBalance?.toFixed(2) || '0.00'}</Text>
+          <Text style={styles.balanceAmount}>₵{earnings.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}</Text>
         </View>
 
         {/* Select Projects */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Select Projects to Cashout
+            Select commissions to cash out
           </Text>
           <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
-            Choose which projects you want to withdraw
+            Select commissions from one business per request. Choosing another business starts a new selection.
           </Text>
           
           {earnings.length === 0 ? (

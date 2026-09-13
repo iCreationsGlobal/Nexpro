@@ -1,6 +1,8 @@
 jest.mock('../../../models', () => {
   const findByPk = jest.fn();
   return {
+    Sale: { findOne: jest.fn(), sequelize: { transaction: jest.fn(async fn => fn({ LOCK: { UPDATE: 'UPDATE' } })) } },
+    Payment: { findOne: jest.fn().mockResolvedValue(null) },
     Tenant: {
       findByPk,
       scope: jest.fn(() => ({ findByPk }))
@@ -14,7 +16,9 @@ jest.mock('../../../services/paystackService', () => ({
   getMoMoBankCode: jest.fn()
 }));
 
-const { Tenant } = require('../../../models');
+jest.mock('../../../services/partnerPaymentService', () => ({ recordSalePayment: jest.fn() }));
+const { Tenant, Sale, Payment } = require('../../../models');
+const { recordSalePayment } = require('../../../services/partnerPaymentService');
 const { applyPaystackChargeToSaleFromTx } = require('../../../services/paystackSalePayment');
 
 describe('paystackSalePayment', () => {
@@ -44,15 +48,17 @@ describe('paystackSalePayment', () => {
       metadata: { sale_id: 'sale-1', tenant_id: 'tenant-1', payment_source: 'sale_direct_checkout' }
     };
 
+    Sale.findOne.mockResolvedValue(sale);
     const outcome = await applyPaystackChargeToSaleFromTx(sale, 'SALE-sale-1-123', tx);
     expect(outcome.applied).toBe(true);
+    expect(recordSalePayment).toHaveBeenCalledWith(sale, 96, expect.objectContaining({ transaction: expect.any(Object), reference: 'SALE-sale-1-123' }));
     expect(outcome.nextStatus).toBe('completed');
     expect(sale.update).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'completed',
         amountPaid: 96,
         paymentMethod: 'card'
-      })
+      }), expect.objectContaining({ transaction: expect.any(Object) })
     );
   });
 
@@ -67,6 +73,7 @@ describe('paystackSalePayment', () => {
       update: jest.fn()
     };
 
+    Sale.findOne.mockResolvedValue(sale);
     const outcome = await applyPaystackChargeToSaleFromTx(sale, 'SALE-sale-2-456', {
       status: 'success',
       amount: 9600,
@@ -77,4 +84,14 @@ describe('paystackSalePayment', () => {
     expect(outcome.applied).toBe(false);
     expect(sale.update).not.toHaveBeenCalled();
   });
+  it('rejects an older reference already recorded as a payment', async () => {
+    const sale = { id: 'sale-3', tenantId: 'tenant-1', total: 100, amountPaid: 20, metadata: {}, update: jest.fn() };
+    Sale.findOne.mockResolvedValue(sale);
+    Payment.findOne.mockResolvedValueOnce({ id: 'existing' });
+    const result = await applyPaystackChargeToSaleFromTx(sale, 'old-reference', { status: 'success', amount: 2000 });
+    expect(result.duplicate).toBe(true);
+    expect(sale.update).not.toHaveBeenCalled();
+    expect(recordSalePayment).not.toHaveBeenCalled();
+  });
+
 });

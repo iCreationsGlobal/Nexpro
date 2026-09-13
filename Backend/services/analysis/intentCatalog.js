@@ -149,6 +149,46 @@ const ANALYSIS_INTENTS = [
     ],
     category: 'analysis',
   },
+  {
+    id: 'rentals_due_today',
+    label: 'Rentals due today',
+    description: 'Active hires scheduled to return today',
+    suggestedQuestions: [
+      'What rentals are due back today?',
+      'Which rentals return today?',
+    ],
+    category: 'analysis',
+  },
+  {
+    id: 'rentals_overdue',
+    label: 'Overdue rentals',
+    description: 'Hires past their return date',
+    suggestedQuestions: [
+      'Show overdue rentals',
+      'Which rentals are overdue?',
+    ],
+    category: 'analysis',
+  },
+  {
+    id: 'rental_damage',
+    label: 'Rental damage',
+    description: 'Items with the most damage incidents',
+    suggestedQuestions: [
+      'Which items have the most damage?',
+      'Top damage items',
+    ],
+    category: 'analysis',
+  },
+  {
+    id: 'rental_revenue_month',
+    label: 'Rental revenue',
+    description: 'Booked rental revenue for the selected period',
+    suggestedQuestions: [
+      'Rental revenue this month',
+      'How much rental revenue this month?',
+    ],
+    category: 'analysis',
+  },
 ];
 
 const ANALYSIS_INTENT_IDS = new Set(ANALYSIS_INTENTS.map((i) => i.id));
@@ -174,14 +214,23 @@ const FALLBACK_SUGGESTED_QUESTIONS_STUDIO = [
   'Compare this period to the previous period',
 ];
 
+const FALLBACK_SUGGESTED_QUESTIONS_RENTAL = [
+  'What rentals are due back today?',
+  'Show overdue rentals',
+  'Rental revenue this month',
+  'Who owes me money?',
+  'Which items have the most damage?',
+  'Summarize performance',
+];
+
 /**
  * @param {string|null|undefined} businessType
  * @returns {string[]}
  */
 function getFallbackSuggestedQuestions(businessType) {
-  const studio = ['printing_press', 'mechanic', 'barber', 'salon', 'studio'].includes(
-    businessType || ''
-  );
+  const type = businessType || '';
+  if (type === 'rental') return FALLBACK_SUGGESTED_QUESTIONS_RENTAL;
+  const studio = ['printing_press', 'mechanic', 'barber', 'salon', 'studio'].includes(type);
   return studio ? FALLBACK_SUGGESTED_QUESTIONS_STUDIO : FALLBACK_SUGGESTED_QUESTIONS;
 }
 
@@ -198,6 +247,7 @@ module.exports = {
   ANALYSIS_INTENT_IDS,
   FALLBACK_SUGGESTED_QUESTIONS,
   FALLBACK_SUGGESTED_QUESTIONS_STUDIO,
+  FALLBACK_SUGGESTED_QUESTIONS_RENTAL,
   getFallbackSuggestedQuestions,
   getIntentById,
 };

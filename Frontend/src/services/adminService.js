@@ -43,6 +43,27 @@ const getSabitoDisputes = async (params = {}) => api.get('/admin/sabito/disputes
 const getSabitoCustomers = async (params = {}) => api.get('/admin/sabito/customers', { params });
 const getSabitoSettings = async () => api.get('/admin/sabito/settings');
 
+const getSabitoAppOverview = async () => api.get('/admin/sabito-app/overview');
+const getSabitoAppBusinesses = async (params = {}) => api.get('/admin/sabito-app/businesses', { params });
+const approveSabitoAppBusiness = async (id, payload = {}) =>
+  api.post(`/admin/sabito-app/businesses/${id}/approve`, payload);
+const rejectSabitoAppBusiness = async (id, payload = {}) =>
+  api.post(`/admin/sabito-app/businesses/${id}/reject`, payload);
+const suspendSabitoAppBusiness = async (id, payload = {}) =>
+  api.post(`/admin/sabito-app/businesses/${id}/suspend`, payload);
+const unsuspendSabitoAppBusiness = async (id, payload = {}) =>
+  api.post(`/admin/sabito-app/businesses/${id}/unsuspend`, payload);
+const getSabitoAppMarketers = async (params = {}) => api.get('/admin/sabito-app/marketers', { params });
+const getSabitoAppReferrals = async (params = {}) => api.get('/admin/sabito-app/referrals', { params });
+const getSabitoAppCollections = async (params = {}) => api.get('/admin/sabito-app/collections', { params });
+const getSabitoAppCashouts = async (params = {}) => api.get('/admin/sabito-app/cashouts', { params });
+const paySabitoAppCashout = async (id, payload = {}) =>
+  api.post(`/admin/sabito-app/cashouts/${id}/pay`, payload);
+const rejectSabitoAppCashout = async (id, payload = {}) =>
+  api.post(`/admin/sabito-app/cashouts/${id}/reject`, payload);
+const getSabitoAppSettings = async () => api.get('/admin/sabito-app/settings');
+const updateSabitoAppSettings = async (payload) => api.put('/admin/sabito-app/settings', payload);
+
 const getOnlineStoreHeroLibrary = async () => api.get('/admin/online-store/heroes');
 const createOnlineStoreHeroCategory = async (payload) =>
   api.post('/admin/online-store/heroes/categories', payload);
@@ -353,6 +374,20 @@ export default {
   getSabitoDisputes,
   getSabitoCustomers,
   getSabitoSettings,
+  getSabitoAppOverview,
+  getSabitoAppBusinesses,
+  approveSabitoAppBusiness,
+  rejectSabitoAppBusiness,
+  suspendSabitoAppBusiness,
+  unsuspendSabitoAppBusiness,
+  getSabitoAppMarketers,
+  getSabitoAppReferrals,
+  getSabitoAppCollections,
+  getSabitoAppCashouts,
+  paySabitoAppCashout,
+  rejectSabitoAppCashout,
+  getSabitoAppSettings,
+  updateSabitoAppSettings,
   getOnlineStoreHeroLibrary,
   createOnlineStoreHeroCategory,
   updateOnlineStoreHeroCategory,

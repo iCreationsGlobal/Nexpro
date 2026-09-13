@@ -77,6 +77,9 @@ const ProductPriceDisplay = memo(function ProductPriceDisplay({
   return (
     <p className={cn('font-semibold text-green-700', className)}>
       {formatAmount(retail)}
+      {product?.priceSuffix ? (
+        <span className="ml-0.5 text-xs font-medium text-muted-foreground">{product.priceSuffix}</span>
+      ) : null}
     </p>
   );
 });
@@ -141,7 +144,8 @@ const ProductItem = memo(function ProductItem({
   showQuantityControls = false,
   dealerPrice = null,
 }) {
-  const trackStock = product.trackStock !== false;
+  const hideStock = product.hideStockStatus === true;
+  const trackStock = !hideStock && product.trackStock !== false;
   const quantityOnHand = getProductStockQuantity(product);
   const reorderLevel = Number(product.reorderLevel);
   const reorder = Number.isFinite(reorderLevel) ? reorderLevel : 5;
@@ -213,7 +217,7 @@ const ProductItem = memo(function ProductItem({
         ) : null}
         <ProductPriceDisplay product={product} dealerPrice={dealerPrice} />
         <div className="flex items-center gap-1 justify-end">
-          {!trackStock ? (
+          {hideStock ? null : !trackStock ? (
             <span className="text-xs text-muted-foreground">Made to order</span>
           ) : isOutOfStock ? (
             <Badge variant="destructive" className="text-xs">Out of Stock</Badge>
@@ -230,7 +234,7 @@ const ProductItem = memo(function ProductItem({
       </div>
         </div>
       </TooltipTrigger>
-      <TooltipContent>{isOutOfStock ? 'Out of stock' : 'Add to sale'}</TooltipContent>
+      <TooltipContent>{isOutOfStock ? 'Out of stock' : (product.selectTooltip || 'Add to sale')}</TooltipContent>
     </Tooltip>
   );
 });
@@ -246,7 +250,8 @@ const ProductCard = memo(function ProductCard({
   showQuantityControls = false,
   dealerPrice = null,
 }) {
-  const trackStock = product.trackStock !== false;
+  const hideStock = product.hideStockStatus === true;
+  const trackStock = !hideStock && product.trackStock !== false;
   const quantityOnHand = getProductStockQuantity(product);
   const reorderLevel = Number(product.reorderLevel);
   const reorder = Number.isFinite(reorderLevel) ? reorderLevel : 5;
@@ -302,7 +307,7 @@ const ProductCard = memo(function ProductCard({
       </p>
       <ProductPriceDisplay product={product} dealerPrice={dealerPrice} className="mt-1 text-left shrink-0" />
       <div className="mt-1.5 shrink-0">
-        {!trackStock ? (
+        {hideStock ? null : !trackStock ? (
           <span className="text-xs text-muted-foreground">Made to order</span>
         ) : isOutOfStock ? (
           <Badge variant="destructive" className="text-xs">Out of Stock</Badge>
@@ -314,7 +319,7 @@ const ProductCard = memo(function ProductCard({
       </div>
         </div>
       </TooltipTrigger>
-      <TooltipContent>{isOutOfStock ? 'Out of stock' : 'Add to sale'}</TooltipContent>
+      <TooltipContent>{isOutOfStock ? 'Out of stock' : (product.selectTooltip || 'Add to sale')}</TooltipContent>
     </Tooltip>
   );
 });

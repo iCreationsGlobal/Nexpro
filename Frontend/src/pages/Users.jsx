@@ -181,7 +181,7 @@ const Users = () => {
   const studioLocationCtx = useStudioLocationOptional();
   const shopCtx = useShopOptional();
   const isStudioWorkspace = STUDIO_LIKE_TYPES.includes(activeTenant?.businessType);
-  const isShopWorkspace = activeTenant?.businessType === 'shop';
+  const isShopWorkspace = activeTenant?.businessType === 'shop' || activeTenant?.businessType === 'rental';
   const [assignmentShopIds, setAssignmentShopIds] = useState([]);
   const [loadingShopAssignments, setLoadingShopAssignments] = useState(false);
   const [savingShopAssignments, setSavingShopAssignments] = useState(false);

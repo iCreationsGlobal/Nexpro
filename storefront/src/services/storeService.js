@@ -18,6 +18,16 @@ const storeService = {
 
   getPublicStoreProducts: async (slug) => api.get(`/public/store/${encodeURIComponent(slug || '')}/products`),
 
+  getRentalAvailability: async (storeSlug, params = {}) => {
+    const query = buildPublicQuery(params);
+    const path = `/public/store/${encodeURIComponent(storeSlug || '')}/rental-availability`;
+    return api.get(query ? `${path}?${query}` : path);
+  },
+
+  submitRentalBookingRequest: async (storeSlug, payload) => (
+    api.post(`/public/store/${encodeURIComponent(storeSlug || '')}/rental-booking-request`, payload)
+  ),
+
   getMarketplaceHome: async () => api.get('/public/marketplace/home'),
 
   getMarketplaceStores: async (params = {}) => {

@@ -10,8 +10,10 @@ class AutoTaskSchedulerService {
     if (this.isRunning) return;
     this.isRunning = true;
     try {
-      const result = await taskAutomationService.runQuoteNoResponseScan();
-      console.log('[AutoTaskScheduler] Quote no-response scan completed', result);
+      const quoteResult = await taskAutomationService.runQuoteNoResponseScan();
+      console.log('[AutoTaskScheduler] Quote no-response scan completed', quoteResult);
+      const reminderResult = await taskAutomationService.runTaskDueReminderScan();
+      console.log('[AutoTaskScheduler] Task due-reminder scan completed', reminderResult);
     } catch (error) {
       console.error('[AutoTaskScheduler] Failed:', error?.message || error);
     } finally {

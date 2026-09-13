@@ -37,6 +37,7 @@ import { FilterChipRow } from '@/components/FilterChip';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { refreshAfterLeadChange } from '@/utils/queryInvalidation';
 import { formatStatusLabel } from '@/utils/formatLabels';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 
 const STATUS_OPTIONS = ['all', 'new', 'contacted', 'qualified', 'converted', 'lost'] as const;
 const OTHER_SOURCE_VALUE = '__OTHER__';
@@ -466,6 +467,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryBtn: {
+    ...standaloneFullWidth,
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 10,

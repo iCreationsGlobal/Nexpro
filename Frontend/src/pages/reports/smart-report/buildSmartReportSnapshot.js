@@ -102,6 +102,8 @@ export function buildSmartReportSnapshot({
   isShop,
   isPharmacy,
   isStudio,
+  isRental = false,
+  rentalData = null,
   terminology,
 }) {
   const collectedRevenue = num(revenueData?.totalRevenue);
@@ -128,8 +130,10 @@ export function buildSmartReportSnapshot({
 
   const sourceMeta = {
     revenue: {
-      label: isStudio ? 'Collected revenue' : 'Revenue',
-      subLabel: isStudio ? 'Cash collected from invoices in this period' : 'Recorded revenue for this period',
+      label: isRental ? 'Collected' : isStudio ? 'Collected revenue' : 'Revenue',
+      subLabel: isRental
+        ? 'Invoice amount paid in this period'
+        : isStudio ? 'Cash collected from invoices in this period' : 'Recorded revenue for this period',
       basis: revenueData?.revenueSource || (isShop || isPharmacy ? 'sales' : 'invoice_collections'),
     },
     bookedJobValue: {
@@ -183,6 +187,8 @@ export function buildSmartReportSnapshot({
     isShop,
     isPharmacy,
     isStudio,
+    isRental,
+    rentalOverview: rentalData,
   }).map((s, i) => ({ ...s, color: REPORT_CHART_COLORS[i % REPORT_CHART_COLORS.length] }));
 
   const topCustomers = normalizeTopCustomers(
@@ -190,9 +196,11 @@ export function buildSmartReportSnapshot({
     revenue
   );
 
-  const totalSales = isStudio
-    ? (bookedJobValue || revenue)
-    : num(salesData?.totalSales ?? salesData?.totalJobs ?? revenue);
+  const totalSales = isRental
+    ? revenue
+    : isStudio
+      ? (bookedJobValue || revenue)
+      : num(salesData?.totalSales ?? salesData?.totalJobs ?? revenue);
   const orderCount = num(
     salesData?.totalJobs ??
     salesData?.transactionCount ??
@@ -202,6 +210,7 @@ export function buildSmartReportSnapshot({
   const avgOrderValue = orderCount > 0 ? totalSales / orderCount : 0;
 
   const newCustomers = num(phase2Data?.extendedKpis?.current?.newCustomers ?? phase2Data?.newCustomers ?? 0);
+  const activeCustomers = num(phase2Data?.extendedKpis?.current?.activeCustomers ?? phase2Data?.kpiSummary?.activeCustomers ?? 0);
   const hasReturningCustomerData = hasValue(phase2Data?.extendedKpis?.current?.returningCustomers)
     || hasValue(phase2Data?.returningCustomers);
   const returningCustomers = hasReturningCustomerData
@@ -376,19 +385,21 @@ export function buildSmartReportSnapshot({
     expenseInsights.push({ icon: 'info', text: 'Expense levels are stable for this period.' });
   }
 
+  const revenueNoun = isRental ? 'Collections' : 'Revenue';
+  const revenueNounLower = isRental ? 'collections' : 'revenue';
   const aiSummary = aiAnalysis?.summary
     || (revenueChange > 0
-      ? `Your financial performance is strong this period. Revenue grew by ${revenueChange.toFixed(1)}% and profitability improved across key metrics.`
-      : 'Review revenue drivers and expense categories to improve performance next period.');
+      ? `Your financial performance is strong this period. ${revenueNoun} grew by ${revenueChange.toFixed(1)}% and profitability improved across key metrics.`
+      : `Review ${revenueNounLower} drivers and expense categories to improve performance next period.`);
 
   const executiveAiInsight = aiAnalysis?.quickInsight
     || (revenueChange > 0
-      ? `Great job! Your revenue grew by ${revenueChange.toFixed(1)}% this period.${expenseChange > 10 ? ' Expenses also increased — review slow-moving cost categories.' : ''}`
-      : `Revenue changed by ${revenueChange.toFixed(1)}% this period. Focus on top customers and expense control.`);
+      ? `Great job! Your ${revenueNounLower} grew by ${revenueChange.toFixed(1)}% this period.${expenseChange > 10 ? ' Expenses also increased — review slow-moving cost categories.' : ''}`
+      : `${revenueNoun} changed by ${revenueChange.toFixed(1)}% this period. Focus on top customers and expense control.`);
 
   const salesAiSummary = revenueChange > 0
-    ? `Sales grew by ${revenueChange.toFixed(1)}% this period, driven by strong ${isShop || isPharmacy ? 'product sales' : 'service revenue'} and customer activity.`
-    : `Sales activity for this period — monitor trends and follow up with top customers.`;
+    ? `${isRental ? 'Collections' : 'Sales'} grew by ${revenueChange.toFixed(1)}% this period, driven by strong ${isRental ? 'invoice collections' : isShop || isPharmacy ? 'product sales' : 'service revenue'} and customer activity.`
+    : `${isRental ? 'Collection' : 'Sales'} activity for this period — monitor trends and follow up with top customers.`;
 
   const expensesAiSummary = expenseChange > 0
     ? `Total expenses increased by ${expenseChange.toFixed(1)}% this period.${expenseCategories[0] ? ` ${expenseCategories[0].category} remains the highest cost driver at ${expenseCategories[0].percent.toFixed(1)}% of total expenses.` : ''}`
@@ -756,10 +767,11 @@ export function buildSmartReportSnapshot({
       expenses: { value: expenses, change: expenseChange, sparkline: expenseSparkline, invertTrend: true, sourceLabel: 'Approved expenses for the selected period (from the Expenses page)' },
       profitMargin: { value: profitMargin, change: marginChange, sparkline: marginSparkline, isPercent: true, sourceLabel: 'Net profit divided by collected revenue' },
       cashFlow: { value: netCashFlow, change: netCashChange, sparkline: profitSparkline, sourceLabel: sourceMeta.cashFlow.subLabel },
-      totalSales: { value: totalSales, change: revenueChange, sparkline: revenueSparkline, sourceLabel: isStudio ? sourceMeta.bookedJobValue.subLabel : sourceMeta.revenue.subLabel },
-      orderCount: { value: orderCount, change: revenueChange * 0.85, sparkline: salesByDate.map((d) => d.orders), sourceLabel: isStudio ? 'Jobs created in this period' : 'Transactions in this period' },
-      avgOrderValue: { value: avgOrderValue, change: revenueChange - (revenueChange * 0.85), sparkline: revenueSparkline, sourceLabel: isStudio ? 'Booked job value per job' : 'Revenue per order' },
+      totalSales: { value: totalSales, change: revenueChange, sparkline: revenueSparkline, sourceLabel: isRental ? sourceMeta.revenue.subLabel : isStudio ? sourceMeta.bookedJobValue.subLabel : sourceMeta.revenue.subLabel },
+      orderCount: { value: orderCount, change: revenueChange * 0.85, sparkline: salesByDate.map((d) => d.orders), sourceLabel: isRental ? 'Open invoices in this period' : isStudio ? 'Jobs created in this period' : 'Transactions in this period' },
+      avgOrderValue: { value: avgOrderValue, change: revenueChange - (revenueChange * 0.85), sparkline: revenueSparkline, sourceLabel: isRental ? 'Collected per invoice' : isStudio ? 'Booked job value per job' : 'Revenue per order' },
       newCustomers: { value: newCustomers, change: num(phase2Data?.extendedKpis?.comparison?.newCustomersChange ?? 0), sparkline: [newCustomers], sourceLabel: 'From customer activity data' },
+      activeCustomers: { value: activeCustomers, change: num(phase2Data?.extendedKpis?.comparison?.activeCustomers ?? 0), sparkline: [activeCustomers], sourceLabel: 'Customers with activity in this period' },
       returningCustomers: { value: returningCustomers, change: num(phase2Data?.extendedKpis?.comparison?.returningCustomersChange ?? 0), sparkline: [returningCustomers], subLabel: hasReturningCustomerData ? 'From customer activity data' : 'Returning customer count not tracked', hideTrend: !hasReturningCustomerData },
       avgDailyExpense: { value: avgDailyExpense, change: expenseChange, sparkline: expenseSparkline, invertTrend: true },
       highestExpenseDay: { label: highestExpenseDay.label, value: highestExpenseDay.amount },
@@ -812,8 +824,8 @@ export function buildSmartReportSnapshot({
     },
     customerSegments,
     customerInsights: [
-      topCustomers[0] ? { icon: 'star', text: `Your top customer contributed ${topCustomers[0].percent.toFixed(1)}% of total revenue.` } : null,
-      customerSegments[0] ? { icon: 'users', text: `Top 20% customers contributed ${customerSegments[0].percent.toFixed(1)}% of total sales.` } : null,
+      topCustomers[0] ? { icon: 'star', text: `Your top customer contributed ${topCustomers[0].percent.toFixed(1)}% of ${isRental ? 'collections' : 'total revenue'}.` } : null,
+      customerSegments[0] ? { icon: 'users', text: `Top 20% customers contributed ${customerSegments[0].percent.toFixed(1)}% of ${isRental ? 'collections' : 'total sales'}.` } : null,
       newCustomers > 0 ? { icon: 'user-plus', text: `${newCustomers} new customers acquired this period.` } : null,
       hasReturningCustomerData && returningCustomers > 0 ? { icon: 'repeat', text: `${returningCustomers} returning customers drove repeat revenue.` } : null,
     ].filter(Boolean),
@@ -832,6 +844,36 @@ export function buildSmartReportSnapshot({
     aiInsightPoints: aiInsightPoints.length > 0
       ? aiInsightPoints
       : [aiAnalysis?.performanceAnalysis, ...(aiAnalysis?.strategicSuggestions || [])].filter(Boolean),
+    rental: isRental && rentalData ? {
+      hireBooked: num(rentalData.revenue?.totalRevenue),
+      rentalAmount: num(rentalData.revenue?.totalRentalAmount),
+      lateCharges: num(rentalData.revenue?.totalLateCharges),
+      rentalCount: num(rentalData.revenue?.rentalCount),
+      byProduct: rentalData.revenue?.byProduct || [],
+      byBranch: rentalData.revenue?.byBranch || [],
+      utilizationRate: num(rentalData.utilization?.overallUtilizationRate),
+      rentedDays: num(rentalData.utilization?.totalRentedDays),
+      availableDays: num(rentalData.utilization?.totalAvailableDays),
+      utilizationByProduct: rentalData.utilization?.byProduct || [],
+      lateReturnCount: num(rentalData.lateReturns?.summary?.lateReturnCount),
+      totalDaysLate: num(rentalData.lateReturns?.summary?.totalDaysLate),
+      totalLateCharges: num(rentalData.lateReturns?.summary?.totalLateCharges),
+      pendingLateCharges: num(rentalData.lateReturns?.summary?.pendingLateCharges),
+      incidents: rentalData.lateReturns?.incidents || [],
+      damageCost: num(rentalData.damageTrends?.totalCost),
+      damageReports: num(rentalData.damageTrends?.reportCount),
+      damageByType: rentalData.damageTrends?.byType || [],
+      damageIncidents: rentalData.damageTrends?.incidents || [],
+      productHistory: rentalData.productHistory || [],
+      categoryPerformance: rentalData.categoryPerformance || [],
+      paymentMethods: rentalData.paymentMethods || { methods: [], totalAmount: 0, totalTransactions: 0 },
+      salesSplit: rentalData.salesSplit || { salesRevenue: 0, rentalRevenue: 0, totalRevenue: 0, salesShare: 0, rentalShare: 0 },
+      lowStockAlerts: rentalData.lowStockAlerts || [],
+      inventoryByBranch: rentalData.inventoryByBranch || [],
+    } : null,
+    rentalAiSummary: isRental && rentalData
+      ? `Hire booked is ${formatAmount(num(rentalData.revenue?.totalRevenue))} across ${num(rentalData.revenue?.rentalCount)} hires. Fleet utilization is ${num(rentalData.utilization?.overallUtilizationRate).toFixed(1)}% with ${num(rentalData.lateReturns?.summary?.lateReturnCount)} late returns and ${formatAmount(num(rentalData.damageTrends?.totalCost))} in damage cost.`
+      : null,
     outstanding,
     outstandingDetail,
     collectedRevenue,

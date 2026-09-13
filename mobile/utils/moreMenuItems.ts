@@ -40,8 +40,7 @@ export function buildMoreMenuSections({
         id: 'driver',
         items: [
           { id: 'deliveries', label: 'My Deliveries', icon: 'truck', route: '/(tabs)/deliveries' },
-          { id: 'profile', label: 'Profile', icon: 'user', route: '/profile' },
-          { id: 'account', label: 'Account & logout', icon: 'sign-out', route: '/account' },
+          { id: 'account', label: 'Account', icon: 'user', route: '/account' },
         ],
       },
     ];
@@ -107,11 +106,12 @@ export function buildMoreMenuSections({
   if (hasFeature('deliveries')) {
     work.push({ id: 'deliveries', label: 'Deliveries', icon: 'truck', route: '/(tabs)/deliveries' });
   }
+  if (businessType === 'rental' && hasFeature('rentals')) {
+    work.push({ id: 'rentals', label: 'Rentals', icon: 'calendar', route: '/(tabs)/rentals' });
+  }
 
   const account: MoreMenuItem[] = [
-    { id: 'profile', label: 'Profile', icon: 'user', route: '/profile' },
-    { id: 'settings', label: 'Settings', icon: 'cog', route: '/settings' },
-    { id: 'account', label: 'Account & logout', icon: 'sign-out', route: '/account' },
+    { id: 'account', label: 'Account', icon: 'user', route: '/account' },
   ];
 
   const sections: MoreMenuSection[] = [{ id: 'main', items: main }];
@@ -124,6 +124,16 @@ export function buildMoreMenuSections({
 /** Whether a menu route matches the current pathname (for selected state). */
 export function isMoreMenuRouteActive(pathname: string, route: string): boolean {
   const path = (pathname || '').replace(/\/$/, '') || '/';
+  if (route === '/account') {
+    return (
+      path === '/account'
+      || path === '/profile'
+      || path === '/settings'
+      || path.endsWith('/account')
+      || path.endsWith('/profile')
+      || path.endsWith('/settings')
+    );
+  }
   if (route === '/(tabs)/' || route === '/(tabs)' || route === '/') {
     return (
       path === '/'

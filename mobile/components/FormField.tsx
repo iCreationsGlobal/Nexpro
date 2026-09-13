@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Text, TextInput, StyleSheet, type TextInputProps } from 'react-native';
 
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { FontFamily, FontSize } from '@/constants/typography';
+import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
 
 type FormLabelProps = {
   children: string;
@@ -24,20 +25,29 @@ type FormInputProps = TextInputProps & {
 };
 
 export const FormInput = React.forwardRef<TextInput, FormInputProps>(
-  ({ multiline, style, placeholderTextColor, ...props }, ref) => {
-  const { textColor, mutedColor, borderColor, inputBg } = useScreenColors();
+  ({ multiline, style, placeholderTextColor, onFocus, onBlur, ...props }, ref) => {
+  const { textColor, mutedColor, borderColor, inputBg, colors } = useScreenColors();
+  const [focused, setFocused] = useState(false);
   return (
     <TextInput
       ref={ref}
       {...props}
       multiline={multiline}
       placeholderTextColor={placeholderTextColor ?? mutedColor}
+      onFocus={(e) => {
+        setFocused(true);
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        onBlur?.(e);
+      }}
       style={[
         styles.input,
         multiline && styles.textArea,
         {
           color: textColor,
-          borderColor,
+          borderColor: focused ? colors.tint : borderColor,
           backgroundColor: inputBg,
         },
         style,
@@ -58,13 +68,13 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   input: {
-    minHeight: 44,
-    borderWidth: 1,
+    minHeight: TOUCH_TARGET.standard,
+    borderWidth: BORDER_WIDTH.standard,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontFamily: FontFamily.regular,
-    fontSize: FontSize.md,
+    fontSize: FontSize.body,
     marginBottom: 8,
   },
   textArea: {

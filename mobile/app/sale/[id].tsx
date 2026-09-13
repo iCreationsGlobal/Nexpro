@@ -42,7 +42,8 @@ import {
   normalizeDirectMomoPhone,
   type DirectMomoProvider,
 } from '@/utils/paymentCollection';
-import { parseApiEntity, parseApiListResponse } from '@/utils/parseApiListResponse';
+import { getApiErrorMessage, parseApiEntity, parseApiListResponse } from '@/utils/parseApiListResponse';
+import { validateRecordedPaymentAmount } from '@/utils/recordPayment';
 import { refreshAfterSale } from '@/utils/queryInvalidation';
 import { resolveImageUrl } from '@/utils/fileUtils';
 import { DeliveryStatusPicker } from '@/components/DeliveryStatusPicker';
@@ -234,12 +235,10 @@ export default function SaleDetailScreen() {
     async (payload: { amount: number; paymentMethod: string; referenceNumber?: string }) => {
       if (!sale) return;
       const { amount, paymentMethod, referenceNumber } = payload;
-      if (!amount || amount <= 0) {
-        Alert.alert('Error', 'Enter a valid payment amount');
-        return;
-      }
-      if (amount > balance) {
-        Alert.alert('Error', `Amount cannot exceed balance (${formatCurrency(balance)})`);
+      const paymentType = amount >= balance - 0.01 ? 'full' : 'partial';
+      const amountError = validateRecordedPaymentAmount(amount, balance, paymentType);
+      if (amountError) {
+        Alert.alert('Error', amountError);
         return;
       }
       await runExclusiveAction('payment', async () => {
@@ -252,9 +251,9 @@ export default function SaleDetailScreen() {
           });
           await refresh();
           setShowPaymentForm(false);
-          Alert.alert('Success', 'Payment recorded');
+          Alert.alert('Success', paymentType === 'partial' ? 'Part payment recorded' : 'Payment recorded');
         } catch (err: unknown) {
-          Alert.alert('Error', err instanceof Error ? err.message : 'Failed to record payment');
+          Alert.alert('Error', getApiErrorMessage(err, 'Failed to record payment'));
         }
       });
     },

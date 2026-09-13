@@ -37,6 +37,7 @@ import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListRe
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { refreshAfterExpense, QUERY_STALE } from '@/utils/queryInvalidation';
 import { useIsStoreSetupRoute } from '@/hooks/useIsStoreSetupRoute';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -723,9 +724,15 @@ const styles = StyleSheet.create({
   receiptPickerTextWrap: { flex: 1 },
   receiptPickerTitle: { fontSize: 15, fontWeight: '600' },
   receiptPickerSubtitle: { fontSize: 12, marginTop: 2 },
-  removeReceiptBtn: { marginTop: 10, alignSelf: 'flex-start' },
+  removeReceiptBtn: {
+    marginTop: 10,
+    ...standaloneFullWidth,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
   removeReceiptText: { color: '#dc2626', fontSize: 14, fontWeight: '600' },
   submitButton: {
+    ...standaloneFullWidth,
     height: 48,
     borderRadius: 12,
     alignItems: 'center',

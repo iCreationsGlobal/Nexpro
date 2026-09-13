@@ -21,6 +21,13 @@ const {
   computeAlignedProfit,
 } = require('../services/analysis');
 const { fetchRetailCogs } = require('../services/analysis/metrics/sales');
+const {
+  getRentalKpis,
+  getRentalsDueToday,
+  getOverdueRentals,
+  getTopDamageProducts,
+  getRentalRevenueForPeriod,
+} = require('../services/analysis/metrics/rentals');
 const { trySmallTalk } = require('../services/assistant/smallTalk');
 
 const sendAssistantError = (res, error) => {
@@ -178,7 +185,8 @@ async function getAssistantContext(tenantId, options = {}) {
   firstDayThreeMonthsAgo.setHours(0, 0, 0, 0);
 
   const isShopOrPharmacy = businessType === 'shop' || businessType === 'pharmacy';
-  const isStudio = ['printing_press', 'mechanic', 'barber', 'salon', 'studio'].includes(businessType);
+  const isRental = businessType === 'rental';
+  const isStudio = !isRental && ['printing_press', 'mechanic', 'barber', 'salon', 'studio'].includes(businessType);
 
   const scopedTenantWhere = { tenantId };
   if (shopFilterId) scopedTenantWhere.shopId = shopFilterId;
@@ -650,6 +658,29 @@ async function getAssistantContext(tenantId, options = {}) {
     };
   }
 
+  let rentals = null;
+  if (isRental) {
+    const rentalScope = { tenantId, shopFilterId };
+    const [kpis, dueBackToday, overdueRentals, topDamageProducts, revenueThisMonth] = await Promise.all([
+      getRentalKpis(rentalScope),
+      getRentalsDueToday(rentalScope, 5),
+      getOverdueRentals(rentalScope, 5),
+      getTopDamageProducts(rentalScope, 5),
+      getRentalRevenueForPeriod({
+        ...rentalScope,
+        period: 'month',
+        periodLabel: 'This month',
+      }),
+    ]);
+    rentals = {
+      kpis,
+      dueBackToday,
+      overdueRentals,
+      topDamageProducts: topDamageProducts.products || [],
+      revenueThisMonth: revenueThisMonth.period,
+    };
+  }
+
   return {
     businessType,
     tenantName: tenant?.name || 'Business',
@@ -682,6 +713,7 @@ async function getAssistantContext(tenantId, options = {}) {
           inProgressCount: Number(inProgressJobsCount || 0),
         }
       : null,
+    rentals,
   };
 }
 

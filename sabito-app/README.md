@@ -14,8 +14,9 @@ Marketer web app for African Business Suite **Sabito Partners** — aligned with
 
 ```bash
 cd sabito-app
+# Copy .env.example → .env.local and set ABS_API_ORIGIN to match Backend/.env PORT
+# (this repo’s Backend often uses 5001 on macOS; Next also probes 5000–5010)
 npm install
-# Optional: NEXT_PUBLIC_ABS_API_URL=http://localhost:5001/api
 npm run dev
 ```
 

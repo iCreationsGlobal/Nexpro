@@ -92,6 +92,15 @@ export const SETTINGS_HUB_CARDS = [
     managerOnly: true,
   },
   {
+    slug: 'rental',
+    title: 'Rentals',
+    subtitle: 'Late fees, grace period, deposits, and pre-booking defaults',
+    group: 'business',
+    migrated: true,
+    managerOnly: true,
+    businessTypes: ['rental'],
+  },
+  {
     slug: 'ai',
     title: 'Ayebia / AI',
     subtitle: 'Anthropic API key for Ask Ayebia and automations',
@@ -169,6 +178,7 @@ const MIGRATED_TAB_ROUTES = {
   tracking: '/settings/tracking',
   delivery: '/settings/delivery',
   inventory: '/settings/inventory',
+  rental: '/settings/rental',
   ai: '/settings/ai',
   billing: '/settings/billing',
   subscription: '/settings/billing',
@@ -303,14 +313,18 @@ export const getSettingsCardHref = (card) => {
  * @param {Object} options
  * @param {boolean} options.isManager
  * @param {(key: string) => boolean} [options.hasFeature]
+ * @param {string} [options.businessType]
  * @returns {SettingsHubCard[]}
  */
-export const getVisibleSettingsCards = ({ isManager, hasFeature }) => {
+export const getVisibleSettingsCards = ({ isManager, hasFeature, businessType }) => {
   return SETTINGS_HUB_CARDS.filter((card) => {
     if (card.slug === 'billing' && !isPricingUiEnabled()) return false;
     if (card.managerOnly && !isManager) return false;
     if (card.featureKey && typeof hasFeature === 'function' && !hasFeature(card.featureKey)) {
       return false;
+    }
+    if (Array.isArray(card.businessTypes) && card.businessTypes.length > 0) {
+      if (!businessType || !card.businessTypes.includes(businessType)) return false;
     }
     if (!isManager && card.group !== 'you') return false;
     return true;

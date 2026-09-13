@@ -59,35 +59,33 @@ function titleCase(value?: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function divider(char = '-', width = 38): string {
-  return char.repeat(width);
-}
-
-function row(label: string, value: string, width = 38): string {
-  const left = label.trim();
-  const right = value.trim();
-  const spaces = Math.max(1, width - left.length - right.length);
-  return `${left}${' '.repeat(spaces)}${right}`;
-}
-
-function center(value: string, width = 38): string {
-  const text = value.trim();
-  if (text.length >= width) return text;
-  const left = Math.floor((width - text.length) / 2);
-  return `${' '.repeat(left)}${text}`;
-}
-
 function itemQuantity(value: number | string | null | undefined): string {
   const qty = numberValue(value);
   return Number.isInteger(qty) ? String(qty) : formatDecimal(qty, 2).replace(/\.?0+$/, '');
 }
 
+/** Section divider — a standalone line, never paired with other content on the same line. */
+function divider(width = 24): string {
+  return '='.repeat(width);
+}
+
 /**
  * Plain-text receipt for Share sheet / WhatsApp / SMS previews.
+ *
+ * Each field is its own label line followed by its own value line (no
+ * same-line label+value padding, no centering). Chat apps render this text
+ * in a proportional font at whatever width the device/bubble gives it, so
+ * fixed-width column alignment (spaces used to line up label and value)
+ * breaks unpredictably — lines wrap at different points on different
+ * screens and the "columns" end up jumbled. Stacking label/value on their
+ * own short lines can't misalign because nothing depends on line width.
+ *
+ * Section dividers ("====") are still safe to use because a divider line
+ * doesn't need to align with anything else — it's a fixed run of characters
+ * on its own line, not a pairing that depends on matching widths.
  */
 export function formatSaleReceiptText(sale: SaleReceiptInput): string {
-  const message: string[] = [];
-  const receipt: string[] = [];
+  const lines: string[] = [];
   const business = sale.shop?.name || sale.studioLocation?.name || sale.tenantName || 'Receipt';
   const location = sale.shop || sale.studioLocation;
   const customerName = sale.customer?.name?.trim() || 'Walk-in customer';
@@ -101,28 +99,38 @@ export function formatSaleReceiptText(sale: SaleReceiptInput): string {
   const paid = numberValue(sale.amountPaid);
   const balance = Math.max(0, total - paid);
 
-  message.push(`Hello ${customerName}, here is your receipt${business ? ` from ${business}` : ''}.`);
-  message.push('');
+  const field = (label: string, value: string) => {
+    lines.push(label);
+    lines.push(value);
+    lines.push('');
+  };
 
-  receipt.push(center(business.toUpperCase()));
-  if (location?.address) receipt.push(center(location.address));
-  if (location?.phone) receipt.push(center(`Tel: ${location.phone}`));
-  if (location?.email) receipt.push(center(location.email));
-  receipt.push(divider('='));
-  receipt.push(center('SALES RECEIPT'));
-  receipt.push(divider('='));
-  if (sale.saleNumber) receipt.push(row('Receipt No.', sale.saleNumber));
+  lines.push(`Hello ${customerName}, here is your receipt${business ? ` from ${business}` : ''}.`);
+  lines.push('');
+
+  lines.push(business.toUpperCase());
+  if (location?.address) lines.push(location.address);
+  if (location?.phone) lines.push(`Tel: ${location.phone}`);
+  if (location?.email) lines.push(location.email);
+  lines.push(divider());
+  lines.push('SALES RECEIPT');
+  lines.push(divider());
+  lines.push('');
+
+  if (sale.saleNumber) field('Receipt No.', sale.saleNumber);
   const dateText = formatDateTime(sale.createdAt);
-  if (dateText) receipt.push(row('Date', dateText));
-  if (sale.seller?.name) receipt.push(row('Served by', sale.seller.name));
-  receipt.push(row('Customer', customerName));
-  if (sale.customer?.phone) receipt.push(row('Phone', sale.customer.phone));
-  receipt.push('');
+  if (dateText) field('Date', dateText);
+  if (sale.seller?.name) field('Served by', sale.seller.name);
+  field('Customer', customerName);
+  if (sale.customer?.phone) field('Phone', sale.customer.phone);
 
-  receipt.push('ITEMS');
-  receipt.push(divider());
+  lines.push(divider());
+  lines.push('ITEMS');
+  lines.push(divider());
+  lines.push('');
   if ((sale.items || []).length === 0) {
-    receipt.push('No items listed');
+    lines.push('No items listed');
+    lines.push('');
   }
   (sale.items || []).forEach((item, index) => {
     const qty = itemQuantity(item.quantity ?? 1);
@@ -132,38 +140,28 @@ export function formatSaleReceiptText(sale: SaleReceiptInput): string {
       item.total ??
       item.totalPrice ??
       numberValue(item.quantity ?? 1) * unitPrice;
-    receipt.push(`${index + 1}. ${name}`);
-    if (item.sku) receipt.push(`   SKU: ${item.sku}`);
-    receipt.push(row(`   ${qty} x ${money(unitPrice)}`, money(lineTotal)));
+    lines.push(`${index + 1}. ${name}`);
+    if (item.sku) lines.push(`SKU: ${item.sku}`);
+    lines.push(`${qty} x ${money(unitPrice)}`);
+    lines.push(money(lineTotal));
+    lines.push('');
   });
 
-  receipt.push(divider());
-  receipt.push(row('Subtotal', money(subtotal)));
-  if (discount > 0) {
-    receipt.push(row('Discount', `-${money(discount)}`));
-  }
-  if (tax > 0) {
-    receipt.push(row('Tax', money(tax)));
-  }
-  receipt.push(row('TOTAL', money(total)));
-  receipt.push(divider('='));
-  if (paid > 0) {
-    receipt.push(row('Paid', money(paid)));
-  }
-  if (balance > 0.009) {
-    receipt.push(row('Balance', money(balance)));
-  }
-  if (sale.change != null && Number(sale.change) > 0) {
-    receipt.push(row('Change', money(sale.change)));
-  }
-  if (sale.paymentMethod) {
-    receipt.push(row('Payment', titleCase(sale.paymentMethod)));
-  }
-  receipt.push(divider('='));
-  receipt.push(center('Thank you for your purchase!'));
+  lines.push(divider());
+  field('Subtotal', money(subtotal));
+  if (discount > 0) field('Discount', `-${money(discount)}`);
+  if (tax > 0) field('Tax', money(tax));
+  field('TOTAL', money(total));
+  lines.push(divider());
+  if (paid > 0) field('Paid', money(paid));
+  if (balance > 0.009) field('Balance', money(balance));
+  if (sale.change != null && Number(sale.change) > 0) field('Change', money(sale.change));
+  if (sale.paymentMethod) field('Payment', titleCase(sale.paymentMethod));
 
-  message.push('```');
-  message.push(...receipt);
-  message.push('```');
-  return message.join('\n');
+  lines.push(divider());
+  lines.push('Thank you for your purchase!');
+
+  while (lines.length && lines[lines.length - 1] === '') lines.pop();
+
+  return lines.join('\n');
 }

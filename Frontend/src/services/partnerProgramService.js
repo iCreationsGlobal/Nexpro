@@ -10,7 +10,9 @@ const declineApplication = (id, payload) =>
 const listPartnerships = (params) => api.get('/partner-program/partnerships', { params });
 const revokePartnership = (id) => api.post(`/partner-program/partnerships/${id}/revoke`);
 const listCommissions = (params) => api.get('/partner-program/commissions', { params });
-const markCommissionsPaid = (payload) => api.post('/partner-program/commissions/mark-paid', payload);
+const markCommissionsPaid = (payload) => api.post('/partner-program/remittances', payload);
+const listRemittances = (params) => api.get('/partner-program/remittances', { params });
+const paySabito = (payload) => api.post('/partner-program/remittances', payload);
 const listReferrals = (params) => api.get('/partner-program/referrals', { params });
 const listCashouts = (params) => api.get('/partner-program/cashouts', { params });
 const approveCashout = (id) => api.post(`/partner-program/cashouts/${id}/approve`);
@@ -29,6 +31,8 @@ const partnerProgramService = {
   revokePartnership,
   listCommissions,
   markCommissionsPaid,
+  listRemittances,
+  paySabito,
   listReferrals,
   listCashouts,
   approveCashout,

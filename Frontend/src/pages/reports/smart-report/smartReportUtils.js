@@ -44,6 +44,8 @@ export function getSmartReportSnapshot(report) {
     isShop: false,
     isPharmacy: false,
     isStudio: false,
+    isRental: false,
+    rentalData: null,
     terminology: {},
   });
 }
@@ -90,6 +92,13 @@ export function getTabAiSummary(tabId, snapshot) {
       return snapshot.cashFlowAiSummary;
     case 'inventory':
       return snapshot.inventoryAiSummary;
+    case 'rental-overview':
+    case 'rental-inventory':
+    case 'rental-history':
+    case 'rental-utilization':
+    case 'rental-late-returns':
+    case 'rental-damage':
+      return snapshot.rentalAiSummary;
     case 'recommendations':
       return snapshot.recommendationsAiSummary;
     case 'ai-insights':

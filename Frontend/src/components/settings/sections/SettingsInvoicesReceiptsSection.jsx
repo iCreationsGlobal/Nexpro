@@ -27,7 +27,7 @@ import {
  * Invoices & receipts settings (auto-send, POS receipt/print, checkout fields, preview).
  */
 const SettingsInvoicesReceiptsSection = () => {
-  const {
+   const {
     canManageOrganization,
     isStudioLike,
     loadingNotificationChannels,
@@ -36,6 +36,7 @@ const SettingsInvoicesReceiptsSection = () => {
     autoSendReceipt,
     sendPaymentReminderEmail,
     sendInvoicePaidConfirmationToCustomer,
+    acceptOnlinePayments,
     quoteWorkflowEnabled,
     jobInvoiceData,
     updateQuoteWorkflowMutation,
@@ -144,6 +145,19 @@ const SettingsInvoicesReceiptsSection = () => {
                   checked={sendInvoicePaidConfirmationToCustomer}
                   disabled={updateCustomerNotificationPrefsMutation.isPending}
                   onCheckedChange={(checked) => handleNotificationPrefChange({ sendInvoicePaidConfirmationToCustomer: checked })}
+                />
+              </div>
+              <div className="flex flex-row items-center justify-between rounded-lg border border-gray-200 p-3">
+                <div className="space-y-0.5 pr-4">
+                  <Label className="text-base">Accept online payments</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Allow customers to pay invoices via payment link or online checkout. When enabled, payment collection must be configured.
+                  </p>
+                </div>
+                <Switch
+                  checked={acceptOnlinePayments}
+                  disabled={updateCustomerNotificationPrefsMutation.isPending}
+                  onCheckedChange={(checked) => handleNotificationPrefChange({ acceptOnlinePayments: checked })}
                 />
               </div>
             </>

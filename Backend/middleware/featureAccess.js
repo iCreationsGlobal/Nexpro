@@ -9,6 +9,21 @@ const { normalizeTenantInstanceForRequest } = require('../utils/tenantClassifica
 const requireFeature = (featureKey) => {
   return async (req, res, next) => {
     try {
+      if (Array.isArray(req.enabledFeatures)) {
+        if (req.enabledFeatures.includes(featureKey)) {
+          return next();
+        }
+        const tenant = req.tenant || null;
+        return res.status(403).json({
+          success: false,
+          message: `This feature (${featureKey}) is not included in your current workspace`,
+          featureRequired: featureKey,
+          currentPlan: tenant?.plan,
+          businessType: tenant?.businessType,
+          upgradeRequired: true,
+        });
+      }
+
       const tenantId = req.headers['x-tenant-id'] || req.user?.activeTenantId;
 
       if (!tenantId) {

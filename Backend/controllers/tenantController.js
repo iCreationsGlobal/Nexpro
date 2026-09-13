@@ -349,7 +349,7 @@ exports.signupTenant = async (req, res, next) => {
       // Seed default categories in background so signup responds quickly (~2–3s faster)
       // Pass force=true to bypass cache/flag checks since this is initial onboarding
       const studioType = metadata.studioType || null;
-      seedDefaultCategories(tenant.id, finalBusinessType, shopType || null, studioType, true)
+      seedDefaultCategories(tenant.id, finalBusinessType, shopType || null, studioType, null, true)
         .then(() => console.log(`✅ Seeded default categories for business type: ${finalBusinessType}${studioType ? `/${studioType}` : ''}`))
         .catch((err) => console.error('Error seeding default categories (non-blocking):', err.message));
 
@@ -552,8 +552,36 @@ exports.completeOnboarding = async (req, res, next) => {
     }
 
     const { resolveBusinessType } = require('../config/businessTypes');
+    const { isWorkspaceLocked } = require('../services/tenantProvisioningService');
     const previousBusinessType = tenant.businessType;
     const resolvedBusinessType = businessType ? resolveBusinessType(businessType) : tenant.businessType;
+
+    if (
+      businessType &&
+      isWorkspaceLocked(tenant) &&
+      resolveBusinessType(businessType) !== resolveBusinessType(tenant.businessType)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Business type cannot be changed after workspace setup is complete.',
+        errorCode: 'BUSINESS_TYPE_LOCKED',
+      });
+    }
+
+    const onboardingAlreadyCompleted = Boolean(existingTenantMetadata.onboarding?.completedAt);
+    if (
+      businessType &&
+      onboardingAlreadyCompleted &&
+      !isWorkspaceLocked(tenant) &&
+      resolveBusinessType(businessType) !== resolveBusinessType(tenant.businessType)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Business type cannot be changed after onboarding is complete.',
+        errorCode: 'BUSINESS_TYPE_LOCKED',
+      });
+    }
+
     const selectedStudioType = resolvedBusinessType === 'studio'
       ? (studioType || businessSubType || tenant.metadata?.studioType || null)
       : null;
@@ -592,7 +620,13 @@ exports.completeOnboarding = async (req, res, next) => {
     } else if (resolvedBusinessType === 'studio') {
       if (selectedStudioType) metadata.studioType = selectedStudioType;
       delete metadata.shopType;
+      delete metadata.rentalType;
       console.log('[tenant] completeOnboarding tenantId=%s businessType=studio studioType=%s', tenantId, selectedStudioType || 'default');
+    } else if (resolvedBusinessType === 'rental') {
+      if (businessSubType) metadata.rentalType = businessSubType;
+      delete metadata.shopType;
+      delete metadata.studioType;
+      console.log('[tenant] completeOnboarding tenantId=%s businessType=rental rentalType=%s', tenantId, businessSubType || 'default');
     } else if (businessType) {
       delete metadata.shopType;
       delete metadata.studioType;
@@ -662,7 +696,7 @@ exports.completeOnboarding = async (req, res, next) => {
     await tenant.reload();
 
     const resolvedOnboardingType = resolvedBusinessType || tenant.businessType;
-    if (resolvedOnboardingType === 'shop') {
+    if (resolvedOnboardingType === 'shop' || resolvedOnboardingType === 'rental') {
       try {
         const { syncDefaultShopFromOrganization } = require('../utils/shopUtils');
         await syncDefaultShopFromOrganization(tenantId, {
@@ -673,7 +707,7 @@ exports.completeOnboarding = async (req, res, next) => {
           shopType: metadata.shopType || metadata.businessSubType || null,
           source: 'onboarding',
         });
-        console.log('[tenant] completeOnboarding ensured default shop for tenantId=%s', tenantId);
+        console.log('[tenant] completeOnboarding ensured default shop for tenantId=%s type=%s', tenantId, resolvedOnboardingType);
       } catch (shopErr) {
         console.error('[tenant] completeOnboarding default shop failed (non-blocking):', shopErr.message);
       }
@@ -697,20 +731,25 @@ exports.completeOnboarding = async (req, res, next) => {
       !previousBusinessType || // First time setting business type
       resolveBusinessType(previousBusinessType) !== resolvedBusinessType || // Business type changed
       (resolvedBusinessType === 'shop' && shopType) || // Shop type provided
-      (resolvedBusinessType === 'studio' && selectedStudioType) // Studio type provided
+      (resolvedBusinessType === 'studio' && selectedStudioType) || // Studio type provided
+      (resolvedBusinessType === 'rental' && businessSubType) // Rental sub-type provided
     );
     
     if (shouldSeedCategories) {
       try {
+        const rentalSubType = resolvedBusinessType === 'rental'
+          ? (businessSubType || metadata.businessSubType || metadata.rentalType || null)
+          : null;
         // Pass force=true to bypass cache/flag checks since this is onboarding
         await seedDefaultCategories(
           tenantId,
           resolvedBusinessType,
           resolvedBusinessType === 'shop' ? shopType || null : null,
           resolvedBusinessType === 'studio' ? selectedStudioType : null,
+          rentalSubType,
           true
         );
-        console.log(`✅ Seeded default categories for ${resolvedBusinessType}${shopType ? ` (${shopType})` : ''}${selectedStudioType ? ` (${selectedStudioType})` : ''}`);
+        console.log(`✅ Seeded default categories for ${resolvedBusinessType}${shopType ? ` (${shopType})` : ''}${selectedStudioType ? ` (${selectedStudioType})` : ''}${rentalSubType ? ` (${rentalSubType})` : ''}`);
       } catch (error) {
         console.error('Failed to seed categories during onboarding:', error);
         // Don't fail onboarding if category seeding fails
@@ -729,6 +768,25 @@ exports.completeOnboarding = async (req, res, next) => {
           console.log(`[tenant] Seeded ${summary.created} default automations for tenant ${tenantId}`);
         }
       });
+
+    if (resolvedOnboardingType === 'rental') {
+      try {
+        const { provisionRentalWorkspace } = require('../services/tenantProvisioningService');
+        const rentalSubType = businessSubType || metadata.businessSubType || metadata.rentalType || null;
+        const { manifest, created } = await provisionRentalWorkspace(tenantId, {
+          subType: rentalSubType,
+          provisioned: { categoriesSeeded: Boolean(shouldSeedCategories) },
+        });
+        console.log(
+          '[tenant] completeOnboarding rental workspace manifest tenantId=%s created=%s branchId=%s',
+          tenantId,
+          created,
+          manifest?.defaultBranchId || 'n/a'
+        );
+      } catch (provisionErr) {
+        console.error('[tenant] completeOnboarding rental provisioning failed (non-blocking):', provisionErr.message);
+      }
+    }
 
     setImmediate(() => {
       notifyTenantOnboarded({

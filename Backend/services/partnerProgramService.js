@@ -11,8 +11,91 @@ const {
   PricingTemplate,
   OnlineServiceListing,
 } = require('../models');
+const {
+  getSabitoPartnerCategoryLabel,
+  getTenantBusinessSubtype,
+  defaultSabitoPartnerCategoryId,
+  findSabitoPartnerCategory,
+  isAllowedSabitoPartnerCategory,
+  resolvePublicCategoryFilterValues,
+} = require('../config/sabitoPartnerCategories');
 
 const money = (value) => Number((Number.parseFloat(value || 0) || 0).toFixed(2));
+
+const MODERATION_STATUSES = ['draft', 'pending', 'approved', 'rejected', 'suspended'];
+const PUBLIC_LISTING_WHERE = {
+  enabled: true,
+  listed: true,
+  moderationStatus: 'approved',
+};
+const LISTING_MATERIAL_FIELDS = [
+  'displayName',
+  'pitch',
+  'logoUrl',
+  'category',
+  'location',
+  'firstClientRatePercent',
+  'returningClientRatePercent',
+  'slug',
+];
+
+const valuesDiffer = (left, right, key) => {
+  if (key === 'firstClientRatePercent' || key === 'returningClientRatePercent') {
+    return money(left) !== money(right);
+  }
+  return String(left ?? '') !== String(right ?? '');
+};
+
+const listingFieldsChanged = (settings, updates) =>
+  LISTING_MATERIAL_FIELDS.some(
+    (key) => updates[key] !== undefined && valuesDiffer(updates[key], settings[key], key)
+  );
+
+/**
+ * Tenant saves never approve a listing. Listing on / material listing edits go to pending review.
+ */
+const applyTenantModeration = (settings, updates, willEnable, willList) => {
+  const current = MODERATION_STATUSES.includes(settings.moderationStatus)
+    ? settings.moderationStatus
+    : 'draft';
+  delete updates.moderationStatus;
+  delete updates.moderationNote;
+  delete updates.moderatedAt;
+  delete updates.moderatedBy;
+
+  if (current === 'suspended') {
+    return;
+  }
+
+  if (!willList || !willEnable) {
+    if (current === 'draft' || !settings.moderationStatus) {
+      updates.moderationStatus = 'draft';
+    }
+    return;
+  }
+
+  const materialChange = listingFieldsChanged(settings, updates);
+  const turningOnList = updates.listed === true && !settings.listed;
+  if (current === 'approved' && !materialChange && !turningOnList) {
+    return;
+  }
+  if (current === 'approved' && turningOnList && !materialChange) {
+    return;
+  }
+
+  updates.moderationStatus = 'pending';
+  updates.moderationNote = null;
+};
+
+const pendApprovedListing = async (settings) => {
+  if (settings?.enabled && settings?.listed && settings?.moderationStatus === 'approved') {
+    await settings.update({
+      moderationStatus: 'pending',
+      moderationNote: null,
+    });
+  }
+  return settings;
+};
 
 const slugify = (value) =>
   String(value || '')
@@ -36,11 +119,16 @@ const countActivePartnerships = async (tenantId, transaction) =>
 /**
  * Get or create partner program settings for a tenant.
  */
-const getOrCreateSettings = async (tenantId, tenantName = 'Business') => {
+const getOrCreateSettings = async (tenantId, tenantName) => {
   let settings = await PartnerProgramSettings.findOne({ where: { tenantId } });
   if (settings) return settings;
 
-  const baseSlug = slugify(tenantName);
+  const tenant = await Tenant.findByPk(tenantId);
+  const displayName = tenantName || tenant?.name || tenant?.companyName || 'Business';
+  const subtype = getTenantBusinessSubtype(tenant);
+  const category = defaultSabitoPartnerCategoryId(tenant?.businessType, subtype);
+
+  const baseSlug = slugify(displayName);
   let slug = baseSlug;
   let attempt = 0;
   while (await PartnerProgramSettings.findOne({ where: { slug } })) {
@@ -53,11 +141,13 @@ const getOrCreateSettings = async (tenantId, tenantName = 'Business') => {
     enabled: false,
     listed: false,
     slug,
-    displayName: tenantName || 'Business',
+    displayName,
+    category: category || null,
     firstClientRatePercent: 10,
     returningClientRatePercent: 5,
     attributionMonths: 12,
     maxMarketers: 10,
+    moderationStatus: 'draft',
   });
   return settings;
 };
@@ -90,7 +180,7 @@ const toPublicListing = async (settings, activeCount) => {
     tenantId: settings.tenantId,
     slug: settings.slug,
     name: settings.displayName,
-    category: settings.category || 'Services',
+    category: getSabitoPartnerCategoryLabel(settings.category),
     location: settings.location || 'Ghana',
     pitch: settings.pitch || '',
     description: settings.pitch || '',
@@ -116,9 +206,10 @@ const toPublicListing = async (settings, activeCount) => {
 };
 
 const listPublicPartners = async ({ category, search, limit = 50 } = {}) => {
-  const where = { enabled: true, listed: true };
-  if (category && category !== 'All categories') {
-    where.category = category;
+  const where = { ...PUBLIC_LISTING_WHERE };
+  const categoryValues = resolvePublicCategoryFilterValues(category);
+  if (categoryValues?.length) {
+    where.category = { [Op.in]: categoryValues };
   }
   if (search) {
     where[Op.or] = [
@@ -145,7 +236,7 @@ const listPublicPartners = async ({ category, search, limit = 50 } = {}) => {
 
 const getPublicPartnerBySlug = async (slug) => {
   const settings = await PartnerProgramSettings.findOne({
-    where: { slug: String(slug || '').toLowerCase(), enabled: true, listed: true },
+    where: { slug: String(slug || '').toLowerCase(), ...PUBLIC_LISTING_WHERE },
     include: settingsInclude,
   });
   if (!settings) return null;
@@ -163,7 +254,27 @@ const updateSettings = async (tenantId, payload = {}) => {
   if (payload.displayName != null) updates.displayName = String(payload.displayName).trim().slice(0, 160);
   if (payload.pitch !== undefined) updates.pitch = payload.pitch ? String(payload.pitch).trim() : null;
   if (payload.logoUrl !== undefined) updates.logoUrl = payload.logoUrl || null;
-  if (payload.category !== undefined) updates.category = payload.category ? String(payload.category).trim().slice(0, 80) : null;
+  if (payload.category !== undefined) {
+    const raw = payload.category ? String(payload.category).trim().slice(0, 80) : null;
+    if (raw) {
+      const subtype = getTenantBusinessSubtype(tenant);
+      if (
+        !isAllowedSabitoPartnerCategory(tenant?.businessType, raw, {
+          currentCategory: settings.category,
+          subtype,
+        })
+      ) {
+        const err = new Error('Select a category that matches this workspace type.');
+        err.statusCode = 400;
+        err.errorCode = 'INVALID_PARTNER_CATEGORY';
+        throw err;
+      }
+      const found = findSabitoPartnerCategory(raw);
+      updates.category = found ? found.id : raw;
+    } else {
+      updates.category = null;
+    }
+  }
   if (payload.location !== undefined) updates.location = payload.location ? String(payload.location).trim().slice(0, 160) : null;
   if (payload.firstClientRatePercent !== undefined) {
     updates.firstClientRatePercent = money(payload.firstClientRatePercent);
@@ -190,9 +301,20 @@ const updateSettings = async (tenantId, payload = {}) => {
 
   const willList = updates.listed !== undefined ? updates.listed : settings.listed;
   const willEnable = updates.enabled !== undefined ? updates.enabled : settings.enabled;
+  if (willEnable && willList) {
+    const nextCategory = updates.category !== undefined ? updates.category : settings.category;
+    if (!nextCategory) {
+      const err = new Error('Category is required when listing on Sabito.');
+      err.statusCode = 400;
+      err.errorCode = 'PARTNER_CATEGORY_REQUIRED';
+      throw err;
+    }
+  }
   if (willEnable && willList && !settings.setupCompletedAt) {
     updates.setupCompletedAt = new Date();
   }
+
+  applyTenantModeration(settings, updates, willEnable, willList);
 
   await settings.update(updates);
   return PartnerProgramSettings.findByPk(settings.id, { include: settingsInclude });
@@ -221,12 +343,13 @@ const replaceServices = async (tenantId, services = []) => {
       })
     );
   }
+  await pendApprovedListing(settings);
   return created;
 };
 
 const applyToPartner = async ({ marketerId, tenantId, pitch }) => {
   const settings = await PartnerProgramSettings.findOne({
-    where: { tenantId, enabled: true, listed: true },
+    where: { tenantId, ...PUBLIC_LISTING_WHERE },
   });
   if (!settings) {
     const err = new Error('This business is not accepting partner applications.');
@@ -355,6 +478,57 @@ const findPartnershipByReferralCode = async (code, tenantId = null) => {
   return Partnership.findOne({ where });
 };
 
+const moderateListing = async ({ settingsId, action, note, moderatedBy }) => {
+  const settings = await PartnerProgramSettings.findByPk(settingsId);
+  if (!settings) {
+    const err = new Error('Business listing not found.');
+    err.statusCode = 404;
+    err.errorCode = 'LISTING_NOT_FOUND';
+    throw err;
+  }
+
+  const now = new Date();
+  const trimmedNote = note ? String(note).trim() : null;
+
+  if (action === 'approve') {
+    await settings.update({
+      moderationStatus: 'approved',
+      moderationNote: trimmedNote,
+      moderatedAt: now,
+      moderatedBy: moderatedBy || null,
+    });
+  } else if (action === 'reject') {
+    await settings.update({
+      moderationStatus: 'rejected',
+      moderationNote: trimmedNote,
+      moderatedAt: now,
+      moderatedBy: moderatedBy || null,
+    });
+  } else if (action === 'suspend') {
+    await settings.update({
+      moderationStatus: 'suspended',
+      moderationNote: trimmedNote,
+      moderatedAt: now,
+      moderatedBy: moderatedBy || null,
+    });
+  } else if (action === 'unsuspend') {
+    const nextStatus = settings.enabled && settings.listed ? 'approved' : 'draft';
+    await settings.update({
+      moderationStatus: nextStatus,
+      moderationNote: trimmedNote,
+      moderatedAt: now,
+      moderatedBy: moderatedBy || null,
+    });
+  } else {
+    const err = new Error('Unknown moderation action.');
+    err.statusCode = 400;
+    err.errorCode = 'INVALID_MODERATION_ACTION';
+    throw err;
+  }
+
+  return PartnerProgramSettings.findByPk(settings.id, { include: settingsInclude });
+};
+
 module.exports = {
   money,
   getOrCreateSettings,
@@ -367,6 +541,10 @@ module.exports = {
   declineApplication,
   countActivePartnerships,
   findPartnershipByReferralCode,
+  moderateListing,
+  pendApprovedListing,
+  PUBLIC_LISTING_WHERE,
+  MODERATION_STATUSES,
   settingsInclude,
   toPublicListing,
 };

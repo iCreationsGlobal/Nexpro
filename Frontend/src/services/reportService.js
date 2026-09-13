@@ -178,6 +178,52 @@ const reportService = {
     if (compareEndDate) params.compareEndDate = compareEndDate;
     return scopedGet('/reports/overview/extended-kpis', params);
   },
+
+  getRentalReportsOverview: async (startDate, endDate, groupBy = 'day') => {
+    const params = {};
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    if (groupBy) params.groupBy = groupBy;
+    return scopedGet('/reports/rental/overview', params);
+  },
+
+  getRentalRevenueReport: async (startDate, endDate, groupBy = 'day') => {
+    const params = {};
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    if (groupBy) params.groupBy = groupBy;
+    return scopedGet('/reports/rental/revenue', params);
+  },
+
+  getRentalLateReturnsReport: async (startDate, endDate) => {
+    const params = {};
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    return scopedGet('/reports/rental/late-returns', params);
+  },
+
+  getRentalUtilizationReport: async (startDate, endDate) => {
+    const params = {};
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    return scopedGet('/reports/rental/utilization', params);
+  },
+
+  getRentalSmartReport: async (startDate, endDate, groupBy = 'day') => {
+    const params = {};
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    if (groupBy) params.groupBy = groupBy;
+    return scopedGet('/reports/rental/smart-report', params);
+  },
+
+  getRentalDamageTrendsReport: async (startDate, endDate, groupBy = 'month') => {
+    const params = {};
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    if (groupBy) params.groupBy = groupBy;
+    return scopedGet('/reports/rental/damage-trends', params);
+  },
 };
 
 export default reportService;

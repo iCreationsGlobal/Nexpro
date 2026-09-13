@@ -137,6 +137,11 @@ const Customer = sequelize.define('Customer', {
   notes: {
     type: DataTypes.TEXT
   },
+  metadata: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: {}
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true

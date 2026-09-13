@@ -6,11 +6,14 @@ import { FormEvent, Suspense, useState } from "react";
 import { loginMarketer, persistAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { accountDestination } from "@/lib/workspace";
+import { ABS_SITE_URL } from "@/lib/constants";
 
 function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
-  const next = search.get("next") || "/dashboard";
+  const requestedNext = search.get("next") || "/dashboard";
+  const next = accountDestination(requestedNext);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -56,9 +59,13 @@ function LoginForm() {
       </Button>
       <p className="text-center text-sm text-slate-500">
         New to Sabito?{" "}
-        <Link href="/signup" className="text-[var(--sabito-teal)]">
+        <Link href={`/signup?next=${encodeURIComponent(next)}`} className="text-[var(--sabito-teal)]">
           Create an account
         </Link>
+      </p>
+      <p className="text-center text-sm text-slate-500">
+        Business account?{" "}
+        <a href={ABS_SITE_URL} className="text-[var(--sabito-green)]">Continue to ABS</a>
       </p>
     </form>
   );

@@ -96,10 +96,34 @@ export function buildRevenueByCategory({
   productSales,
   isShop,
   isPharmacy,
-  isStudio = false
+  isStudio = false,
+  isRental = false,
+  rentalOverview = null
 }) {
   const slices = [];
   let allocated = 0;
+
+  if (isRental) {
+    const hireProducts = rentalOverview?.revenue?.byProduct || [];
+    hireProducts.forEach((row) => {
+      const value = parseFloat(row.revenue || 0);
+      if (value > 0) {
+        slices.push({ name: row.productName || 'Hire', value });
+        allocated += value;
+      }
+    });
+    const remainder = Math.max(0, (totalRevenue || 0) - allocated);
+    if (remainder > 0) {
+      slices.push({ name: 'Invoice collections', value: remainder });
+    }
+    if (slices.length === 0 && totalRevenue > 0) {
+      slices.push({ name: 'Collections', value: totalRevenue });
+    }
+    return slices.map((slice, index) => ({
+      ...slice,
+      color: REPORT_CHART_COLORS[index % REPORT_CHART_COLORS.length]
+    }));
+  }
 
   if ((isShop || isPharmacy) && (productSales?.products || []).length > 0) {
     const productRevenue = (productSales.products || []).reduce(
@@ -177,15 +201,29 @@ export function buildOverviewInsights({
   collectionRate,
   isShop,
   isPharmacy,
-  productSales
+  isRental = false,
+  productSales,
+  rentalOverview = null
 }) {
   const insights = [];
+  const revenueNoun = isRental ? 'Collections' : 'Revenue';
+
+  if (isRental && rentalOverview?.revenue) {
+    const hireBooked = parseFloat(rentalOverview.revenue.totalRevenue || 0);
+    if (Math.abs(hireBooked - (totalRevenue || 0)) > 1) {
+      insights.push(
+        `Collected (invoice amount paid) is ${formatOverviewCurrency(totalRevenue)}. Hire booked (overlapping rental amounts) is ${formatOverviewCurrency(hireBooked)}. They can differ when deposits, late fees, or payment timing do not match the hire window.`
+      );
+    }
+  }
 
   if (revenueChange > 5) {
-    const driver = (isShop || isPharmacy) ? 'product sales' : 'service revenue';
-    insights.push(`Revenue grew ${revenueChange.toFixed(1)}% — growth appears driven by ${driver}.`);
+    const driver = isRental
+      ? 'invoice collections'
+      : (isShop || isPharmacy) ? 'product sales' : 'service revenue';
+    insights.push(`${revenueNoun} grew ${revenueChange.toFixed(1)}% — growth appears driven by ${driver}.`);
   } else if (revenueChange < -5) {
-    insights.push(`Revenue declined ${Math.abs(revenueChange).toFixed(1)}% compared to the previous period. Review pricing and customer activity.`);
+    insights.push(`${revenueNoun} declined ${Math.abs(revenueChange).toFixed(1)}% compared to the previous period. Review pricing and customer activity.`);
   }
 
   if (expenseChange > 10 && totalExpenses > 0) {
@@ -198,7 +236,7 @@ export function buildOverviewInsights({
     const pct = (topRev / totalRevenue) * 100;
     const name = top.customer?.company || top.customer?.name || 'Top customer';
     if (pct >= 15) {
-      insights.push(`${name} contributes ${pct.toFixed(1)}% of revenue — consider diversifying your customer base.`);
+      insights.push(`${name} contributes ${pct.toFixed(1)}% of ${isRental ? 'collections' : 'revenue'} — consider diversifying your customer base.`);
     }
   }
 
@@ -220,7 +258,9 @@ export function buildOverviewInsights({
   }
 
   if (insights.length === 0) {
-    insights.push('Your key metrics are stable for this period. Keep tracking revenue, expenses, and collections.');
+    insights.push(isRental
+      ? 'Your key metrics are stable for this period. Keep tracking collections, hire booked, expenses, and outstanding invoices.'
+      : 'Your key metrics are stable for this period. Keep tracking revenue, expenses, and collections.');
   }
 
   return insights.slice(0, 4);

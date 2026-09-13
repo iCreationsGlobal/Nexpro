@@ -17,6 +17,7 @@ const {
   Shop,
   StudioLocation,
   User,
+  Rental,
 } = require('../models');
 const { Op } = require('sequelize');
 const { getPagination } = require('../utils/paginationUtils');
@@ -42,6 +43,7 @@ const {
 } = require('../services/automationEngineService');
 const { updateCustomerBalance } = require('../services/customerBalanceService');
 const { ensureSaleFromPaidInvoice } = require('../services/invoiceSaleService');
+const { isRentalSourcedInvoice, syncRentalFromPaidInvoice } = require('../services/rentalInvoicePaymentService');
 const sabitoWebhookService = require('../services/sabitoWebhookService');
 const mobileMoneyService = require('../services/mobileMoneyService');
 const { getResolvedMtnConfigForTenant } = require('../services/tenantMomoCollectionService');
@@ -243,6 +245,30 @@ const invoiceToResponsePayload = async (invoice) => {
   const payload = typeof invoice.toJSON === 'function' ? invoice.toJSON() : { ...invoice };
   payload.items = await hydrateInvoiceItemProductCodes(invoice, payload.items);
   payload.organization = await resolveInvoiceOrganization(invoice);
+  if (isRentalSourcedInvoice(payload)) {
+    const metadata = payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : {};
+    if (!metadata.startDate || !metadata.endDate) {
+      const rentalId = metadata.rentalId;
+      if (rentalId) {
+        try {
+          const rental = await Rental.findByPk(rentalId, {
+            attributes: ['id', 'startDate', 'endDate', 'rentalDurationDays', 'status'],
+          });
+          if (rental) {
+            payload.metadata = {
+              ...metadata,
+              startDate: metadata.startDate || rental.startDate,
+              endDate: metadata.endDate || rental.endDate,
+              rentalDurationDays: metadata.rentalDurationDays || rental.rentalDurationDays,
+              rentalStatus: metadata.rentalStatus || rental.status,
+            };
+          }
+        } catch (_rentalLookupError) {
+          // Print still works without hire dates.
+        }
+      }
+    }
+  }
   return payload;
 };
 
@@ -384,11 +410,16 @@ const enqueueInvoicePaymentSideEffects = ({
   wasAlreadyPaid,
   markedPaid = false,
 }) => {
-  runInvoicePaymentBackgroundTask('sale sync', () => ensureSaleFromPaidInvoice(invoiceId, payment?.id || null, {
-    tenantId,
-    userId,
-    paymentMethod,
-  }));
+  runInvoicePaymentBackgroundTask('sale sync', () => {
+    if (isRentalSourcedInvoice(updatedInvoice)) {
+      return syncRentalFromPaidInvoice(invoiceId, { tenantId, invoice: updatedInvoice });
+    }
+    return ensureSaleFromPaidInvoice(invoiceId, payment?.id || null, {
+      tenantId,
+      userId,
+      paymentMethod,
+    });
+  });
 
   if (paymentAmount > 0 && payment) {
     runInvoicePaymentBackgroundTask('payment journal', () => createInvoicePaymentJournal({
@@ -601,12 +632,18 @@ const buildInvoiceVisibilityWhere = async (req) => {
     where[Op.or] = [{ sourceType: 'sale' }, { sourceType: 'quote' }];
   } else if (resolved === 'pharmacy') {
     where[Op.or] = [{ sourceType: 'prescription' }, { sourceType: 'sale' }];
+  } else if (resolved === 'rental') {
+    where[Op.or] = [{ sourceType: 'rental' }, { sourceType: 'quote' }, { sourceType: 'sale' }];
   }
 
   if (getEffectiveTenantRole(req) === 'staff') {
     const ownOr = [];
     if (req.shopScoped) {
       ownOr.push({ saleId: { [Op.ne]: null } });
+      if (resolved === 'rental') {
+        ownOr.push({ sourceType: 'rental' });
+        ownOr.push({ sourceType: 'quote' });
+      }
     } else {
       const mySales = await Sale.findAll({
         where: applyTenantFilter(req.tenantId, { soldBy: req.user.id }),
@@ -623,6 +660,18 @@ const buildInvoiceVisibilityWhere = async (req) => {
     const jobIds = myJobs.map((j) => j.id);
     if (jobIds.length) ownOr.push({ jobId: { [Op.in]: jobIds } });
     if (resolved === 'pharmacy') ownOr.push({ prescriptionId: { [Op.ne]: null } });
+    if (resolved === 'rental') {
+      const myRentals = await Rental.findAll({
+        where: applyTenantFilter(req.tenantId, { createdBy: req.user.id }),
+        attributes: ['id']
+      });
+      const rentalIds = myRentals.map((row) => row.id);
+      if (rentalIds.length) {
+        ownOr.push(
+          sequelize.where(sequelize.literal(`metadata->>'rentalId'`), { [Op.in]: rentalIds })
+        );
+      }
+    }
     if (ownOr.length) {
       where[Op.and] = where[Op.and] || [];
       where[Op.and].push({ [Op.or]: ownOr });

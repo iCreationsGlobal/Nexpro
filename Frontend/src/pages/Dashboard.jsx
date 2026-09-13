@@ -57,11 +57,13 @@ import { useNavigate } from 'react-router-dom';
 import dashboardService from '../services/dashboardService';
 import assistantService from '../services/assistantService';
 import productService from '../services/productService';
+import rentalService from '../services/rentalService';
 import OnlineStoreOrderBanner from '../components/store/OnlineStoreOrderBanner';
 import { useOnlineStoreOrderAttention } from '../hooks/useOnlineStoreOrderAttention';
 import settingsService from '../services/settingsService';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { useWorkspaceProfile } from '../hooks/useWorkspaceProfile';
 import { useSmartSearch } from '../context/SmartSearchContext';
 import { useWorkspaceScope } from '../hooks/useWorkspaceScope';
 import { useDebounce } from '../hooks/useDebounce';
@@ -351,6 +353,7 @@ const buildStaffDashboardInsight = ({ businessHealthContext }) => {
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, activeTenant, tenantRole, wasInvited, suppressAppGuidance, billingStatus } = useAuth();
+  const { isRental, kind } = useWorkspaceProfile();
   const {
     activeTenantId,
     activeShopId,
@@ -565,7 +568,9 @@ const Dashboard = () => {
       };
     }
 
-    const due = dayjs(dueDate);
+    const due = typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate.trim())
+      ? dayjs(dueDate).endOf('day')
+      : dayjs(dueDate);
     const now = dayjs();
 
     const formatted = due.format('MMM DD, YYYY');
@@ -616,9 +621,12 @@ const Dashboard = () => {
   const displayData = useMemo(() => overview, [overview]);
   
   // Calculate pagination values (after displayData is defined)
-  // For shops/pharmacies, use recent sales from shopData; otherwise use recentJobs
+  // For shops/pharmacies, use recent sales from shopData; for rentals, use recent rentals; otherwise use recentJobs
   const recentJobs = useMemo(() => {
-    if (activeTenant?.businessType === 'shop' || activeTenant?.businessType === 'pharmacy') {
+    if (isRental) {
+      return [];
+    }
+    if (kind === 'shop' || kind === 'pharmacy') {
       // Transform sales data to match the expected format for the table
       const recentSales = displayData?.shopData?.recentSales || [];
       return recentSales
@@ -642,7 +650,7 @@ const Dashboard = () => {
         });
     }
     return displayData?.recentJobs || [];
-  }, [displayData, activeTenant?.businessType]);
+  }, [displayData, isRental, kind]);
   const filteredRecentJobs = useMemo(() => {
     const query = debouncedSearch.trim();
     if (!query) return recentJobs;
@@ -656,6 +664,45 @@ const Dashboard = () => {
       job.paymentMethod,
     ]));
   }, [recentJobs, debouncedSearch]);
+
+  const { data: recentRentalsRaw, isLoading: recentRentalsLoading } = useQuery({
+    queryKey: ['rentals', 'recent', activeTenantId, activeShopId],
+    queryFn: () => rentalService.getRentals({ limit: 10 }),
+    enabled: isRental && scopeReady,
+    staleTime: QUERY_CACHE.STALE_TIME_VOLATILE,
+  });
+  const recentRentals = useMemo(() => {
+    const list = Array.isArray(recentRentalsRaw?.data) ? recentRentalsRaw.data : [];
+    return list.map((rental) => {
+      const cust = rental?.customer;
+      const custName = cust?.name || rental?.customerName || null;
+      const days = rental?.rentalDurationDays || 0;
+      return {
+        id: rental.id,
+        jobNumber: rental.rentalNumber || rental.id,
+        title: `${days} day${days === 1 ? '' : 's'} · ${formatAmount(rental?.amount || 0)}`,
+        customer: custName ? { name: custName } : null,
+        status: rental?.status || 'pending',
+        createdAt: rental?.createdAt,
+        dueDate: rental?.endDate,
+        paymentMethod: rental?.paymentMethod,
+      };
+    });
+  }, [recentRentalsRaw]);
+  const filteredRecentRentals = useMemo(() => {
+    const query = debouncedSearch.trim();
+    if (!query) return recentRentals;
+
+    return recentRentals.filter((rental) => matchesSearchQuery(query, [
+      rental.title,
+      rental.jobNumber,
+      rental.customer?.name,
+      rental.customer?.customerName,
+      rental.customerName,
+      rental.paymentMethod,
+      rental.status,
+    ]));
+  }, [recentRentals, debouncedSearch]);
   const isDashboardSearchActive = debouncedSearch.trim().length > 0;
   const isFiltered = useMemo(() => Boolean(dateRange && dateRange[0] && dateRange[1]), [dateRange]);
   const periodLabel = useMemo(
@@ -663,6 +710,15 @@ const Dashboard = () => {
     [overviewParams.filterType, activeFilter, dateRange]
   );
   const thisMonthSummary = useMemo(() => displayData?.thisMonth || {}, [displayData]);
+  const rentalData = useMemo(
+    () => displayData?.rentalData || {
+      activeRentals: 0,
+      overdueRentals: 0,
+      dueBackToday: 0,
+      upcomingPreBookings: 0,
+    },
+    [displayData?.rentalData]
+  );
   const revenueValue = useMemo(() => Number(thisMonthSummary.revenue ?? 0), [thisMonthSummary.revenue]);
   const expenseValue = useMemo(() => Number(thisMonthSummary.expenses ?? 0), [thisMonthSummary.expenses]);
   const revenueTitle = useMemo(() => (isFiltered ? `${periodLabel} revenue` : "This Month's Revenue"), [isFiltered, periodLabel]);
@@ -696,10 +752,15 @@ const Dashboard = () => {
   useEffect(() => {
     setPageSearchConfig({
       scope: 'dashboard',
-      placeholder: isShop || isPharmacy ? SEARCH_PLACEHOLDERS.SALES : SEARCH_PLACEHOLDERS.JOBS,
+      placeholder:
+        isRental
+          ? 'Search rentals...'
+          : isShop || isPharmacy
+            ? SEARCH_PLACEHOLDERS.SALES
+            : SEARCH_PLACEHOLDERS.JOBS,
     });
     return () => setPageSearchConfig(null);
-  }, [setPageSearchConfig, isShop, isPharmacy]);
+  }, [setPageSearchConfig, isShop, isPharmacy, isRental]);
 
   const handleClearDashboardSearch = useCallback(() => {
     setSearchValue('');
@@ -716,7 +777,7 @@ const Dashboard = () => {
   const { data: staffProductsRaw, isLoading: staffProductsLoading } = useQuery({
     queryKey: queryKeys.products.active(activeTenantId, activeShopId),
     queryFn: () => productService.getAllActiveProducts(),
-    enabled: isPharmacy || (isShop && !!activeShopId),
+    enabled: isPharmacy || isRental || (isShop && !!activeShopId),
     staleTime: QUERY_CACHE.STALE_TIME_VOLATILE,
     refetchOnWindowFocus: true,
   });
@@ -779,10 +840,14 @@ const Dashboard = () => {
   const welcomeMessages = useMemo(() => ({
     shop: "Welcome to ABS for Shops 👋",
     pharmacy: "Welcome to ABS for Pharmacies 👋",
-    printing_press: "Welcome to ABS for Studios 👋"
+    printing_press: "Welcome to ABS for Studios 👋",
+    rental: "Welcome to ABS for Rentals 👋",
   }), []);
 
-  const welcomeMessage = useMemo(() => welcomeMessages[businessType] || welcomeMessages.printing_press, [welcomeMessages, businessType]);
+  const welcomeMessage = useMemo(() => {
+    if (isRental) return welcomeMessages.rental;
+    return welcomeMessages[businessType] || welcomeMessages.printing_press;
+  }, [welcomeMessages, businessType, isRental]);
 
   // Stock & expiry alerts (shop/pharmacy only)
   const stockAlerts = useMemo(() => displayData?.stockAlerts || null, [displayData?.stockAlerts]);
@@ -1130,8 +1195,20 @@ const Dashboard = () => {
         onYearClick={setThisYearFilter}
         onDateRangeChange={handleDateRangeChange}
         dateRange={dateRange}
-        onAddClick={() => navigate(isShop || isPharmacy ? '/sales?openPOS=1' : '/jobs', { state: { openModal: true } })}
-        addButtonLabel={isShop || isPharmacy ? 'New sale' : 'New job'}
+        onAddClick={() =>
+          isRental
+            ? navigate('/rentals?add=1')
+            : isShop || isPharmacy
+              ? navigate('/sales?openPOS=1')
+              : navigate('/jobs', { state: { openModal: true } })
+        }
+        addButtonLabel={
+          isRental
+            ? 'New Rental'
+            : isShop || isPharmacy
+              ? 'New sale'
+              : 'New job'
+        }
       />
 
       {/* Non-blocking refetch indicator */}
@@ -1150,6 +1227,11 @@ const Dashboard = () => {
         newCustomers={displayData?.summary?.newCustomers || 0}
         isShop={isShop}
         isPharmacy={isPharmacy}
+        isRental={isRental}
+        activeRentals={rentalData.activeRentals}
+        dueBackToday={rentalData.dueBackToday}
+        overdueRentals={rentalData.overdueRentals}
+        upcomingPreBookings={rentalData.upcomingPreBookings}
         comparisonData={comparisonData}
         comparisonLoading={comparisonLoading}
         activeFilter={activeFilter}
@@ -1375,26 +1457,45 @@ const Dashboard = () => {
           )}
         </div>
       ) : (
+      <>
       <div className="mt-8">
         <div className="min-w-0" data-tour="recent-activity">
           <DashboardJobsTable
             key={debouncedSearch || 'all'}
-            jobs={filteredRecentJobs}
-            loading={loading}
-            title={isShop || isPharmacy ? "Recent Sales" : "Jobs In Progress"}
+            jobs={isRental ? filteredRecentRentals : filteredRecentJobs}
+            loading={isRental ? recentRentalsLoading : loading}
+            title={
+              isRental
+                ? 'Recent Rentals'
+                : isShop || isPharmacy
+                  ? 'Recent Sales'
+                  : 'Jobs In Progress'
+            }
             getDueDateStatus={getDueDateStatus}
             pageSize={jobsPagination.pageSize}
             isSalesTable={isShop || isPharmacy}
+            isRentalTable={isRental}
             hasProducts={hasProducts}
             productsLoading={staffProductsLoading}
-            onAddProduct={(isShop || isPharmacy) ? () => navigate('/products?add=1') : undefined}
-            onOpenPOS={(isShop || isPharmacy) ? () => navigate('/pos') : undefined}
-            isSearchFiltered={isDashboardSearchActive && filteredRecentJobs.length === 0}
+            onAddProduct={
+              isRental
+                ? () => navigate(hasProducts ? '/rentals?add=1' : '/products?add=1')
+                : isShop || isPharmacy
+                  ? () => navigate('/products?add=1')
+                  : undefined
+            }
+            onOpenPOS={isShop || isPharmacy ? () => navigate('/pos') : undefined}
+            isSearchFiltered={
+              isRental
+                ? isDashboardSearchActive && filteredRecentRentals.length === 0
+                : isDashboardSearchActive && filteredRecentJobs.length === 0
+            }
             searchQuery={debouncedSearch}
             onClearSearch={handleClearDashboardSearch}
           />
         </div>
       </div>
+      </>
       )}
       </div>
       </>

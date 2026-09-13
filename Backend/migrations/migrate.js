@@ -63,6 +63,7 @@ const addPaystackSubaccountToTenants = require('./add-paystack-subaccount-to-ten
 const addSeedingFlagsToTenants = require('./add-seeding-flags-to-tenants');
 const addInvoiceSourceTypes = require('./add-invoice-source-types');
 const addQuoteToInvoiceSourceTypeEnum = require('./add-quote-to-invoice-source-type-enum');
+const addRentalToInvoiceSourceTypeEnum = require('./add-rental-to-invoice-source-type-enum');
 const normalizeStudioLocationEmptyCodes = require('./normalize-studio-location-empty-codes');
 const addIsDefaultToShops = require('./add-isDefault-to-shops');
 const createUserShops = require('./create-user-shops');
@@ -111,11 +112,17 @@ const addShopIdToDealers = require('./add-shop-id-to-dealers');
 const makeDealersTenantWide = require('./make-dealers-tenant-wide');
 const createTenantPlatformSmsUsage = require('./create-tenant-platform-sms-usage');
 const addPlatformSmsSettings = require('./add-platform-sms-settings');
+const createAbsCredits = require('./create-abs-credits');
 const addBranchFieldsToAutomationRules = require('./add-branch-fields-to-automation-rules');
 const addCustomDomainToOnlineStoreSettings = require('./add-custom-domain-to-online-store-settings');
 const addSoftDeleteFieldsToSales = require('./add-soft-delete-fields-to-sales');
 const addReceiptSentToSaleActivitiesType = require('./add-receipt-sent-to-sale-activities-type');
 const createSalesAgentTables = require('./create-sales-agent-tables');
+const addMetadataToCustomers = require('./add-metadata-to-customers');
+const createRentalModule = require('./create-rental-module');
+const createWatchModule = require('./create-watch-module');
+const addStreamUrlToVisionCameras = require('./add-stream-url-to-vision-cameras');
+const addRentalBusinessType = require('./add-rental-business-type');
 
 const migrate = async () => {
   try {
@@ -233,6 +240,7 @@ const migrate = async () => {
 
     // Quote-sourced invoices (enum_invoices_sourceType + invoice_source_type_enum)
     await addQuoteToInvoiceSourceTypeEnum();
+    await addRentalToInvoiceSourceTypeEnum();
 
     // Public invoice payment links (paymentToken)
     await addPaymentTokenToInvoices();
@@ -407,6 +415,7 @@ const migrate = async () => {
 
     await createTenantPlatformSmsUsage.up({ closeConnection: false });
     await addPlatformSmsSettings.up({ closeConnection: false });
+    await createAbsCredits.up({ closeConnection: false });
 
     // Branch-specific automations: null shopId/studioLocationId = applies to all branches
     await addBranchFieldsToAutomationRules();
@@ -443,6 +452,10 @@ const migrate = async () => {
     const createPartnerReferralCashoutTables = require('./create-partner-referral-cashout-tables');
     await createPartnerReferralCashoutTables({ closeConnection: false });
 
+    // Sabito App Admin: listing moderation, commission split, remittances
+    const addSabitoAppAdminAndSettlement = require('./add-sabito-app-admin-and-settlement');
+    await addSabitoAppAdminAndSettlement({ closeConnection: false });
+
     // Online Store hero library (categories / designs / colorways + heroSlides)
     const createOnlineStoreHeroLibraryTables = require('./create-online-store-hero-library-tables');
     await createOnlineStoreHeroLibraryTables({ closeConnection: false });
@@ -472,6 +485,22 @@ const migrate = async () => {
 
     const addCustomerIdToPlatformOpsAssets = require('./add-customer-id-to-platform-ops-assets');
     await addCustomerIdToPlatformOpsAssets({ closeConnection: false });
+
+    // Rental module: add 'rental' to tenant business type enums
+    await addRentalBusinessType({ closeConnection: false });
+
+    // Customer metadata JSONB (rental guarantor, risk profile, etc.)
+    await addMetadataToCustomers.up();
+
+    // Rental module: rentals, rental_items, pre_bookings, pre_booking_items,
+    // damage_reports, rental_extensions, late_charges
+    // + product rental fields (isRentable / isSalable / rentalRatePerDay)
+    // + expenses.damageReportId FK
+    await createRentalModule();
+
+    // ABS Watch: cameras, physical-activity events, sale reconciliation incidents
+    await createWatchModule();
+    await addStreamUrlToVisionCameras.up();
 
     console.log('\n✅ Database migration completed successfully!');
     console.log('📊 Incremental schema updates applied.');

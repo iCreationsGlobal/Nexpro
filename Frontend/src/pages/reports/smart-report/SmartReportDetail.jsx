@@ -12,6 +12,10 @@ import SmartReportCashFlowTab from './SmartReportCashFlowTab';
 import SmartReportInventoryTab from './SmartReportInventoryTab';
 import SmartReportRecommendationsTab from './SmartReportRecommendationsTab';
 import SmartReportGenericTab from './SmartReportGenericTab';
+import SmartReportRentalsTab from './SmartReportRentalsTab';
+import SmartReportRentalOverviewTab from './SmartReportRentalOverviewTab';
+import SmartReportRentalInventoryTab from './SmartReportRentalInventoryTab';
+import SmartReportRentalHistoryTab from './SmartReportRentalHistoryTab';
 import { resolveSmartReportTabs } from './smartReportTypeUtils';
 import { SMART_REPORT_GENERATION_MODES } from './smartReportConstants';
 import {
@@ -43,10 +47,11 @@ export default function SmartReportDetail({
   isStudio = false,
   isShop = false,
   isPharmacy = false,
+  isRental = false,
 }) {
   const visibleTabs = useMemo(
-    () => resolveSmartReportTabs(report, { isShop, isPharmacy, isStudio }),
-    [report, isShop, isPharmacy, isStudio]
+    () => resolveSmartReportTabs(report, { isShop, isPharmacy, isStudio, isRental }),
+    [report, isShop, isPharmacy, isStudio, isRental]
   );
 
   const [activeTab, setActiveTab] = useState(() => getInitialSmartReportTab(visibleTabs, report));
@@ -121,7 +126,7 @@ export default function SmartReportDetail({
   }, [report?.title]);
 
   const renderTab = () => {
-    const props = { snapshot, periodLabel, isStudio, isShop, isPharmacy };
+    const props = { snapshot, periodLabel, isStudio, isShop, isPharmacy, isRental };
     switch (activeTab) {
       case 'executive':
         return <SmartReportExecutiveTab {...props} />;
@@ -135,6 +140,16 @@ export default function SmartReportDetail({
         return <SmartReportCashFlowTab {...props} />;
       case 'inventory':
         return <SmartReportInventoryTab {...props} />;
+      case 'rental-overview':
+        return <SmartReportRentalOverviewTab {...props} />;
+      case 'rental-inventory':
+        return <SmartReportRentalInventoryTab {...props} />;
+      case 'rental-history':
+        return <SmartReportRentalHistoryTab {...props} />;
+      case 'rental-utilization':
+      case 'rental-late-returns':
+      case 'rental-damage':
+        return <SmartReportRentalsTab {...props} tabId={activeTab} />;
       case 'recommendations':
         return <SmartReportRecommendationsTab {...props} />;
       case 'ai-insights':

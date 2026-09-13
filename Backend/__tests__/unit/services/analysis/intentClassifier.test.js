@@ -86,6 +86,13 @@ describe('intentClassifier', () => {
     );
   });
 
+  it('classifies rental operational questions as analysis', () => {
+    expect(classifyIntent('What rentals are due back today?').intent).toBe('rentals_due_today');
+    expect(classifyIntent('Show overdue rentals').intent).toBe('rentals_overdue');
+    expect(classifyIntent('Which items have the most damage?').intent).toBe('rental_damage');
+    expect(classifyIntent('Rental revenue this month').intent).toBe('rental_revenue_month');
+  });
+
   it('classifies meals sold best as top_products', () => {
     expect(classifyIntent('What meals sold best today?').intent).toBe('top_products');
   });

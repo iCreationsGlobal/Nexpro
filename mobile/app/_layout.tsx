@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from 'expo-router/react-navigation';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
@@ -6,13 +6,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Pressable, Text, TextInput, View } from 'react-native';
 import 'react-native-reanimated';
 import { offlineQueueService } from '@/services/offlineQueueService';
 import { refreshAfterSale } from '@/utils/queryInvalidation';
 import { onlineManager, useQueryClient } from '@tanstack/react-query';
 
+import { AppLoadingScreen } from '@/components/AppLoadingScreen';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { ConnectivityBanner } from '@/components/ConnectivityBanner';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -25,6 +26,7 @@ import Colors from '@/constants/Colors';
 import { FontFamily } from '@/constants/typography';
 import { getCurrentNetworkOnline, registerReactQueryOnlineManager } from '@/utils/connectivity';
 import { observeSellerNotificationResponses, registerPushNotifications } from '@/utils/pushNotifications';
+import { logger } from '@/utils/logger';
 
 type RouteErrorBoundaryProps = {
   error: Error;
@@ -168,6 +170,20 @@ function PushRegistrationOnActive() {
 }
 
 export default function RootLayout() {
+  const [minimumLoadingElapsed, setMinimumLoadingElapsed] = useState(false);
+  const loadingStarted = useRef(false);
+  const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (loadingTimer.current) clearTimeout(loadingTimer.current);
+  }, []);
+
+  const onLoadingLayout = () => {
+    void SplashScreen.hideAsync().catch(() => {});
+    if (loadingStarted.current) return;
+    loadingStarted.current = true;
+    loadingTimer.current = setTimeout(() => setMinimumLoadingElapsed(true), 3000);
+  };
   const [loaded, error] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -183,11 +199,14 @@ export default function RootLayout() {
   useEffect(() => {
     if (loaded) {
       applyDefaultTypography();
-      SplashScreen.hideAsync();
+      logger.info('RootLayout', 'Fonts loaded, hiding splash screen');
+      SplashScreen.hideAsync()
+        .then(() => logger.info('RootLayout', 'SplashScreen.hideAsync resolved'))
+        .catch((e) => logger.error('RootLayout', 'SplashScreen.hideAsync rejected', e));
     }
   }, [loaded]);
 
-  if (!loaded) return null;
+  if (!loaded || !minimumLoadingElapsed) return <AppLoadingScreen onLayout={onLoadingLayout} />;
 
   return (
     <PersistQueryClientProvider
@@ -257,6 +276,7 @@ function RootLayoutNav() {
       pathname === '/index' ||
       pathname === '/account' ||
       pathname === '/profile' ||
+      pathname === '/settings' ||
       pathname === '/(tabs)' ||
       pathname === '/deliveries' ||
       pathname === '/more' ||
@@ -287,6 +307,7 @@ function RootLayoutNav() {
           <Stack.Screen name="privacy-policy" options={{ ...innerScreenOptions, title: 'Privacy Policy', headerShown: false }} />
           <Stack.Screen name="data-deletion" options={{ ...innerScreenOptions, title: 'Data Deletion', headerShown: false }} />
           <Stack.Screen name="notifications" options={{ ...innerScreenOptions, title: 'Notifications', headerShown: false }} />
+          <Stack.Screen name="notification-settings" options={{ ...innerScreenOptions, title: 'Notification settings', headerShown: false }} />
           <Stack.Screen name="store-order/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="store-setup" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />

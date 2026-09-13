@@ -15,7 +15,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
-import { ListEmptyState, EmptyStateActionButton, ListActionButton } from '@/components/ListEmptyState';
+import { ListEmptyState } from '@/components/ListEmptyState';
 import { SEARCH_PLACEHOLDERS } from '@/constants/searchPlaceholders';
 import { useSmartSearch } from '@/context/SmartSearchContext';
 import { useRegisterPageSearch } from '@/hooks/useRegisterPageSearch';
@@ -32,10 +32,13 @@ import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
 import { FormSheetModal } from '@/components/FormSheetModal';
 import { ImportContactsSheet } from '@/components/ImportContactsSheet';
+import { PickContactSheet } from '@/components/PickContactSheet';
 import { FORM_LABELS } from '@/constants/formLabels';
 import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListResponse';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { refreshAfterCustomerChange, QUERY_STALE } from '@/utils/queryInvalidation';
+import { standaloneButtonStyles, standaloneFullWidth } from '@/styles/standaloneButton';
+import type { CustomerFormFromContact } from '@/utils/deviceContacts';
 
 type Customer = {
   id: string;
@@ -89,6 +92,7 @@ export default function CustomersScreen() {
   useRegisterPageSearch({ scope: 'customers', placeholder: SEARCH_PLACEHOLDERS.CUSTOMERS });
   const [addModalVisible, setAddModalVisible] = useState(params.add === '1');
   const [importOpen, setImportOpen] = useState(false);
+  const [pickContactOpen, setPickContactOpen] = useState(false);
   const [formData, setFormData] = useState(DEFAULT_CUSTOMER_FORM);
   const [customSourceValue, setCustomSourceValue] = useState('');
 
@@ -222,6 +226,15 @@ export default function CustomersScreen() {
     }
   }, [formData, createMutation, resolveSourceValue]);
 
+  const handleContactSelected = useCallback((contact: CustomerFormFromContact) => {
+    setFormData((prev) => ({
+      ...prev,
+      name: contact.name,
+      phone: contact.phone,
+      email: contact.email,
+      company: contact.company,
+    }));
+  }, []);
 
   if (!hasFeature('crm')) {
     return <FeatureAccessDenied message="Customers is not enabled for this workspace." />;
@@ -312,19 +325,13 @@ export default function CustomersScreen() {
       )}
 
       {!isLoading && !isError && customers.length > 0 && (
-        <View style={styles.actionStack}>
-          <Pressable
-            onPress={() => setImportOpen(true)}
-            style={[styles.importBtn, { borderColor }]}
-          >
-            <Text style={[styles.importBtnText, { color: colors.tint }]}>Import contacts</Text>
-          </Pressable>
-          <ListActionButton
-            label="Add Customer"
-            onPress={() => setAddModalVisible(true)}
-            backgroundColor={colors.tint}
-          />
-        </View>
+        <CustomerCreateActions
+          borderColor={borderColor}
+          textColor={textColor}
+          tintColor={colors.tint}
+          onImport={() => setImportOpen(true)}
+          onAdd={() => setAddModalVisible(true)}
+        />
       )}
 
       {isLoading && !response ? (
@@ -340,15 +347,13 @@ export default function CustomersScreen() {
           titleColor={textColor}
           subtitleColor={mutedColor}
         >
-          <EmptyStateActionButton
-            label="Import contacts"
-            onPress={() => setImportOpen(true)}
-            backgroundColor={colors.tint}
-          />
-          <EmptyStateActionButton
-            label="Add Customer"
-            onPress={() => setAddModalVisible(true)}
-            backgroundColor={colors.tint}
+          <CustomerCreateActions
+            borderColor={borderColor}
+            textColor={textColor}
+            tintColor={colors.tint}
+            onImport={() => setImportOpen(true)}
+            onAdd={() => setAddModalVisible(true)}
+            inEmptyState
           />
         </ListEmptyState>
       ) : (
@@ -365,7 +370,7 @@ export default function CustomersScreen() {
       )}
 
       <FormSheetModal
-        visible={addModalVisible}
+        visible={addModalVisible && !pickContactOpen}
         title={FORM_LABELS.customer.addTitle}
         onClose={() => {
           setAddModalVisible(false);
@@ -376,17 +381,25 @@ export default function CustomersScreen() {
         textColor={textColor}
         mutedColor={mutedColor}
         footer={
-          <Pressable
-            onPress={handleAddCustomer}
-            disabled={createMutation.isPending}
-            style={[styles.submitBtn, { backgroundColor: colors.tint }]}
-          >
-            {createMutation.isPending ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitBtnText}>{FORM_LABELS.customer.add}</Text>
-            )}
-          </Pressable>
+          <View style={styles.formFooter}>
+            <Pressable
+              onPress={() => setPickContactOpen(true)}
+              style={[standaloneButtonStyles.outline, { borderColor }]}
+            >
+              <Text style={[styles.chooseContactText, { color: textColor }]}>Choose from contacts</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleAddCustomer}
+              disabled={createMutation.isPending}
+              style={[styles.submitBtn, { backgroundColor: colors.tint }]}
+            >
+              {createMutation.isPending ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitBtnText}>{FORM_LABELS.customer.add}</Text>
+              )}
+            </Pressable>
+          </View>
         }
       >
         <Text style={[styles.inputLabel, { color: textColor }]}>{FORM_LABELS.customer.name}</Text>
@@ -499,7 +512,67 @@ export default function CustomersScreen() {
         textColor={textColor}
         mutedColor={mutedColor}
       />
+
+      <PickContactSheet
+        visible={pickContactOpen}
+        onClose={() => setPickContactOpen(false)}
+        onSelect={handleContactSelected}
+        colors={colors}
+        cardBg={cardBg}
+        borderColor={borderColor}
+        textColor={textColor}
+        mutedColor={mutedColor}
+      />
     </ScreenShell>
+  );
+}
+
+type CustomerCreateActionsProps = {
+  borderColor: string;
+  textColor: string;
+  tintColor: string;
+  onImport: () => void;
+  onAdd: () => void;
+  inEmptyState?: boolean;
+};
+
+function CustomerCreateActions({
+  borderColor,
+  textColor,
+  tintColor,
+  onImport,
+  onAdd,
+  inEmptyState = false,
+}: CustomerCreateActionsProps) {
+  return (
+    <View style={[styles.actionRow, inEmptyState && styles.actionRowEmpty]}>
+      <Pressable
+        onPress={onAdd}
+        style={({ pressed }) => [
+          styles.secondaryAction,
+          inEmptyState && styles.secondaryActionFull,
+          { backgroundColor: tintColor, borderColor: tintColor },
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={[styles.secondaryActionText, { color: '#fff' }]} numberOfLines={1}>
+          Add Customer
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={onImport}
+        style={({ pressed }) => [
+          styles.secondaryAction,
+          inEmptyState && styles.secondaryActionFull,
+          { borderColor },
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={[styles.secondaryActionText, { color: textColor }]} numberOfLines={1}>
+          Import contacts
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -507,15 +580,38 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContent: { paddingHorizontal: 16, paddingBottom: 32 },
-  actionStack: { gap: 8, marginBottom: 4 },
-  importBtn: {
-    marginHorizontal: 16,
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  actionRowEmpty: {
+    width: '100%',
+    flexDirection: 'column',
+    marginTop: 0,
+    marginBottom: 0,
+    paddingHorizontal: 0,
+  },
+  secondaryAction: {
+    flex: 1,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 12,
+    paddingHorizontal: 8,
     paddingVertical: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  importBtnText: { fontSize: 15, fontWeight: '600' },
+  secondaryActionFull: {
+    flex: 0,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  secondaryActionText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -614,8 +710,16 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   sourceChipText: { fontSize: 14, fontWeight: '500' },
-  submitBtn: {
+  formFooter: {
+    gap: 10,
     marginTop: 24,
+  },
+  chooseContactText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  submitBtn: {
+    ...standaloneFullWidth,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',

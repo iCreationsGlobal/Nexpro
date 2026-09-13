@@ -17,6 +17,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useSmartSearch } from '@/context/SmartSearchContext';
 import { resolveHeaderSearchConfig } from '@/utils/tabRouteSearch';
 import { HeaderScopeTitle } from '@/components/HeaderScopeTitle';
+import { UserAvatar } from '@/components/UserAvatar';
 import { OfflineQueueBanner } from '@/components/WorkspaceScopeSwitcher';
 import { useIsStoreSetupRoute } from '@/hooks/useIsStoreSetupRoute';
 import { notificationService } from '@/services/notificationService';
@@ -63,6 +64,10 @@ export function Header() {
     router.push('/notifications');
   }, [router]);
 
+  const handleAccountPress = useCallback(() => {
+    router.push('/account');
+  }, [router]);
+
   return (
     <View
       style={[
@@ -89,6 +94,8 @@ export function Header() {
               onPress={handleChatPress}
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
               hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Chat"
             >
               <AppIcon name="comments" size={22} color={colors.text} />
             </Pressable>
@@ -96,6 +103,8 @@ export function Header() {
               onPress={handleNotificationPress}
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
               hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Notifications"
             >
               <AppIcon name="bell" size={22} color={colors.text} />
               {unreadCount > 0 && (
@@ -106,6 +115,7 @@ export function Header() {
                 </View>
               )}
             </Pressable>
+            <UserAvatar size={34} onPress={handleAccountPress} accessibilityLabel="Open account" />
           </View>
         )}
       </View>

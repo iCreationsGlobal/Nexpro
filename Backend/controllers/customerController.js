@@ -17,6 +17,83 @@ const { runCustomerCreatedAutomations } = require('../services/automationEngineS
 const { assertCustomerContactUnique } = require('../utils/customerUniquenessUtils');
 const { normalizeBirthdayDate } = require('../utils/customerBirthday');
 
+const RENTAL_METADATA_KEYS = [
+  'guarantor',
+  'emergencyContact',
+  'riskProfile',
+  'verification',
+  'preferences',
+  'history',
+];
+
+/**
+ * Normalize metadata to a plain object (never null/array).
+ * @param {unknown} value
+ * @returns {Record<string, unknown>}
+ */
+function normalizeMetadataObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  return { ...value };
+}
+
+/**
+ * Deep-merge customer metadata patches without clobbering unrelated keys.
+ * Nested `metadata.rental.*` sections merge field-by-field.
+ * @param {Record<string, unknown>|null|undefined} existing
+ * @param {Record<string, unknown>|null|undefined} incoming
+ * @returns {Record<string, unknown>}
+ */
+function mergeCustomerMetadata(existing, incoming) {
+  const base = normalizeMetadataObject(existing);
+  const patch = normalizeMetadataObject(incoming);
+  const merged = { ...base, ...patch };
+
+  if (!patch.rental || typeof patch.rental !== 'object' || Array.isArray(patch.rental)) {
+    return merged;
+  }
+
+  const baseRental = normalizeMetadataObject(base.rental);
+  const patchRental = normalizeMetadataObject(patch.rental);
+  merged.rental = { ...baseRental, ...patchRental };
+
+  for (const key of RENTAL_METADATA_KEYS) {
+    if (
+      patchRental[key]
+      && typeof patchRental[key] === 'object'
+      && !Array.isArray(patchRental[key])
+    ) {
+      merged.rental[key] = {
+        ...(baseRental[key] && typeof baseRental[key] === 'object' && !Array.isArray(baseRental[key])
+          ? baseRental[key]
+          : {}),
+        ...patchRental[key],
+      };
+    }
+  }
+
+  return merged;
+}
+
+/**
+ * Apply metadata merge rules to create/update payloads.
+ * @param {Record<string, unknown>} payload
+ * @param {Record<string, unknown>|null|undefined} [existingMetadata]
+ */
+function applyCustomerMetadataPayload(payload, existingMetadata) {
+  if (!Object.prototype.hasOwnProperty.call(payload, 'metadata')) {
+    return;
+  }
+
+  if (existingMetadata !== undefined) {
+    payload.metadata = mergeCustomerMetadata(existingMetadata, payload.metadata);
+    return;
+  }
+
+  payload.metadata = normalizeMetadataObject(payload.metadata);
+}
+
 const customerReadWhere = (req, extra = {}) =>
   applyShopReadFilter(req, applyStudioLocationFilter(req, applyTenantFilter(req.tenantId, extra)));
 
@@ -218,6 +295,7 @@ exports.createCustomer = async (req, res, next) => {
       phone: payload.phone,
       email: payload.email,
     });
+    applyCustomerMetadataPayload(payload);
     const customer = await Customer.create(
       attachScopedToPayload(req, {
         ...payload,
@@ -287,6 +365,7 @@ exports.updateCustomer = async (req, res, next) => {
       email: payload.email !== undefined ? payload.email : customer.email,
       excludeCustomerId: customer.id,
     });
+    applyCustomerMetadataPayload(payload, customer.metadata);
     await customer.update(payload);
     invalidateCustomerListCache(req.tenantId);
 

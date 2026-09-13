@@ -11,7 +11,7 @@ import Colors from '@/constants/Colors';
 import { FontFamily, FontSize } from '@/constants/typography';
 import { useTheme } from '@/context/ThemeContext';
 import { useScanningEnabled } from '@/hooks/useScanningEnabled';
-import { resolveBusinessType } from '@/constants';
+import { isRentalBusinessType, resolveBusinessType } from '@/constants';
 import { OPEN_SCAN_CAMERA_EVENT } from '@/utils/scanTabEvents';
 
 function TabBarIcon({
@@ -35,10 +35,11 @@ function CenterTabButton() {
   const tint = Colors[resolvedTheme ?? 'light'].tint;
   const resolvedType = resolveBusinessType(activeTenant?.businessType);
   const isStudio = resolvedType === 'studio';
+  const isRental = isRentalBusinessType(activeTenant?.businessType);
 
   return (
     <View style={[styles.centerButton, { backgroundColor: tint }]}>
-      <AppIcon name={isStudio ? 'plus' : 'camera'} size={28} color="#fff" strokeWidth={2.5} />
+      <AppIcon name={isStudio || isRental ? 'plus' : 'camera'} size={28} color="#fff" strokeWidth={2.5} />
     </View>
   );
 }
@@ -54,9 +55,10 @@ export default function TabLayout() {
   const isShop = resolvedType === 'shop';
   const isPharmacy = resolvedType === 'pharmacy';
   const isStudio = resolvedType === 'studio';
+  const isRental = isRentalBusinessType(activeTenant?.businessType);
   const isRetailLike = isShop || isPharmacy;
   const showInvoicesInTab = (isRetailLike || isStudio) && hasFeature('invoices');
-  const centerTabTitle = isStudio ? 'Add Job' : 'Sell';
+  const centerTabTitle = isRental ? 'New rental' : isStudio ? 'Add Job' : 'Sell';
   const isScanRoute = pathname === '/scan' || pathname.endsWith('/scan');
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -93,7 +95,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={screenOptions}
     >
-      {/* Tab order: Dashboard → Customers → center (Scan / Add Job) → Invoice → More */}
+      {/* Tab order: Dashboard → Customers → center (Scan / Add Job / New rental) → Invoice → More */}
       <Tabs.Screen
         name="index"
         options={{
@@ -127,7 +129,7 @@ export default function TabLayout() {
 
                 // Double-tap always forces the camera open — a manual override for
                 // when the workspace hasn't enabled barcode scanning by default.
-                if (isDoubleTap && !isStudio) {
+                if (isDoubleTap && !isStudio && !isRental) {
                   if (isScanRoute) {
                     DeviceEventEmitter.emit(OPEN_SCAN_CAMERA_EVENT, { force: true });
                   } else {
@@ -136,6 +138,10 @@ export default function TabLayout() {
                   return;
                 }
 
+                if (isRental && hasFeature('rentals')) {
+                  router.push('/rental/new' as never);
+                  return;
+                }
                 if (!isStudio && isScanRoute && scanningEnabled) {
                   DeviceEventEmitter.emit(OPEN_SCAN_CAMERA_EVENT);
                   return;
@@ -173,8 +179,14 @@ export default function TabLayout() {
           tabBarButton: (props) => (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={isDriver ? 'Account menu' : 'More menu'}
-              onPress={() => setMenuOpen(true)}
+              accessibilityLabel={isDriver ? 'Account' : 'More menu'}
+              onPress={() => {
+                if (isDriver) {
+                  router.push('/account' as never);
+                  return;
+                }
+                setMenuOpen(true);
+              }}
               style={props.style}
             >
               {props.children}
@@ -205,6 +217,7 @@ export default function TabLayout() {
       <Tabs.Screen name="dealers" options={{ href: null, title: 'Dealers' }} />
       <Tabs.Screen name="leads" options={{ href: null }} />
       <Tabs.Screen name="tasks" options={{ href: null }} />
+      <Tabs.Screen name="rentals" options={{ href: null, title: 'Rentals' }} />
       <Tabs.Screen
         name="deliveries"
         options={

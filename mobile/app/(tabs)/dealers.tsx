@@ -32,6 +32,7 @@ import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListRe
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { refreshAfterDealerChange, QUERY_STALE } from '@/utils/queryInvalidation';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 import { resolveBusinessType } from '@/constants';
 import { FilterChipRow } from '@/components/FilterChip';
 
@@ -435,6 +436,7 @@ const styles = StyleSheet.create({
   },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   submitBtn: {
+    ...standaloneFullWidth,
     marginTop: 24,
     padding: 16,
     borderRadius: 12,

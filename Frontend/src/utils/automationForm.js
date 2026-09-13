@@ -189,6 +189,51 @@ export const TRIGGER_OPTIONS = [
     label: 'Task assigned (staff)',
     hint: 'Notify the assignee when a workspace task is assigned to them.',
   },
+  {
+    value: 'rental_created',
+    label: 'Rental created',
+    hint: 'When a rental is booked or a pre-booking is confirmed.',
+  },
+  {
+    value: 'rental_created_staff',
+    label: 'Rental created (staff)',
+    hint: 'Notify staff when a rental is created.',
+  },
+  {
+    value: 'rental_checked_out',
+    label: 'Rental handed over',
+    hint: 'When items are handed over to the customer.',
+  },
+  {
+    value: 'rental_returned',
+    label: 'Rental returned',
+    hint: 'When a rental return is recorded.',
+  },
+  {
+    value: 'rental_returned_staff',
+    label: 'Rental returned (staff)',
+    hint: 'Notify staff when a rental is returned.',
+  },
+  {
+    value: 'rental_cancelled',
+    label: 'Rental cancelled',
+    hint: 'When a rental is cancelled.',
+  },
+  {
+    value: 'rental_due_in_days',
+    label: 'Rental due soon',
+    hint: 'Remind customers before a rental is due back.',
+  },
+  {
+    value: 'rental_overdue',
+    label: 'Rental overdue',
+    hint: 'When a rental is past its return date.',
+  },
+  {
+    value: 'rental_overdue_staff',
+    label: 'Rental overdue (staff)',
+    hint: 'Notify staff when a rental is overdue.',
+  },
 ];
 
 export const THRESHOLD_MODE_OPTIONS = [
@@ -224,6 +269,9 @@ export const INTERNAL_TRIGGER_TYPES = new Set([
   'job_due_in_hours',
   'job_created_staff',
   'job_completed_staff',
+  'rental_created_staff',
+  'rental_returned_staff',
+  'rental_overdue_staff',
   'payment_received_staff',
   'invoice_paid_staff',
   'invoice_overdue_staff',
@@ -439,6 +487,15 @@ export const TRIGGER_PLACEHOLDERS = {
   quote_sent: ['customerName', 'businessName', 'quoteNumber', 'quoteTitle', 'quoteLink', 'totalAmountFormatted', 'email', 'phone'],
   quote_accepted_staff: ['customerName', 'businessName', 'quoteNumber', 'quoteTitle', 'totalAmountFormatted'],
   job_due_in_hours: ['assigneeName', 'businessName', 'jobNumber', 'jobTitle', 'dueDate', 'customerName'],
+  rental_created: ['customerName', 'businessName', 'startDate', 'endDate', 'itemList', 'invoiceNumber', 'totalAmountFormatted', 'balance', 'email', 'phone'],
+  rental_created_staff: ['customerName', 'businessName', 'startDate', 'endDate', 'itemList', 'invoiceNumber', 'totalAmountFormatted'],
+  rental_checked_out: ['customerName', 'businessName', 'startDate', 'endDate', 'itemList', 'email', 'phone'],
+  rental_returned: ['customerName', 'businessName', 'invoiceNumber', 'balance', 'itemList', 'email', 'phone'],
+  rental_returned_staff: ['customerName', 'businessName', 'invoiceNumber', 'balance', 'itemList'],
+  rental_cancelled: ['customerName', 'businessName', 'startDate', 'endDate', 'email', 'phone'],
+  rental_due_in_days: ['customerName', 'businessName', 'endDate', 'itemList', 'email', 'phone'],
+  rental_overdue: ['customerName', 'businessName', 'endDate', 'itemList', 'email', 'phone'],
+  rental_overdue_staff: ['customerName', 'businessName', 'endDate', 'itemList'],
   prescription_refill_due: ['customerName', 'businessName', 'prescriptionNumber', 'refillDueDate', 'email', 'phone'],
   low_profit_margin: ['saleNumber', 'customerName', 'businessName', 'profitMargin', 'profitMarginFormatted', 'totalAmountFormatted', 'minMarginPercent'],
 };
@@ -863,6 +920,162 @@ export const DEFAULT_ACTION_CONTENT = {
       body: 'Hi {{assigneeName}},\n\n{{assignedByName}} assigned you the task "{{taskTitle}}".\n\nPriority: {{taskPriority}}\nDue: {{dueDate}}\n\n{{taskDescription}}\n\nOpen tasks: {{taskLink}}\n\n— {{businessName}}',
     },
   },
+  rental_created: {
+    send_sms: {
+      body: 'Hi {{customerName}}, your rental is booked from {{startDate}} to {{endDate}}. Total {{totalAmountFormatted}}. Invoice {{invoiceNumber}}. — {{businessName}}',
+    },
+    send_whatsapp: {
+      templateName: 'rental_confirmation',
+      language: 'en',
+      parametersText: '{{customerName}}, {{startDate}}, {{endDate}}, {{invoiceNumber}}',
+    },
+    send_email_platform: {
+      subject: 'Rental confirmed — {{invoiceNumber}}',
+      body: 'Hi {{customerName}},\n\nYour rental is confirmed from {{startDate}} to {{endDate}}.\n\nItems: {{itemList}}\nTotal: {{totalAmountFormatted}}\nBalance: {{balance}}\nInvoice: {{invoiceNumber}}\n\nThank you,\n{{businessName}}',
+    },
+    create_task: {
+      title: 'Rental booked — {{customerName}}',
+      priority: 'low',
+      description: '{{startDate}} to {{endDate}} — {{totalAmountFormatted}}.',
+      link: '/rentals',
+    },
+  },
+  rental_created_staff: {
+    send_email_platform: {
+      subject: 'New rental for {{customerName}}',
+      body: '{{customerName}} booked a rental {{startDate}} to {{endDate}} — {{totalAmountFormatted}}.\n\nItems: {{itemList}}\n\n— {{businessName}}',
+    },
+    create_task: {
+      title: 'New rental — {{customerName}}',
+      priority: 'low',
+      description: '{{startDate}} to {{endDate}} — {{itemList}}.',
+      link: '/rentals',
+    },
+  },
+  rental_checked_out: {
+    send_sms: {
+      body: 'Hi {{customerName}}, your rental items are out. Due back {{endDate}}. — {{businessName}}',
+    },
+    send_whatsapp: {
+      templateName: 'rental_handover',
+      language: 'en',
+      parametersText: '{{customerName}}, {{endDate}}, {{businessName}}',
+    },
+    send_email_platform: {
+      subject: 'Your rental is out — due {{endDate}}',
+      body: 'Hi {{customerName}},\n\nYour rental items have been handed over.\n\nDue back: {{endDate}}\nItems: {{itemList}}\n\n{{businessName}}',
+    },
+    create_task: {
+      title: 'Rental handed over — {{customerName}}',
+      priority: 'low',
+      description: 'Due back {{endDate}}.',
+      link: '/rentals',
+    },
+  },
+  rental_returned: {
+    send_sms: {
+      body: 'Hi {{customerName}}, we recorded your return. Balance {{balance}}. Invoice {{invoiceNumber}}. — {{businessName}}',
+    },
+    send_whatsapp: {
+      templateName: 'rental_returned',
+      language: 'en',
+      parametersText: '{{customerName}}, {{invoiceNumber}}, {{balance}}',
+    },
+    send_email_platform: {
+      subject: 'Rental returned — {{invoiceNumber}}',
+      body: 'Hi {{customerName}},\n\nWe recorded the return of your rental.\n\nInvoice: {{invoiceNumber}}\nBalance: {{balance}}\n\nThank you,\n{{businessName}}',
+    },
+    create_task: {
+      title: 'Rental returned — {{customerName}}',
+      priority: 'low',
+      description: 'Invoice {{invoiceNumber}} — balance {{balance}}.',
+      link: '/rentals',
+    },
+  },
+  rental_returned_staff: {
+    send_email_platform: {
+      subject: 'Rental returned — {{customerName}}',
+      body: '{{customerName}} returned a rental. Balance {{balance}}. Invoice {{invoiceNumber}}.\n\n— {{businessName}}',
+    },
+    create_task: {
+      title: 'Rental returned — {{customerName}}',
+      priority: 'low',
+      description: 'Balance {{balance}}.',
+      link: '/rentals',
+    },
+  },
+  rental_cancelled: {
+    send_sms: {
+      body: 'Hi {{customerName}}, your rental from {{startDate}} to {{endDate}} was cancelled. — {{businessName}}',
+    },
+    send_whatsapp: {
+      templateName: 'rental_cancelled',
+      language: 'en',
+      parametersText: '{{customerName}}, {{startDate}}, {{endDate}}',
+    },
+    send_email_platform: {
+      subject: 'Rental cancelled',
+      body: 'Hi {{customerName}},\n\nYour rental from {{startDate}} to {{endDate}} has been cancelled.\n\n{{businessName}}',
+    },
+    create_task: {
+      title: 'Rental cancelled — {{customerName}}',
+      priority: 'low',
+      description: '{{startDate}} to {{endDate}}.',
+      link: '/rentals',
+    },
+  },
+  rental_due_in_days: {
+    send_sms: {
+      body: 'Hi {{customerName}}, your rental is due back on {{endDate}}. — {{businessName}}',
+    },
+    send_whatsapp: {
+      templateName: 'rental_due_reminder',
+      language: 'en',
+      parametersText: '{{customerName}}, {{endDate}}, {{businessName}}',
+    },
+    send_email_platform: {
+      subject: 'Rental due {{endDate}}',
+      body: 'Hi {{customerName}},\n\nYour rental is due back on {{endDate}}.\n\nItems: {{itemList}}\n\n{{businessName}}',
+    },
+    create_task: {
+      title: 'Rental due — {{customerName}}',
+      priority: 'medium',
+      description: 'Due {{endDate}} — {{itemList}}.',
+      link: '/rentals',
+    },
+  },
+  rental_overdue: {
+    send_sms: {
+      body: 'Hi {{customerName}}, your rental was due back on {{endDate}}. Please return it as soon as possible. — {{businessName}}',
+    },
+    send_whatsapp: {
+      templateName: 'rental_overdue',
+      language: 'en',
+      parametersText: '{{customerName}}, {{endDate}}, {{businessName}}',
+    },
+    send_email_platform: {
+      subject: 'Rental overdue — {{endDate}}',
+      body: 'Hi {{customerName}},\n\nYour rental was due back on {{endDate}}. Please return the items as soon as possible.\n\nItems: {{itemList}}\n\n{{businessName}}',
+    },
+    create_task: {
+      title: 'Overdue rental — {{customerName}}',
+      priority: 'high',
+      description: 'Was due {{endDate}}.',
+      link: '/rentals',
+    },
+  },
+  rental_overdue_staff: {
+    send_email_platform: {
+      subject: 'Overdue rental — {{customerName}}',
+      body: '{{customerName}} has an overdue rental (due {{endDate}}).\n\nItems: {{itemList}}\n\n— {{businessName}}',
+    },
+    create_task: {
+      title: 'Overdue rental — {{customerName}}',
+      priority: 'high',
+      description: 'Due {{endDate}}.',
+      link: '/rentals',
+    },
+  },
 };
 
 /**
@@ -1034,6 +1247,9 @@ export const STICKY_TRIGGER_TYPES = [
   'out_of_stock_detected',
   'low_stock_on_change',
   'job_due_in_hours',
+  'rental_due_in_days',
+  'rental_overdue',
+  'rental_overdue_staff',
 ];
 
 export const FREQUENCY_OPTIONS = [
@@ -1057,6 +1273,9 @@ export const SCHEDULER_TRIGGER_TYPES = [
   'lead_no_contact_days',
   'job_due_in_hours',
   'prescription_refill_due',
+  'rental_due_in_days',
+  'rental_overdue',
+  'rental_overdue_staff',
 ];
 
 /** UI presets for event-driven Send after (delayMinutes). */
@@ -1137,6 +1356,12 @@ const EVENT_TIMING_PHRASE = {
   order_status_staff: 'an order status changes',
   high_value_invoice: 'a high-value invoice is created',
   review_request: 'a job, sale, or invoice is fully paid',
+  rental_created: 'a rental is created',
+  rental_created_staff: 'a rental is created',
+  rental_checked_out: 'a rental is handed over',
+  rental_returned: 'a rental is returned',
+  rental_returned_staff: 'a rental is returned',
+  rental_cancelled: 'a rental is cancelled',
   low_stock_on_change: 'stock drops to reorder level',
   out_of_stock_detected: 'a product goes out of stock',
   low_profit_margin: 'a sale has a low profit margin',
@@ -1388,9 +1613,14 @@ export function defaultTriggerForm(triggerType) {
   switch (triggerType) {
     case 'invoice_due_in_days':
       return { daysBeforeDue: 2 };
+    case 'rental_due_in_days':
+      return { daysBeforeDue: 1 };
     case 'invoice_overdue':
     case 'invoice_overdue_staff':
       return { daysAfterDue: 1 };
+    case 'rental_overdue':
+    case 'rental_overdue_staff':
+      return { daysAfterDue: 0 };
     case 'low_stock_detected':
       return { thresholdMode: 'reorder_level', fixedThreshold: 5 };
     case 'quote_no_response':
@@ -1455,11 +1685,14 @@ export function buildTriggerConfig(triggerType, triggerForm) {
   const merged = { ...base, ...(triggerForm && typeof triggerForm === 'object' ? triggerForm : {}) };
   switch (triggerType) {
     case 'invoice_due_in_days':
+    case 'rental_due_in_days':
       return {
         daysBeforeDue: Math.max(0, Math.min(365, Number(merged.daysBeforeDue) || 0)),
       };
     case 'invoice_overdue':
     case 'invoice_overdue_staff':
+    case 'rental_overdue':
+    case 'rental_overdue_staff':
       return {
         daysAfterDue: Math.max(0, Math.min(365, Number(merged.daysAfterDue) || 0)),
       };

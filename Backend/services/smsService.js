@@ -2,10 +2,11 @@ const axios = require('axios');
 const { formatToE164, isValidPhoneNumber } = require('../utils/phoneUtils');
 const { Setting } = require('../models');
 const { getSavedPlatformSmsConfig } = require('./platformSmsSettingsService');
+const { incrementPlatformSmsUsage } = require('./platformSmsUsageService');
 const {
-  checkPlatformSmsLimit,
-  incrementPlatformSmsUsage,
-} = require('./platformSmsUsageService');
+  resolvePlatformSmsBilling,
+  debitForSend,
+} = require('./absCreditsService');
 
 const ARKESEL_BASE_URL = 'https://sms.arkesel.com';
 const MNOTIFY_BASE_URL = process.env.MNOTIFY_BASE_URL || 'https://api.mnotify.com/api';
@@ -266,7 +267,7 @@ class SMSService {
  * @param {string} tenantId
  * @returns {Promise<Object|null>}
  */
-async getResolvedConfig(tenantId) {
+  async getResolvedConfig(tenantId) {
     const tenantConfig = await this.getConfig(tenantId);
     if (hasValidTenantSmsCredentials(tenantConfig)) {
       return {
@@ -278,7 +279,22 @@ async getResolvedConfig(tenantId) {
 
     const platformConfig = await getSavedPlatformSmsConfig();
     if (platformConfig) {
-      return platformConfig;
+      let preferredSender = null;
+      try {
+        const setting = await Setting.findOne({
+          where: { tenantId, key: 'sms' },
+        });
+        preferredSender = setting?.value?.preferredPlatformSenderId || null;
+      } catch (_) {
+        preferredSender = null;
+      }
+      const senderId = preferredSender
+        ? String(preferredSender).trim().substring(0, 11)
+        : platformConfig.senderId;
+      return {
+        ...platformConfig,
+        senderId: senderId || platformConfig.senderId,
+      };
     }
 
     return null;
@@ -375,14 +391,17 @@ async getResolvedConfig(tenantId) {
       }
 
       const usageCount = Math.max(1, parseInt(options.usageCount, 10) || 1);
+      /** @type {'free'|'credits'|null} */
+      let platformBillType = null;
       if (config.limited) {
-        const limitCheck = await checkPlatformSmsLimit(tenantId, usageCount);
-        if (!limitCheck.allowed) {
+        const billing = await resolvePlatformSmsBilling(tenantId, usageCount);
+        if (!billing.allowed) {
           const fail = {
             success: false,
-            error: limitCheck.error,
-            errorCode: limitCheck.errorCode,
-            usage: limitCheck.summary,
+            error: billing.error,
+            errorCode: billing.errorCode,
+            usage: billing.freeSummary,
+            creditsBalance: billing.creditsBalance,
           };
           void this._recordDelivery({
             tenantId,
@@ -398,6 +417,7 @@ async getResolvedConfig(tenantId) {
           });
           return fail;
         }
+        platformBillType = billing.billType;
       }
 
       const provider = (config.provider || 'termii').toLowerCase();
@@ -433,6 +453,17 @@ async getResolvedConfig(tenantId) {
         } catch (usageError) {
           console.error('[SMS] Failed to increment platform usage counter:', usageError?.message);
         }
+        if (platformBillType === 'credits') {
+          try {
+            await debitForSend(tenantId, usageCount, {
+              messageId: result.messageId || null,
+              source,
+              provider,
+            });
+          } catch (creditError) {
+            console.error('[SMS] Failed to debit ABS Credits after send:', creditError?.message);
+          }
+        }
       }
 
       void this._recordDelivery({
@@ -445,13 +476,18 @@ async getResolvedConfig(tenantId) {
         errorMessage: result.error || null,
         recipient: formattedPhone,
         subjectOrContext: message ? String(message).slice(0, 80) : null,
-        metadata: { ...context, messageId: result.messageId || null },
+        metadata: {
+          ...context,
+          messageId: result.messageId || null,
+          platformBillType,
+        },
       });
 
       return {
         ...result,
         source: config.source,
         limited: config.limited,
+        platformBillType,
       };
     } catch (error) {
       console.error('[SMS] Error sending message:', {

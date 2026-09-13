@@ -14,4 +14,5 @@ export const SEARCH_PLACEHOLDERS = {
   ORDERS: 'Order # or customer...',
   ONLINE_ORDERS: 'Order #, customer, or phone...',
   DEALERS: 'Business name, contact, or phone...',
+  RENTALS: 'Rental #, customer, or item...',
 } as const;

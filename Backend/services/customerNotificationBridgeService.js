@@ -20,6 +20,8 @@ const TEMPLATE_KEYS = {
   LOW_STOCK_ON_CHANGE: 'low_stock_on_change',
   OUT_OF_STOCK_ALERT: 'out_of_stock_alert',
   LOW_STOCK_ALERT: 'low_stock_alert',
+  RENTAL_DUE_REMINDER: 'rental_due_reminder',
+  RENTAL_OVERDUE_REMINDER: 'rental_overdue_reminder',
 };
 
 /** Staff-only templates — never count toward customer receipt channel coverage. */
@@ -41,6 +43,8 @@ const TEMPLATE_KEY_TRIGGER_TYPES = {
   [TEMPLATE_KEYS.LOW_STOCK_ON_CHANGE]: 'low_stock_on_change',
   [TEMPLATE_KEYS.OUT_OF_STOCK_ALERT]: 'out_of_stock_detected',
   [TEMPLATE_KEYS.LOW_STOCK_ALERT]: 'low_stock_detected',
+  [TEMPLATE_KEYS.RENTAL_DUE_REMINDER]: 'rental_due_in_days',
+  [TEMPLATE_KEYS.RENTAL_OVERDUE_REMINDER]: 'rental_overdue',
 };
 
 /** Maps automation messaging action types to the delivery channel they cover. */

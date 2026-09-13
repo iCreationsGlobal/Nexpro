@@ -219,7 +219,7 @@ const Sales = () => {
   const activeShopId = shopContext?.activeShopId ?? null;
   const queryClient = useQueryClient();
   const businessType = activeTenant?.businessType || 'printing_press';
-  const isShop = businessType === 'shop';
+  const isShop = businessType === 'shop' || businessType === 'rental';
   const isRestaurant =
     isShop &&
     (activeTenant?.metadata?.businessSubType ||

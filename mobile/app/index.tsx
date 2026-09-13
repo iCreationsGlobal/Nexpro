@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { router } from 'expo-router';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import Colors from '@/constants/Colors';
+import { AppLoadingScreen } from '@/components/AppLoadingScreen';
 import { useAuth } from '@/context/AuthContext';
 import { settingsService } from '@/services/settings';
 import { logger } from '@/utils/logger';
@@ -72,18 +71,5 @@ export default function Index() {
     };
   }, [user, loading, sessionSyncing, activeTenant, wasInvited, suppressAppGuidance, isDriver]);
 
-  return (
-    <View style={styles.container}>
-      <ActivityIndicator size="large" color={Colors.light.tint} />
-    </View>
-  );
+  return <AppLoadingScreen />;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-});

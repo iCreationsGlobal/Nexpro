@@ -1,6 +1,6 @@
 /**
  * Business-type eligibility for automation triggers and templates.
- * Resolved types: shop | studio | pharmacy. Feature gates: quotes (not restaurant), orders (restaurant shops).
+ * Resolved types: shop | studio | pharmacy | rental. Feature gates: quotes (not restaurant), orders (restaurant shops).
  */
 
 const {
@@ -10,7 +10,7 @@ const {
   ORDERS_ENABLED_SHOP_TYPES,
 } = require('../config/businessTypes');
 
-const ALL_RESOLVED_TYPES = Object.freeze(['shop', 'studio', 'pharmacy']);
+const ALL_RESOLVED_TYPES = Object.freeze(['shop', 'studio', 'pharmacy', 'rental']);
 
 /**
  * Trigger → resolved business types (+ optional feature gates).
@@ -41,6 +41,17 @@ const TRIGGER_ELIGIBILITY = Object.freeze({
 
   // Pharmacy
   prescription_refill_due: { allowedBusinessTypes: ['pharmacy'] },
+
+  // Rental lifecycle
+  rental_created: { allowedBusinessTypes: ['rental'] },
+  rental_created_staff: { allowedBusinessTypes: ['rental'] },
+  rental_checked_out: { allowedBusinessTypes: ['rental'] },
+  rental_returned: { allowedBusinessTypes: ['rental'] },
+  rental_returned_staff: { allowedBusinessTypes: ['rental'] },
+  rental_cancelled: { allowedBusinessTypes: ['rental'] },
+  rental_due_in_days: { allowedBusinessTypes: ['rental'] },
+  rental_overdue: { allowedBusinessTypes: ['rental'] },
+  rental_overdue_staff: { allowedBusinessTypes: ['rental'] },
 
   // Quotes: studio + pharmacy + shop except restaurant
   quote_no_response: { allowedBusinessTypes: ALL_RESOLVED_TYPES, requiresQuotes: true },

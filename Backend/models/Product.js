@@ -61,6 +61,21 @@ const Product = sequelize.define('Product', {
     allowNull: true,
     defaultValue: null
   },
+  rentalRatePerDay: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    defaultValue: null
+  },
+  isRentable: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  isSalable: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true
+  },
   // Stock management
   quantityOnHand: {
     type: DataTypes.DECIMAL(12, 2),

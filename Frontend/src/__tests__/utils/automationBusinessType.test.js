@@ -29,6 +29,17 @@ describe('automationBusinessType (frontend)', () => {
     expect(isTriggerAllowedForTenant('order_created', shop)).toBe(false);
   });
 
+  it('allows rental lifecycle and invoice triggers for rental tenants', () => {
+    const rental = { businessType: 'rental', metadata: {} };
+    expect(isTriggerAllowedForTenant('rental_created', rental)).toBe(true);
+    expect(isTriggerAllowedForTenant('payment_received', rental)).toBe(true);
+    expect(isTriggerAllowedForTenant('sale_completed', rental)).toBe(false);
+    const values = filterTriggerOptionsForTenant(TRIGGER_OPTIONS, rental).map((o) => o.value);
+    expect(values).toContain('rental_created');
+    expect(values).toContain('rental_due_in_days');
+    expect(values).not.toContain('sale_completed');
+  });
+
   it('allows order_created for restaurant shops only', () => {
     const restaurant = { businessType: 'shop', metadata: { shopType: 'restaurant' } };
     expect(isTriggerAllowedForTenant('order_created', restaurant)).toBe(true);

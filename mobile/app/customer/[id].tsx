@@ -28,6 +28,7 @@ import { settingsService } from '@/services/settings';
 import { getApiErrorMessage, parseApiEntity } from '@/utils/parseApiListResponse';
 import { refreshAfterCustomerChange } from '@/utils/queryInvalidation';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 
 type CustomerDetail = {
   id: string;
@@ -610,7 +611,13 @@ function getActivityTitle(activity: TimelineActivity, customerName: string): str
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: 16, paddingBottom: 24 },
-  saveBtn: { height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  saveBtn: {
+    ...standaloneFullWidth,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   saveBtnText: { color: '#fff', fontWeight: '600', fontSize: 16 },
   label: { fontSize: 14, fontWeight: '600', marginBottom: 8, marginTop: 4 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, marginBottom: 8 },

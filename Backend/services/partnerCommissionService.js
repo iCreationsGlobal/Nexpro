@@ -9,6 +9,15 @@ const {
   Job,
 } = require('../models');
 const { money } = require('./partnerProgramService');
+const sabitoAppPlatformService = require('./sabitoAppPlatformService');
+
+const splitCommission = (commissionAmount, feePercent) => {
+  const amount = money(commissionAmount);
+  const percent = money(feePercent);
+  const platformFeeAmount = money((amount * percent) / 100);
+  const marketerShareAmount = money(amount - platformFeeAmount);
+  return { amount, platformFeePercent: percent, platformFeeAmount, marketerShareAmount };
+};
 
 /**
  * Resolve partnership attribution from sale / invoice / job / customer.
@@ -157,7 +166,7 @@ const maybeCreateCommissionForPayment = async ({
   if (!attribution) return null;
 
   const { partnership, customerId: cid, saleId: sid, invoiceId: iid } = attribution;
-  // Recovery must never attribute payments collected before this referral existed.
+  // Recovery/reconciliation must never attribute payments collected before this referral existed.
   if (collectedAt) {
     const paidAt = new Date(collectedAt);
     if (partnership.activatedAt && paidAt < new Date(partnership.activatedAt)) return null;
@@ -172,9 +181,9 @@ const maybeCreateCommissionForPayment = async ({
   const { rateType, ratePercent } = await resolveRate(partnership, cid);
   const commissionAmount = money((amountCollected * ratePercent) / 100);
   if (commissionAmount <= 0) return null;
+  const feePercent = await sabitoAppPlatformService.getPlatformFeePercent();
+  const split = splitCommission(commissionAmount, feePercent);
 
-  const platformFeePercent = await require('./sabitoAppPlatformService').getPlatformFeePercent();
-  const platformFeeAmount = money(commissionAmount * platformFeePercent / 100);
   try {
     return await PartnerCommission.create({
       tenantId,
@@ -187,10 +196,10 @@ const maybeCreateCommissionForPayment = async ({
       rateType,
       ratePercent,
       paymentAmount: amountCollected,
-      amount: commissionAmount,
-      platformFeePercent,
-      platformFeeAmount,
-      marketerShareAmount: money(commissionAmount - platformFeeAmount),
+      amount: split.amount,
+      platformFeePercent: split.platformFeePercent,
+      platformFeeAmount: split.platformFeeAmount,
+      marketerShareAmount: split.marketerShareAmount,
       remittanceStatus: 'owed',
       currency: 'GHS',
       status: 'due',
@@ -204,10 +213,11 @@ const maybeCreateCommissionForPayment = async ({
   }
 };
 
-const listCommissionsForTenant = async (tenantId, { status, marketerId, month, year } = {}) => {
+const listCommissionsForTenant = async (tenantId, { status, marketerId, month, year, remittanceStatus } = {}) => {
   const where = { tenantId };
   if (status) where.status = status;
   if (marketerId) where.marketerId = marketerId;
+  if (remittanceStatus) where.remittanceStatus = remittanceStatus;
 
   if (month && year) {
     const start = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
@@ -283,4 +293,5 @@ module.exports = {
   markCommissionsPaid,
   resolveAttribution,
   resolveRate,
+  splitCommission,
 };

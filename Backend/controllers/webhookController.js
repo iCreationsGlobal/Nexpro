@@ -9,6 +9,71 @@ const {
   parseInvoiceIdFromPublicPaystackReference
 } = require('../services/paystackPublicInvoicePayment');
 const { applySubscriptionFromTransaction } = require('./subscriptionController');
+const { applyCreditsFromTransaction } = require('./absCreditsController');
+
+/**
+ * Email a seller when a charge settles into their linked Paystack subaccount
+ * (split payment). Fire-and-forget from the charge.success handler — a failure
+ * here must never affect webhook processing of the underlying sale/invoice.
+ */
+const notifySellerOfSubaccountSettlement = async (tx) => {
+  const subaccountCode = tx?.subaccount?.subaccount_code || tx?.subaccount?.subaccountCode;
+  if (!subaccountCode) return;
+
+  const tenant = await Tenant.scope('withOptionalColumns').findOne({
+    where: { paystackSubaccountCode: subaccountCode }
+  });
+  if (!tenant) return;
+
+  // Prefer the workspace owner/admin so this email is gated by their
+  // Settings → Notifications → Payments → Email preference (default off).
+  // Only fall back to the raw contact email on file (ungated) when there's
+  // no user account to check a preference against.
+  const { UserTenant, User } = require('../models');
+  const { Op } = require('sequelize');
+  const { getPreferencesForUsers, isNotificationChannelEnabled } = require('../services/notificationPreferenceHelper');
+
+  const membership = await UserTenant.findOne({
+    where: { tenantId: tenant.id, role: { [Op.in]: ['owner', 'admin'] }, status: 'active' },
+    order: [['createdAt', 'ASC']]
+  });
+
+  let toEmail = null;
+  if (membership) {
+    const prefsMap = await getPreferencesForUsers([membership.userId]);
+    const prefs = prefsMap.get(membership.userId);
+    if (!isNotificationChannelEnabled(prefs, 'payment', 'email')) return;
+    const owner = await User.findByPk(membership.userId, { attributes: ['email'] });
+    toEmail = owner?.email || null;
+  }
+  if (!toEmail) {
+    toEmail = tenant.metadata?.paymentCollection?.primary_contact_email || null;
+  }
+  if (!toEmail) return;
+
+  const subaccountShare = tx?.fees_split?.subaccount;
+  const amountPesewas = Number.isFinite(subaccountShare) ? subaccountShare : Number(tx.amount || 0);
+  const amount = amountPesewas / 100;
+  if (!(amount > 0)) return;
+
+  const emailService = require('../services/emailService');
+  const { paystackSubaccountPaymentReceivedEmail } = require('../services/emailTemplates');
+  const { subject, html, text } = paystackSubaccountPaymentReceivedEmail(
+    {
+      amount,
+      currency: tx.currency || 'GHS',
+      customerEmail: tx.customer?.email || null,
+      reference: tx.reference,
+      paidAt: tx.paid_at || tx.paidAt || new Date(),
+      channel: tx.channel || null
+    },
+    { name: process.env.APP_NAME || 'African Business Suite' }
+  );
+  const result = await emailService.sendPlatformMessage(toEmail, subject, html, text);
+  if (!result?.success) {
+    console.warn('[Paystack Webhook] Subaccount settlement email failed:', result?.error || '');
+  }
+};
 
 /**
  * Handle WhatsApp webhook from Meta
@@ -421,6 +486,11 @@ exports.handlePaystackWebhook = async (req, res) => {
       }
 
       const tx = result.data;
+
+      notifySellerOfSubaccountSettlement(tx).catch((notifyErr) =>
+        console.error('[Paystack Webhook] Subaccount settlement notification failed:', notifyErr?.message || notifyErr)
+      );
+
       const metadata = typeof tx.metadata === 'string' ? JSON.parse(tx.metadata || '{}') : (tx.metadata || {});
       const invLink = getPaystackInvoiceLinkMetadata(metadata);
       const refInvoiceId = parseInvoiceIdFromPublicPaystackReference(reference);
@@ -750,6 +820,16 @@ exports.handlePaystackWebhook = async (req, res) => {
           '[Paystack Webhook] Subscription updated for tenant:',
           metadata.tenantId || metadata.tenant_id,
           activation ? 'ok' : 'skipped'
+        );
+      } else if (
+        ['abs_credits', 'sms_credits'].includes(String(metadata.type || '').toLowerCase()) &&
+        (metadata.tenantId || metadata.tenant_id)
+      ) {
+        const credited = await applyCreditsFromTransaction(tx, 'webhook');
+        console.log(
+          '[Paystack Webhook] ABS Credits purchase for tenant:',
+          metadata.tenantId || metadata.tenant_id,
+          credited ? (credited.alreadyRecorded ? 'already' : 'ok') : 'skipped'
         );
       }
     } else if (event === 'subscription.create') {

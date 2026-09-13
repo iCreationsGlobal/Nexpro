@@ -17,7 +17,7 @@ import { SEARCH_PLACEHOLDERS, DEBOUNCE_DELAYS } from '../../constants';
 import { formatInteger } from '../../utils/formatNumber';
 import { formatStorageAmount, formatStoragePercentage } from '../../utils/storageFormat';
 import { showSuccess, showError, handleApiError } from '../../utils/toast';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -1766,6 +1766,12 @@ const AdminTenants = () => {
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">Plan &amp; access control</CardTitle>
+                    {selectedTenant?.businessType === 'rental' ? (
+                      <CardDescription>
+                        Rental pilot: assign starter or professional plan (rentals auto-enabled for rental business type on starter).
+                        Confirm Rentals is effective, then provision Online Store with rentable listings — see Backend/RENTAL_QUICK_REFERENCE.md#pilot-tenant-setup-checklist.
+                      </CardDescription>
+                    ) : null}
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-1.5">

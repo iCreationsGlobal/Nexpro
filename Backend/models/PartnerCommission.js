@@ -64,7 +64,33 @@ const PartnerCommission = sequelize.define(
     amount: {
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
-      comment: 'Commission amount in GHS',
+      comment: 'Full marketer commission the business remits to ABS (GHS)',
+    },
+    platformFeePercent: {
+      type: DataTypes.DECIMAL(6, 2),
+      allowNull: false,
+      defaultValue: 20,
+    },
+    platformFeeAmount: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
+    marketerShareAmount: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
+    remittanceStatus: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: 'owed',
+      comment: 'owed | collected',
+    },
+    remittanceId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: { model: 'partner_remittances', key: 'id' },
     },
     platformFeePercent: { type: DataTypes.DECIMAL(6, 2), allowNull: false, defaultValue: 20 },
     platformFeeAmount: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
@@ -116,6 +142,7 @@ const PartnerCommission = sequelize.define(
       { fields: ['paymentId'] },
       { fields: ['customerId'] },
       { fields: ['cashoutRequestId'] },
+      { fields: ['remittanceStatus', 'remittanceId'] },
       { fields: ['createdAt'] },
     ],
   }

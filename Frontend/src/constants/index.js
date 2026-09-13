@@ -67,6 +67,7 @@ export const BUSINESS_TYPES = {
   PRINTING_PRESS: 'printing_press',
   SHOP: 'shop',
   PHARMACY: 'pharmacy',
+  RENTAL: 'rental',
 };
 
 /** Business types that use Jobs (studio-like: printing press, mechanic, barber, salon) */
@@ -85,6 +86,7 @@ export const REVIEW_CATEGORY_OPTIONS_BY_BUSINESS_TYPE = {
   studio: ['Project', 'Consultation', 'Other'],
   shop: ['Purchase', 'Support', 'Other'],
   pharmacy: ['Prescription', 'OTC', 'Consultation', 'Other'],
+  rental: ['Booking', 'Return', 'Damage', 'Late Charge', 'Other'],
   default: ['General', 'Other'],
 };
 
@@ -173,6 +175,26 @@ export const DATE_FORMATS = {
   DISPLAY_WITH_TIME: 'MMM DD, YYYY HH:mm',
   INPUT: 'YYYY-MM-DD',
   DATETIME: 'YYYY-MM-DD HH:mm:ss',
+};
+
+/** ABS Watch incident kinds — keep copy low-certainty, never accuse staff. */
+export const WATCH_INCIDENT_KINDS = {
+  MATCHED: 'matched',
+  UNMATCHED_INTERACTION: 'unmatched_interaction',
+  SALE_WITHOUT_EVENT: 'sale_without_event',
+};
+
+export const WATCH_INCIDENT_STATUSES = {
+  PENDING: 'pending',
+  CONFIRMED: 'confirmed',
+  DISMISSED: 'dismissed',
+  NEEDS_CONTEXT: 'needs_context',
+};
+
+export const WATCH_REVIEW_DECISIONS = {
+  CONFIRM: 'confirm',
+  DISMISS: 'dismiss',
+  NEEDS_CONTEXT: 'needs_context',
 };
 
 // File Upload Configuration
@@ -363,6 +385,8 @@ export const STATUS_CHIP_CLASSES = {
   partial: CHIP_ORANGE,
   on_hold: CHIP_ORANGE,
   pending_approval: CHIP_ORANGE,
+  pending_review: CHIP_ORANGE,
+  live: CHIP_GREEN,
   qualified: CHIP_PURPLE,
   declined: CHIP_RED,
   expired: CHIP_RED,
@@ -371,6 +395,9 @@ export const STATUS_CHIP_CLASSES = {
   /** Equipment asset lifecycle */
   disposed: CHIP_GRAY,
   sold: CHIP_ORANGE,
+  /** Rental lifecycle (pending / completed / overdue / cancelled reuse keys above) */
+  confirmed: CHIP_BLUE,
+  returned: CHIP_GREEN,
   /** Customer account type (vs workflow status) */
   returning: CHIP_BLUE,
 };
@@ -542,6 +569,7 @@ export const SEARCH_PLACEHOLDERS = {
   ASSETS: 'Name, tag, or location...',
   MATERIALS: 'Name, SKU, or category...',
   EQUIPMENT: 'Name, serial #, or location...',
+  RENTALS: 'Customer, product, or status...',
   MERCHANDISE: 'Name, SKU, or category...',
   EMPLOYEES: 'Name, department, or role...',
   USERS: 'Name, email, or role...',
@@ -574,6 +602,7 @@ export const QUOTES_HIDDEN_SHOP_TYPES = ['restaurant'];
  */
 export function isQuotesEnabledForTenant(businessType, shopType) {
   if (!businessType) return false;
+  if (businessType === 'rental') return false;
   const isStudio = ['printing_press', 'mechanic', 'barber', 'salon', 'studio'].includes(businessType);
   if (isStudio || businessType === 'pharmacy') return true;
   if (businessType === 'shop') {
@@ -727,6 +756,76 @@ export const ORDER_STATUS_LABELS = {
   [ORDER_STATUSES.READY]: 'Ready',
   [ORDER_STATUSES.COMPLETED]: 'Completed',
 };
+
+/** Rental lifecycle statuses */
+export const RENTAL_STATUSES = {
+  PENDING: 'pending',
+  CONFIRMED: 'confirmed',
+  ACTIVE: 'active',
+  OVERDUE: 'overdue',
+  RETURNED: 'returned',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled',
+};
+
+export const RENTAL_STATUS_LABELS = {
+  [RENTAL_STATUSES.PENDING]: 'Pending',
+  [RENTAL_STATUSES.CONFIRMED]: 'Confirmed',
+  [RENTAL_STATUSES.ACTIVE]: 'Active',
+  [RENTAL_STATUSES.OVERDUE]: 'Overdue',
+  [RENTAL_STATUSES.RETURNED]: 'Returned',
+  [RENTAL_STATUSES.COMPLETED]: 'Completed',
+  [RENTAL_STATUSES.CANCELLED]: 'Cancelled',
+};
+
+/** Rentals where inventory is still reserved or items are out. */
+export const RENTAL_OPEN_STATUSES = [
+  RENTAL_STATUSES.PENDING,
+  RENTAL_STATUSES.CONFIRMED,
+  RENTAL_STATUSES.ACTIVE,
+  RENTAL_STATUSES.OVERDUE,
+];
+
+/** Rentals eligible for the return action. */
+export const RENTAL_RETURNABLE_STATUSES = [
+  RENTAL_STATUSES.ACTIVE,
+  RENTAL_STATUSES.OVERDUE,
+];
+
+/** Rentals eligible for extension. */
+export const RENTAL_EXTENDABLE_STATUSES = [
+  RENTAL_STATUSES.CONFIRMED,
+  RENTAL_STATUSES.ACTIVE,
+  RENTAL_STATUSES.OVERDUE,
+];
+
+/** Rentals eligible for checkout / handover (status only; start date checked in UI). */
+export const RENTAL_CHECKOUTABLE_STATUSES = [
+  RENTAL_STATUSES.CONFIRMED,
+];
+
+/** Pre-booking lifecycle statuses */
+export const PRE_BOOKING_STATUSES = {
+  PENDING: 'pending',
+  CONFIRMED: 'confirmed',
+  CONVERTED: 'converted',
+  EXPIRED: 'expired',
+  CANCELLED: 'cancelled',
+};
+
+export const PRE_BOOKING_STATUS_LABELS = {
+  [PRE_BOOKING_STATUSES.PENDING]: 'Pending',
+  [PRE_BOOKING_STATUSES.CONFIRMED]: 'Confirmed',
+  [PRE_BOOKING_STATUSES.CONVERTED]: 'Converted',
+  [PRE_BOOKING_STATUSES.EXPIRED]: 'Expired',
+  [PRE_BOOKING_STATUSES.CANCELLED]: 'Cancelled',
+};
+
+/** Pre-bookings that still hold inventory */
+export const PRE_BOOKING_OPEN_STATUSES = [
+  PRE_BOOKING_STATUSES.PENDING,
+  PRE_BOOKING_STATUSES.CONFIRMED,
+];
 
 /** First-party delivery (jobs + sales); when set, public tracking shows this timeline only */
 export const DELIVERY_STATUSES = {

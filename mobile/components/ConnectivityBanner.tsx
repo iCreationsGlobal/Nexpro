@@ -1,19 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useIsFetching, useIsMutating } from '@tanstack/react-query';
-import * as Network from 'expo-network';
 
 import { useTheme } from '@/context/ThemeContext';
 import { useIsStoreSetupRoute } from '@/hooks/useIsStoreSetupRoute';
 import Colors from '@/constants/Colors';
-import { isNetworkStateOnline } from '@/utils/connectivity';
+import { useAppOnline } from '@/utils/connectivity';
 import { isStoreSetupBackgroundNoiseQuery } from '@/utils/storeSetupQueryGate';
 
 const SLOW_REQUEST_MS = 7000;
 const RECONNECTED_VISIBLE_MS = 4000;
 
 export function ConnectivityBanner() {
-  const networkState = Network.useNetworkState();
+  const isOnline = useAppOnline();
   const inStoreSetup = useIsStoreSetupRoute();
   const isFetching = useIsFetching({
     predicate: (query) => !(inStoreSetup && isStoreSetupBackgroundNoiseQuery(query.queryKey)),
@@ -23,7 +22,6 @@ export function ConnectivityBanner() {
   const [showSlowRequest, setShowSlowRequest] = useState(false);
   const [showReconnected, setShowReconnected] = useState(false);
   const wasOfflineRef = useRef(false);
-  const isOnline = useMemo(() => isNetworkStateOnline(networkState), [networkState]);
   const activeRequests = isFetching + isMutating;
 
   useEffect(() => {

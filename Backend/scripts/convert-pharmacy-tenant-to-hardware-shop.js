@@ -347,7 +347,7 @@ const main = async () => {
     if (seedCategories) {
       try {
         const { seedDefaultCategories } = require('../utils/categorySeeder');
-        await seedDefaultCategories(tenant.id, TARGET_BUSINESS_TYPE, TARGET_SHOP_TYPE, null, true);
+        await seedDefaultCategories(tenant.id, TARGET_BUSINESS_TYPE, TARGET_SHOP_TYPE, null, null, true);
         console.log('  seeded default categories for shop/hardware (additive; existing names kept)');
       } catch (seedErr) {
         console.warn(`  category seed failed (non-fatal): ${seedErr.message}`);

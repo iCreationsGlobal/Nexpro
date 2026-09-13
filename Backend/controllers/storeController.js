@@ -74,6 +74,12 @@ const {
 } = require('../utils/marketplaceOrderStatus');
 const { startHotPathTimer } = require('../utils/performanceLogger');
 const { applyStockChange } = require('../utils/productStockUtils');
+const { getRentalSettings } = require('../services/rentalSettingsService');
+const {
+  buildPublicRentalListingFields,
+  buildPublicRentalPolicySummary,
+  resolveListingPublicPriceFromProduct,
+} = require('../utils/storefrontRentalListingUtils');
 
 const DEFAULT_PRIMARY_COLOR = '#166534';
 const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
@@ -372,7 +378,20 @@ const publicListingIncludes = [
   {
     model: Product,
     as: 'product',
-    attributes: ['id', 'name', 'quantityOnHand', 'unit', 'hasVariants', 'trackStock', 'imageUrl', 'categoryId'],
+    attributes: [
+      'id',
+      'name',
+      'quantityOnHand',
+      'unit',
+      'hasVariants',
+      'trackStock',
+      'imageUrl',
+      'categoryId',
+      'isRentable',
+      'isSalable',
+      'rentalRatePerDay',
+      'metadata',
+    ],
     required: true,
     where: { isActive: true },
     include: [
@@ -616,19 +635,27 @@ const listingIsSampleProduct = (listing) => {
   return productMeta.isSample === true;
 };
 
-const toMarketplaceProduct = (listing, stores, variantsByProductId = new Map()) => {
+const toMarketplaceProduct = (listing, stores, variantsByProductId = new Map(), { storeRentalTerms = null } = {}) => {
   const availableListing = buildListingAvailability(listing, variantsByProductId);
   const store = stores.find((candidate) => storeMatchesListing(candidate, availableListing));
   const storeCard = store ? toPublicStoreCard(store) : null;
   const product = availableListing.product || {};
   const isSample = listingIsSampleProduct(availableListing);
+  const rentalFields = buildPublicRentalListingFields(product, availableListing, { storeRentalTerms });
+  const salePrice = normalizeMoney(availableListing.publicPrice, 0);
+  const displayRentalRate = rentalFields.rentalRatePerDay;
+  const primaryPrice = rentalFields.listingMode === 'rent' && displayRentalRate > 0
+    ? displayRentalRate
+    : salePrice;
+
   return withProductDiscountMeta({
     id: availableListing.id,
     title: availableListing.title,
     slug: availableListing.slug,
     shortDescription: availableListing.shortDescription,
     description: availableListing.description,
-    publicPrice: availableListing.publicPrice,
+    publicPrice: primaryPrice,
+    salePrice: rentalFields.isSalable ? salePrice : null,
     compareAtPrice: availableListing.compareAtPrice,
     images: availableListing.images,
     available: availableListing.available,
@@ -640,6 +667,7 @@ const toMarketplaceProduct = (listing, stores, variantsByProductId = new Map()) 
     reviewSummary: availableListing.reviewSummary || null,
     publishedAt: availableListing.publishedAt,
     isSample,
+    ...rentalFields,
   });
 };
 
@@ -667,14 +695,14 @@ const toSlimStoreRef = (store) => {
   };
 };
 
-const toPublicStoreProduct = (listing, store, variantsByProductId = new Map(), salesCount = 0) => ({
-  ...toMarketplaceProduct(listing, [store], variantsByProductId),
+const toPublicStoreProduct = (listing, store, variantsByProductId = new Map(), salesCount = 0, options = {}) => ({
+  ...toMarketplaceProduct(listing, [store], variantsByProductId, options),
   salesCount,
 });
 
 /** Store-home product card: reuses marketplace shape but embeds slim store ref. */
-const toStoreHomeProduct = (listing, store, variantsByProductId, salesCount, slimStore) => {
-  const product = toMarketplaceProduct(listing, [store], variantsByProductId);
+const toStoreHomeProduct = (listing, store, variantsByProductId, salesCount, slimStore, options = {}) => {
+  const product = toMarketplaceProduct(listing, [store], variantsByProductId, options);
   return {
     ...product,
     store: slimStore,
@@ -1040,6 +1068,7 @@ const toPublicStoreHomeProfile = (store, {
   serviceCount = 0,
   categories = [],
   reviewSummary = {},
+  rentalPolicySummary = [],
 } = {}) => {
   const plain = typeof store.get === 'function' ? store.get({ plain: true }) : store;
   const metadata = plain.metadata && typeof plain.metadata === 'object' ? plain.metadata : {};
@@ -1072,6 +1101,8 @@ const toPublicStoreHomeProfile = (store, {
     testimonials: toPublicTestimonials(metadata),
     /** Server-gated ABS footer promo (trial/starter only). Clients must not invent this. */
     showAbsPromo: shouldShowAbsPromo(plain.tenant?.plan),
+    /** Human-readable org rental policy bullets (rental tenants). */
+    rentalPolicySummary: Array.isArray(rentalPolicySummary) ? rentalPolicySummary : [],
     stats: {
       productCount,
       serviceCount,
@@ -2429,7 +2460,7 @@ const listingPayloadFromBody = (body, product = null) => {
   const title = String(body.title || product?.name || '').trim();
   const slug = normalizeSlug(body.slug || title, 'product');
   const status = LISTING_STATUSES.has(body.status) ? body.status : 'draft';
-  const publicPrice = normalizeMoney(body.publicPrice, normalizeMoney(product?.sellingPrice, 0));
+  const publicPrice = resolveListingPublicPriceFromProduct(body, product);
   const compareAtPrice =
     body.compareAtPrice === undefined || body.compareAtPrice === null || body.compareAtPrice === ''
       ? null
@@ -4530,7 +4561,8 @@ exports.getMarketplaceStoreHome = async (req, res, next) => {
           store,
           variantsByProductId,
           salesCounts.get(listing.productId) || 0,
-          slimStore
+          slimStore,
+          { storeRentalTerms },
         ),
         sortOrder: Number(plain.sortOrder || 0),
         publishedAt: plain.publishedAt || null,
@@ -4558,6 +4590,16 @@ exports.getMarketplaceStoreHome = async (req, res, next) => {
       storePlain.heroSlides,
       storePlain.primaryColor
     );
+    const storeBusinessType = storePlain.tenant?.businessType || null;
+    const storeMetadata = storePlain.metadata && typeof storePlain.metadata === 'object'
+      ? storePlain.metadata
+      : {};
+    const storeRentalTerms = storeMetadata.rentalTerms || null;
+    let rentalPolicySummary = [];
+    if (storeBusinessType === 'rental') {
+      const rentalSettings = await getRentalSettings(storePlain.tenantId);
+      rentalPolicySummary = buildPublicRentalPolicySummary(rentalSettings);
+    }
 
     finishTiming({
       slug: store.slug,
@@ -4574,6 +4616,7 @@ exports.getMarketplaceStoreHome = async (req, res, next) => {
             serviceCount: services.length,
             categories: publicProducts.length ? categories : serviceCategories,
             reviewSummary,
+            rentalPolicySummary,
           }),
           heroSlides: resolvedHeroSlides,
         },
@@ -4621,7 +4664,7 @@ exports.getPublicStore = async (req, res, next) => {
         {
           model: Tenant,
           as: 'tenant',
-          attributes: ['plan'],
+          attributes: ['plan', 'businessType', 'id'],
           required: false,
         },
       ],
@@ -4636,12 +4679,25 @@ exports.getPublicStore = async (req, res, next) => {
     const showAbsPromo = shouldShowAbsPromo(plain.tenant?.plan);
     const metadata = plain.metadata && typeof plain.metadata === 'object' ? plain.metadata : {};
     const productCardActions = sanitizeProductCardActions(metadata.productCardActions);
+    const businessType = plain.tenant?.businessType || null;
+    let rentalPolicySummary = [];
+    if (businessType === 'rental' && plain.tenant?.id) {
+      const rentalSettings = await getRentalSettings(plain.tenant.id);
+      rentalPolicySummary = buildPublicRentalPolicySummary(rentalSettings);
+    }
     const { tenant: _tenant, metadata: _metadata, ...storeWithoutTenant } = plain;
     const branded = attachResolvedBrandColors(storeWithoutTenant);
     const heroSlides = await resolveHeroSlidesForStore(plain.heroSlides, plain.primaryColor);
     res.status(200).json({
       success: true,
-      data: { ...branded, heroSlides, showAbsPromo, productCardActions },
+      data: {
+        ...branded,
+        heroSlides,
+        showAbsPromo,
+        productCardActions,
+        businessType,
+        rentalPolicySummary,
+      },
     });
   } catch (error) {
     next(error);
@@ -4687,12 +4743,17 @@ exports.getPublicStoreProducts = async (req, res, next) => {
   try {
     const store = await OnlineStoreSettings.findOne({
       where: publicStoreWhere({ slug: normalizeSlug(req.params.slug) }),
-      attributes: ['tenantId', 'shopId', 'currency'],
+      attributes: ['tenantId', 'shopId', 'currency', 'slug', 'displayName', 'metadata'],
       include: publicStoreInclude,
     });
     if (!store) {
       return res.status(404).json({ success: false, message: 'Store not found or not launched' });
     }
+    const storePlain = typeof store.get === 'function' ? store.get({ plain: true }) : store;
+    const storeMetadata = storePlain.metadata && typeof storePlain.metadata === 'object'
+      ? storePlain.metadata
+      : {};
+    const storeRentalTerms = storeMetadata.rentalTerms || null;
     const where = {
       tenantId: store.tenantId,
       status: 'published',
@@ -4700,45 +4761,23 @@ exports.getPublicStoreProducts = async (req, res, next) => {
     };
     const listings = await OnlineProductListing.findAll({
       where,
-      attributes: [
-        'id',
-        'productId',
-        'productVariantId',
-        'title',
-        'slug',
-        'shortDescription',
-        'description',
-        'publicPrice',
-        'compareAtPrice',
-        'images',
-        'inventoryPolicy',
-        'sortOrder',
-      ],
-      include: [
-        {
-          model: Product,
-          as: 'product',
-          attributes: ['id', 'name', 'quantityOnHand', 'unit', 'hasVariants', 'trackStock'],
-          required: true,
-          where: {
-            tenantId: store.tenantId,
-            isActive: true,
-            ...(store.shopId ? { shopId: store.shopId } : {}),
-          },
-        },
-        {
-          model: ProductVariant,
-          as: 'variant',
-          attributes: ['id', 'productId', 'name', 'quantityOnHand', 'trackStock'],
-          required: false,
-          where: { isActive: true },
-        },
-      ],
+      include: publicListingIncludes,
       order: [['sortOrder', 'ASC'], ['publishedAt', 'DESC']],
     });
-    const { variantsByProductId, listings: availableListings } = await getAvailableListingsWithVariants(listings);
+    const productIds = [...new Set(listings.map((listing) => listing.productId).filter(Boolean))];
+    const [availableListingResult, salesCounts] = await Promise.all([
+      getAvailableListingsWithVariants(listings),
+      getStoreSalesCounts(store, productIds),
+    ]);
+    const { variantsByProductId, listings: availableListings } = availableListingResult;
     const payload = await attachProductReviewSummaries(
-      availableListings.map((listing) => buildListingAvailability(listing, variantsByProductId))
+      availableListings.map((listing) => toPublicStoreProduct(
+        listing,
+        store,
+        variantsByProductId,
+        salesCounts.get(listing.productId) || 0,
+        { storeRentalTerms },
+      ))
     );
     res.status(200).json({ success: true, data: payload, currency: store.currency });
   } catch (error) {

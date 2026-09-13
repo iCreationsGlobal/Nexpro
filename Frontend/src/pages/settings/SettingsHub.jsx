@@ -17,12 +17,16 @@ import {
  */
 const SettingsHub = () => {
   const navigate = useNavigate();
-  const { isManager, hasFeature } = useAuth();
+  const { isManager, hasFeature, activeTenant } = useAuth();
   const { showOnboardingBanner } = useSettingsOnboardingBanner();
 
   const visibleCards = useMemo(
-    () => getVisibleSettingsCards({ isManager, hasFeature }),
-    [isManager, hasFeature]
+    () => getVisibleSettingsCards({
+      isManager,
+      hasFeature,
+      businessType: activeTenant?.businessType,
+    }),
+    [isManager, hasFeature, activeTenant?.businessType]
   );
 
   const groups = useMemo(() => groupSettingsCards(visibleCards), [visibleCards]);

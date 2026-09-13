@@ -37,8 +37,15 @@ import {
   normalizeDirectMomoPhone,
   type DirectMomoProvider,
 } from '@/utils/paymentCollection';
-import { parseApiEntity } from '@/utils/parseApiListResponse';
+import { getApiErrorMessage, parseApiEntity } from '@/utils/parseApiListResponse';
+import { toInvoicePaymentMethod, validateRecordedPaymentAmount } from '@/utils/recordPayment';
 import { refreshAfterInvoicePayment } from '@/utils/queryInvalidation';
+import {
+  shareInvoiceViaEmail,
+  shareInvoiceViaSms,
+  shareInvoiceViaWhatsApp,
+} from '@/utils/invoiceShare';
+import { getCountryCallingCodeFromPhone } from '@/utils/whatsapp';
 import { STUDIO_LIKE_TYPES } from '@/constants';
 import { InvoiceRecordPaymentSheet } from '@/components/InvoiceRecordPaymentSheet';
 import { usePaystackReconciliation } from '@/hooks/usePaystackReconciliation';
@@ -51,12 +58,13 @@ type InvoiceDetail = {
   status: string;
   dueDate?: string;
   createdAt: string;
-  customer?: { name?: string };
+  customer?: { name?: string; phone?: string; email?: string; company?: string };
   saleId?: string | null;
   sale?: { id?: string; saleNumber?: string } | null;
   paymentToken?: string | null;
   paidAmount?: number;
   amountPaid?: number;
+  balance?: number;
   items?: Array<{
     description: string;
     quantity: number;
@@ -69,7 +77,7 @@ type InvoiceDetail = {
   }>;
 };
 
-type InvoiceAction = 'pdf' | 'payment' | 'send' | 'markPaid';
+type InvoiceAction = 'pdf' | 'payment' | 'send' | 'markPaid' | 'shareWhatsapp' | 'shareSms' | 'shareEmail';
 type InvoiceDangerAction = InvoiceAction | 'cancel' | 'delete';
 
 function getItemProductCode(item: NonNullable<InvoiceDetail['items']>[number]) {
@@ -128,6 +136,9 @@ export default function InvoiceDetailScreen() {
 
   const balance = useMemo(() => {
     if (!invoice) return 0;
+    if (invoice.balance != null && Number.isFinite(Number(invoice.balance))) {
+      return Math.max(0, Number(invoice.balance));
+    }
     const total = Number(invoice.totalAmount ?? invoice.total ?? 0);
     const paid = Number(invoice.amountPaid ?? invoice.paidAmount ?? 0);
     return Math.max(0, total - paid);
@@ -189,7 +200,7 @@ export default function InvoiceDetailScreen() {
           Alert.alert('Success', successMessage);
           setShowPaymentSheet(false);
         } catch (err: unknown) {
-          Alert.alert('Error', err instanceof Error ? err.message : 'Action failed');
+          Alert.alert('Error', getApiErrorMessage(err, 'Action failed'));
         }
       });
     },
@@ -200,12 +211,56 @@ export default function InvoiceDetailScreen() {
     if (!invoice) return;
     await runExclusiveAction('pdf', async () => {
       try {
-        await shareInvoicePdf(invoice as unknown as Record<string, unknown>, { showProductCode });
+        await shareInvoicePdf(invoice as unknown as Record<string, unknown>, {
+          showProductCode,
+          businessType: activeTenant?.businessType,
+        });
       } catch (err: unknown) {
         Alert.alert('Invoice unavailable', err instanceof Error ? err.message : 'Could not prepare this invoice PDF.');
       }
     });
   }, [invoice, runExclusiveAction]);
+
+  const shareOptions = useMemo(
+    () => ({
+      businessName: activeTenant?.name,
+      defaultCountryCode: getCountryCallingCodeFromPhone(activeTenant?.metadata?.phone),
+    }),
+    [activeTenant?.metadata?.phone, activeTenant?.name]
+  );
+
+  const handleShareViaWhatsApp = useCallback(async () => {
+    if (!invoice) return;
+    await runExclusiveAction('shareWhatsapp', async () => {
+      try {
+        await shareInvoiceViaWhatsApp(invoice, {
+          ...shareOptions,
+          showProductCode,
+          businessType: activeTenant?.businessType,
+          pdfSource: invoice as unknown as Record<string, unknown>,
+        });
+      } catch (err: unknown) {
+        Alert.alert(
+          'Share unavailable',
+          err instanceof Error ? err.message : 'Could not share this invoice on WhatsApp.'
+        );
+      }
+    });
+  }, [invoice, runExclusiveAction, shareOptions, showProductCode]);
+
+  const handleShareViaSms = useCallback(async () => {
+    if (!invoice) return;
+    await runExclusiveAction('shareSms', async () => {
+      await shareInvoiceViaSms(invoice, shareOptions);
+    });
+  }, [invoice, runExclusiveAction, shareOptions]);
+
+  const handleShareViaEmail = useCallback(async () => {
+    if (!invoice) return;
+    await runExclusiveAction('shareEmail', async () => {
+      await shareInvoiceViaEmail(invoice, shareOptions);
+    });
+  }, [invoice, runExclusiveAction, shareOptions]);
 
   const handleCancelInvoice = useCallback(() => {
     if (!invoice) return;
@@ -260,12 +315,10 @@ export default function InvoiceDetailScreen() {
     }) => {
       if (!invoice) return;
       const { amount, paymentMethod, referenceNumber, paymentDate } = payload;
-      if (!amount || amount <= 0) {
-        Alert.alert('Error', 'Enter a valid payment amount');
-        return;
-      }
-      if (amount > balance) {
-        Alert.alert('Error', 'Payment cannot exceed the balance');
+      const paymentType = amount >= balance - 0.01 ? 'full' : 'partial';
+      const amountError = validateRecordedPaymentAmount(amount, balance, paymentType);
+      if (amountError) {
+        Alert.alert('Error', amountError);
         return;
       }
       if (!paymentDate || Number.isNaN(new Date(paymentDate).getTime())) {
@@ -277,11 +330,11 @@ export default function InvoiceDetailScreen() {
         () =>
           invoiceService.recordPayment(invoice.id, {
             amount,
-            paymentMethod,
+            paymentMethod: toInvoicePaymentMethod(paymentMethod),
             referenceNumber,
             paymentDate,
           }),
-        'Payment recorded'
+        paymentType === 'partial' ? 'Part payment recorded' : 'Payment recorded'
       );
     },
     [balance, invoice, runAction]
@@ -424,7 +477,36 @@ export default function InvoiceDetailScreen() {
   const totalAmount = Number(invoice.totalAmount ?? invoice.total ?? 0);
   const paidAmount = Number(invoice.amountPaid ?? invoice.paidAmount ?? 0);
   const canRecordInvoicePayment = balance > 0 && invoice.status !== 'cancelled' && invoice.status !== 'paid';
+  const canShareInvoice = invoice.status !== 'cancelled';
   const invoiceMoreActions: DetailMoreAction[] = [
+    ...(canShareInvoice
+      ? [
+          {
+            key: 'shareWhatsapp',
+            label: 'Share on WhatsApp',
+            icon: 'comments' as const,
+            onPress: handleShareViaWhatsApp,
+            loading: isActionActive('shareWhatsapp'),
+            disabled: isAnyActionActive,
+          },
+          {
+            key: 'shareSms',
+            label: 'Share via SMS',
+            icon: 'phone' as const,
+            onPress: handleShareViaSms,
+            loading: isActionActive('shareSms'),
+            disabled: isAnyActionActive,
+          },
+          {
+            key: 'shareEmail',
+            label: 'Share via Email',
+            icon: 'mail' as const,
+            onPress: handleShareViaEmail,
+            loading: isActionActive('shareEmail'),
+            disabled: isAnyActionActive,
+          },
+        ]
+      : []),
     ...(canRecordInvoicePayment
       ? [{
           key: 'download',

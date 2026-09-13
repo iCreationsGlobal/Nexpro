@@ -73,6 +73,17 @@ const PHARMACY_CATEGORIES = [
   { name: 'First Aid', description: 'First aid supplies and bandages' }
 ];
 
+/**
+ * Default material categories for rental businesses (operational supplies, not rentable catalog items).
+ */
+const RENTAL_MATERIAL_CATEGORIES = [
+  { name: 'Maintenance & Repairs', description: 'Parts and supplies for maintaining rental items' },
+  { name: 'Cleaning Supplies', description: 'Cleaning products for returned items' },
+  { name: 'Fuel & Consumables', description: 'Fuel, oil, and consumable supplies' },
+  { name: 'Safety & PPE', description: 'Safety gear and protective equipment' },
+  { name: 'Miscellaneous Supplies', description: 'Other operational supplies' }
+];
+
 /** Old supermarket material category names (product-style). Deactivate these when backfilling so material categories become operational supplies. */
 const DEPRECATED_SUPERMARKET_MATERIAL_NAMES = [
   'Bakery Items', 'Beverages', 'Canned Goods', 'Dairy Products', 'Fresh Produce',
@@ -85,10 +96,11 @@ const DEPRECATED_SUPERMARKET_MATERIAL_NAMES = [
  * @param {string} businessType - The business type ('shop', 'studio', 'pharmacy', or legacy 'printing_press', 'mechanic', 'barber', 'salon')
  * @param {string} shopType - The shop type (only if businessType is 'shop')
  * @param {string} studioType - The studio type (optional, for studio business type)
+ * @param {string|null} rentalSubType - Rental sub-type (e.g. equipment_rental) when businessType is 'rental'
  * @param {boolean} force - Skip cache and flag checks (use during onboarding)
  * @returns {Promise<Array>} Array of created category IDs
  */
-async function seedDefaultCategories(tenantId, businessType, shopType = null, studioType = null, force = false) {
+async function seedDefaultCategories(tenantId, businessType, shopType = null, studioType = null, rentalSubType = null, force = false) {
   if (!tenantId) return [];
 
   // Check memory cache first (skip if force)
@@ -120,6 +132,8 @@ async function seedDefaultCategories(tenantId, businessType, shopType = null, st
     categories = getDefaultCategoriesForShopType(shopType);
   } else if (businessType === 'pharmacy') {
     categories = PHARMACY_CATEGORIES;
+  } else if (businessType === 'rental' || resolveBusinessType(businessType) === 'rental') {
+    categories = RENTAL_MATERIAL_CATEGORIES;
   } else {
     categories = [
       { name: 'General Merchandise', description: 'General store items' },
@@ -127,7 +141,7 @@ async function seedDefaultCategories(tenantId, businessType, shopType = null, st
     ];
   }
 
-  console.log('[seedDefaultCategories] tenantId=%s businessType=%s shopType=%s categoryCount=%d', tenantId, businessType, shopType || 'n/a', categories.length);
+  console.log('[seedDefaultCategories] tenantId=%s businessType=%s shopType=%s rentalSubType=%s categoryCount=%d', tenantId, businessType, shopType || 'n/a', rentalSubType || 'n/a', categories.length);
   if (businessType === 'shop' && !shopType) {
     console.warn('[seedDefaultCategories] Shop business type but no shopType – using fallback categories only. Set shopType (e.g. supermarket, hardware) for type-specific categories.');
   }
@@ -156,6 +170,7 @@ async function seedDefaultCategories(tenantId, businessType, shopType = null, st
   const resolvedBusinessType = resolveBusinessType(businessType);
   const resolvedShopType = resolvedBusinessType === 'shop' ? shopType : null;
   const resolvedStudioType = resolvedBusinessType === 'studio' ? (studioType || (['printing_press', 'mechanic', 'barber', 'salon'].includes(businessType) ? businessType : null)) : null;
+  const resolvedRentalSubType = resolvedBusinessType === 'rental' ? (rentalSubType || shopType || null) : null;
 
   // For supermarket: deactivate old product-style material categories so new operational-supply categories are used
   if (businessType === 'shop' && shopType === 'supermarket') {
@@ -188,10 +203,13 @@ async function seedDefaultCategories(tenantId, businessType, shopType = null, st
       tenantId,
       name: category.name,
       description: category.description || null,
-      businessType: resolvedBusinessType,
+      businessType: resolvedBusinessType === 'rental' ? null : resolvedBusinessType,
       studioType: resolvedStudioType,
-      shopType: resolvedShopType,
-      isActive: true
+      shopType: resolvedBusinessType === 'rental' ? resolvedRentalSubType : resolvedShopType,
+      isActive: true,
+      metadata: resolvedBusinessType === 'rental' && resolvedRentalSubType
+        ? { rentalSubType: resolvedRentalSubType }
+        : {},
     }));
 
   // OPTIMIZATION: Bulk create material categories
@@ -219,6 +237,8 @@ async function seedDefaultCategories(tenantId, businessType, shopType = null, st
   let productCategories = [];
   if (resolvedBusinessType === 'shop' && shopType) {
     productCategories = getDefaultCategories(resolvedBusinessType, null, shopType);
+  } else if (resolvedBusinessType === 'rental') {
+    productCategories = getDefaultCategories(resolvedBusinessType, null, null, resolvedRentalSubType);
   } else {
     productCategories = getDefaultCategories(resolvedBusinessType, finalStudioType);
   }
@@ -241,10 +261,13 @@ async function seedDefaultCategories(tenantId, businessType, shopType = null, st
       tenantId,
       name: category.name,
       description: category.description || null,
-      businessType: resolvedBusinessType,
+      businessType: resolvedBusinessType === 'rental' ? null : resolvedBusinessType,
       studioType: resolvedBusinessType === 'studio' ? finalStudioType : null,
-      shopType: resolvedShopType,
-      isActive: true
+      shopType: resolvedBusinessType === 'rental' ? resolvedRentalSubType : resolvedShopType,
+      isActive: true,
+      metadata: resolvedBusinessType === 'rental' && resolvedRentalSubType
+        ? { rentalSubType: resolvedRentalSubType }
+        : {},
     }));
 
   // OPTIMIZATION: Bulk create product categories
@@ -254,7 +277,11 @@ async function seedDefaultCategories(tenantId, businessType, shopType = null, st
         ignoreDuplicates: true,
         returning: true
       });
-      const scope = resolvedBusinessType === 'studio' ? finalStudioType : (resolvedBusinessType === 'shop' ? shopType : '');
+      const scope = resolvedBusinessType === 'studio'
+        ? finalStudioType
+        : (resolvedBusinessType === 'shop'
+          ? shopType
+          : (resolvedBusinessType === 'rental' ? resolvedRentalSubType || 'default' : ''));
       console.log(`✅ Bulk created ${createdProducts.length} product categories for tenant ${tenantId} (${resolvedBusinessType}${scope ? `/${scope}` : ''})`);
     } catch (err) {
       console.error('[seedDefaultCategories] Bulk create products error:', err.message);

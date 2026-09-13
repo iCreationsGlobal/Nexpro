@@ -5,6 +5,7 @@ import { API_BASE_URL } from '../services/api';
 import { getInvoiceTaxDisplay } from '../utils/invoiceTaxDisplay';
 import { formatLineItemQuantity } from '../utils/documentLineItems';
 import { resolvePrintedInvoiceTerms } from '../utils/invoicePrintTerms';
+import { resolveInvoiceDocumentContext } from '../utils/invoiceDocumentContext';
 import GraEvatStampBlock from './GraEvatStampBlock';
 
 const DEFAULT_THANK_YOU = 'Thank you for doing business with us.';
@@ -69,13 +70,18 @@ const PrintableInvoice = ({
   /** 'mobile' enables phone-style card layout on screen (print/PDF stays document layout). */
   screenLayout = 'auto',
   /** Retail/shop types show product codes on line items; studio-like types hide them. */
-  showProductCode = true,
+  showProductCode,
   /** Hide Balance Due (e.g. quotations are not invoices). Default true for real invoices. */
   showBalanceDue = true,
-  /** Hide Job Details column (e.g. product/proforma quotes without a linked job). */
-  showJobDetails = true,
+  /** Hide Job Details unless this is actually a job invoice. Inferred from sourceType when omitted. */
+  showJobDetails,
 }) => {
   if (!invoice) return null;
+
+  const documentContext = resolveInvoiceDocumentContext(invoice);
+  const displayJobDetails = showJobDetails ?? documentContext.showJobDetails;
+  const displayProductCode = showProductCode ?? documentContext.showProductCode;
+  const quantityColumnLabel = documentContext.quantityColumnLabel;
 
   const titleText = documentTitle || 'INVOICE';
   const printStyles = getPrintStyles(printConfig);
@@ -265,6 +271,9 @@ const PrintableInvoice = ({
           margin: 0 0 22px;
           border-top: 1px solid #e5e7eb;
           border-bottom: 1px solid #e5e7eb;
+        }
+        .invoice-parties.invoice-parties--single {
+          grid-template-columns: 1fr;
         }
         .billing-section {
           padding: 14px 18px 14px 0;
@@ -564,6 +573,11 @@ const PrintableInvoice = ({
             margin-bottom: 10px;
             border: none;
           }
+          .printable-invoice.invoice-layout-mobile:not(.thermal-mode) .invoice-parties.invoice-parties--single,
+          .pay-invoice-document .printable-invoice:not(.thermal-mode) .invoice-parties.invoice-parties--single,
+          .print-invoice-preview .printable-invoice:not(.thermal-mode) .invoice-parties.invoice-parties--single {
+            grid-template-columns: 1fr;
+          }
           .printable-invoice.invoice-layout-mobile:not(.thermal-mode) .billing-section,
           .pay-invoice-document .printable-invoice:not(.thermal-mode) .billing-section,
           .print-invoice-preview .printable-invoice:not(.thermal-mode) .billing-section {
@@ -718,7 +732,7 @@ const PrintableInvoice = ({
                   return (
                     <div key={index} className="thermal-item-list">
                       <span className="thermal-item-name">{item.description || item.category || 'Item'}</span>
-                      {productCode && showProductCode && <span className="thermal-item-name">Product Code: {productCode}</span>}
+                      {productCode && displayProductCode && <span className="thermal-item-name">Product Code: {productCode}</span>}
                       <span className="thermal-item-amount">{formatLineItemQuantity(item, qty)} × ₵ {unitPrice} = ₵ {total}</span>
                     </div>
                   );
@@ -845,8 +859,8 @@ const PrintableInvoice = ({
           </div>
         </div>
 
-        {/* Bill To / Job Details */}
-        <div className="invoice-parties">
+        {/* Bill To / source-specific details (job, rental, or sale) */}
+        <div className={`invoice-parties${documentContext.hasSourceDetails ? '' : ' invoice-parties--single'}`}>
           <div className="billing-section">
             <div className="section-title">Bill To:</div>
             <div className="billing-info">
@@ -868,7 +882,7 @@ const PrintableInvoice = ({
               {invoice.customer?.phone && <div>{invoice.customer.phone}</div>}
             </div>
           </div>
-          {showJobDetails && (
+          {displayJobDetails && (
           <div className="billing-section">
             <div className="section-title">Job Details:</div>
             <div className="billing-info">
@@ -878,7 +892,35 @@ const PrintableInvoice = ({
                 </div>
               )}
               {invoice.job?.title && <div>{invoice.job.title}</div>}
-              {!invoice.job?.jobNumber && !invoice.job?.title && <div>—</div>}
+            </div>
+          </div>
+          )}
+          {documentContext.showRentalDetails && (
+          <div className="billing-section">
+            <div className="section-title">Rental Details:</div>
+            <div className="billing-info">
+              {documentContext.rentalDetails.periodLabel && (
+                <div>
+                  <strong>Period:</strong> {documentContext.rentalDetails.periodLabel}
+                </div>
+              )}
+              {documentContext.rentalDetails.durationDays && (
+                <div>
+                  <strong>Duration:</strong> {documentContext.rentalDetails.durationDays}
+                  {' '}
+                  {documentContext.rentalDetails.durationDays === 1 ? 'day' : 'days'}
+                </div>
+              )}
+            </div>
+          </div>
+          )}
+          {documentContext.showSaleDetails && (
+          <div className="billing-section">
+            <div className="section-title">Sale Details:</div>
+            <div className="billing-info">
+              <div>
+                <strong>Sale #:</strong> {documentContext.saleNumber}
+              </div>
             </div>
           </div>
           )}
@@ -897,7 +939,7 @@ const PrintableInvoice = ({
                   <div key={index} className="receipt-item-row" style={{ display: 'block', padding: '6px 0', borderBottom: '1px solid #eee', fontSize: '12px' }}>
                     <div style={{ fontWeight: 500, marginBottom: 2 }}>{item.description || item.category || 'Item'}</div>
                     <div style={{ fontSize: '11px', color: '#555' }}>{formatLineItemQuantity(item, qty)} × ₵ {unitPrice} = ₵ {total}</div>
-                    {productCode && showProductCode && <div style={{ fontSize: '11px', color: '#555' }}>Product Code: {productCode}</div>}
+                    {productCode && displayProductCode && <div style={{ fontSize: '11px', color: '#555' }}>Product Code: {productCode}</div>}
                   </div>
                 );
               })
@@ -911,8 +953,8 @@ const PrintableInvoice = ({
             <thead>
               <tr>
                 <th style={{ width: '48%' }}>Description</th>
-                <th style={{ width: showProductCode ? '16%' : '0%', display: showProductCode ? undefined : 'none' }}>Product Code</th>
-                <th className="text-center" style={{ width: '14%' }}>QTY</th>
+                <th style={{ width: displayProductCode ? '16%' : '0%', display: displayProductCode ? undefined : 'none' }}>Product Code</th>
+                <th className="text-center" style={{ width: '14%' }}>{quantityColumnLabel}</th>
                 <th className="text-right" style={{ width: '11%' }}>Unit Price</th>
                 <th className="text-right" style={{ width: '11%' }}>Amount</th>
               </tr>
@@ -931,7 +973,7 @@ const PrintableInvoice = ({
                           </div>
                         )}
                       </td>
-                      {showProductCode ? (
+                      {displayProductCode ? (
                         <td>{productCode || '-'}</td>
                       ) : null}
                       <td className="text-center">{formatLineItemQuantity(item)}</td>
@@ -944,7 +986,7 @@ const PrintableInvoice = ({
                 })
               ) : (
                 <tr>
-                  <td colSpan={showProductCode ? 5 : 4} className="text-center">No items</td>
+                  <td colSpan={displayProductCode ? 5 : 4} className="text-center">No items</td>
                 </tr>
               )}
             </tbody>

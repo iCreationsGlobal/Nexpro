@@ -46,6 +46,7 @@ const Dealers = lazy(() => import('./pages/Dealers'));
 const DealerPricing = lazy(() => import('./pages/DealerPricing'));
 const CustomerFeedback = lazy(() => import('./pages/CustomerFeedback'));
 const Marketing = lazy(() => import('./pages/Marketing'));
+const Messages = lazy(() => import('./pages/Messages'));
 const AskAI = lazy(() => import('./pages/AskAI'));
 const Automations = lazy(() => import('./pages/Automations'));
 const Vendors = lazy(() => import('./pages/Vendors'));
@@ -60,6 +61,8 @@ const ComplianceVat = lazy(() => import('./pages/compliance/ComplianceVat'));
 const ExportData = lazy(() => import('./pages/ExportData'));
 const Materials = lazy(() => import('./pages/Materials'));
 const Equipment = lazy(() => import('./pages/Equipment'));
+const Rentals = lazy(() => import('./pages/Rentals'));
+const Watch = lazy(() => import('./pages/Watch'));
 const Merchandise = lazy(() => import('./pages/Merchandise'));
 const Leads = lazy(() => import('./pages/Leads'));
 const Users = lazy(() => import('./pages/Users'));
@@ -79,6 +82,7 @@ const SettingsOrganizationPage = lazy(() => import('./pages/settings/SettingsOrg
 const SettingsTrackingPage = lazy(() => import('./pages/settings/SettingsTrackingPage'));
 const SettingsDeliveryPage = lazy(() => import('./pages/settings/SettingsDeliveryPage'));
 const SettingsInventoryPage = lazy(() => import('./pages/settings/SettingsInventoryPage'));
+const SettingsRentalPage = lazy(() => import('./pages/settings/SettingsRentalPage'));
 const SettingsAiPage = lazy(() => import('./pages/settings/SettingsAiPage'));
 const SettingsBillingPage = lazy(() => import('./pages/settings/SettingsBillingPage'));
 const Plans = lazy(() => import('./pages/Plans'));
@@ -113,6 +117,7 @@ const AdminCustomers = lazy(() => import('./pages/admin/AdminCustomers'));
 const AdminSupportTickets = lazy(() => import('./pages/admin/AdminSupportTickets'));
 const AdminSalesAgents = lazy(() => import('./pages/admin/AdminSalesAgents'));
 const SabitoAdmin = lazy(() => import('./pages/admin/SabitoAdmin'));
+const SabitoAppAdmin = lazy(() => import('./pages/admin/SabitoAppAdmin'));
 const Tasks = lazy(() => import('./pages/Tasks'));
 const Deliveries = lazy(() => import('./pages/Deliveries'));
 const StoreDashboard = lazy(() => import('./pages/StoreDashboard'));
@@ -318,6 +323,12 @@ function AppContent() {
             <Route path="marketing/campaigns/new" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><Navigate to="/marketing?campaign=new" replace /></RequireWorkspaceManager></FeatureRoute>} />
             <Route path="marketing/campaigns/:id" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><Marketing /></RequireWorkspaceManager></FeatureRoute>} />
             <Route path="marketing/campaigns/:id/edit" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><CampaignEditRedirect /></RequireWorkspaceManager></FeatureRoute>} />
+            <Route path="messages" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><Messages /></RequireWorkspaceManager></FeatureRoute>} />
+            <Route path="messages/compose" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><Messages /></RequireWorkspaceManager></FeatureRoute>} />
+            <Route path="messages/templates" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><Messages /></RequireWorkspaceManager></FeatureRoute>} />
+            <Route path="messages/groups" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><Messages /></RequireWorkspaceManager></FeatureRoute>} />
+            <Route path="messages/credits" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><Messages /></RequireWorkspaceManager></FeatureRoute>} />
+            <Route path="messages/history" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><Messages /></RequireWorkspaceManager></FeatureRoute>} />
             <Route path="automations" element={<FeatureRoute featureKey="automations"><RequireWorkspaceManager><Automations /></RequireWorkspaceManager></FeatureRoute>} />
             <Route path="ask-ai" element={<AskAI />} />
             <Route path="vendors" element={<FeatureRoute featureKey="crm"><Vendors /></FeatureRoute>} />
@@ -349,6 +360,8 @@ function AppContent() {
             <Route path="inventory" element={<Navigate to="/materials" replace />} />
             <Route path="assets" element={<Navigate to="/materials" replace />} />
             <Route path="equipment" element={<FeatureRoute featureKey="materials"><Equipment /></FeatureRoute>} />
+            <Route path="rentals" element={<FeatureRoute featureKey="rentals"><Rentals /></FeatureRoute>} />
+            <Route path="watch" element={<FeatureRoute featureKey="watch"><Watch /></FeatureRoute>} />
             <Route path="merchandise" element={<FeatureRoute featureKey="materials"><RequireWorkspaceManager><Merchandise /></RequireWorkspaceManager></FeatureRoute>} />
             <Route path="employees" element={<FeatureRoute featureKey="payroll"><RequireWorkspaceManager><Employees /></RequireWorkspaceManager></FeatureRoute>} />
             <Route path="payroll" element={<FeatureRoute featureKey="payroll"><RequireWorkspaceManager><Payroll /></RequireWorkspaceManager></FeatureRoute>} />
@@ -383,6 +396,7 @@ function AppContent() {
               <Route path="tracking" element={<RequireWorkspaceManager><SettingsTrackingPage /></RequireWorkspaceManager>} />
               <Route path="delivery" element={<RequireWorkspaceManager><SettingsDeliveryPage /></RequireWorkspaceManager>} />
               <Route path="inventory" element={<RequireWorkspaceManager><SettingsInventoryPage /></RequireWorkspaceManager>} />
+              <Route path="rental" element={<RequireWorkspaceManager><SettingsRentalPage /></RequireWorkspaceManager>} />
               <Route path="ai" element={<RequireWorkspaceManager><SettingsAiPage /></RequireWorkspaceManager>} />
             <Route path="billing" element={<RequireWorkspaceManager>{isPricingUiEnabled() ? <SettingsBillingPage /> : <Navigate to="/settings" replace />}</RequireWorkspaceManager>} />
             <Route path="sms" element={<RequireWorkspaceManager><SettingsSmsPage /></RequireWorkspaceManager>} />
@@ -433,6 +447,14 @@ function AppContent() {
             <Route path="sabito/disputes" element={<SabitoAdmin section="disputes" />} />
             <Route path="sabito/customers" element={<SabitoAdmin section="customers" />} />
             <Route path="sabito/settings" element={<SabitoAdmin section="settings" />} />
+            <Route path="sabito-app" element={<Navigate to="/admin/sabito-app/overview" replace />} />
+            <Route path="sabito-app/overview" element={<SabitoAppAdmin section="overview" />} />
+            <Route path="sabito-app/businesses" element={<SabitoAppAdmin section="businesses" />} />
+            <Route path="sabito-app/marketers" element={<SabitoAppAdmin section="marketers" />} />
+            <Route path="sabito-app/referrals" element={<SabitoAppAdmin section="referrals" />} />
+            <Route path="sabito-app/collections" element={<SabitoAppAdmin section="collections" />} />
+            <Route path="sabito-app/cashouts" element={<SabitoAppAdmin section="cashouts" />} />
+            <Route path="sabito-app/settings" element={<SabitoAppAdmin section="settings" />} />
             <Route path="online-store" element={<Navigate to="/admin/online-store/setup" replace />} />
             <Route path="online-store/setup" element={<AdminOnlineStoreSetup />} />
             <Route path="online-store/domains" element={<AdminOnlineStoreDomains />} />

@@ -42,23 +42,40 @@ function localBackendProxyPlugin(envUrl) {
     name: 'local-backend-proxy',
     async configureServer(server) {
       let target = initialTarget;
-      const { resolveLocalBackendUrl, probeBackendOrigin } = await import(
+      const { resolveLocalBackendUrl, probeBackendOrigin, shouldRetargetAfterProxyError } = await import(
         './scripts/resolveLocalBackendUrl.mjs'
       );
 
+      const proxyEntries = [];
+
+      const syncProxyTarget = () => {
+        for (const proxyEntry of proxyEntries) {
+          proxyEntry.target = target;
+          proxyEntry.router = () => target;
+        }
+      };
+
       const refreshTarget = async (reason) => {
         try {
+          if (reason !== 'startup' && reason !== 'html-404') {
+            if (await probeBackendOrigin(target)) {
+              return;
+            }
+          }
           let next = await resolveLocalBackendUrl({ envUrl: envUrl?.trim() || undefined });
           if (!(await probeBackendOrigin(next))) {
             next = await resolveLocalBackendUrl({});
           }
-          if (next && next !== target) {
-            target = next;
-            console.log(`[vite] Dev proxy retargeted → ${target}${reason ? ` (${reason})` : ''}`);
-          } else if (!(await probeBackendOrigin(target))) {
+          if (!(await probeBackendOrigin(next))) {
             console.warn(
-              `[vite] Dev proxy /api → ${target} (backend /health not reachable — start Backend with PORT=5002, then retry)`
+              `[vite] Dev proxy /api → ${target} (backend /health not reachable — start Backend with npm run dev, then retry)`
             );
+            return;
+          }
+          if (next !== target) {
+            target = next;
+            syncProxyTarget();
+            console.log(`[vite] Dev proxy retargeted → ${target}${reason ? ` (${reason})` : ''}`);
           }
         } catch (err) {
           console.warn('[vite] Backend probe failed:', err?.message || err);
@@ -70,15 +87,20 @@ function localBackendProxyPlugin(envUrl) {
       const applyTarget = (key) => {
         const proxyEntry = server.config.server?.proxy?.[key];
         if (!proxyEntry) return;
+        proxyEntries.push(proxyEntry);
         proxyEntry.target = target;
         proxyEntry.router = () => target;
         const priorConfigure = proxyEntry.configure;
         proxyEntry.configure = (proxy, options) => {
           priorConfigure?.(proxy, options);
-          proxy.on('error', (err) => {
+          proxy.on('error', (err, req) => {
+            const reqUrl = req?.url || '';
             console.warn(
-              `[vite] Proxy error for ${key} → ${target}: ${err?.message || err}. Re-probing…`
+              `[vite] Proxy error for ${key}${reqUrl ? ` ${reqUrl}` : ''} → ${target}: ${err?.message || err}`
             );
+            if (!shouldRetargetAfterProxyError({ err, reqUrl })) {
+              return;
+            }
             refreshTarget('proxy-error');
           });
           proxy.on('proxyRes', (proxyRes) => {
@@ -97,7 +119,7 @@ function localBackendProxyPlugin(envUrl) {
         console.log(`[vite] Dev proxy /api, /uploads → ${target}`);
       } else {
         console.warn(
-          `[vite] Dev proxy /api, /uploads → ${target} (backend /health not reachable yet — start Backend on PORT=5002, Vite will re-probe)`
+          `[vite] Dev proxy /api, /uploads → ${target} (backend /health not reachable yet — start Backend with npm run dev; Vite will re-probe)`
         );
       }
     },
@@ -152,10 +174,16 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: devApiTarget,
           changeOrigin: true,
+          // Watch YOLO (and similar long POSTs) often run 60s+. Default proxy idle
+          // close looks like axios "Network Error" → "check your internet".
+          timeout: 360000,
+          proxyTimeout: 360000,
         },
         '/uploads': {
           target: devApiTarget,
           changeOrigin: true,
+          timeout: 360000,
+          proxyTimeout: 360000,
         },
       },
     },

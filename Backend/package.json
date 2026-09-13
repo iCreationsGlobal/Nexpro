@@ -46,6 +46,7 @@
     "test:coverage": "jest --coverage",
     "test:unit": "jest __tests__/unit",
     "test:integration": "jest __tests__/integration",
+    "test:rental": "jest --testPathPattern='(rental|Rental|publicRental|productCategoriesRental|storefrontRental)'",
     "verify:invoice-discount": "node scripts/verify-invoice-discount.js",
     "adjust:invoice-payment": "node scripts/adjust-invoice-payment.js",
     "cleanup:product-cost-expenses": "node scripts/delete-product-cost-expenses.js",

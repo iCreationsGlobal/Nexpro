@@ -16,9 +16,13 @@ export default function ReferralDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    getMyReferral(id)
-      .then((res) => setReferral((res.data || null) as AnyRow | null))
-      .catch((err) => setError(err instanceof Error ? err.message : "Not found"));
+    let cancelled = false;
+    const load = () => getMyReferral(id)
+      .then(res => { if (!cancelled) { setReferral((res.data || null) as AnyRow | null); setError(""); } })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "Could not refresh referral"); });
+    void load();
+    const timer = window.setInterval(() => { if (!document.hidden) void load(); }, 30000);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, [id]);
 
   return (
@@ -74,6 +78,11 @@ export default function ReferralDetailPage() {
           ) : null}
         </div>
       ) : null}
+      {referral && <section className="mt-8" aria-label="Client jobs">
+        <h2 className="text-lg font-semibold">Client jobs</h2>
+        <p className="mt-1 text-sm text-slate-500">Progress updates from your partner business. Refreshes every 30 seconds while this page is open.</p>
+        {!Array.isArray(referral.jobs) || referral.jobs.length === 0 ? <p className="mt-4 rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">{referral.status === "matched" ? "No linked jobs yet. New jobs will appear once the business starts work for this client." : "Jobs become visible after your referral is matched to a customer."}</p> : <div className="mt-4 space-y-3">{(referral.jobs as AnyRow[]).map(job => <article key={String(job.id)} className="rounded-xl border border-slate-200 bg-white p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs text-slate-500">{String(job.jobNumber)}</p><h3 className="mt-1 font-semibold">{String(job.title)}</h3></div><span className="workspace-status">{String(job.status).replaceAll("_", " ")}</span></div><div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">{job.dueDate ? <span>Due {new Date(String(job.dueDate)).toLocaleDateString()}</span> : null}<span>Updated {new Date(String(job.updatedAt)).toLocaleDateString()}</span></div></article>)}</div>}
+      </section>}
     </div>
   );
 }

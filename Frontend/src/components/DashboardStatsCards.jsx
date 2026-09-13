@@ -1,6 +1,6 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import DashboardStatsCard from './DashboardStatsCard';
-import { Currency, ShoppingCart, TrendingUp, Users } from 'lucide-react';
+import { Currency, ShoppingCart, TrendingUp, Users, Package } from 'lucide-react';
 import { formatComparisonText } from '../utils/periodComparison';
 
 const COMPARING_LABEL = 'Comparing...';
@@ -16,6 +16,11 @@ const ABS_PRIMARY = '#166534';
  * @param {number} newCustomers - New customers count
  * @param {boolean} isShop - Whether business type is shop
  * @param {boolean} isPharmacy - Whether business type is pharmacy
+ * @param {boolean} isRental - Whether business type is rental
+ * @param {number} activeRentals - Active rentals count (rental tenants)
+ * @param {number} dueBackToday - Rentals due back today (rental tenants)
+ * @param {number} overdueRentals - Overdue rentals count (rental tenants)
+ * @param {number} upcomingPreBookings - Pending pre-bookings count (rental tenants)
  * @param {Object} comparisonData - Comparison data from previous period
  * @param {boolean} comparisonLoading - Whether comparison is still being computed
  * @param {string} activeFilter - Active filter type (today, thisWeek, etc.)
@@ -29,6 +34,11 @@ const DashboardStatsCards = memo(({
   newCustomers = 0,
   isShop = false,
   isPharmacy = false,
+  isRental = false,
+  activeRentals = 0,
+  dueBackToday = 0,
+  overdueRentals = 0,
+  upcomingPreBookings = 0,
   comparisonData = null,
   comparisonLoading = false,
   activeFilter = null,
@@ -82,6 +92,20 @@ const DashboardStatsCards = memo(({
         ? (comparisonData.newCustomers.isPositive ? ABS_PRIMARY : comparisonData.newCustomers.isNegative ? '#ef4444' : '#666')
         : '#666');
 
+  const rentalStatusSubtitle = useMemo(() => {
+    const parts = [];
+    if (dueBackToday > 0) {
+      parts.push(`${dueBackToday} due today`);
+    }
+    if (overdueRentals > 0) {
+      parts.push(`${overdueRentals} overdue`);
+    }
+    if (upcomingPreBookings > 0) {
+      parts.push(`${upcomingPreBookings} pre-booking${upcomingPreBookings === 1 ? '' : 's'}`);
+    }
+    return parts.length > 0 ? parts.join(' · ') : 'None due today or overdue';
+  }, [dueBackToday, overdueRentals, upcomingPreBookings]);
+
   return (
     <div
       className={showProfitCard
@@ -92,8 +116,14 @@ const DashboardStatsCards = memo(({
     >
       {/* Total Revenue Card */}
       <DashboardStatsCard
-        tooltip={isShop || isPharmacy ? 'Total sales value for the selected period. Filter by Today, Week, or Month above.' : 'Total revenue (invoices paid) for the selected period.'}
-        title={isShop || isPharmacy ? 'Total sales:' : 'Total revenue:'}
+        tooltip={
+          isRental
+            ? 'Total rental charges booked in the selected period. Filter by Today, Week, or Month above.'
+            : isShop || isPharmacy
+              ? 'Total sales value for the selected period. Filter by Today, Week, or Month above.'
+              : 'Total revenue (invoices paid) for the selected period.'
+        }
+        title={isRental ? 'Rental revenue:' : isShop || isPharmacy ? 'Total sales:' : 'Total revenue:'}
         value={revenueValue}
         valuePrefix="₵ "
         icon={isShop || isPharmacy ? ShoppingCart : Currency}
@@ -122,7 +152,11 @@ const DashboardStatsCards = memo(({
 
       {showProfitCard && (
         <DashboardStatsCard
-          tooltip="Revenue minus expenses. Shows how much your business is making."
+          tooltip={
+            isRental
+              ? 'Rental revenue minus approved expenses for the selected period.'
+              : 'Revenue minus expenses. Shows how much your business is making.'
+          }
           title="Profit made:"
           value={profitValue}
           valuePrefix="₵ "
@@ -136,19 +170,31 @@ const DashboardStatsCards = memo(({
         />
       )}
 
-      {/* New Customers Card */}
-      <DashboardStatsCard
-        tooltip="New customers added in the selected period. Helps track growth."
-        title="New customers:"
-        value={newCustomers}
-        icon={Users}
-        iconBgColor="color-mix(in srgb, #166534 10%, transparent)"
-        iconColor={ABS_PRIMARY}
-        comparisonText={newCustomersComparison}
-        comparisonColor={newCustomersComparisonColor}
-        trend={newCustomersTrend}
-        loading={loading}
-      />
+      {isRental ? (
+        <DashboardStatsCard
+          tooltip="Currently active rentals. Subtitle shows items due back today, overdue returns, and pending pre-bookings."
+          title="Active rentals:"
+          value={activeRentals}
+          icon={Package}
+          iconBgColor="color-mix(in srgb, #166534 10%, transparent)"
+          iconColor={ABS_PRIMARY}
+          subtitle={rentalStatusSubtitle}
+          loading={loading}
+        />
+      ) : (
+        <DashboardStatsCard
+          tooltip="New customers added in the selected period. Helps track growth."
+          title="New customers:"
+          value={newCustomers}
+          icon={Users}
+          iconBgColor="color-mix(in srgb, #166534 10%, transparent)"
+          iconColor={ABS_PRIMARY}
+          comparisonText={newCustomersComparison}
+          comparisonColor={newCustomersComparisonColor}
+          trend={newCustomersTrend}
+          loading={loading}
+        />
+      )}
     </div>
   );
 });

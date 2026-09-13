@@ -2,6 +2,7 @@
 const BOOTSTRAP_SUPERADMIN_EMAILS = new Set([
   'info@absghana.com',
   'superadmin@nexpro.com',
+  ...(process.env.NODE_ENV === 'production' ? [] : ['admin@gmail.com']),
 ]);
 
 /**

@@ -1,3 +1,4 @@
+import { DeviceEventEmitter } from 'react-native';
 import axios, { AxiosInstance } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_CONFIG, TOKEN_KEY } from '../config/env';
@@ -21,7 +22,8 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error?.response?.status === 401) {
-      await AsyncStorage.removeItem(TOKEN_KEY);
+      await AsyncStorage.multiRemove([TOKEN_KEY, 'user']);
+      DeviceEventEmitter.emit('sabito:logout');
     }
     return Promise.reject(error);
   }
@@ -29,7 +31,10 @@ apiClient.interceptors.response.use(
 
 export const setAuthToken = async (token: string | null) => {
   if (token) await AsyncStorage.setItem(TOKEN_KEY, token);
-  else await AsyncStorage.removeItem(TOKEN_KEY);
+  else {
+    await AsyncStorage.multiRemove([TOKEN_KEY, 'user']);
+    DeviceEventEmitter.emit('sabito:logout');
+  }
 };
 
 export const getAuthToken = async () => AsyncStorage.getItem(TOKEN_KEY);

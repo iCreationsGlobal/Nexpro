@@ -5,6 +5,7 @@ const {
 const { plans } = require('../../../config/plans');
 
 const expectedFeatureKeys = [
+  'dealersAccount',
   'crm',
   'vendors',
   'marketing',
@@ -22,7 +23,10 @@ const expectedFeatureKeys = [
   'shopsModule',
   'pharmacyOps',
   'materials',
+  'rentals',
+  'watch',
   'reports',
+  'graEvat',
   'notifications',
   'leadPipeline',
   'roleManagement',
@@ -62,5 +66,17 @@ describe('plan feature matrix', () => {
   it('enables every feature for trial and enterprise', () => {
     expect(Object.values(getFeatureFlagsForPlan('trial')).every(Boolean)).toBe(true);
     expect(Object.values(getFeatureFlagsForPlan('enterprise')).every(Boolean)).toBe(true);
+  });
+
+  it('includes rentals on professional but not starter base plans', () => {
+    expect(getFeatureFlagsForPlan('starter').rentals).toBe(false);
+    expect(getFeatureFlagsForPlan('professional').rentals).toBe(true);
+    expect(getFeatureFlagsForPlan('enterprise').rentals).toBe(true);
+  });
+
+  it('includes watch on professional but not starter base plans', () => {
+    expect(getFeatureFlagsForPlan('starter').watch).toBe(false);
+    expect(getFeatureFlagsForPlan('professional').watch).toBe(true);
+    expect(getFeatureFlagsForPlan('enterprise').watch).toBe(true);
   });
 });

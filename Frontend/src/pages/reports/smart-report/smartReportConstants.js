@@ -1,12 +1,17 @@
 import {
   BarChart3,
   Brain,
+  Clock,
+  History,
+  LayoutDashboard,
   Lightbulb,
   Package,
+  Percent,
   Receipt,
   ShoppingCart,
   Sparkles,
   Wallet,
+  Wrench,
 } from 'lucide-react';
 
 /** Smart Report tab definitions — matches detail page tabs and create-modal sections. */
@@ -17,6 +22,12 @@ export const SMART_REPORT_TABS = [
   { id: 'expenses', label: 'Expenses', icon: Receipt },
   { id: 'cashflow', label: 'Cash Flow', icon: Wallet },
   { id: 'inventory', label: 'Inventory', icon: Package },
+  { id: 'rental-overview', label: 'Business Overview', icon: LayoutDashboard },
+  { id: 'rental-inventory', label: 'Inventory Intelligence', icon: Package },
+  { id: 'rental-history', label: 'Product Rental History', icon: History },
+  { id: 'rental-utilization', label: 'Utilization', icon: Percent },
+  { id: 'rental-late-returns', label: 'Late Returns', icon: Clock },
+  { id: 'rental-damage', label: 'Damage Reports', icon: Wrench },
   { id: 'ai-insights', label: 'AI Insights', icon: Brain },
   { id: 'recommendations', label: 'Recommendations', icon: Lightbulb },
 ];
@@ -31,6 +42,12 @@ export const SMART_REPORT_TAB_DESCRIPTIONS = {
   expenses: 'Expense categories, vendors, and cost trends',
   cashflow: 'Cash inflows, outflows, and liquidity',
   inventory: 'Stock levels, low stock alerts, and inventory movement',
+  'rental-overview': 'Hire booked, top items, categories, branches, and stock alerts',
+  'rental-inventory': 'Low stock, fleet value, and utilization by product',
+  'rental-history': 'Times rented, quantity, revenue, and last hired date',
+  'rental-utilization': 'Fleet utilization and hired item-days',
+  'rental-late-returns': 'Late returns, days late, and late charges',
+  'rental-damage': 'Damage reports and cost by type',
   'ai-insights': 'AI-generated findings from your business data',
   recommendations: 'Prioritized actions to improve performance',
 };
@@ -43,14 +60,32 @@ export const SMART_REPORT_TYPE_GROUPS = [
   {
     groupLabel: 'Overview',
     tabIds: ['executive'],
+    showWhen: ({ isRental }) => !isRental,
+  },
+  {
+    groupLabel: 'Business',
+    tabIds: ['rental-overview', 'rental-inventory', 'rental-history', 'rental-damage'],
+    showWhen: ({ isRental }) => isRental,
   },
   {
     groupLabel: 'Financial',
     tabIds: ['financial', 'expenses', 'cashflow'],
+    showWhen: ({ isRental }) => !isRental,
+  },
+  {
+    groupLabel: 'Financial Reports',
+    tabIds: ['financial'],
+    showWhen: ({ isRental }) => isRental,
   },
   {
     groupLabel: 'Sales & customers',
     tabIds: ['sales'],
+    showWhen: ({ isRental }) => !isRental,
+  },
+  {
+    groupLabel: 'Customer Analytics',
+    tabIds: ['sales'],
+    showWhen: ({ isRental }) => isRental,
   },
   {
     groupLabel: 'Inventory',

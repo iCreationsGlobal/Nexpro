@@ -45,7 +45,13 @@ import {
 } from '@/components/ui/table';
 
 function rowKey(row) {
-  return `${row.entityType}:${row.id}`;
+  return `${row.entityType}:${row.deliveryLeg || 'default'}:${row.id}`;
+}
+
+function entityTypeLabel(row) {
+  if (row.entityType === 'job') return 'Job';
+  if (row.entityType === 'rental') return row.deliveryLeg === 'return' ? 'Rental return' : 'Rental';
+  return 'Sale';
 }
 
 function DeliveryStatusSelect({ row, loading, onChange, isDriver = false }) {
@@ -94,6 +100,7 @@ export default function Deliveries() {
   const tenantId = activeTenant?.id;
   const businessType = activeTenant?.businessType || '';
   const isStudioLike = STUDIO_LIKE_TYPES.includes(businessType);
+  const isRentalTenant = businessType === 'rental';
 
   const isActiveTerminalFilter =
     scope === 'active' && (statusFilter === 'delivered' || statusFilter === 'returned');
@@ -101,10 +108,14 @@ export default function Deliveries() {
   useEffect(() => {
     setPageSearchConfig({
       scope: 'deliveries',
-      placeholder: isStudioLike ? SEARCH_PLACEHOLDERS.JOBS : SEARCH_PLACEHOLDERS.SALES
+      placeholder: isRentalTenant
+        ? SEARCH_PLACEHOLDERS.RENTALS
+        : isStudioLike
+          ? SEARCH_PLACEHOLDERS.JOBS
+          : SEARCH_PLACEHOLDERS.SALES
     });
     return () => setPageSearchConfig(null);
-  }, [setPageSearchConfig, isStudioLike]);
+  }, [setPageSearchConfig, isStudioLike, isRentalTenant]);
 
   const activeQueueQuery = useQuery({
     queryKey: ['deliveries-queue', 'active', tenantId, activeShopId, activeStudioLocationId],
@@ -149,11 +160,12 @@ export default function Deliveries() {
     enabled: Boolean(tenantId) && !isDriver && (isAdmin || isManager),
   });
 
-  /** Studio-like workspaces: jobs only. Shop / pharmacy / other: sales (orders) only. */
+  /** Rental: rentals only. Studio-like: jobs only. Shop / pharmacy / other: sales (orders) only. */
   const tenantScopedRows = useMemo(() => {
+    if (isRentalTenant) return rows.filter((r) => r.entityType === 'rental');
     if (isStudioLike) return rows.filter((r) => r.entityType === 'job');
     return rows.filter((r) => r.entityType === 'sale');
-  }, [rows, isStudioLike]);
+  }, [rows, isStudioLike, isRentalTenant]);
 
   const statusFilteredRows = useMemo(() => {
     if (scope === 'active') {
@@ -216,16 +228,23 @@ export default function Deliveries() {
     onError: (err) => handleApiError(err, { context: 'deliveries' })
   });
 
+  const buildDeliveryUpdate = useCallback((row, patch) => ({
+    entityType: row.entityType,
+    id: row.id,
+    ...(row.entityType === 'rental' ? { deliveryLeg: row.deliveryLeg || 'pickup' } : {}),
+    ...patch,
+  }), []);
+
   const handleStatusChange = useCallback(
     (row, selectValue) => {
       const deliveryStatus = selectValue === '__none__' ? null : selectValue;
       const k = rowKey(row);
       setUpdatingKey(k);
-      mutation.mutate([{ entityType: row.entityType, id: row.id, deliveryStatus }], {
+      mutation.mutate([buildDeliveryUpdate(row, { deliveryStatus })], {
         onSettled: () => setUpdatingKey(null)
       });
     },
-    [mutation]
+    [mutation, buildDeliveryUpdate]
   );
 
   const toggleRow = useCallback((row, checked) => {
@@ -256,25 +275,19 @@ export default function Deliveries() {
 
   const markSelectedReady = useCallback(() => {
     if (!selectedRows.length) return;
-    const updates = selectedRows.map((r) => ({
-      entityType: r.entityType,
-      id: r.id,
-      deliveryStatus: 'ready_for_delivery'
-    }));
+    const updates = selectedRows.map((r) => buildDeliveryUpdate(r, { deliveryStatus: 'ready_for_delivery' }));
     mutation.mutate(updates);
-  }, [selectedRows, mutation]);
+  }, [selectedRows, mutation, buildDeliveryUpdate]);
 
   const handleAssignDriver = useCallback(
     (row, driverId) => {
       mutation.mutate([
-        {
-          entityType: row.entityType,
-          id: row.id,
+        buildDeliveryUpdate(row, {
           deliveryAssignedTo: driverId === '__none__' ? null : driverId,
-        },
+        }),
       ]);
     },
-    [mutation]
+    [mutation, buildDeliveryUpdate]
   );
 
   const clearSelection = useCallback(() => setSelected(new Set()), []);
@@ -299,9 +312,11 @@ export default function Deliveries() {
         <WelcomeSection
           welcomeMessage={welcomeMessage}
           subText={
-            isStudioLike
-              ? 'Completed jobs ready for delivery.'
-              : 'Completed sales and orders ready for delivery.'
+            isRentalTenant
+              ? 'Scheduled rental deliveries and return pickups.'
+              : isStudioLike
+                ? 'Completed jobs ready for delivery.'
+                : 'Completed sales and orders ready for delivery.'
           }
         />
         <p className="text-sm text-destructive">Could not load deliveries. Try again.</p>
@@ -317,9 +332,11 @@ export default function Deliveries() {
       <WelcomeSection
         welcomeMessage={welcomeMessage}
         subText={
-          isStudioLike
-            ? 'Completed jobs you can move through delivery. Customers see progress when tracking is on.'
-            : 'Completed sales and orders you can move through delivery. Customers see progress when tracking is on.'
+          isRentalTenant
+            ? 'Rental handover deliveries and return pickups you can assign and track.'
+            : isStudioLike
+              ? 'Completed jobs you can move through delivery. Customers see progress when tracking is on.'
+              : 'Completed sales and orders you can move through delivery. Customers see progress when tracking is on.'
         }
       />
 
@@ -418,9 +435,11 @@ export default function Deliveries() {
                   : filtersExcludeAll
                     ? 'Change the type or delivery status filters above.'
                     : scope === 'active'
-                      ? isStudioLike
-                        ? 'When jobs are completed, they appear here so you can set delivery status.'
-                        : 'When sales and paid online delivery orders are ready to dispatch, they appear here so you can set delivery status.'
+                      ? isRentalTenant
+                        ? 'When you schedule delivery on a rental, it appears here so you can set delivery status.'
+                        : isStudioLike
+                          ? 'When jobs are completed, they appear here so you can set delivery status.'
+                          : 'When sales and paid online delivery orders are ready to dispatch, they appear here so you can set delivery status.'
                       : 'Delivered or returned items from the last 90 days will show in this tab.'
               }
             />
@@ -446,7 +465,7 @@ export default function Deliveries() {
                   )}
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="secondary" className="border border-border">
-                      {row.entityType === 'job' ? 'Job' : 'Sale'}
+                      {entityTypeLabel(row)}
                     </Badge>
                     <span className="font-medium">{row.reference}</span>
                   </div>
@@ -535,7 +554,7 @@ export default function Deliveries() {
                     )}
                     <TableCell>
                       <Badge variant="secondary" className="border border-border">
-                        {row.entityType === 'job' ? 'Job' : 'Sale'}
+                        {entityTypeLabel(row)}
                       </Badge>
                     </TableCell>
                     <TableCell className="font-medium">{row.reference}</TableCell>

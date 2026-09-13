@@ -46,6 +46,17 @@ const STUDIO = `
 - Invoices: bill from completed jobs or standalone invoices.
 `;
 
+const RENTAL = `
+## Rental / hire business
+- Rentals: create hires with customer, dates, and items; track status from confirmed → active → returned → completed.
+- New rental: Rentals → New rental (or convert a pre-booking when the customer is ready).
+- Check out: hand items to the customer when the hire starts (confirmed → active).
+- Return: inspect items, record damage, and close out balances on return.
+- Pre-bookings: reserve inventory for a future hire before confirming.
+- Products: rental catalog with daily rates; availability is checked against overlapping hires.
+- Reports: rental revenue, utilization, late returns, and damage in Reports.
+`;
+
 /**
  * @param {string} businessType
  * @returns {string}
@@ -53,10 +64,12 @@ const STUDIO = `
 function getAssistantSupportGuide(businessType = 'printing_press') {
   const isRetail = businessType === 'shop' || businessType === 'pharmacy';
   const isStudio = ['printing_press', 'mechanic', 'barber', 'salon', 'studio'].includes(businessType);
+  const isRental = businessType === 'rental';
 
   let guide = COMMON;
   if (isRetail) guide += RETAIL;
   if (isStudio) guide += STUDIO;
+  if (isRental) guide += RENTAL;
 
   guide += `
 ## Answer style for support questions
@@ -83,6 +96,7 @@ function getPageContextHint(pageContext) {
     customers: 'User is viewing Customers. Focus on customer growth, top customers, and follow-up ideas.',
     products: 'User is viewing Products. Focus on stock levels, bestsellers, and restock priorities.',
     jobs: 'User is viewing Jobs. Focus on pipeline, due dates, and job workflow.',
+    rentals: 'User is viewing Rentals. Focus on active hires, returns due today, overdue rentals, damage, and rental revenue.',
     reports: 'User is viewing Reports. Focus on interpretation of metrics, not raw export steps.',
     marketing: 'User is in Marketing. Focus on campaign drafts and ABS Marketing workflow.',
   };

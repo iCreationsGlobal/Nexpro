@@ -95,7 +95,7 @@ const assertShopTenant = (req, res) => {
 // @access  Private
 exports.getShops = async (req, res, next) => {
   try {
-    if (resolveBusinessType(req.tenant?.businessType) === 'shop') {
+    if (resolveBusinessType(req.tenant?.businessType) === 'shop' || resolveBusinessType(req.tenant?.businessType) === 'rental') {
       await ensureDefaultShop(req.tenantId, { name: req.tenant?.name });
     }
 

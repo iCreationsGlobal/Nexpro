@@ -10,6 +10,7 @@ import {
 } from '@/components/AppBottomSheet';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { FontFamily, FontSize } from '@/constants/typography';
+import { TOUCH_TARGET } from '@/constants/sizing';
 
 type EntityDetailHeaderProps = {
   title: string;
@@ -380,7 +381,12 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     fontWeight: '500',
   },
-  backBtn: { paddingHorizontal: 8, paddingVertical: 6 },
+  backBtn: {
+    width: TOUCH_TARGET.compact,
+    height: TOUCH_TARGET.compact,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   heroCard: {
     position: 'relative',
     overflow: 'hidden',
@@ -543,7 +549,7 @@ const styles = StyleSheet.create({
   actionBtn: {
     flex: 1,
     minWidth: 120,
-    minHeight: 50,
+    minHeight: TOUCH_TARGET.comfortable,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

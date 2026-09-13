@@ -58,6 +58,7 @@ const DEFAULT_FORM = {
   whatsappParamsText: '',
   whatsappPrependCustomerName: false,
   customerIds: undefined,
+  scheduledAt: '',
 };
 
 const STEPS = ['Campaign details', 'Audience', 'Message', 'Review'];
@@ -141,6 +142,7 @@ function toCampaignPayload(form) {
       whatsappParameters,
       whatsappPrependCustomerName: form.whatsappPrependCustomerName,
     },
+    scheduledAt: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : null,
   };
 }
 
@@ -165,6 +167,9 @@ function formFromCampaign(campaign) {
     whatsappLanguage: message.whatsappLanguage || 'en',
     whatsappParamsText: Array.isArray(message.whatsappParameters) ? message.whatsappParameters.join('\n') : '',
     whatsappPrependCustomerName: Boolean(message.whatsappPrependCustomerName),
+    scheduledAt: campaign?.scheduledAt
+      ? new Date(campaign.scheduledAt).toISOString().slice(0, 16)
+      : '',
   };
 }
 
@@ -626,6 +631,32 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
     onError: (err) => handleApiError(err, { context: 'Send campaign' }),
   });
 
+  const scheduleMutation = useMutation({
+    mutationFn: async () => {
+      if (!form.scheduledAt) {
+        throw new Error('Pick a date and time to schedule');
+      }
+      const payload = {
+        ...toCampaignPayload({
+          ...form,
+          customerIds: manualSelection ? Array.from(selectedIds) : undefined,
+        }),
+      };
+      const saved = isEdit
+        ? await marketingService.updateCampaign(id, payload)
+        : await marketingService.createCampaign(payload);
+      return marketingService.scheduleCampaign(saved.data.id, {
+        scheduledAt: payload.scheduledAt,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketing'] });
+      showSuccess('Campaign scheduled');
+      onComplete?.();
+    },
+    onError: (err) => handleApiError(err, { context: 'Schedule campaign' }),
+  });
+
   const selectedCount = manualSelection ? selectedIds.size : contacts.length;
   const totalEligible = form.channels.reduce((sum, channel) => sum + Number(preview.eligible?.[channel] || 0), 0);
 
@@ -823,7 +854,8 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
             <Card style={CARD_BORDER}>
               <CardHeader><CardTitle className="text-base">SMS message</CardTitle></CardHeader>
               <CardContent>
-                <Textarea rows={4} maxLength={480} value={form.smsBody} onChange={(event) => setField('smsBody', event.target.value)} placeholder="Up to 480 characters" />
+                <Textarea rows={4} maxLength={480} value={form.smsBody} onChange={(event) => setField('smsBody', event.target.value)} placeholder="Hi {{name}}, thanks for being a customer of {{businessName}}!" />
+                <p className="text-xs text-muted-foreground">Use {'{{name}}'} and {'{{businessName}}'} — each recipient gets a personalized SMS.</p>
               </CardContent>
             </Card>
           )}
@@ -884,10 +916,18 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
           <Card style={CARD_BORDER}>
             <CardHeader>
               <CardTitle className="text-base">Ready to send</CardTitle>
-              <CardDescription>Scheduling is stored as campaign metadata; automatic dispatch worker is not enabled yet.</CardDescription>
+              <CardDescription>Send now, or schedule for later. Scheduled campaigns dispatch automatically within about 5 minutes of the chosen time.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm text-muted-foreground">
-              <p>Use Save draft to keep this campaign for later, or Send now to dispatch to the selected eligible audience.</p>
+            <CardContent className="space-y-3 text-sm">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Schedule for (optional)</label>
+                <Input
+                  type="datetime-local"
+                  value={form.scheduledAt || ''}
+                  onChange={(event) => setField('scheduledAt', event.target.value)}
+                />
+              </div>
+              <p className="text-muted-foreground">Use Save draft to keep editing, Schedule if you set a time, or Send now.</p>
             </CardContent>
           </Card>
         </div>
@@ -907,7 +947,7 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
           <Button type="button" variant="outline" onClick={onCancel} disabled={saveMutation.isPending || sendMutation.isPending}>
             Cancel
           </Button>
-          <Button type="button" variant="outline" onClick={saveDraft} disabled={saveMutation.isPending || sendMutation.isPending}>
+          <Button type="button" variant="outline" onClick={saveDraft} disabled={saveMutation.isPending || sendMutation.isPending || scheduleMutation.isPending}>
             {saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
             Save draft
           </Button>
@@ -916,10 +956,21 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
               Next
             </Button>
           ) : (
-            <Button type="button" className="bg-brand hover:bg-brand-dark" onClick={sendNow} disabled={sendMutation.isPending || saveMutation.isPending}>
-              {sendMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-              Send now
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => scheduleMutation.mutate()}
+                disabled={!form.scheduledAt || scheduleMutation.isPending || sendMutation.isPending || saveMutation.isPending}
+              >
+                {scheduleMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Schedule
+              </Button>
+              <Button type="button" className="bg-brand hover:bg-brand-dark" onClick={sendNow} disabled={sendMutation.isPending || saveMutation.isPending || scheduleMutation.isPending}>
+                {sendMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                Send now
+              </Button>
+            </>
           )}
         </div>
       </DialogFooter>

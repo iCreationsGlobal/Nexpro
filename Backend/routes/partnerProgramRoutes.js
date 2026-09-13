@@ -12,6 +12,8 @@ const {
   revokePartnership,
   listPartnerCommissions,
   markPartnerCommissionsPaid,
+  listPartnerRemittances,
+  createPartnerRemittance,
   listTenantPartnerReferrals,
   listTenantPartnerCashouts,
   approvePartnerCashout,
@@ -37,6 +39,8 @@ router.post('/partnerships/:id/revoke', authorize('admin', 'manager'), revokePar
 
 router.get('/commissions', authorize('admin', 'manager'), listPartnerCommissions);
 router.post('/commissions/mark-paid', authorize('admin', 'manager'), markPartnerCommissionsPaid);
+router.get('/remittances', authorize('admin', 'manager'), listPartnerRemittances);
+router.post('/remittances', authorize('admin', 'manager'), createPartnerRemittance);
 
 router.get('/referrals', authorize('admin', 'manager'), listTenantPartnerReferrals);
 router.get('/cashouts', authorize('admin', 'manager'), listTenantPartnerCashouts);

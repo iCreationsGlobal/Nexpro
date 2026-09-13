@@ -41,13 +41,14 @@ async function refetchActivePrefixes(queryClient: QueryClient, prefixes: QueryKe
 
 /**
  * Mark related queries stale and refetch any that are currently mounted.
+ * invalidateQueries already refetches active (mounted) queries by default,
+ * so there is no need to refetch the same prefixes again afterward.
  */
 export async function refreshRelatedQueries(
   queryClient: QueryClient,
   prefixes: QueryKeyPrefix[]
 ) {
   await invalidatePrefixes(queryClient, prefixes);
-  await refetchActivePrefixes(queryClient, prefixes);
 }
 
 /** POS checkout, offline sync, sale payment */
@@ -109,11 +110,11 @@ export async function refreshAfterExpense(queryClient: QueryClient) {
 
 /** Product create/update/delete */
 export async function refreshAfterInventoryChange(queryClient: QueryClient) {
-  await refreshRelatedQueries(queryClient, [
-    ['products'],
-    ['product'],
+  // Invalidation already refetches active queries; avoid a second network round-trip.
+  await Promise.all([
+    invalidatePrefixes(queryClient, [['products'], ['product']]),
+    markPrefixesStale(queryClient, [['dashboard']]),
   ]);
-  await markPrefixesStale(queryClient, [['dashboard']]);
 }
 
 /** Invoice payment / status */
@@ -123,6 +124,8 @@ export async function refreshAfterInvoicePayment(queryClient: QueryClient) {
     ['invoice'],
     ['sales'],
     ['sale'],
+    ['rentals'],
+    ['rental'],
     ['customers'],
     ['customer'],
     ['dashboard'],
@@ -163,6 +166,19 @@ export async function refreshAfterDealerChange(queryClient: QueryClient) {
 /** Lead / task workspace updates */
 export async function refreshAfterLeadChange(queryClient: QueryClient) {
   await refreshRelatedQueries(queryClient, [['leads'], ['lead']]);
+}
+
+/** Rental handover, return, or damage actions */
+export async function refreshAfterRentalChange(queryClient: QueryClient) {
+  await refreshRelatedQueries(queryClient, [
+    ['rentals'],
+    ['rental'],
+    ['invoices'],
+    ['invoice'],
+    ['customers'],
+    ['customer'],
+    ['dashboard'],
+  ]);
 }
 
 export async function refreshAfterTaskChange(queryClient: QueryClient) {
@@ -214,6 +230,8 @@ const SCOPED_WORKSPACE_PREFIXES: QueryKeyPrefix[] = [
   ['dealers'],
   ['dealer'],
   ['deliveries-queue'],
+  ['rentals'],
+  ['rental'],
   ['store', 'online-orders'],
   ['store', 'setup-status'],
   ['store', 'service-listings'],

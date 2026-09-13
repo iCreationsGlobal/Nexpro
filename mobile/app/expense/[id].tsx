@@ -23,6 +23,7 @@ import { expenseService } from '@/services/expenseService';
 import { formatCurrency, formatDate } from '@/utils/formatCurrency';
 import { getApiErrorMessage, parseApiEntity } from '@/utils/parseApiListResponse';
 import { refreshAfterExpense } from '@/utils/queryInvalidation';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 
 type ExpenseDetail = {
   id: string;
@@ -272,6 +273,12 @@ const styles = StyleSheet.create({
   label: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, marginBottom: 12 },
   textArea: { minHeight: 90, textAlignVertical: 'top' },
-  saveBtn: { height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  saveBtn: {
+    ...standaloneFullWidth,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });

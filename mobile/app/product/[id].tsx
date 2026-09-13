@@ -32,6 +32,7 @@ import {
 } from '@/components/EntityDetailLayout';
 import { ScreenShell } from '@/components/ScreenShell';
 import { FORM_LABELS } from '@/constants/formLabels';
+import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
@@ -988,7 +989,8 @@ const styles = StyleSheet.create({
   formGroup: { marginBottom: 16 },
   formLabel: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
   formInput: {
-    borderWidth: 1,
+    height: TOUCH_TARGET.standard,
+    borderWidth: BORDER_WIDTH.standard,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,

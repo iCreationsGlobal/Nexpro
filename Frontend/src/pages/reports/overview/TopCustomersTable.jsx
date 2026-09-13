@@ -5,7 +5,12 @@ import { OVERVIEW_CARD_BORDER, formatOverviewCurrency } from './overviewUtils';
 /**
  * Ranked top customers table.
  */
-export default function TopCustomersTable({ customers = [], totalRevenue = 0, title = 'Top Customers by Revenue' }) {
+export default function TopCustomersTable({
+  customers = [],
+  totalRevenue = 0,
+  title = 'Top Customers by Revenue',
+  amountColumnLabel = 'Revenue',
+}) {
   return (
     <Card style={OVERVIEW_CARD_BORDER} className="bg-card h-full">
       <CardHeader className="pb-2 pt-4 px-4">
@@ -18,7 +23,7 @@ export default function TopCustomersTable({ customers = [], totalRevenue = 0, ti
               <TableRow>
                 <TableHead className="w-10">#</TableHead>
                 <TableHead>Customer</TableHead>
-                <TableHead className="text-right">Revenue</TableHead>
+                <TableHead className="text-right">{amountColumnLabel}</TableHead>
                 <TableHead className="text-right">%</TableHead>
               </TableRow>
             </TableHeader>

@@ -15,6 +15,13 @@ const { getExpensesByCategory } = require('./metrics/expensesByCategory');
 const { getNewCustomers, getInactiveCustomers } = require('./metrics/customers');
 const { getJobPipeline } = require('./metrics/jobs');
 const {
+  getRentalsDueToday,
+  getOverdueRentals,
+  getTopDamageProducts,
+  getRentalRevenueForPeriod,
+  getRentalPerformanceSummary,
+} = require('./metrics/rentals');
+const {
   resolveAnalysisPeriod,
   getEqualLengthPriorPeriod,
 } = require('./metrics/dates');
@@ -92,12 +99,23 @@ async function fetchMetricsForIntent(intent, ctx) {
       return getInactiveCustomers(ctx);
     case 'job_pipeline':
       return getJobPipeline(ctx);
+    case 'rentals_due_today':
+      return getRentalsDueToday(ctx);
+    case 'rentals_overdue':
+      return getOverdueRentals(ctx);
+    case 'rental_damage':
+      return getTopDamageProducts(ctx);
+    case 'rental_revenue_month':
+      return getRentalRevenueForPeriod(ctx);
     case 'receivables_summary':
     case 'who_owes_me':
       return getReceivables(ctx);
     case 'low_stock':
       return getLowStock(ctx);
     case 'performance_summary': {
+      if (ctx.businessType === 'rental') {
+        return getRentalPerformanceSummary(ctx);
+      }
       const [compare, lowStock, receivables] = await Promise.all([
         getSalesVsPriorPeriod(ctx),
         getLowStock(ctx),
@@ -176,6 +194,7 @@ async function runAnalysis(message, context = {}) {
     tenantId: context.tenantId,
     shopFilterId: context.shopFilterId || null,
     studioLocationFilterId: context.studioLocationFilterId || null,
+    businessType: context.businessType || null,
     period: resolvedPeriod.periodKey,
     startDate: resolvedPeriod.startDate,
     endDate: resolvedPeriod.endDate,

@@ -48,9 +48,9 @@ const FEATURE_CATALOG = [
   {
     key: 'marketing',
     name: 'Marketing Broadcasts',
-    description: 'Send bulk email, SMS, and WhatsApp campaigns',
+    description: 'Send bulk email, SMS, and WhatsApp campaigns; compose SMS and buy ABS Credits',
     category: 'communication',
-    routes: ['/marketing'],
+    routes: ['/marketing', '/messages'],
     requiredForModules: [],
     marketingCopy: {
       highlight: 'Reach customers with bulk campaigns',
@@ -223,6 +223,30 @@ const FEATURE_CATALOG = [
     marketingCopy: {
       highlight: 'Full materials management with vendor price lists',
       perk: 'Materials controls & vendor pricing'
+    }
+  },
+  {
+    key: 'rentals',
+    name: 'Rentals',
+    description: 'Hire out stock, track returns, late charges, and damage',
+    category: 'operations',
+    routes: ['/rentals'],
+    requiredForModules: [],
+    marketingCopy: {
+      highlight: 'Rental bookings with availability, returns and damage tracking',
+      perk: 'Rentals module'
+    }
+  },
+  {
+    key: 'watch',
+    name: 'ABS Watch',
+    description: 'Compare physical shop activity with recorded sales',
+    category: 'analytics',
+    routes: ['/watch'],
+    requiredForModules: [],
+    marketingCopy: {
+      highlight: 'Know what is happening in your shop even when you are not there',
+      perk: 'Physical activity vs recorded sales'
     }
   },
   {
@@ -510,6 +534,8 @@ const PLAN_FEATURE_KEYS = {
     'shopsModule',
     'pharmacyOps',
     'materials',
+    'rentals',
+    'watch',
     'reports',
     'graEvat',
     'notifications',

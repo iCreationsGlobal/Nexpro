@@ -16,6 +16,10 @@ jest.mock('../../../models', () => ({
   Job: { findOne: jest.fn() },
 }));
 
+jest.mock('../../../services/sabitoAppPlatformService', () => ({
+  getPlatformFeePercent: jest.fn(),
+}));
+
 const {
   PartnerCommission,
   Partnership,
@@ -26,10 +30,12 @@ const {
   maybeCreateCommissionForPayment,
   resolveRate,
 } = require('../../../services/partnerCommissionService');
+const sabitoAppPlatformService = require('../../../services/sabitoAppPlatformService');
 
 describe('partnerCommissionService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    sabitoAppPlatformService.getPlatformFeePercent.mockResolvedValue(20);
   });
 
   test('resolveRate returns first when no prior commission', async () => {
@@ -100,6 +106,10 @@ describe('partnerCommissionService', () => {
         ratePercent: 10,
         paymentAmount: 100,
         amount: 10,
+        platformFeePercent: 20,
+        platformFeeAmount: 2,
+        marketerShareAmount: 8,
+        remittanceStatus: 'owed',
         status: 'due',
       })
     );

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,13 +15,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
+import { IconButton } from '@/components/IconButton';
 import { FormSheetModal } from '@/components/FormSheetModal';
+import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
 import { CartAmountSheet } from '@/components/CartAmountSheet';
 import { CartQuantitySheet } from '@/components/CartQuantitySheet';
 import { FORM_LABELS } from '@/constants/formLabels';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
 import { useRegisterPageSearch } from '@/hooks/useRegisterPageSearch';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { customerService } from '@/services/customerService';
@@ -36,9 +39,11 @@ import { ScreenShell } from '@/components/ScreenShell';
 import { resolveImageUrl } from '@/utils/fileUtils';
 import { formatSaleReceiptText } from '@/utils/formatSaleReceipt';
 import { refreshAfterCustomerChange, refreshAfterSale, refreshAfterDealerChange } from '@/utils/queryInvalidation';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 import { parseDecimalInput } from '@/utils/formatCurrency';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { getApiErrorMessage, parseApiEntity } from '@/utils/parseApiListResponse';
+import { getCountryCallingCodeFromPhone, openWhatsAppChat } from '@/utils/whatsapp';
 import { isProductOutOfStock } from '@/utils/productStock';
 
 const generateSaleClientId = () =>
@@ -120,7 +125,9 @@ export default function CartScreen() {
   );
   const [amountTendered, setAmountTendered] = useState('');
   const [mobileMoneyNumber, setMobileMoneyNumber] = useState('');
-  const [quickCustomerPhone, setQuickCustomerPhone] = useState('');
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [addingCustomer, setAddingCustomer] = useState(false);
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [quickCustomerName, setQuickCustomerName] = useState('');
   const [findingCustomer, setFindingCustomer] = useState(false);
   const [sendToKitchen, setSendToKitchen] = useState(true);
@@ -172,15 +179,41 @@ export default function CartScreen() {
     };
   }, [params.dealerId, dealersFeatureEnabled]);
 
-  const { data: customersResponse } = useQuery({
-    queryKey: ['customers', 'list', activeTenantId, activeShopId, activeStudioLocationId],
-    queryFn: () => customerService.getCustomers({ limit: 50 }),
+  // Tracks the phone number we auto-filled (as opposed to one the cashier typed in),
+  // so switching customers updates it but a manual edit is never overwritten.
+  const autoFilledMomoPhoneRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (paymentMethod !== 'mobile_money') return;
+    const customerPhone = String(selectedCustomer?.phone || '').trim();
+    if (!customerPhone) return;
+    setMobileMoneyNumber((prev) => {
+      const untouched = !prev.trim() || prev === autoFilledMomoPhoneRef.current;
+      if (!untouched) return prev;
+      autoFilledMomoPhoneRef.current = customerPhone;
+      return customerPhone;
+    });
+  }, [paymentMethod, selectedCustomer]);
+
+  const debouncedCustomerSearch = useDebounce(customerSearchQuery.trim(), 300);
+
+  const { data: customersResponse, isLoading: loadingCustomers } = useQuery({
+    queryKey: [
+      'customers',
+      'list',
+      activeTenantId,
+      activeShopId,
+      activeStudioLocationId,
+      debouncedCustomerSearch,
+    ],
+    queryFn: () =>
+      customerService.getCustomers({ limit: 20, search: debouncedCustomerSearch || undefined }),
     enabled:
       !!activeTenantId &&
       isRetailLike &&
       customerModalVisible &&
       scopeReady,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
     gcTime: 2 * 60 * 60 * 1000,
   });
 
@@ -190,6 +223,8 @@ export default function CartScreen() {
     phone?: string;
     email?: string;
   }>;
+  const hasCustomerSearch = debouncedCustomerSearch.length > 0;
+  const noMatchingCustomers = hasCustomerSearch && !loadingCustomers && customers.length === 0;
 
   const { data: organizationSettings } = useQuery({
     queryKey: ['settings', 'organization', activeTenantId],
@@ -221,6 +256,21 @@ export default function CartScreen() {
     subtitle: `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`,
   });
 
+  const navigateAfterSaleSuccess = useCallback(
+    (kitchenSent = true) => {
+      if (isRestaurant && kitchenSent) {
+        router.push('/(tabs)/orders' as never);
+        return;
+      }
+      if (hasFeature('invoices')) {
+        router.push('/(tabs)/invoices' as never);
+        return;
+      }
+      router.push('/(tabs)/sales' as never);
+    },
+    [hasFeature, isRestaurant, router]
+  );
+
   const createSaleMutation = useMutation({
     mutationFn: async (payload: object) => {
       try {
@@ -245,6 +295,9 @@ export default function CartScreen() {
       const dealerSale = Boolean(variables?.dealerId);
       if (data?._offline) {
         clearCart();
+        setSelectedCustomer(null);
+        setMobileMoneyNumber('');
+        autoFilledMomoPhoneRef.current = null;
         setPaymentModalVisible(false);
         const offlineMsg =
           isRestaurant && kitchenSent
@@ -254,33 +307,30 @@ export default function CartScreen() {
         return;
       }
       clearCart();
+      setSelectedCustomer(null);
+      setMobileMoneyNumber('');
+      autoFilledMomoPhoneRef.current = null;
       setPaymentModalVisible(false);
       if (dealerSale) setSelectedDealer(null);
 
       const sale = data?.data ?? data;
-      let generatedInvoice = sale?.invoice ?? null;
+      // Generate the invoice in the background — the share prompt below shouldn't wait
+      // on this network round-trip. The sale detail screen can retry it if it fails.
       if (!dealerSale && sale?.id && sale?.customerId && !sale?.invoiceId) {
-        try {
-          const invoiceResponse = await saleService.generateInvoice(sale.id);
-          generatedInvoice = invoiceResponse?.data ?? invoiceResponse ?? null;
-          if (generatedInvoice?.id) {
-            sale.invoiceId = generatedInvoice.id;
-            sale.invoice = generatedInvoice;
-          }
-          queryClient.invalidateQueries({ queryKey: ['invoices'] });
-          queryClient.invalidateQueries({ queryKey: ['invoice'] });
-          queryClient.invalidateQueries({ queryKey: ['customer'] });
-          queryClient.invalidateQueries({ queryKey: ['customers'] });
-        } catch (invoiceError) {
-          // Do not fail the sale after payment has been recorded; the sale detail can retry invoice generation.
-          console.warn('[ABS] [Cart] Sale invoice generation failed:', invoiceError);
-        }
-      }
-      if (sale?.invoiceId || generatedInvoice?.id) {
-        queryClient.invalidateQueries({ queryKey: ['invoices'] });
-        queryClient.invalidateQueries({ queryKey: ['invoice'] });
-        queryClient.invalidateQueries({ queryKey: ['customer'] });
-        queryClient.invalidateQueries({ queryKey: ['customers'] });
+        saleService
+          .generateInvoice(sale.id)
+          .then((invoiceResponse) => {
+            const generatedInvoice = invoiceResponse?.data ?? invoiceResponse ?? null;
+            if (generatedInvoice?.id) {
+              queryClient.invalidateQueries({ queryKey: ['sales'] });
+              queryClient.invalidateQueries({ queryKey: ['sale'] });
+              queryClient.invalidateQueries({ queryKey: ['invoices'] });
+              queryClient.invalidateQueries({ queryKey: ['invoice'] });
+            }
+          })
+          .catch((invoiceError) => {
+            console.warn('[ABS] [Cart] Sale invoice generation failed:', invoiceError);
+          });
       }
       if (sale?.id) {
         queryClient.setQueriesData({ queryKey: ['sales'] }, (old: any) => {
@@ -294,16 +344,18 @@ export default function CartScreen() {
           };
         });
       }
-      await refreshAfterSale(queryClient);
+      // Refresh in the background — the share prompt below shouldn't wait on a
+      // network round-trip for every dependent list/dashboard query.
+      refreshAfterSale(queryClient).catch(() => {});
       if (variables?.dealerId) {
-        await refreshAfterDealerChange(queryClient);
+        refreshAfterDealerChange(queryClient).catch(() => {});
       }
 
       const offerShare = sale?.id && paymentMethod !== 'credit' && !dealerSale;
 
       if (dealerSale) {
         Alert.alert('Dealer sale recorded', 'The sale has been charged to the dealer account.', [
-          { text: 'OK', onPress: () => router.push('/(tabs)/sales') },
+          { text: 'OK', onPress: () => navigateAfterSaleSuccess(kitchenSent) },
         ]);
         return;
       }
@@ -312,15 +364,13 @@ export default function CartScreen() {
         const shareTitle =
           isRestaurant && kitchenSent && sale?.saleNumber
             ? `Order #${sale.saleNumber} sent to kitchen`
-            : generatedInvoice?.id
-              ? 'Sale completed + invoice created'
-              : 'Sale completed';
+            : 'Sale completed';
         const shareSubtitle =
           isRestaurant && kitchenSent
             ? 'Share receipt with customer?'
             : 'Share receipt with customer?';
         Alert.alert(shareTitle, shareSubtitle, [
-          { text: 'Later', onPress: () => router.push('/(tabs)/sales') },
+          { text: 'Later', onPress: () => navigateAfterSaleSuccess(kitchenSent) },
           {
             text: 'Share',
             onPress: async () => {
@@ -332,19 +382,31 @@ export default function CartScreen() {
                 } catch {
                   // use sale from create response
                 }
-                await Share.share({
-                  message: formatSaleReceiptText({
-                    ...receiptSale,
-                    shop: receiptSale?.shop ?? activeShop ?? undefined,
-                    studioLocation: receiptSale?.studioLocation ?? activeStudioLocation ?? undefined,
-                    tenantName: activeTenant?.name,
-                  }),
-                  title: `Receipt ${receiptSale?.saleNumber || ''}`.trim(),
+                const receiptMessage = formatSaleReceiptText({
+                  ...receiptSale,
+                  shop: receiptSale?.shop ?? activeShop ?? undefined,
+                  studioLocation: receiptSale?.studioLocation ?? activeStudioLocation ?? undefined,
+                  tenantName: activeTenant?.name,
                 });
+                const customerPhone =
+                  receiptSale?.customer?.phone || selectedCustomer?.phone || mobileMoneyNumber.trim();
+                if (customerPhone) {
+                  await openWhatsAppChat({
+                    phone: customerPhone,
+                    message: receiptMessage,
+                    contactLabel: receiptSale?.customer?.name || selectedCustomer?.name || 'This customer',
+                    defaultCountryCode: getCountryCallingCodeFromPhone(activeTenant?.metadata?.phone),
+                  });
+                } else {
+                  await Share.share({
+                    message: receiptMessage,
+                    title: `Receipt ${receiptSale?.saleNumber || ''}`.trim(),
+                  });
+                }
               } catch {
                 // user dismissed share
               }
-              router.push('/(tabs)/sales');
+              navigateAfterSaleSuccess(kitchenSent);
             },
           },
         ]);
@@ -354,11 +416,9 @@ export default function CartScreen() {
       const successMsg =
         isRestaurant && kitchenSent && sale?.saleNumber
           ? `Order #${sale.saleNumber} has been sent to the kitchen.`
-          : generatedInvoice?.id
-            ? 'Sale completed and invoice created.'
           : 'Sale completed successfully!';
       Alert.alert('Success', successMsg, [
-        { text: 'OK', onPress: () => router.push(isRestaurant && kitchenSent ? '/(tabs)/orders' : '/(tabs)/sales') },
+        { text: 'OK', onPress: () => navigateAfterSaleSuccess(kitchenSent) },
       ]);
     },
     onError: (error: any) => {
@@ -437,8 +497,11 @@ export default function CartScreen() {
         const customer = res?.data ?? res;
         customerId = customer?.id ?? null;
         if (customerId) refreshAfterCustomerChange(queryClient).catch(() => {});
-      } catch {
-        // continue without customer link
+      } catch (err) {
+        Alert.alert(
+          'Customer not linked',
+          getApiErrorMessage(err, 'Could not link this mobile money number to a customer.')
+        );
       }
     }
 
@@ -653,13 +716,13 @@ export default function CartScreen() {
 
                   <View style={styles.itemRightCol}>
                     <View style={styles.quantityControls}>
-                      <Pressable
+                      <IconButton
+                        icon="minus"
                         onPress={() => updateQuantity(item.id, item.quantity - 1)}
-                        style={[styles.quantityBtn, { borderColor: colors.tint }]}
+                        color={colors.tint}
+                        borderColor={colors.tint}
                         accessibilityLabel={`Decrease quantity for ${item.name}`}
-                      >
-                        <AppIcon name="minus" size={14} color={colors.tint} />
-                      </Pressable>
+                      />
                       <Pressable
                         onPress={() => setQuantityEditItem(item)}
                         style={[styles.quantityValueBtn, { borderColor }]}
@@ -668,13 +731,13 @@ export default function CartScreen() {
                       >
                         <Text style={[styles.quantityText, { color: textColor }]}>{item.quantity}</Text>
                       </Pressable>
-                      <Pressable
+                      <IconButton
+                        icon="plus"
                         onPress={() => updateQuantity(item.id, item.quantity + 1)}
-                        style={[styles.quantityBtn, { borderColor: colors.tint }]}
+                        color={colors.tint}
+                        borderColor={colors.tint}
                         accessibilityLabel={`Increase quantity for ${item.name}`}
-                      >
-                        <AppIcon name="plus" size={14} color={colors.tint} />
-                      </Pressable>
+                      />
                     </View>
                     <View style={[styles.qtyPill, { backgroundColor: inputBg }]}>
                       <Text style={[styles.qtyPillText, { color: mutedColor }]}>
@@ -783,92 +846,159 @@ export default function CartScreen() {
 
       <FormSheetModal
         visible={customerModalVisible}
-        title={FORM_LABELS.cart.selectCustomer}
-        onClose={() => setCustomerModalVisible(false)}
+        title={addingCustomer ? FORM_LABELS.cart.findOrAdd : FORM_LABELS.cart.selectCustomer}
+        onClose={() => {
+          setCustomerModalVisible(false);
+          setCustomerSearchQuery('');
+          setAddingCustomer(false);
+          setNewCustomerPhone('');
+          setQuickCustomerName('');
+        }}
         cardBg={cardBg}
         borderColor={borderColor}
         textColor={textColor}
         mutedColor={mutedColor}
         footer={
-          <Pressable
-            disabled={findingCustomer || !quickCustomerPhone.trim()}
-            onPress={async () => {
-              setFindingCustomer(true);
-              try {
-                const res = await customerService.findOrCreate(
-                  quickCustomerPhone.trim(),
-                  quickCustomerName.trim() || undefined
-                );
-                const customer = res?.data ?? res;
-                if (customer?.id) {
-                  setSelectedCustomer(customer);
-                  setCustomerModalVisible(false);
-                  setQuickCustomerPhone('');
-                  setQuickCustomerName('');
-                }
-              } catch (err: unknown) {
-                Alert.alert(
-                  'Error',
-                  err instanceof Error ? err.message : 'Could not find or create customer'
-                );
-              } finally {
-                setFindingCustomer(false);
-              }
-            }}
-            style={[
-              styles.findCustomerBtn,
-              { backgroundColor: colors.tint, opacity: quickCustomerPhone.trim() ? 1 : 0.5 },
-            ]}
-          >
-            {findingCustomer ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.findCustomerBtnText}>{FORM_LABELS.cart.findOrAdd}</Text>
-            )}
-          </Pressable>
-        }
-      >
-              <Text style={[styles.inputLabel, { color: textColor }]}>{FORM_LABELS.cart.phone}</Text>
-              <TextInput
-                style={[styles.input, { color: textColor, borderColor }]}
-                placeholder="Phone number"
-                placeholderTextColor={mutedColor}
-                value={quickCustomerPhone}
-                onChangeText={setQuickCustomerPhone}
-                keyboardType="phone-pad"
-              />
-              <Text style={[styles.inputLabel, { color: textColor }]}>{FORM_LABELS.cart.nameOptional}</Text>
-              <TextInput
-                style={[styles.input, { color: textColor, borderColor, marginTop: 8 }]}
-                placeholder="Customer name"
-                placeholderTextColor={mutedColor}
-                value={quickCustomerName}
-                onChangeText={setQuickCustomerName}
-              />
-              <Pressable
-                onPress={() => {
-                  setSelectedCustomer(null);
-                  setCustomerModalVisible(false);
-                }}
-                style={[styles.customerOption, { borderColor, marginTop: 16 }]}
-              >
-                <Text style={[styles.customerOptionText, { color: textColor }]}>{FORM_LABELS.cart.walkIn}</Text>
-              </Pressable>
-              {customers.map((customer) => (
-                <Pressable
-                  key={customer.id}
-                  onPress={() => {
+          addingCustomer ? (
+            <Pressable
+              disabled={findingCustomer || !newCustomerPhone.trim()}
+              onPress={async () => {
+                setFindingCustomer(true);
+                try {
+                  const res = await customerService.findOrCreate(
+                    newCustomerPhone.trim(),
+                    quickCustomerName.trim() || undefined
+                  );
+                  const customer = res?.data ?? res;
+                  if (customer?.id) {
                     setSelectedCustomer(customer);
                     setCustomerModalVisible(false);
-                  }}
-                  style={[styles.customerOption, { borderColor }]}
-                >
-                  <Text style={[styles.customerOptionText, { color: textColor }]}>{customer.name}</Text>
-                  <Text style={[styles.customerOptionSubtext, { color: mutedColor }]}>
-                    {customer.phone || customer.email}
+                    setCustomerSearchQuery('');
+                    setAddingCustomer(false);
+                    setNewCustomerPhone('');
+                    setQuickCustomerName('');
+                  }
+                } catch (err: unknown) {
+                  Alert.alert('Error', getApiErrorMessage(err, 'Could not add this customer'));
+                } finally {
+                  setFindingCustomer(false);
+                }
+              }}
+              style={[
+                styles.findCustomerBtn,
+                { backgroundColor: colors.tint, opacity: newCustomerPhone.trim() ? 1 : 0.5 },
+              ]}
+            >
+              {findingCustomer ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.findCustomerBtnText}>{FORM_LABELS.cart.findOrAdd}</Text>
+              )}
+            </Pressable>
+          ) : null
+        }
+      >
+              {addingCustomer ? (
+                <>
+                  <Pressable
+                    onPress={() => {
+                      setAddingCustomer(false);
+                      setNewCustomerPhone('');
+                      setQuickCustomerName('');
+                    }}
+                    style={styles.backRow}
+                  >
+                    <AppIcon name="chevron-left" size={16} color={colors.tint} />
+                    <Text style={[styles.backRowText, { color: colors.tint }]}>Back to customers</Text>
+                  </Pressable>
+                  <Text style={[styles.inputLabel, { color: textColor }]}>{FORM_LABELS.cart.phone}</Text>
+                  <TextInput
+                    style={[styles.input, { color: textColor, borderColor }]}
+                    placeholder="Phone number"
+                    placeholderTextColor={mutedColor}
+                    value={newCustomerPhone}
+                    onChangeText={setNewCustomerPhone}
+                    keyboardType="phone-pad"
+                    autoFocus
+                  />
+                  <Text style={[styles.inputLabel, { color: textColor, marginTop: 8 }]}>
+                    {FORM_LABELS.cart.nameOptional}
                   </Text>
-                </Pressable>
-              ))}
+                  <TextInput
+                    style={[styles.input, { color: textColor, borderColor }]}
+                    placeholder="Customer name"
+                    placeholderTextColor={mutedColor}
+                    value={quickCustomerName}
+                    onChangeText={setQuickCustomerName}
+                  />
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.inputLabel, { color: textColor }]}>{FORM_LABELS.cart.searchCustomers}</Text>
+                  <TextInput
+                    style={[styles.input, { color: textColor, borderColor }]}
+                    placeholder="Name or phone number"
+                    placeholderTextColor={mutedColor}
+                    value={customerSearchQuery}
+                    onChangeText={setCustomerSearchQuery}
+                    autoCapitalize="none"
+                  />
+
+                  <Pressable
+                    onPress={() => {
+                      const trimmedSearch = customerSearchQuery.trim();
+                      const looksLikePhone = /^[\d+][\d\s+-]*$/.test(trimmedSearch);
+                      setNewCustomerPhone(looksLikePhone ? trimmedSearch : '');
+                      setQuickCustomerName(looksLikePhone ? '' : trimmedSearch);
+                      setAddingCustomer(true);
+                    }}
+                    style={[styles.addCustomerRow, { borderColor, backgroundColor: `${colors.tint}12` }]}
+                  >
+                    <View style={[styles.addCustomerIcon, { backgroundColor: colors.tint }]}>
+                      <AppIcon name="plus" size={14} color="#fff" />
+                    </View>
+                    <Text style={[styles.addCustomerText, { color: colors.tint }]}>Add new customer</Text>
+                  </Pressable>
+
+                  {!hasCustomerSearch && (
+                    <Pressable
+                      onPress={() => {
+                        setSelectedCustomer(null);
+                        setCustomerModalVisible(false);
+                      }}
+                      style={[styles.customerOption, { borderColor, marginTop: 16 }]}
+                    >
+                      <Text style={[styles.customerOptionText, { color: textColor }]}>{FORM_LABELS.cart.walkIn}</Text>
+                    </Pressable>
+                  )}
+
+                  {hasCustomerSearch && (
+                    <Text style={[styles.customerSectionTitle, { color: mutedColor, marginTop: 16 }]}>
+                      {loadingCustomers
+                        ? 'Searching…'
+                        : noMatchingCustomers
+                          ? FORM_LABELS.cart.noMatchingCustomer
+                          : `${customers.length} match${customers.length === 1 ? '' : 'es'}`}
+                    </Text>
+                  )}
+                  {customers.map((customer) => (
+                    <Pressable
+                      key={customer.id}
+                      onPress={() => {
+                        setSelectedCustomer(customer);
+                        setCustomerModalVisible(false);
+                        setCustomerSearchQuery('');
+                      }}
+                      style={[styles.customerOption, { borderColor }]}
+                    >
+                      <Text style={[styles.customerOptionText, { color: textColor }]}>{customer.name}</Text>
+                      <Text style={[styles.customerOptionSubtext, { color: mutedColor }]}>
+                        {customer.phone || customer.email}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </>
+              )}
       </FormSheetModal>
 
       <FormSheetModal
@@ -1008,7 +1138,10 @@ export default function CartScreen() {
                     placeholder="0XX XXX XXXX"
                     placeholderTextColor={mutedColor}
                     value={mobileMoneyNumber}
-                    onChangeText={setMobileMoneyNumber}
+                    onChangeText={(text) => {
+                      autoFilledMomoPhoneRef.current = null;
+                      setMobileMoneyNumber(text);
+                    }}
                     keyboardType="phone-pad"
                   />
                 </View>
@@ -1209,20 +1342,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  quantityBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   quantityValueBtn: {
-    minWidth: 40,
-    height: 36,
+    minWidth: TOUCH_TARGET.compact,
+    height: TOUCH_TARGET.compact,
     paddingHorizontal: 8,
     borderRadius: 10,
-    borderWidth: 1.5,
+    borderWidth: BORDER_WIDTH.standard,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1378,10 +1503,13 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700' },
   modalBody: { padding: 20 },
   findCustomerBtn: {
+    ...standaloneFullWidth,
     marginTop: 12,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
+    minHeight: 48,
+    justifyContent: 'center',
   },
   findCustomerBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   customerOption: {
@@ -1392,6 +1520,31 @@ const styles = StyleSheet.create({
   },
   customerOptionText: { fontSize: 16, fontWeight: '600' },
   customerOptionSubtext: { fontSize: 14, marginTop: 4 },
+  customerSectionTitle: { fontSize: 13, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase' },
+  addCustomerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12,
+  },
+  addCustomerIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addCustomerText: { fontSize: 15, fontWeight: '600' },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 16,
+  },
+  backRowText: { fontSize: 15, fontWeight: '600' },
   paymentTotal: {
     fontSize: 24,
     fontWeight: '700',
@@ -1438,7 +1591,8 @@ const styles = StyleSheet.create({
   paymentInput: { marginBottom: 24 },
   inputLabel: { fontSize: 14, fontWeight: '500', marginBottom: 8 },
   input: {
-    borderWidth: 1,
+    height: TOUCH_TARGET.standard,
+    borderWidth: BORDER_WIDTH.standard,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,

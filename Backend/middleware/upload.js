@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const { validateStorageLimit } = require('../utils/storageLimitHelper');
+const { MAX_CLIP_BYTES, ALLOWED_CLIP_MIMES, ALLOWED_CLIP_EXTENSIONS } = require('../config/watchConstants');
 
 const baseUploadDir = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
@@ -119,6 +120,17 @@ const importFileUploader = multer({
   }
 });
 
+const watchClipUploader = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_CLIP_BYTES },
+  fileFilter: (req, file, cb) => {
+    const mime = String(file.mimetype || '').toLowerCase();
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const allowed = ALLOWED_CLIP_MIMES.includes(mime) || ALLOWED_CLIP_EXTENSIONS.includes(ext);
+    cb(allowed ? null : new Error('Use a short MP4 or WebM clip (max 30 MB).'), allowed);
+  },
+});
+
 // Expense receipt uploader (images + PDF)
 const expenseReceiptUploader = multer({
   storage: multer.memoryStorage(),
@@ -185,6 +197,7 @@ module.exports = {
   imageOnlyMulter,
   importFileUploader,
   expenseReceiptUploader,
+  watchClipUploader,
   baseUploadDir,
   ensureDirExists,
   createUploader,

@@ -12,7 +12,7 @@ const deliveryService = {
   },
 
   /**
-   * @param {Array<{ entityType: 'job'|'sale', id: string, deliveryStatus: string|null }>} updates
+   * @param {Array<{ entityType: 'job'|'sale'|'rental', id: string, deliveryStatus: string|null, deliveryLeg?: 'pickup'|'return' }>} updates
    */
   patchStatuses: async (updates) => {
     return api.patch('/deliveries/status', { updates });

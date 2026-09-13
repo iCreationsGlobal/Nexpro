@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import dayjs from 'dayjs';
 import {
   Briefcase,
+  CalendarRange,
   Package,
   CircleDollarSign,
   Info,
@@ -15,6 +16,7 @@ import StatusChip from './StatusChip';
 import { cn } from '@/lib/utils';
 import { getInvoiceTaxDisplay } from '../utils/invoiceTaxDisplay';
 import { getDisplayPaymentNote } from '../utils/paymentNotes';
+import { resolveInvoiceDocumentContext } from '../utils/invoiceDocumentContext';
 
 const ITEMS_PREVIEW_COUNT = 3;
 
@@ -89,8 +91,11 @@ function getItemProductCode(item) {
  * Mobile-first invoice details layout for DetailsDrawer (section cards per design mock).
  * @param {{ invoice: object, showJobDetails?: boolean }} props
  */
-function InvoiceDetailsDrawerContent({ invoice, showJobDetails = true, showProductCode = true }) {
+function InvoiceDetailsDrawerContent({ invoice, showJobDetails, showProductCode }) {
   const [itemsExpanded, setItemsExpanded] = useState(false);
+  const documentContext = resolveInvoiceDocumentContext(invoice);
+  const displayJobDetails = showJobDetails ?? documentContext.showJobDetails;
+  const displayProductCode = showProductCode ?? documentContext.showProductCode;
 
   const items = invoice?.items || [];
   const payments = Array.isArray(invoice?.payments) ? invoice.payments : [];
@@ -145,7 +150,7 @@ function InvoiceDetailsDrawerContent({ invoice, showJobDetails = true, showProdu
         </div>
       </DrawerSectionCard>
 
-      {showJobDetails && (invoice.job?.jobNumber || invoice.job?.title) && (
+      {displayJobDetails && (invoice.job?.jobNumber || invoice.job?.title) && (
         <DrawerSectionCard
           title="Job Details"
           titleStyle="uppercase"
@@ -160,6 +165,36 @@ function InvoiceDetailsDrawerContent({ invoice, showJobDetails = true, showProdu
           {invoice.job?.title && (
             <DrawerFieldRow label="Job Title">{invoice.job.title}</DrawerFieldRow>
           )}
+        </DrawerSectionCard>
+      )}
+
+      {documentContext.showRentalDetails && (
+        <DrawerSectionCard
+          title="Rental Details"
+          titleStyle="uppercase"
+          cardVariant="white"
+          icon={<CalendarRange className="h-4 w-4 text-brand" aria-hidden />}
+        >
+          {documentContext.rentalDetails.periodLabel && (
+            <DrawerFieldRow label="Period">
+              {documentContext.rentalDetails.periodLabel}
+            </DrawerFieldRow>
+          )}
+          {documentContext.rentalDetails.durationDays && (
+            <DrawerFieldRow label="Duration">
+              {documentContext.rentalDetails.durationDays}
+              {' '}
+              {documentContext.rentalDetails.durationDays === 1 ? 'day' : 'days'}
+            </DrawerFieldRow>
+          )}
+        </DrawerSectionCard>
+      )}
+
+      {documentContext.showSaleDetails && (
+        <DrawerSectionCard title="Sale Details" titleStyle="uppercase" cardVariant="white">
+          <DrawerFieldRow label="Sale Number" valueClassName="font-semibold">
+            {documentContext.saleNumber}
+          </DrawerFieldRow>
         </DrawerSectionCard>
       )}
 
@@ -193,7 +228,7 @@ function InvoiceDetailsDrawerContent({ invoice, showJobDetails = true, showProdu
                         <span className="block truncate text-sm text-foreground">
                           {item.description || item.category || 'Item'}
                         </span>
-                        {showProductCode && productCode && (
+                        {displayProductCode && productCode && (
                           <span className="block truncate text-xs text-muted-foreground">
                             Code: {productCode}
                           </span>

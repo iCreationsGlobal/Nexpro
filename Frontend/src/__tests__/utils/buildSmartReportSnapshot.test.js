@@ -81,4 +81,30 @@ describe('buildSmartReportSnapshot profit formulas', () => {
     expect(snapshot.cashFlowDetail.kpis.closing.value).not.toBe(80000);
     expect(snapshot.cashFlowDetail.kpis.closing.value).toBe(snapshot.cashFlow.net);
   });
+
+  it('attaches rental operations snapshot and collected wording for rental tenants', () => {
+    const snapshot = buildSmartReportSnapshot({
+      ...baseArgs,
+      isShop: false,
+      isRental: true,
+      profitLossData: { revenue: 10000, cogs: 0, grossProfit: 10000 },
+      rentalData: {
+        revenue: { totalRevenue: 15000, totalRentalAmount: 14000, totalLateCharges: 1000, rentalCount: 8, byProduct: [{ productName: 'Excavator', revenue: 9000 }] },
+        utilization: { overallUtilizationRate: 42.5, totalRentedDays: 85, totalAvailableDays: 200, byProduct: [] },
+        lateReturns: { summary: { lateReturnCount: 2, totalDaysLate: 5, totalLateCharges: 1000, pendingLateCharges: 200 }, incidents: [] },
+        damageTrends: { totalCost: 350, reportCount: 1, byType: [] },
+      },
+    });
+
+    expect(snapshot.sourceMeta.revenue.label).toBe('Collected');
+    expect(snapshot.kpis.totalSales.value).toBe(10000);
+    expect(snapshot.rental.hireBooked).toBe(15000);
+    expect(snapshot.rental.utilizationRate).toBe(42.5);
+    expect(snapshot.rental.lateReturnCount).toBe(2);
+    expect(snapshot.rental.damageCost).toBe(350);
+    expect(snapshot.rental.productHistory).toEqual([]);
+    expect(snapshot.rental.lowStockAlerts).toEqual([]);
+    expect(snapshot.rentalAiSummary).toContain('Hire booked');
+    expect(snapshot.revenueDonut.slices.some((slice) => slice.name === 'Excavator')).toBe(true);
+  });
 });

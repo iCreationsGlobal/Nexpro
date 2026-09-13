@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 
 import { AppIcon } from '@/components/AppIcon';
 import { useScreenColors } from '@/hooks/useScreenColors';
+import { TOUCH_TARGET } from '@/constants/sizing';
 
 interface BackButtonProps {
   onPress?: () => void;
@@ -20,7 +21,7 @@ export function BackButton({
   onPress,
   visible = true,
   hitSlop = 8,
-  size = 40,
+  size = TOUCH_TARGET.compact,
   iconSize = 18,
 }: BackButtonProps) {
   const router = useRouter();

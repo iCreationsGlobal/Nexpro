@@ -11,6 +11,10 @@ export type Marketer = {
   phone?: string | null;
   momoNumber?: string | null;
   bankDetails?: string | null;
+  paymentProvider?: string;
+  accountName?: string;
+  paymentNumber?: string;
+  paymentMethod?: string;
 };
 
 export type MarketplaceBusiness = {
@@ -68,6 +72,8 @@ export async function updateMarketerProfile(payload: {
   phone?: string;
   momoNumber?: string;
   bankDetails?: string;
+  paymentProvider?: string;
+  accountName?: string;
 }) {
   return unwrap<{ marketer: Marketer }>(
     await apiClient.patch('/public/sabito-marketer/auth/profile', payload)
@@ -143,3 +149,5 @@ export async function logoutMarketer() {
 }
 
 export { getAuthToken, setAuthToken };
+
+export async function getMyCashout(id: string) { return unwrap<any>(await apiClient.get(`/public/sabito-marketer/cashouts/${encodeURIComponent(id)}`)); }

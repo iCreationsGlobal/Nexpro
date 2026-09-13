@@ -7,30 +7,44 @@ import {
 } from './smartReportConstants';
 
 /**
- * Tab metadata by id.
+ * Tab metadata by id. Rental workspaces relabel Sales to Customers & collections.
  * @param {string} tabId
+ * @param {{ isRental?: boolean }} ctx
  */
-export function getSmartReportTabMeta(tabId) {
+export function getSmartReportTabMeta(tabId, ctx = {}) {
   const tab = SMART_REPORT_TABS.find((t) => t.id === tabId);
   if (!tab) return { id: tabId, label: tabId, icon: null, description: '' };
+  const rentalLabels = {
+    sales: 'Customer Analytics',
+    financial: 'Financial Reports',
+  };
+  const rentalDescriptions = {
+    sales: 'Customers, collections, and acquisition',
+    financial: 'Hire booked, sales vs rentals, expenses, and payment methods',
+  };
   return {
     ...tab,
-    description: SMART_REPORT_TAB_DESCRIPTIONS[tabId] || '',
+    label: ctx.isRental && rentalLabels[tabId] ? rentalLabels[tabId] : tab.label,
+    description: ctx.isRental && rentalDescriptions[tabId]
+      ? rentalDescriptions[tabId]
+      : (SMART_REPORT_TAB_DESCRIPTIONS[tabId] || ''),
   };
 }
 
 /**
  * Report section options for the create modal, filtered by business type.
- * @param {{ isShop?: boolean, isPharmacy?: boolean, isStudio?: boolean }} ctx
+ * @param {{ isShop?: boolean, isPharmacy?: boolean, isStudio?: boolean, isRental?: boolean }} ctx
  */
 export function getSmartReportTypeOptionsGrouped(ctx = {}) {
   return SMART_REPORT_TYPE_GROUPS
     .filter((group) => !group.showWhen || group.showWhen(ctx))
     .map((group) => ({
-      groupLabel: group.groupLabel,
+      groupLabel: ctx.isRental && group.groupLabel === 'Sales & customers'
+        ? 'Customers & collections'
+        : group.groupLabel,
       options: group.tabIds
         .map((tabId) => {
-          const meta = getSmartReportTabMeta(tabId);
+          const meta = getSmartReportTabMeta(tabId, ctx);
           return {
             value: tabId,
             label: meta.label,
@@ -43,11 +57,21 @@ export function getSmartReportTypeOptionsGrouped(ctx = {}) {
 
 /**
  * Default tab selection when opening the create report modal.
- * @param {{ isShop?: boolean, isPharmacy?: boolean, isStudio?: boolean }} ctx
+ * @param {{ isShop?: boolean, isPharmacy?: boolean, isStudio?: boolean, isRental?: boolean }} ctx
  * @returns {string[]}
  */
 export function getDefaultSmartReportTypeSelection(ctx = {}) {
-  return getSmartReportTypeOptionsGrouped(ctx).flatMap((g) => g.options.map((o) => o.value));
+  const values = getSmartReportTypeOptionsGrouped(ctx).flatMap((g) => g.options.map((o) => o.value));
+  if (!ctx.isRental) return values;
+  const rentalDefaults = new Set([
+    'rental-overview',
+    'rental-inventory',
+    'sales',
+    'financial',
+    'rental-history',
+    'rental-damage',
+  ]);
+  return values.filter((id) => rentalDefaults.has(id));
 }
 
 /**
@@ -92,21 +116,43 @@ export function inferTabIdsFromInsights(insights = []) {
 }
 
 /**
- * Tabs available for a tenant business type (inventory only for retail).
- * @param {{ isShop?: boolean, isPharmacy?: boolean }} ctx
+ * Tabs available for a tenant business type.
+ * Inventory is retail-only; rental ops tabs are rental-only.
+ * @param {{ isShop?: boolean, isPharmacy?: boolean, isRental?: boolean }} ctx
  */
+const RENTAL_SMART_REPORT_TAB_IDS = new Set([
+  'rental-overview',
+  'rental-inventory',
+  'sales',
+  'financial',
+  'rental-history',
+  'rental-damage',
+  'ai-insights',
+  'recommendations',
+  'rental-utilization',
+  'rental-late-returns',
+  'executive',
+  'expenses',
+  'cashflow',
+]);
+
 export function getAvailableSmartReportTabs(ctx = {}) {
-  const { isShop = false, isPharmacy = false } = ctx;
+  const { isShop = false, isPharmacy = false, isRental = false } = ctx;
   return SMART_REPORT_TABS.filter((tab) => {
+    if (isRental) return RENTAL_SMART_REPORT_TAB_IDS.has(tab.id);
     if (tab.id === 'inventory') return isShop || isPharmacy;
+    if (tab.id.startsWith('rental-')) return false;
     return true;
+  }).map((tab) => {
+    const meta = getSmartReportTabMeta(tab.id, ctx);
+    return { ...tab, label: meta.label };
   });
 }
 
 /**
  * Resolve which tabs to show for a saved/generated report.
  * @param {Object} report
- * @param {{ isShop?: boolean, isPharmacy?: boolean, isStudio?: boolean }} ctx
+ * @param {{ isShop?: boolean, isPharmacy?: boolean, isStudio?: boolean, isRental?: boolean }} ctx
  * @returns {Array<{ id: string, label: string, icon: import('react').ComponentType }>}
  */
 export function resolveSmartReportTabs(report, ctx = {}) {
@@ -115,7 +161,7 @@ export function resolveSmartReportTabs(report, ctx = {}) {
 
   let selectedIds = [];
   if (Array.isArray(report?.reportTypes) && report.reportTypes.length > 0) {
-    selectedIds = normalizeLegacyReportTypes(report.reportTypes);
+    selectedIds = normalizeLegacyReportTypes(report.reportTypes).filter((id) => availableIds.has(id));
   } else if (Array.isArray(report?.insights) && report.insights.length > 0) {
     selectedIds = inferTabIdsFromInsights(report.insights);
   } else {
@@ -129,7 +175,7 @@ export function resolveSmartReportTabs(report, ctx = {}) {
 /**
  * Display labels for report list badges.
  * @param {Object} report
- * @param {{ isShop?: boolean, isPharmacy?: boolean, isStudio?: boolean }} ctx
+ * @param {{ isShop?: boolean, isPharmacy?: boolean, isStudio?: boolean, isRental?: boolean }} ctx
  * @returns {string[]}
  */
 export function getSmartReportTypeLabels(report, ctx = {}) {

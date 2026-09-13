@@ -19,6 +19,17 @@ export const ASSISTANT_RETAIL_BUSINESS_PROMPTS = [
   'Summarize performance',
 ];
 
+/** Rental business chips — hires, returns, damage, collections; no jobs/stock. */
+export const ASSISTANT_RENTAL_BUSINESS_PROMPTS = [
+  'What rentals are due back today?',
+  'Show overdue rentals',
+  'Which items have the most damage?',
+  'Rental revenue this month',
+  'Who owes me money?',
+  'Summarize performance',
+  'Compare this period to the previous period',
+];
+
 /** Studio-like chips — jobs/pipeline wording; no stock/inventory/top products. */
 export const ASSISTANT_STUDIO_BUSINESS_PROMPTS = [
   'How much revenue did I make today?',
@@ -60,6 +71,15 @@ export const ASSISTANT_STUDIO_SUPPORT_PROMPTS = [
   'How do I add a customer?',
 ];
 
+export const ASSISTANT_RENTAL_SUPPORT_PROMPTS = [
+  'How do I create a rental?',
+  'How do I check out a rental?',
+  'How do I record a return?',
+  'How do I create an invoice?',
+  'How do I record a payment on an invoice?',
+  'How do I add a customer?',
+];
+
 export const ASSISTANT_PHARMACY_SUPPORT_PROMPTS = [
   'How do I create an invoice?',
   'How do I record a payment on an invoice?',
@@ -83,6 +103,12 @@ export const ASSISTANT_STUDIO_DRAFT_PROMPTS = [
   'Draft a job-ready / pickup notification for a customer',
 ];
 
+export const ASSISTANT_RENTAL_DRAFT_PROMPTS = [
+  'Draft a polite payment reminder for overdue customers',
+  'Draft a short thank-you message for my best customers',
+  'Draft a rental due-back reminder for a customer',
+];
+
 /** @deprecated Prefer getAssistantPromptSets */
 export const ASSISTANT_DRAFT_PROMPTS = ASSISTANT_RETAIL_DRAFT_PROMPTS;
 
@@ -104,18 +130,26 @@ export const ASSISTANT_PAGE_PROMPTS = {
   ],
   products: ['What products are low on stock?', 'What are my top products?'],
   jobs: ['Summarize my open jobs', 'Who owes me money?', 'Summarize performance'],
+  rentals: [
+    'What rentals are due back today?',
+    'Show overdue rentals',
+    'Rental revenue this month',
+    'Who owes me money?',
+  ],
 };
 
 const STOCKISH = /restock|low on stock|stock|inventory|top products|ingredients are running/i;
 const PRODUCTISH = /top products|best sellers|sold best/i;
+const JOBISH = /open jobs|job pipeline|create a job|job-ready|still need attention/i;
 
 /**
  * @param {string|null|undefined} businessType
  * @param {string|null|undefined} shopType
- * @returns {'studio'|'restaurant'|'pharmacy'|'shop'}
+ * @returns {'studio'|'restaurant'|'pharmacy'|'shop'|'rental'}
  */
 export function resolveAssistantWorkspaceKind(businessType, shopType) {
   const type = businessType || 'printing_press';
+  if (type === 'rental') return 'rental';
   if (STUDIO_LIKE_TYPES.includes(type)) return 'studio';
   if (type === 'pharmacy') return 'pharmacy';
   if (type === 'shop' && shopType === 'restaurant') return 'restaurant';
@@ -126,7 +160,7 @@ export function resolveAssistantWorkspaceKind(businessType, shopType) {
 /**
  * Filter prompts that don't apply to the workspace (e.g. stock for studios).
  * @param {string[]} prompts
- * @param {'studio'|'restaurant'|'pharmacy'|'shop'} kind
+ * @param {'studio'|'restaurant'|'pharmacy'|'shop'|'rental'} kind
  * @returns {string[]}
  */
 export function filterPromptsForWorkspace(prompts, kind) {
@@ -134,8 +168,11 @@ export function filterPromptsForWorkspace(prompts, kind) {
   if (kind === 'studio') {
     return prompts.filter((p) => !STOCKISH.test(p) && !PRODUCTISH.test(p));
   }
+  if (kind === 'rental') {
+    return prompts.filter((p) => !STOCKISH.test(p) && !PRODUCTISH.test(p) && !JOBISH.test(p));
+  }
   if (kind === 'shop' || kind === 'pharmacy') {
-    return prompts.filter((p) => !/open jobs|job pipeline|create a job|job-ready/i.test(p));
+    return prompts.filter((p) => !JOBISH.test(p));
   }
   return prompts;
 }
@@ -153,6 +190,14 @@ export function filterPromptsForWorkspace(prompts, kind) {
 export function getAssistantPromptSets(ctx = {}) {
   const kind = resolveAssistantWorkspaceKind(ctx.businessType, ctx.shopType);
 
+  if (kind === 'rental') {
+    return {
+      kind,
+      business: ASSISTANT_RENTAL_BUSINESS_PROMPTS,
+      support: ASSISTANT_RENTAL_SUPPORT_PROMPTS,
+      draft: ASSISTANT_RENTAL_DRAFT_PROMPTS,
+    };
+  }
   if (kind === 'studio') {
     return {
       kind,
@@ -198,7 +243,27 @@ export function getPagePrompts(pageContext, opts = {}) {
   const kind = resolveAssistantWorkspaceKind(opts.businessType, opts.shopType);
   let base = [...(ASSISTANT_PAGE_PROMPTS[pageContext] || [])];
 
-  if (kind === 'studio') {
+  if (kind === 'rental') {
+    if (pageContext === 'dashboard') {
+      base = ['Summarize performance', 'What rentals are due back today?', 'Who owes me money?'];
+    } else if (pageContext === 'rentals') {
+      base = [
+        'What rentals are due back today?',
+        'Show overdue rentals',
+        'Rental revenue this month',
+      ];
+    } else if (pageContext === 'reports') {
+      base = [
+        `Summarize performance for ${opts.periodLabel || 'this period'}`,
+        'Rental revenue this month',
+        'Compare this period to the previous period',
+      ];
+    } else if (pageContext === 'customers') {
+      base = ['Who owes me money?', 'How many new customers this month?'];
+    } else if (pageContext === 'products') {
+      base = ['Which items have the most damage?', 'Summarize performance'];
+    }
+  } else if (kind === 'studio') {
     if (pageContext === 'dashboard') {
       base = ['Summarize performance', 'Summarize my open jobs', 'Who owes me money?'];
     } else if (pageContext === 'sales') {
@@ -224,7 +289,19 @@ export function getPagePrompts(pageContext, opts = {}) {
  */
 function suggestionMetaForPrompt(prompt) {
   const p = String(prompt || '');
-  if (/owe|collect|outstanding|overdue/i.test(p)) {
+  if (/due back today|returning today/i.test(p)) {
+    return { title: 'Due back today', icon: 'calendar' };
+  }
+  if (/overdue rentals?/i.test(p)) {
+    return { title: 'Overdue rentals', icon: 'users' };
+  }
+  if (/most damage|which items have the most damage/i.test(p)) {
+    return { title: 'Damage items', icon: 'package' };
+  }
+  if (/rental revenue/i.test(p)) {
+    return { title: 'Rental revenue', icon: 'trending' };
+  }
+  if (/owe|collect|outstanding/i.test(p)) {
     return { title: 'Collections', icon: 'users' };
   }
   if (/restock|low on stock|running low|ingredients|drugs or products/i.test(p)) {
@@ -280,7 +357,15 @@ export function getAssistantSuggestionCards(ctx = {}) {
 
   // Prefer a curated order of themes so the carousel reads well.
   const preferredMatchers =
-    kind === 'studio'
+    kind === 'rental'
+      ? [
+          /due back today/i,
+          /overdue rentals?/i,
+          /most damage|damage/i,
+          /rental revenue|revenue this month/i,
+          /owe|collect/i,
+        ]
+      : kind === 'studio'
       ? [
           /revenue did I make today|sold today/i,
           /owe|collect/i,

@@ -14,6 +14,7 @@ import { FormSheetModal } from '@/components/FormSheetModal';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { BRAND_GREEN } from '@/constants/brand';
 import { FontFamily, FontSize } from '@/constants/typography';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 import type { AppIconName } from '@/components/AppIcon';
 
 /** Relative require — Metro resolves this reliably for local assets. */
@@ -330,6 +331,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   sheetDone: {
+    ...standaloneFullWidth,
     minHeight: 48,
     borderRadius: 12,
     backgroundColor: BRAND_GREEN,

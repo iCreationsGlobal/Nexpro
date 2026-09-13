@@ -69,6 +69,9 @@ const DrugInteraction = require('./DrugInteraction');
 const ExpiryAlert = require('./ExpiryAlert');
 // Retail Intelligence Models
 const FootTraffic = require('./FootTraffic');
+const VisionCamera = require('./VisionCamera');
+const VisionEvent = require('./VisionEvent');
+const VisionIncident = require('./VisionIncident');
 const StockCount = require('./StockCount');
 const StockCountItem = require('./StockCountItem');
 const StockTransfer = require('./StockTransfer');
@@ -126,6 +129,14 @@ const SystemHealthIssue = require('./SystemHealthIssue');
 const PlatformOpsAsset = require('./PlatformOpsAsset');
 const PlatformOpsSecretReveal = require('./PlatformOpsSecretReveal');
 const PlatformOpsRevealChallenge = require('./PlatformOpsRevealChallenge');
+const Rental = require('./Rental');
+const RentalItem = require('./RentalItem');
+const PreBooking = require('./PreBooking');
+const PreBookingItem = require('./PreBookingItem');
+const DamageReport = require('./DamageReport');
+const RentalExtension = require('./RentalExtension');
+const LateCharge = require('./LateCharge');
+const RentalUnit = require('./RentalUnit');
 
 // Define relationships
 Tenant.hasMany(DeliveryEvent, { foreignKey: 'tenantId', as: 'deliveryEvents' });
@@ -866,6 +877,26 @@ Shop.hasMany(FootTraffic, { foreignKey: 'shopId', as: 'footTraffic' });
 FootTraffic.belongsTo(User, { foreignKey: 'recordedBy', as: 'recorder' });
 User.hasMany(FootTraffic, { foreignKey: 'recordedBy', as: 'recordedTraffic' });
 
+Tenant.hasMany(VisionCamera, { foreignKey: 'tenantId', as: 'visionCameras' });
+VisionCamera.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+VisionCamera.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(VisionCamera, { foreignKey: 'shopId', as: 'visionCameras' });
+
+Tenant.hasMany(VisionEvent, { foreignKey: 'tenantId', as: 'visionEvents' });
+VisionEvent.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+VisionEvent.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+VisionEvent.belongsTo(VisionCamera, { foreignKey: 'cameraId', as: 'camera' });
+VisionCamera.hasMany(VisionEvent, { foreignKey: 'cameraId', as: 'events' });
+
+Tenant.hasMany(VisionIncident, { foreignKey: 'tenantId', as: 'visionIncidents' });
+VisionIncident.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+VisionIncident.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+VisionIncident.belongsTo(VisionEvent, { foreignKey: 'eventId', as: 'event' });
+VisionEvent.hasMany(VisionIncident, { foreignKey: 'eventId', as: 'incidents' });
+VisionIncident.belongsTo(Sale, { foreignKey: 'saleId', as: 'sale' });
+Sale.hasMany(VisionIncident, { foreignKey: 'saleId', as: 'watchIncidents' });
+VisionIncident.belongsTo(User, { foreignKey: 'reviewedBy', as: 'reviewer' });
+
 // Stock transfer relationships
 Tenant.hasMany(StockTransfer, { foreignKey: 'tenantId', as: 'stockTransfers' });
 StockTransfer.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
@@ -998,6 +1029,14 @@ PartnerCashoutRequest.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' }
 PartnerCashoutRequest.hasMany(PartnerCommission, { foreignKey: 'cashoutRequestId', as: 'commissions' });
 PartnerCommission.belongsTo(PartnerCashoutRequest, { foreignKey: 'cashoutRequestId', as: 'cashoutRequest' });
 
+Tenant.hasMany(PartnerRemittance, { foreignKey: 'tenantId', as: 'partnerRemittances' });
+PartnerRemittance.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+PartnerRemittance.hasMany(PartnerCommission, { foreignKey: 'remittanceId', as: 'commissions' });
+PartnerCommission.belongsTo(PartnerRemittance, { foreignKey: 'remittanceId', as: 'remittance' });
+PartnerRemittance.belongsTo(User, { foreignKey: 'paidByUserId', as: 'paidByUser' });
+PartnerRemittance.belongsTo(User, { foreignKey: 'recordedByUserId', as: 'recordedByUser' });
+PartnerProgramSettings.belongsTo(User, { foreignKey: 'moderatedBy', as: 'moderatedByUser' });
+
 Customer.belongsTo(Marketer, { foreignKey: 'partnerMarketerId', as: 'partnerMarketer' });
 Customer.belongsTo(Partnership, { foreignKey: 'partnershipId', as: 'partnership' });
 Sale.belongsTo(Marketer, { foreignKey: 'partnerMarketerId', as: 'partnerMarketer' });
@@ -1005,10 +1044,43 @@ Sale.belongsTo(Partnership, { foreignKey: 'partnershipId', as: 'partnership' });
 Job.belongsTo(Marketer, { foreignKey: 'partnerMarketerId', as: 'partnerMarketer' });
 Job.belongsTo(Partnership, { foreignKey: 'partnershipId', as: 'partnership' });
 
-PartnerRemittance.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
-Tenant.hasMany(PartnerRemittance, { foreignKey: 'tenantId', as: 'partnerRemittances' });
-PartnerRemittance.hasMany(PartnerCommission, { foreignKey: 'remittanceId', as: 'commissions' });
-PartnerCommission.belongsTo(PartnerRemittance, { foreignKey: 'remittanceId', as: 'remittance' });
+Rental.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+Rental.belongsTo(Customer, { foreignKey: 'customerId', as: 'customer' });
+Rental.belongsTo(Shop, { foreignKey: 'branchId', as: 'branch' });
+Rental.hasMany(RentalItem, { foreignKey: 'rentalId', as: 'items' });
+RentalItem.belongsTo(Rental, { foreignKey: 'rentalId', as: 'rental' });
+RentalItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+RentalItem.belongsTo(Shop, { foreignKey: 'branchId', as: 'branch' });
+RentalItem.belongsTo(RentalUnit, { foreignKey: 'rentalUnitId', as: 'rentalUnit' });
+
+Product.hasMany(RentalUnit, { foreignKey: 'productId', as: 'rentalUnits' });
+RentalUnit.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+RentalUnit.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+RentalUnit.belongsTo(Shop, { foreignKey: 'branchId', as: 'branch' });
+
+PreBooking.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+PreBooking.belongsTo(Customer, { foreignKey: 'customerId', as: 'customer' });
+PreBooking.belongsTo(Shop, { foreignKey: 'branchId', as: 'branch' });
+PreBooking.hasMany(PreBookingItem, { foreignKey: 'preBookingId', as: 'items' });
+PreBookingItem.belongsTo(PreBooking, { foreignKey: 'preBookingId', as: 'preBooking' });
+PreBookingItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+PreBookingItem.belongsTo(Shop, { foreignKey: 'branchId', as: 'branch' });
+
+Rental.hasMany(DamageReport, { foreignKey: 'rentalId', as: 'damageReports' });
+DamageReport.belongsTo(Rental, { foreignKey: 'rentalId', as: 'rental' });
+DamageReport.belongsTo(RentalItem, { foreignKey: 'rentalItemId', as: 'rentalItem' });
+DamageReport.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+DamageReport.belongsTo(Expense, { foreignKey: 'expenseId', as: 'expense' });
+Expense.belongsTo(DamageReport, { foreignKey: 'damageReportId', as: 'damageReport' });
+
+Rental.hasMany(RentalExtension, { foreignKey: 'rentalId', as: 'extensions' });
+RentalExtension.belongsTo(Rental, { foreignKey: 'rentalId', as: 'rental' });
+
+Rental.hasMany(LateCharge, { foreignKey: 'rentalId', as: 'lateCharges' });
+LateCharge.belongsTo(Rental, { foreignKey: 'rentalId', as: 'rental' });
+LateCharge.belongsTo(Customer, { foreignKey: 'customerId', as: 'customer' });
+LateCharge.belongsTo(Shop, { foreignKey: 'branchId', as: 'branch' });
+LateCharge.belongsTo(Invoice, { foreignKey: 'invoiceId', as: 'invoice' });
 
 module.exports = {
   PartnerRemittance,
@@ -1082,6 +1154,9 @@ module.exports = {
   ExpiryAlert,
   // Retail Intelligence
   FootTraffic,
+  VisionCamera,
+  VisionEvent,
+  VisionIncident,
   StockCount,
   StockCountItem,
   StockTransfer,
@@ -1107,7 +1182,7 @@ module.exports = {
   UserStudioLocation,
   UserShop,
   OnlineStoreSettings,
-  OnlineStoreHeroCategory,
+   OnlineStoreHeroCategory,
   OnlineStoreHeroDesign,
   OnlineStoreHeroColorway,
   OnlineProductListing,
@@ -1139,6 +1214,14 @@ module.exports = {
   PlatformOpsAsset,
   PlatformOpsSecretReveal,
   PlatformOpsRevealChallenge,
+  Rental,
+  RentalItem,
+  PreBooking,
+  PreBookingItem,
+  DamageReport,
+  RentalExtension,
+  LateCharge,
+  RentalUnit,
 };
 
 

@@ -27,6 +27,7 @@ const {
   listSampleCatalog,
   getSampleById,
 } = require('../data/onlineStoreSampleCatalog');
+const { buildSampleProductRentalFields } = require('../utils/storefrontRentalListingUtils');
 
 const DEFAULT_PRIMARY_COLOR = '#166534';
 const DEFAULT_CURRENCY = 'GHS';
@@ -121,6 +122,9 @@ const serializeListingForAdmin = (listing) => {
         imageUrl: plain.product.imageUrl,
         quantityOnHand: plain.product.quantityOnHand,
         trackStock: plain.product.trackStock,
+        rentalRatePerDay: plain.product.rentalRatePerDay ?? null,
+        isRentable: plain.product.isRentable !== false,
+        isSalable: plain.product.isSalable !== false,
         metadata: plain.product.metadata || {},
       }
       : null,
@@ -292,9 +296,10 @@ const uniqueListingSlug = async ({ tenantId, baseSlug, transaction = null }) => 
  */
 exports.getSampleCatalog = async (req, res, next) => {
   try {
+    const businessType = req.query.businessType || null;
     res.status(200).json({
       success: true,
-      data: listSampleCatalog(),
+      data: listSampleCatalog({ businessType }),
     });
   } catch (error) {
     next(error);
@@ -333,7 +338,7 @@ exports.getTenantOnlineStore = async (req, res, next) => {
         settings: await serializeSettingsForAdmin(settings, tenant),
         sampleListings,
         clientListings,
-        sampleCatalog: listSampleCatalog(),
+        sampleCatalog: listSampleCatalog({ businessType: tenant.businessType }),
       },
     });
   } catch (error) {
@@ -503,7 +508,7 @@ exports.seedTenantSampleProducts = async (req, res, next) => {
     const skipped = [];
 
     for (const rawId of sampleIds) {
-      const sample = getSampleById(rawId);
+      const sample = getSampleById(rawId, { businessType: tenant.businessType });
       if (!sample) {
         skipped.push({ sampleId: rawId, reason: 'not_found' });
         continue;
@@ -520,6 +525,7 @@ exports.seedTenantSampleProducts = async (req, res, next) => {
       const compareAtPrice = sample.compareAtPrice == null
         ? null
         : normalizeMoney(sample.compareAtPrice, 0);
+      const rentalFields = buildSampleProductRentalFields(sample, { businessType: tenant.businessType });
       const listingSlug = await uniqueListingSlug({
         tenantId,
         baseSlug: sample.slug || sample.title,
@@ -531,18 +537,26 @@ exports.seedTenantSampleProducts = async (req, res, next) => {
         shopId: settings.shopId || shop?.id || null,
         name: sample.title,
         description: sample.shortDescription || null,
-        sellingPrice: publicPrice,
+        sellingPrice: rentalFields.sellingPrice,
         costPrice: 0,
         quantityOnHand: 0,
         trackStock: false,
         isActive: true,
+        isRentable: rentalFields.isRentable,
+        isSalable: rentalFields.isSalable,
+        rentalRatePerDay: rentalFields.rentalRatePerDay,
         imageUrl: images[0] || null,
         metadata: {
           isSample: true,
           sampleCatalogId: sample.id,
           createdByAdmin: true,
+          ...rentalFields.metadata,
         },
       }, { transaction });
+
+      const listingPublicPrice = rentalFields.isRentable && !rentalFields.isSalable
+        ? (rentalFields.rentalRatePerDay || publicPrice)
+        : publicPrice;
 
       const listingPayload = {
         tenantId,
@@ -553,7 +567,7 @@ exports.seedTenantSampleProducts = async (req, res, next) => {
         slug: listingSlug,
         shortDescription: sample.shortDescription || null,
         description: sample.shortDescription || null,
-        publicPrice,
+        publicPrice: listingPublicPrice,
         compareAtPrice,
         images,
         inventoryPolicy: 'continue',
@@ -671,6 +685,18 @@ exports.createTenantStoreProduct = async (req, res, next) => {
       : shortDescription;
     const trackStock = req.body.trackStock !== false && req.body.trackStock !== 'false';
     const quantityOnHand = normalizeMoney(req.body.quantityOnHand, trackStock ? 0 : 0);
+    const isRentalTenant = tenant.businessType === 'rental';
+    const sampleLikeBody = {
+      publicPrice,
+      isRentable: req.body.isRentable,
+      isSalable: req.body.isSalable,
+      rentalRatePerDay: req.body.rentalRatePerDay,
+      rentalTerms: req.body.rentalTerms,
+    };
+    const rentalFields = buildSampleProductRentalFields(sampleLikeBody, { businessType: tenant.businessType });
+    const listingPublicPrice = isRentalTenant && rentalFields.isRentable && !rentalFields.isSalable
+      ? (rentalFields.rentalRatePerDay || publicPrice)
+      : publicPrice;
     const listingSlug = await uniqueListingSlug({
       tenantId,
       baseSlug: req.body.slug || title,
@@ -685,7 +711,7 @@ exports.createTenantStoreProduct = async (req, res, next) => {
       slug: listingSlug,
       shortDescription,
       description,
-      publicPrice,
+      publicPrice: listingPublicPrice,
       compareAtPrice,
       images,
       inventoryPolicy: trackStock ? 'track' : 'continue',
@@ -705,15 +731,19 @@ exports.createTenantStoreProduct = async (req, res, next) => {
       shopId: listingPayload.shopId,
       name: title,
       description,
-      sellingPrice: publicPrice,
+      sellingPrice: isRentalTenant ? rentalFields.sellingPrice : publicPrice,
       costPrice: normalizeMoney(req.body.costPrice, 0),
       quantityOnHand,
       trackStock,
       isActive: true,
+      isRentable: isRentalTenant ? rentalFields.isRentable : undefined,
+      isSalable: isRentalTenant ? rentalFields.isSalable : undefined,
+      rentalRatePerDay: isRentalTenant ? rentalFields.rentalRatePerDay : undefined,
       imageUrl: images[0] || null,
       metadata: {
         isSample: false,
         createdByAdmin: true,
+        ...(isRentalTenant ? rentalFields.metadata : {}),
       },
     }, { transaction });
 

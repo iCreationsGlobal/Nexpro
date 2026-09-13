@@ -81,6 +81,11 @@ const CartContext = createContext<CartContextType | null>(null);
 const getCartStorageKey = (tenantId: string | null) =>
   tenantId ? `${STORAGE_KEYS.CART_PREFIX}${tenantId}` : null;
 
+type StoredCart = { items: CartItem[]; savedAt: number };
+
+/** An untouched cart older than this is treated as abandoned and cleared on load. */
+const CART_EXPIRY_MS = 2 * 60 * 60 * 1000;
+
 const resolveProductCode = (product: AddCartProductInput, variantBarcode?: string | null) =>
   variantBarcode
   || product.productCode
@@ -106,13 +111,26 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const stored = await AsyncStorage.getItem(key);
         if (stored) {
-          const parsed = JSON.parse(stored) as CartItem[];
-          const normalized = parsed.map((item) => ({
-            ...item,
-            productVariantId: item.productVariantId || null,
-            unitPrice: Number(item.unitPrice) || Number((item as any).price) || Number((item as any).sellingPrice) || 0,
-          }));
-          setItems(normalized);
+          const parsed = JSON.parse(stored) as CartItem[] | StoredCart;
+          // Legacy format (a plain array, saved before expiry tracking existed) has no
+          // savedAt to check — load it as-is rather than guessing its age.
+          const isLegacyFormat = Array.isArray(parsed);
+          const rawItems = isLegacyFormat ? parsed : parsed.items;
+          const savedAt = isLegacyFormat ? null : parsed.savedAt;
+          const expired =
+            savedAt != null && rawItems.length > 0 && Date.now() - savedAt > CART_EXPIRY_MS;
+
+          if (expired) {
+            setItems([]);
+            await AsyncStorage.removeItem(key);
+          } else {
+            const normalized = rawItems.map((item) => ({
+              ...item,
+              productVariantId: item.productVariantId || null,
+              unitPrice: Number(item.unitPrice) || Number((item as any).price) || Number((item as any).sellingPrice) || 0,
+            }));
+            setItems(normalized);
+          }
         } else {
           setItems([]);
         }
@@ -133,7 +151,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!key || !hasLoadedCartRef.current) return;
     const timeoutId = setTimeout(async () => {
       try {
-        await AsyncStorage.setItem(key, JSON.stringify(items));
+        const payload: StoredCart = { items, savedAt: Date.now() };
+        await AsyncStorage.setItem(key, JSON.stringify(payload));
       } catch (error) {
         console.error('Failed to save cart to storage:', error);
       }

@@ -47,20 +47,34 @@ export default function SmartReportFinancialTab({
   periodLabel,
   isShop = false,
   isPharmacy = false,
+  isRental = false,
 }) {
   const { kpis, profitLoss, revenueDonut, expenseDonut, financialPosition, ratios, comparisonLabel } = snapshot;
   const current = profitLoss.current;
   const previous = profitLoss.previous;
   const isRetail = isShop || isPharmacy;
-  const plRows = isRetail ? PL_ROWS_RETAIL : PL_ROWS_STUDIO;
+  const plRows = (isRetail ? PL_ROWS_RETAIL : PL_ROWS_STUDIO).map((row) => (
+    isRental && row.key === 'revenue' ? { ...row, label: 'Collected' } : row
+  ));
 
-  const kpiItems = [
+  const rental = snapshot.rental || {};
+  const salesSplit = rental.salesSplit || {};
+  const paymentMethods = rental.paymentMethods || { methods: [], totalAmount: 0, totalTransactions: 0 };
+  const hireBooked = rental.hireBooked || 0;
+  const rentalExpenseShare = hireBooked > 0 ? (kpis.expenses.value / hireBooked) * 100 : 0;
+  const hireProfit = hireBooked - (kpis.expenses.value || 0);
+  const hireMargin = hireBooked > 0 ? (hireProfit / hireBooked) * 100 : 0;
+
+  const kpiItems = isRental ? [
+    { label: 'Total Revenue', value: salesSplit.totalRevenue || hireBooked, hideTrend: true, subLabel: `${rental.rentalCount || 0} transactions`, icon: CircleDollarSign, iconBgColor: '#dcfce7', iconColor: '#166534' },
+    { label: 'Sales Revenue', value: salesSplit.salesRevenue || 0, hideTrend: true, subLabel: `${Number(salesSplit.salesShare || 0).toFixed(1)}% of total`, icon: CircleDollarSign, iconBgColor: '#dbeafe', iconColor: '#1d4ed8' },
+    { label: 'Rental Revenue', value: salesSplit.rentalRevenue || hireBooked, hideTrend: true, subLabel: `${Number(salesSplit.rentalShare || 100).toFixed(1)}% of total`, icon: CircleDollarSign, iconBgColor: '#dcfce7', iconColor: '#166534' },
+    { label: 'Total Expenses', value: kpis.expenses.value, hideTrend: true, subLabel: `${rentalExpenseShare.toFixed(1)}% of revenue`, icon: Receipt, iconBgColor: '#fee2e2', iconColor: '#b91c1c' },
+  ] : [
     { label: 'Total Revenue', value: kpis.revenue.value, change: kpis.revenue.change, sparklineData: kpis.revenue.sparkline, icon: CircleDollarSign, comparisonLabel, sourceLabel: kpis.revenue.sourceLabel },
     { label: 'Gross Profit', value: kpis.grossProfit.value, change: kpis.grossProfit.change, sparklineData: kpis.grossProfit.sparkline, icon: TrendingUp, comparisonLabel, sourceLabel: kpis.grossProfit.sourceLabel },
     { label: 'Net Profit', value: kpis.netProfit.value, change: kpis.netProfit.change, sparklineData: kpis.netProfit.sparkline, icon: TrendingUp, comparisonLabel, sourceLabel: kpis.netProfit.sourceLabel },
     ...(isRetail ? [
-      // Cost of Goods Sold is the cost of products/materials sold — kept separate from Operating
-      // Expenses (real Expense table rows) so it's never mistaken for an Expenses page entry.
       { label: 'Cost of Goods Sold', value: kpis.cogs.value, change: kpis.cogs.change, invertTrend: true, icon: Package, comparisonLabel, sourceLabel: kpis.cogs.sourceLabel },
     ] : []),
     { label: 'Operating Expenses', value: kpis.expenses.value, change: kpis.expenses.change, sparklineData: kpis.expenses.sparkline, invertTrend: true, icon: Receipt, comparisonLabel, sourceLabel: kpis.expenses.sourceLabel },
@@ -70,11 +84,99 @@ export default function SmartReportFinancialTab({
   return (
     <div className="space-y-6">
       <SmartReportSectionHeader
-        title="Financial Overview"
-        description="A detailed look at your financial performance and position."
+        title={isRental ? 'Financial Reports' : 'Financial Overview'}
+        description={isRental
+          ? 'Hire booked versus product sales, expenses, profit, and payment methods.'
+          : 'A detailed look at your financial performance and position.'}
         periodLabel={periodLabel}
       />
       <SmartReportKpiRow items={kpiItems} />
+
+      {isRental && (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-base font-semibold">Profit Summary</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <p className="text-xs text-muted-foreground">Net Profit · Revenue − Expenses</p>
+              <p className="text-2xl font-semibold mt-1">{formatOverviewCurrency(hireProfit)}</p>
+              <p className="text-sm text-muted-foreground">{hireMargin.toFixed(2)}% margin</p>
+            </CardContent>
+          </Card>
+          <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-base font-semibold">Revenue Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-muted-foreground">Sales</span><span>{formatOverviewCurrency(salesSplit.salesRevenue)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Rentals</span><span>{formatOverviewCurrency(salesSplit.rentalRevenue || hireBooked)}</span></div>
+            </CardContent>
+          </Card>
+          <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-base font-semibold">Financial Health</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-muted-foreground">Profit Margin</span><span>{hireMargin.toFixed(2)}%</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Transactions</span><span>{Number(rental.rentalCount || 0).toLocaleString()}</span></div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {isRental && (
+        <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-base font-semibold">Payment Method Statistics</CardTitle>
+            <p className="text-xs text-muted-foreground">Breakdown of hire booked by payment method</p>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            {(paymentMethods.methods || []).length > 0 ? (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                  {paymentMethods.methods.map((method) => (
+                    <div key={method.method} className="rounded-lg border border-border p-3">
+                      <p className="font-medium">{method.label}</p>
+                      <p className="text-lg font-semibold">{Number(method.percentage || 0).toFixed(1)}%</p>
+                      <p className="text-sm">{formatOverviewCurrency(method.amount)}</p>
+                      <p className="text-xs text-muted-foreground">{Number(method.transactionCount || 0).toLocaleString()} transactions</p>
+                    </div>
+                  ))}
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Payment Method</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Transactions</TableHead>
+                      <TableHead className="text-right">Percentage</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paymentMethods.methods.map((method) => (
+                      <TableRow key={`row-${method.method}`}>
+                        <TableCell>{method.label}</TableCell>
+                        <TableCell className="text-right">{formatOverviewCurrency(method.amount)}</TableCell>
+                        <TableCell className="text-right">{Number(method.transactionCount || 0).toLocaleString()}</TableCell>
+                        <TableCell className="text-right">{Number(method.percentage || 0).toFixed(2)}%</TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow>
+                      <TableCell className="font-semibold">Total</TableCell>
+                      <TableCell className="text-right font-semibold">{formatOverviewCurrency(paymentMethods.totalAmount)}</TableCell>
+                      <TableCell className="text-right font-semibold">{Number(paymentMethods.totalTransactions || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-semibold">100%</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </>
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">No payment method data in this period</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
@@ -116,11 +218,11 @@ export default function SmartReportFinancialTab({
         </Card>
 
         <DonutBreakdownCard
-          title="Revenue Breakdown"
+          title={isRental ? 'Collections Breakdown' : 'Revenue Breakdown'}
           slices={revenueDonut.slices}
           total={revenueDonut.total}
-          centerLabel="Total Revenue"
-          viewLabel="View Revenue Analysis"
+          centerLabel={isRental ? 'Collected' : 'Total Revenue'}
+          viewLabel={isRental ? 'View Collections Analysis' : 'View Revenue Analysis'}
         />
       </div>
 

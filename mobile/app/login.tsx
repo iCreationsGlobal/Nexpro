@@ -1,3 +1,4 @@
+import { AppLoadingScreen } from '@/components/AppLoadingScreen';
 import React, { useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -25,7 +26,9 @@ import { hasCompletedIntroOnboarding } from '@/utils/introOnboarding';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { FormInput, FormLabel } from '@/components/FormField';
 import { useScreenColors } from '@/hooks/useScreenColors';
+import { useFocusBorder } from '@/hooks/useFocusBorder';
 import { BRAND_GREEN } from '@/constants/brand';
+import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
 
 const ERROR_MESSAGES = {
   EMPTY_FIELDS: 'Please enter your email and password.',
@@ -56,13 +59,19 @@ export default function LoginScreen() {
   const { login, googleAuth } = useAuth();
   const { googleClientId, googleIosClientId, googleAndroidClientId } = usePublicConfig();
 
+  logger.info('Login', 'Render', { checkingIntro });
+
+  const canSubmitLogin = isValidEmail(email) && password.length > 0;
+
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       const introDone = await hasCompletedIntroOnboarding();
+      logger.info('Login', 'Intro check resolved', { introDone, cancelled });
       if (cancelled) return;
       if (!introDone) {
+        logger.info('Login', 'Redirecting to /intro');
         router.replace('/intro');
         return;
       }
@@ -143,11 +152,7 @@ export default function LoginScreen() {
   };
 
   if (checkingIntro) {
-    return (
-      <View style={[styles.loadingContainer, { backgroundColor: bg }]}>
-        <ActivityIndicator size="large" color={colors.tint} />
-      </View>
-    );
+    return <AppLoadingScreen />;
   }
 
   return (
@@ -243,10 +248,10 @@ export default function LoginScreen() {
             styles.button,
             { backgroundColor: colors.tint },
             pressed && styles.buttonPressed,
-            loading && styles.buttonDisabled,
+            (loading || !canSubmitLogin) && styles.buttonDisabled,
           ]}
           onPress={handleLogin}
-          disabled={loading}
+          disabled={loading || !canSubmitLogin}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
@@ -286,10 +291,6 @@ export default function LoginScreen() {
         <View style={styles.legalFooter}>
           <Pressable onPress={() => router.push('/privacy-policy')} disabled={loading}>
             <Text style={[styles.legalLink, { color: colors.tint }]}>Privacy Policy</Text>
-          </Pressable>
-          <Text style={styles.legalSeparator}>•</Text>
-          <Pressable onPress={() => router.push('/data-deletion')} disabled={loading}>
-            <Text style={[styles.legalLink, { color: colors.tint }]}>Data Deletion</Text>
           </Pressable>
         </View>
 
@@ -360,8 +361,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   input: {
-    height: 48,
-    borderWidth: 1,
+    height: TOUCH_TARGET.standard,
+    borderWidth: BORDER_WIDTH.standard,
     borderColor: '#d1d5db',
     borderRadius: 8,
     paddingHorizontal: 16,
@@ -373,8 +374,8 @@ const styles = StyleSheet.create({
     borderColor: '#dc2626',
   },
   inputWithIcon: {
-    height: 48,
-    borderWidth: 1,
+    height: TOUCH_TARGET.standard,
+    borderWidth: BORDER_WIDTH.standard,
     borderColor: '#d1d5db',
     borderRadius: 8,
     paddingHorizontal: 16,
@@ -409,8 +410,9 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   eyeButton: {
-    paddingHorizontal: 10,
-    height: 48,
+    width: TOUCH_TARGET.standard,
+    height: TOUCH_TARGET.standard,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   errorBox: {

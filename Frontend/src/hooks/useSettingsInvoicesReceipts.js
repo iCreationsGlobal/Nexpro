@@ -210,6 +210,7 @@ export const useSettingsInvoicesReceipts = () => {
   const sendPaymentReminderEmail = notificationChannels.sendPaymentReminderEmail === true;
   const sendInvoicePaidConfirmationToCustomer =
     notificationChannels.sendInvoicePaidConfirmationToCustomer !== false;
+  const acceptOnlinePayments = notificationChannels.acceptOnlinePayments === true;
 
   const quoteWorkflowOnAccept = quoteWorkflowData?.onAccept || 'record_only';
   const quoteWorkflowEnabled = isStudioLike
@@ -319,6 +320,7 @@ export const useSettingsInvoicesReceipts = () => {
     autoSendReceipt,
     sendPaymentReminderEmail,
     sendInvoicePaidConfirmationToCustomer,
+    acceptOnlinePayments,
     quoteWorkflowEnabled,
     jobInvoiceData,
     updateQuoteWorkflowMutation,

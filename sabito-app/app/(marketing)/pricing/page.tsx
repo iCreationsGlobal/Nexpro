@@ -38,7 +38,7 @@ const PLANS = [
       "Enable Sabito Partners in Settings",
       "Set first-client & returning rates",
       "Approve marketers & track referrals",
-      "Pay cashouts & mark paid in ABS",
+      "Remit commissions to ABS for marketer payouts",
       "Commission only when payment is collected",
     ],
   },
@@ -77,7 +77,7 @@ export default function PricingPage() {
             >
               African Business Suite
             </a>
-            , then enable Sabito Partners — you only pay marketers when you get paid.
+            , then enable Sabito Partners — commissions accrue when customers pay and become withdrawable after remittance to ABS.
           </p>
           <p className="mt-3 text-sm text-slate-500">Secure business billing on ABS · MoMo or card</p>
         </div>

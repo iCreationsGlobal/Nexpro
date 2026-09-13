@@ -9,19 +9,22 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  Animated,
+  Easing,
 } from 'react-native';
 import { router, Link } from 'expo-router';
+import { useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { authService } from '@/services/auth';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
-import { ConfettiBurst } from '@/components/ConfettiBurst';
-import { getErrorMessage } from '@/utils/errorMessages';
 import { logger } from '@/utils/logger';
 
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { AppBrandLogo } from '@/components/AppBrandLogo';
 import { BRAND_GREEN } from '@/constants/brand';
+import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
+import { SIGNUP_MUTATION_KEY } from '@/constants/signupFlow';
 import {
   PRIVACY_POLICY_PATH,
   TERMS_ACCEPTANCE_MESSAGE,
@@ -30,9 +33,6 @@ import {
 } from '@/constants/legal';
 import { FormInput, FormLabel } from '@/components/FormField';
 import { useScreenColors } from '@/hooks/useScreenColors';
-const WELCOME_BG = '#0E1801';
-/** Minimum time (ms) the loading animation runs before transitioning to success (matches web). */
-const MIN_LOADING_DISPLAY_MS = 5200;
 
 const ERROR_MESSAGES = {
   EMPTY_FIELDS: 'Please enter your name, email, and password.',
@@ -43,6 +43,8 @@ const ERROR_MESSAGES = {
   DEFAULT: 'Sign up failed. Please try again.',
 };
 
+const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value.trim());
+
 export default function SignupScreen() {
   const { colors, bg, textColor, mutedColor, borderColor } = useScreenColors();
   const [step, setStep] = useState(1);
@@ -51,31 +53,36 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { tenantSignup, googleAuth } = useAuth();
   const { googleClientId, googleIosClientId, googleAndroidClientId } = usePublicConfig();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
-  const [showWelcomeScreen, setShowWelcomeScreen] = useState(false);
-  const [welcomeStatus, setWelcomeStatus] = useState<'loading' | 'success' | 'error'>('loading');
-  const [overlayPhase, setOverlayPhase] = useState<'loading' | 'success' | 'error'>('loading');
-  const [welcomeErrorMessage, setWelcomeErrorMessage] = useState('');
-  const overlayStartTimeRef = useRef<number>(0);
+  const stepIndicator = useRef(new Animated.Value(0)).current;
+
+  const signupMutation = useMutation({
+    mutationKey: SIGNUP_MUTATION_KEY,
+    mutationFn: tenantSignup,
+  });
+  const googleSignupMutation = useMutation({
+    mutationKey: SIGNUP_MUTATION_KEY,
+    mutationFn: ({ idToken, options }: { idToken: string; options: Parameters<typeof googleAuth>[1] }) =>
+      googleAuth(idToken, options),
+  });
+  const loading = signupMutation.isPending || googleSignupMutation.isPending || checkingEmail;
+
+  const canContinueStep1 = name.trim().length >= 2 && isValidEmail(email) && acceptedTerms;
+  const canCreateAccount = password.length >= 6 && confirmPassword.length > 0 && password === confirmPassword;
 
   useEffect(() => {
-    if (welcomeStatus === 'loading') {
-      setOverlayPhase('loading');
-    } else if (welcomeStatus === 'success') {
-      const elapsed = overlayStartTimeRef.current ? Date.now() - overlayStartTimeRef.current : 0;
-      const delay = Math.max(0, MIN_LOADING_DISPLAY_MS - elapsed);
-      const t = setTimeout(() => setOverlayPhase('success'), delay);
-      return () => clearTimeout(t);
-    } else if (welcomeStatus === 'error') {
-      setOverlayPhase('error');
-    }
-  }, [welcomeStatus]);
+    Animated.timing(stepIndicator, {
+      toValue: step - 1,
+      duration: 300,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false, // width/backgroundColor interpolation isn't supported by the native driver
+    }).start();
+  }, [step, stepIndicator]);
 
   const handleBack = () => {
     if (step === 2) {
@@ -138,31 +145,20 @@ export default function SignupScreen() {
       return;
     }
     setError('');
-    overlayStartTimeRef.current = Date.now();
-    setShowWelcomeScreen(true);
-    setWelcomeStatus('loading');
-    setWelcomeErrorMessage('');
-    setLoading(true);
-    try {
-      await googleAuth(idToken, {
+    logger.info('Signup', 'Attempting Google sign-up');
+    googleSignupMutation.mutate({
+      idToken,
+      options: {
         signUp: true,
         companyName: 'My Business',
         acceptedTerms: true,
         termsVersion: TERMS_VERSION,
-      });
-      logger.info('Signup', 'Google sign-up success');
-      setWelcomeStatus('success');
-    } catch (err: unknown) {
-      const msg = getErrorMessage(err, 'Google sign-up failed. Please try again.');
-      setWelcomeStatus('error');
-      setWelcomeErrorMessage(msg);
-      logger.error('Signup', 'Google sign-up failed:', err);
-    } finally {
-      setLoading(false);
-    }
+      },
+    });
+    router.push('/signup-welcome');
   };
 
-  const handleSignup = async () => {
+  const handleSignup = () => {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim().toLowerCase();
     if (!password) {
@@ -178,48 +174,17 @@ export default function SignupScreen() {
       return;
     }
     setError('');
-    setLoading(true);
-    overlayStartTimeRef.current = Date.now();
-    setShowWelcomeScreen(true);
-    setWelcomeStatus('loading');
-    setWelcomeErrorMessage('');
     logger.info('Signup', 'Attempting signup for:', trimmedEmail);
-
-    try {
-      await tenantSignup({
-        companyName: 'My Business',
-        companyEmail: trimmedEmail,
-        adminName: trimmedName,
-        adminEmail: trimmedEmail,
-        password,
-        acceptedTerms: true,
-        termsVersion: TERMS_VERSION,
-      });
-      logger.info('Signup', 'Signup success');
-      setWelcomeStatus('success');
-    } catch (err: unknown) {
-      const msg = getErrorMessage(err, ERROR_MESSAGES.DEFAULT);
-      setWelcomeStatus('error');
-      setWelcomeErrorMessage(msg);
-      logger.error('Signup', 'Signup failed:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleWelcomeContinue = () => {
-    setShowWelcomeScreen(false);
-    router.replace('/');
-  };
-
-  const handleWelcomeErrorAction = () => {
-    const isAlreadyExists = /already exists|sign in instead/i.test(welcomeErrorMessage || '');
-    setShowWelcomeScreen(false);
-    setWelcomeStatus('loading');
-    setWelcomeErrorMessage('');
-    if (isAlreadyExists) {
-      router.replace('/login');
-    }
+    signupMutation.mutate({
+      companyName: 'My Business',
+      companyEmail: trimmedEmail,
+      adminName: trimmedName,
+      adminEmail: trimmedEmail,
+      password,
+      acceptedTerms: true,
+      termsVersion: TERMS_VERSION,
+    });
+    router.push('/signup-welcome');
   };
 
   return (
@@ -227,57 +192,6 @@ export default function SignupScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={[styles.container, { backgroundColor: bg }]}
     >
-      {showWelcomeScreen ? (
-        <View style={styles.welcomeOverlay}>
-          {overlayPhase === 'loading' && (
-            <>
-              <ConfettiBurst />
-              <View style={styles.welcomeLoadingContent}>
-                <Text style={styles.welcomeLine1}>Welcome to African Business Suite</Text>
-                <Text style={styles.welcomeLine2}>
-                  All-in-one business software for growing African businesses.
-                </Text>
-              </View>
-            </>
-          )}
-          {overlayPhase === 'success' && (
-            <View style={styles.welcomeSuccessContent}>
-              <Text style={styles.welcomeSuccessTitle}>Account created.</Text>
-              <Text style={styles.welcomeSuccessSubtitle}>
-                Continue to setup your business.
-              </Text>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.welcomeButton,
-                  pressed && styles.buttonPressed,
-                ]}
-                onPress={handleWelcomeContinue}
-              >
-                <Text style={styles.welcomeButtonText}>Continue to setup</Text>
-              </Pressable>
-            </View>
-          )}
-          {overlayPhase === 'error' && (
-            <View style={styles.welcomeSuccessContent}>
-              <Text style={styles.welcomeSuccessTitle}>We couldn't create your account.</Text>
-              <Text style={styles.welcomeSuccessSubtitle}>{welcomeErrorMessage}</Text>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.welcomeButton,
-                  pressed && styles.buttonPressed,
-                ]}
-                onPress={handleWelcomeErrorAction}
-              >
-                <Text style={styles.welcomeButtonText}>
-                  {/already exists|sign in instead/i.test(welcomeErrorMessage || '')
-                    ? 'Sign in'
-                    : 'Try again'}
-                </Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-      ) : null}
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -299,18 +213,26 @@ export default function SignupScreen() {
           <View style={styles.titleRow}>
             <Text style={styles.title}>Create account</Text>
             <View style={styles.stepper}>
-              <View
-                style={[
-                  styles.stepBar,
-                  step >= 1 && styles.stepBarActive,
-                ]}
-              />
-              <View
-                style={[
-                  styles.stepBar,
-                  step >= 2 && styles.stepBarActive,
-                ]}
-              />
+              {[0, 1].map((index) => (
+                <Animated.View
+                  key={index}
+                  style={[
+                    styles.stepDot,
+                    {
+                      width: stepIndicator.interpolate({
+                        inputRange: [index - 1, index, index + 1],
+                        outputRange: [8, 22, 8],
+                        extrapolate: 'clamp',
+                      }),
+                      backgroundColor: stepIndicator.interpolate({
+                        inputRange: [index - 1, index, index + 1],
+                        outputRange: ['#e5e7eb', BRAND_GREEN, '#e5e7eb'],
+                        extrapolate: 'clamp',
+                      }),
+                    },
+                  ]}
+                />
+              ))}
             </View>
           </View>
           <Text style={styles.subtitle}>Sign up to manage your business</Text>
@@ -420,10 +342,10 @@ export default function SignupScreen() {
                 styles.button,
                 { backgroundColor: colors.tint },
                 pressed && styles.buttonPressed,
-                (loading || checkingEmail) && styles.buttonDisabled,
+                (loading || checkingEmail || !canContinueStep1) && styles.buttonDisabled,
               ]}
               onPress={handleNext}
-              disabled={loading || checkingEmail}
+              disabled={loading || checkingEmail || !canContinueStep1}
             >
               {loading || checkingEmail ? (
                 <ActivityIndicator color="#fff" />
@@ -437,10 +359,10 @@ export default function SignupScreen() {
                 styles.button,
                 { backgroundColor: colors.tint },
                 pressed && styles.buttonPressed,
-                loading && styles.buttonDisabled,
+                (loading || !canCreateAccount) && styles.buttonDisabled,
               ]}
               onPress={handleSignup}
-              disabled={loading}
+              disabled={loading || !canCreateAccount}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
@@ -477,19 +399,6 @@ export default function SignupScreen() {
               </Pressable>
             </Link>
           </View>
-          <View style={styles.legalFooter}>
-            <Pressable onPress={() => router.push(TERMS_PATH as any)} disabled={loading}>
-              <Text style={styles.legalLink}>Terms</Text>
-            </Pressable>
-            <Text style={styles.legalSeparator}>•</Text>
-            <Pressable onPress={() => router.push('/privacy-policy')} disabled={loading}>
-              <Text style={styles.legalLink}>Privacy Policy</Text>
-            </Pressable>
-            <Text style={styles.legalSeparator}>•</Text>
-            <Pressable onPress={() => router.push('/data-deletion')} disabled={loading}>
-              <Text style={styles.legalLink}>Data Deletion</Text>
-            </Pressable>
-          </View>
           </View>
         </View>
       </ScrollView>
@@ -501,65 +410,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-  },
-  welcomeOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: WELCOME_BG,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    zIndex: 50,
-  },
-  welcomeLoadingContent: {
-    maxWidth: 400,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  welcomeLine1: {
-    fontSize: 26,
-    fontWeight: '600',
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  welcomeLine2: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#fff',
-    textAlign: 'center',
-    lineHeight: 26,
-  },
-  welcomeSuccessContent: {
-    maxWidth: 400,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  welcomeSuccessTitle: {
-    fontSize: 26,
-    fontWeight: '600',
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  welcomeSuccessSubtitle: {
-    fontSize: 16,
-    color: '#d1d5db',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 24,
-  },
-  welcomeButton: {
-    backgroundColor: BRAND_GREEN,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 8,
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  welcomeButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
   },
   scrollContent: {
     flexGrow: 1,
@@ -584,10 +434,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   backIcon: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
     borderWidth: 1,
     borderColor: '#e5e7eb',
     borderRadius: 8,
@@ -616,16 +466,11 @@ const styles = StyleSheet.create({
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
-  stepBar: {
-    width: 18,
-    height: 3,
-    borderRadius: 9999,
-    backgroundColor: '#e5e7eb',
-  },
-  stepBarActive: {
-    backgroundColor: BRAND_GREEN,
+  stepDot: {
+    height: 8,
+    borderRadius: 4,
   },
   input: {
     height: 48,
@@ -638,8 +483,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   inputWithIcon: {
-    height: 48,
-    borderWidth: 1,
+    height: TOUCH_TARGET.standard,
+    borderWidth: BORDER_WIDTH.standard,
     borderColor: '#d1d5db',
     borderRadius: 8,
     paddingHorizontal: 16,
@@ -704,8 +549,9 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   eyeButton: {
-    paddingHorizontal: 10,
-    height: 48,
+    width: TOUCH_TARGET.standard,
+    height: TOUCH_TARGET.standard,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   errorBox: {
@@ -754,22 +600,6 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 15,
     color: '#6b7280',
-  },
-  legalFooter: {
-    marginTop: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-  },
-  legalLink: {
-    fontSize: 13,
-    color: BRAND_GREEN,
-    fontWeight: '600',
-  },
-  legalSeparator: {
-    color: '#9ca3af',
-    fontSize: 13,
   },
   link: {
     fontSize: 15,

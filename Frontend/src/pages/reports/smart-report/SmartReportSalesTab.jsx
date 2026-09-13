@@ -30,7 +30,7 @@ const formatInteger = (value) => Number(value || 0).toLocaleString();
 /**
  * Sales & Customers tab — matches mockup.
  */
-export default function SmartReportSalesTab({ snapshot, periodLabel, isStudio }) {
+export default function SmartReportSalesTab({ snapshot, periodLabel, isStudio, isRental = false }) {
   const {
     kpis,
     salesByDate,
@@ -42,9 +42,9 @@ export default function SmartReportSalesTab({ snapshot, periodLabel, isStudio })
     operations,
   } = snapshot;
   const revenue = kpis.revenue.value;
-  const ordersLabel = isStudio ? 'Jobs Created' : 'Total Orders';
-  const totalSalesLabel = isStudio ? 'Booked Job Value' : 'Total Sales';
-  const avgOrderLabel = isStudio ? 'Average Job Value' : 'Average Order Value';
+  const ordersLabel = isRental ? 'Open Invoices' : isStudio ? 'Jobs Created' : 'Total Orders';
+  const totalSalesLabel = isRental ? 'Collections' : isStudio ? 'Booked Job Value' : 'Total Sales';
+  const avgOrderLabel = isRental ? 'Average Invoice Value' : isStudio ? 'Average Job Value' : 'Average Order Value';
 
   const kpiItems = [
     { label: totalSalesLabel, value: kpis.totalSales.value, change: kpis.totalSales.change, sparklineData: kpis.totalSales.sparkline, icon: ShoppingCart, iconBgColor: '#dcfce7', iconColor: '#166534', comparisonLabel, sourceLabel: kpis.totalSales.sourceLabel },
@@ -59,8 +59,10 @@ export default function SmartReportSalesTab({ snapshot, periodLabel, isStudio })
   return (
     <div className="space-y-6">
       <SmartReportSectionHeader
-        title="Sales & Customers Overview"
-        description="Track your sales performance and customer behavior."
+        title={isRental ? 'Customer Analytics' : 'Sales & Customers Overview'}
+        description={isRental
+          ? 'Invoice collections, receivables, and customer activity.'
+          : 'Track your sales performance and customer behavior.'}
         periodLabel={periodLabel}
       />
       <SmartReportKpiRow items={kpiItems} />
@@ -68,8 +70,8 @@ export default function SmartReportSalesTab({ snapshot, periodLabel, isStudio })
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <Card style={OVERVIEW_CARD_BORDER} className="bg-card xl:col-span-1">
           <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base font-semibold">Sales Trend</CardTitle>
-            <Button variant="link" className="h-auto p-0 text-xs text-primary">View Detailed Sales Analysis</Button>
+            <CardTitle className="text-base font-semibold">{isRental ? 'Collections Trend' : 'Sales Trend'}</CardTitle>
+            <Button variant="link" className="h-auto p-0 text-xs text-primary">{isRental ? 'View Detailed Collections Analysis' : 'View Detailed Sales Analysis'}</Button>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             {salesByDate.length > 0 ? (
@@ -82,23 +84,23 @@ export default function SmartReportSalesTab({ snapshot, periodLabel, isStudio })
                   <Tooltip
                     formatter={(v, _name, { dataKey }) => [
                       dataKey === 'orders' ? formatInteger(v) : formatOverviewCurrency(v),
-                      dataKey === 'orders' ? (isStudio ? 'Jobs' : 'Orders') : (isStudio ? 'Booked Value' : 'Sales')
+                      dataKey === 'orders' ? (isRental ? 'Invoices' : isStudio ? 'Jobs' : 'Orders') : (isRental ? 'Collected' : isStudio ? 'Booked Value' : 'Sales')
                     ]}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line yAxisId="left" type="monotone" dataKey="sales" name={isStudio ? 'Booked Value (₵)' : 'Sales (₵)'} stroke="var(--color-primary)" strokeWidth={2} dot={false} />
-                  <Line yAxisId="right" type="monotone" dataKey="orders" name={isStudio ? 'Jobs' : 'Orders'} stroke="#2563eb" strokeWidth={2} dot={false} />
+                  <Line yAxisId="left" type="monotone" dataKey="sales" name={isRental ? 'Collected (₵)' : isStudio ? 'Booked Value (₵)' : 'Sales (₵)'} stroke="var(--color-primary)" strokeWidth={2} dot={false} />
+                  <Line yAxisId="right" type="monotone" dataKey="orders" name={isRental ? 'Invoices' : isStudio ? 'Jobs' : 'Orders'} stroke="#2563eb" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <div className="py-16 text-center text-sm text-muted-foreground">No sales trend data</div>
+              <div className="py-16 text-center text-sm text-muted-foreground">{isRental ? 'No collections trend data' : 'No sales trend data'}</div>
             )}
           </CardContent>
         </Card>
 
         <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
           <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-base font-semibold">Top Customers by Revenue</CardTitle>
+            <CardTitle className="text-base font-semibold">{isRental ? 'Top Customers by Collections' : 'Top Customers by Revenue'}</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             {topCustomers.length > 0 ? (
@@ -107,7 +109,7 @@ export default function SmartReportSalesTab({ snapshot, periodLabel, isStudio })
                   <TableRow>
                     <TableHead className="w-10">#</TableHead>
                     <TableHead>Customer</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead className="text-right">{isRental ? 'Collected' : 'Revenue'}</TableHead>
                     <TableHead className="text-right">%</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -135,10 +137,10 @@ export default function SmartReportSalesTab({ snapshot, periodLabel, isStudio })
         </Card>
 
         <DonutBreakdownCard
-          title="Sales by Category / Service"
+          title={isRental ? 'Collections by Hire Item' : 'Sales by Category / Service'}
           slices={categoryDonut}
           total={snapshot.salesCategoryTotal || revenue}
-          centerLabel={isStudio ? 'Service Mix' : 'Total Sales'}
+          centerLabel={isRental ? 'Collections' : isStudio ? 'Service Mix' : 'Total Sales'}
           viewLabel="View Category Analysis"
         />
       </div>

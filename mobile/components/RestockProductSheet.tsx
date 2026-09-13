@@ -12,6 +12,7 @@ import {
 
 import { FormSheetModal } from '@/components/FormSheetModal';
 import { productService } from '@/services/productService';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 
 export type RestockVariant = {
   id: string;
@@ -349,6 +350,7 @@ const styles = StyleSheet.create({
   variantChipName: { fontSize: 14, fontWeight: '600' },
   variantChipStock: { fontSize: 12, marginTop: 4 },
   submitButton: {
+    ...standaloneFullWidth,
     height: 48,
     borderRadius: 12,
     alignItems: 'center',

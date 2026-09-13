@@ -3,9 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowRight, ArrowLeft, Loader2, X, Check, Camera, Search, ShoppingBag, Printer, Scissors, Car, UtensilsCrossed, Pill, Briefcase } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Loader2, X, Check, Camera, Search, ShoppingBag, Printer, Scissors, Car, UtensilsCrossed, Pill, Briefcase, Package, MessageCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { showError } from '../utils/toast';
+import { showError, showLoading, showSuccess } from '../utils/toast';
 import FileUpload from '../components/FileUpload';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -80,6 +80,11 @@ const businessTypes = [
     value: 'pharmacy',
     label: 'Pharmacy Management',
     description: 'Prescription management, drug inventory, and patient records'
+  },
+  {
+    value: 'rental',
+    label: 'Rental Business',
+    description: 'Hire out items, track returns, late charges, and availability'
   }
 ];
 
@@ -96,6 +101,8 @@ const Onboarding = () => {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
   const [checkingPhone, setCheckingPhone] = useState(false);
+  const [creatingBusiness, setCreatingBusiness] = useState(false);
+  const [customBusinessType, setCustomBusinessType] = useState('');
 
   // Check if onboarding is already completed
   useEffect(() => {
@@ -135,6 +142,8 @@ const Onboarding = () => {
         return 'Food & Drinks';
       case BUSINESS_GROUPS.HEALTH:
         return 'Health / Pharmacy';
+      case BUSINESS_GROUPS.RENTAL:
+        return 'Rental';
       case BUSINESS_GROUPS.SERVICES:
       default:
         return 'Other services';
@@ -155,9 +164,11 @@ const Onboarding = () => {
         return UtensilsCrossed;
       case BUSINESS_GROUPS.HEALTH:
         return Pill;
+      case BUSINESS_GROUPS.RENTAL:
+        return Package;
       case BUSINESS_GROUPS.SERVICES:
       default:
-        return Briefcase;
+        return MessageCircle;
     }
   };
 
@@ -175,6 +186,8 @@ const Onboarding = () => {
         return 'e.g. Restaurants, fast food joints, bakeries and pastry shops';
       case BUSINESS_GROUPS.HEALTH:
         return 'e.g. Community pharmacies, clinic or hospital pharmacies';
+      case BUSINESS_GROUPS.RENTAL:
+        return 'e.g. Equipment rental, event rental, vehicle rental';
       case BUSINESS_GROUPS.SERVICES:
       default:
         return 'e.g. Other professional and local services';
@@ -192,13 +205,12 @@ const Onboarding = () => {
   }, []);
 
   const onSubmit = async (values) => {
-    // First, pre-check if the phone number is already used by another workspace
     const fullPhone = values.phoneCountryCode
       ? `${values.phoneCountryCode} ${values.companyPhone}`
       : values.companyPhone;
 
+    setCheckingPhone(true);
     try {
-      setCheckingPhone(true);
       const phoneCheckResponse = await api.post('/tenants/check-business-phone', {
         phone: fullPhone,
       });
@@ -214,23 +226,32 @@ const Onboarding = () => {
           message:
             'This business phone number is already used by another workspace. Use a different phone number.',
         });
+        showError(
+          null,
+          'This phone number is already linked to another workspace. Please use a different number to continue.'
+        );
         return;
       }
     } catch (phoneError) {
-      // If the lookup fails (network, timeout, etc.), fall back to backend validation
       console.error('[Onboarding] Failed to pre-check business phone', phoneError);
     } finally {
       setCheckingPhone(false);
     }
 
+    setCreatingBusiness(true);
     setLoading(true);
+    const finishDismiss = showLoading('Finishing setup...');
     try {
       // Prepare form data for file upload
       const formData = new FormData();
 
       // Derive core business type from selected sub-type.
       // If tenant already has a non-shop businessType set, keep it to avoid regressions.
-      const selectedSubType = values.businessSubType || null;
+      let selectedSubType = values.businessSubType || null;
+      const isOther = selectedSubType === 'other';
+      if (isOther && customBusinessType.trim()) {
+        selectedSubType = customBusinessType.trim();
+      }
       const derivedCoreType = getCoreTypeForBusinessSubType(selectedSubType);
       const existingBusinessType = activeTenant?.businessType || null;
       const effectiveBusinessType =
@@ -246,8 +267,8 @@ const Onboarding = () => {
       }
 
       // Store selected business sub-type (everyday label) for metadata
-      if (values.businessSubType) {
-        formData.append('businessSubType', values.businessSubType);
+      if (selectedSubType) {
+        formData.append('businessSubType', selectedSubType);
       }
       if (values.companyName) formData.append('companyName', values.companyName);
       if (values.companyEmail) formData.append('companyEmail', values.companyEmail);
@@ -318,13 +339,21 @@ const Onboarding = () => {
 
       // Now navigate - animation will continue until dashboard is ready
       setLoading(false);
+      if (finishDismiss) finishDismiss();
+      showSuccess(
+        effectiveBusinessType === 'rental'
+          ? 'Your rental workspace is ready. Add rentable products and set daily rates to get started.'
+          : 'Your workspace is ready'
+      );
       console.log('[Onboarding] Navigating to /dashboard');
       navigate('/dashboard');
     } catch (error) {
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to save onboarding data. Please try again.';
+      if (finishDismiss) finishDismiss();
       showError(error, errorMessage);
     } finally {
       setLoading(false);
+      setCreatingBusiness(false);
     }
   };
 
@@ -530,12 +559,32 @@ const Onboarding = () => {
         .building-block.block-2 { animation-delay: 0.2s, 1.2s; }
         .building-block.block-3 { animation-delay: 0.3s, 1.3s; }
         .building-block.block-4 { animation-delay: 0.4s, 1.4s; }
-        .building-block.block-5 { animation-delay: 0.5s, 1.5s; }
-        .building-block.block-6 { animation-delay: 0.6s, 1.6s; }
-      `}</style>
+         .building-block.block-5 { animation-delay: 0.5s, 1.5s; }
+         .building-block.block-6 { animation-delay: 0.6s, 1.6s; }
+
+         @keyframes dotBounce {
+           0%, 80%, 100% { transform: translateY(0); }
+           40% { transform: translateY(-4px); }
+         }
+         .dot-anim {
+            display: inline-flex;
+            gap: 2px;
+            margin-left: 2px;
+         }
+         .dot-anim span {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: dotBounce 1.2s infinite ease-in-out;
+         }
+         .dot-anim span:nth-child(1) { animation-delay: 0s; }
+         .dot-anim span:nth-child(2) { animation-delay: 0.15s; }
+         .dot-anim span:nth-child(3) { animation-delay: 0.3s; }
+       `}</style>
       
       {/* Creating Business Modal */}
-      <Dialog open={loading} onOpenChange={() => {}}>
+      <Dialog open={creatingBusiness} onOpenChange={() => {}}>
         <DialogContent className="sm:w-[var(--modal-w-sm)] sm:min-h-[var(--modal-min-h)] sm:max-h-[var(--modal-max-h)] border-0 bg-card border border-border [&>button]:hidden">
           <div className="flex flex-col items-center justify-center py-8 px-6">
             <div className="mb-6">
@@ -679,7 +728,7 @@ const Onboarding = () => {
                         return (
                           <FormItem className="space-y-3">
                             <FormControl>
-                              <div className="space-y-4" role="radiogroup" aria-label="Business type">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4" role="radiogroup" aria-label="Business type">
                                 {entries.map(([groupKey], index) => {
                                   const IconComponent = getBusinessGroupIcon(groupKey);
                                   const isSelected = currentValue === groupKey;
@@ -710,37 +759,26 @@ const Onboarding = () => {
                                           );
                                         }
                                       }}
-                                      className={`flex w-full flex-row items-center gap-2.5 md:gap-3 cursor-pointer rounded-lg border px-3 py-2 md:p-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/50 ${
-                                        isSelected ? 'border-primary bg-primary/5' : 'border-border'
+                                      className={`flex flex-col items-center gap-2.5 md:gap-3 cursor-pointer rounded-xl border p-4 md:p-5 text-center transition-all hover:border-primary/50 hover:bg-muted/30 ${
+                                        isSelected ? 'border-primary bg-primary/5' : 'border-border bg-card'
                                       }`}
                                     >
                                       <div
-                                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                                        className={`flex h-10 w-10 md:h-12 md:w-12 shrink-0 items-center justify-center rounded-lg ${
                                           isSelected
                                             ? 'bg-primary text-primary-foreground'
                                             : 'bg-muted text-muted-foreground'
                                         }`}
                                       >
-                                        <IconComponent className="h-4 w-4" />
+                                        <IconComponent className="h-5 w-5 md:h-6 md:w-6" />
                                       </div>
-                                      <div className="flex flex-1 min-w-0 flex-col gap-0.5 py-0.5">
-                                        <span className="font-medium leading-tight">
+                                      <div className="flex flex-col gap-1">
+                                        <span className="font-semibold text-sm md:text-base leading-tight">
                                           {getBusinessGroupLabel(groupKey)}
                                         </span>
                                         <p className="text-xs text-muted-foreground leading-snug">
                                           {getBusinessGroupExamples(groupKey)}
                                         </p>
-                                      </div>
-                                      <div
-                                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-                                          isSelected
-                                            ? 'border-primary bg-primary'
-                                            : 'border-gray-300 bg-transparent'
-                                        }`}
-                                      >
-                                        {isSelected && (
-                                          <Check className="h-3 w-3 text-white" strokeWidth={3} />
-                                        )}
                                       </div>
                                     </button>
                                   );
@@ -866,49 +904,66 @@ const Onboarding = () => {
                         const groupKey = watchedBusinessGroup;
                         const options = groupKey ? (businessOptionsByGroup[groupKey] || []) : [];
                         const hasGroup = !!groupKey && options.length > 0;
+                        const isOtherSelected = field.value === 'other';
+                        const otherLabel = options.find(opt => opt.id === 'other')?.label || 'Other';
                         return (
                           <FormItem className="space-y-3">
                             <FormLabel className="text-gray-700">What do you mainly do?</FormLabel>
                             <FormDescription className="text-gray-600">
-                              Select what best matches your business.
+                              {isOtherSelected
+                                ? 'Describe your business so we can set up the right workspace.'
+                                : 'Select what best matches your business.'}
                             </FormDescription>
                             <FormControl>
-                              <Select
-                                value={field.value}
-                                onValueChange={field.onChange}
-                                disabled={!hasGroup}
-                              >
-                                <SelectTrigger className="h-11 border-border bg-muted text-foreground focus:border-primary focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0">
-                                  <SelectValue
-                                    placeholder={
-                                      hasGroup
-                                        ? 'Select what best matches your business'
-                                        : 'Select business type first'
-                                    }
-                                  />
-                                </SelectTrigger>
-                                {hasGroup && (
-                                  <SelectContent className="bg-card border-border w-[var(--radix-select-trigger-width)] max-w-full max-h-[60vh]">
-                                    {options.map((opt) => (
-                                      <div key={opt.id} className="px-1 py-0.5">
-                                        <SelectItem
-                                          value={opt.id}
-                                          className="!text-foreground !items-start !py-1.5"
-                                        >
-                                          <span className="font-medium text-sm">
-                                            {opt.label}
-                                          </span>
-                                        </SelectItem>
-                                        {opt.description && (
-                                          <div className="pl-8 pr-2 pt-0.5 text-xs text-muted-foreground leading-snug">
-                                            {opt.description}
-                                          </div>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </SelectContent>
-                                )}
-                              </Select>
+                              {isOtherSelected ? (
+                                <Input
+                                  value={customBusinessType}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setCustomBusinessType(val);
+                                    field.onChange(val || 'other');
+                                  }}
+                                  className="h-11 border-border bg-muted text-foreground placeholder:text-gray-400 focus:border-primary focus:border focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-primary focus-visible:border"
+                                  placeholder="e.g. freight forwarding, consulting, event planning"
+                                />
+                              ) : (
+                                <Select
+                                  value={field.value}
+                                  onValueChange={field.onChange}
+                                  disabled={!hasGroup}
+                                >
+                                  <SelectTrigger className="h-11 border-border bg-muted text-foreground focus:border-primary focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0">
+                                    <SelectValue
+                                      placeholder={
+                                        hasGroup
+                                          ? 'Select what best matches your business'
+                                          : 'Select business type first'
+                                      }
+                                    />
+                                  </SelectTrigger>
+                                  {hasGroup && (
+                                    <SelectContent className="bg-card border-border w-[var(--radix-select-trigger-width)] max-w-full max-h-[60vh]">
+                                      {options.map((opt) => (
+                                        <div key={opt.id} className="px-1 py-0.5">
+                                          <SelectItem
+                                            value={opt.id}
+                                            className="!text-foreground !items-start !py-1.5"
+                                          >
+                                            <span className="font-medium text-sm">
+                                              {opt.label}
+                                            </span>
+                                          </SelectItem>
+                                          {opt.description && (
+                                            <div className="pl-8 pr-2 pt-0.5 text-xs text-muted-foreground leading-snug">
+                                              {opt.description}
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </SelectContent>
+                                  )}
+                                </Select>
+                              )}
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -1130,18 +1185,31 @@ const Onboarding = () => {
                 <Button
                   type="button"
                   onClick={handleNext}
-                  disabled={!canProceed()}
-                  loading={loading}
+                  disabled={!canProceed() || checkingPhone || creatingBusiness}
+                  loading={loading && !checkingPhone}
                   className={`bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-base px-6 py-2 ${
                     currentStep > 0 ? 'flex-1 md:flex-none' : ''
                   }`}
                 >
                   {currentStep === steps.length - 1 ? (
-                    'Finish setup'
+                    checkingPhone ? (
+                      <span className="inline-flex items-center">
+                        Checking phone
+                        <span className="dot-anim">
+                          <span></span>
+                          <span></span>
+                          <span></span>
+                        </span>
+                      </span>
+                    ) : loading ? (
+                      'Finishing setup...'
+                    ) : (
+                      'Finish setup'
+                    )
                   ) : (
                     <>
-                      Next
-                      <ArrowRight className="h-4 w-4" />
+                      {loading ? 'Please wait...' : 'Next'}
+                      {!loading && <ArrowRight className="h-4 w-4" />}
                     </>
                   )}
                 </Button>

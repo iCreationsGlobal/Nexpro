@@ -40,6 +40,9 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [supportSession, setSupportSession] = useState(() => supportAccessService.getSession());
   const [endingSupportAccess, setEndingSupportAccess] = useState(false);
+  const [workspaceProfile, setWorkspaceProfile] = useState(null);
+  const [bootstrapAccess, setBootstrapAccess] = useState({ defaultBranchId: null, shops: [], studioLocations: [] });
+  const [bootstrapSettings, setBootstrapSettings] = useState({});
   const queryClient = useQueryClient();
   /** Prevents repeated bootstrap loops when flags are missing; cleared on logout / successful hydrate. */
   const featureFlagsHydrateForTenantRef = useRef(null);
@@ -98,12 +101,24 @@ export const AuthProvider = ({ children }) => {
     };
   };
 
+  const applyBootstrapWorkspaceState = (bootstrapData = {}) => {
+    setWorkspaceProfile(bootstrapData.workspace || null);
+    setBootstrapAccess({
+      defaultBranchId: bootstrapData.access?.defaultBranchId || null,
+      shops: bootstrapData.access?.shops || [],
+      studioLocations: bootstrapData.access?.studioLocations || [],
+    });
+    setBootstrapSettings(bootstrapData.settings || {});
+  };
+
   const seedBootstrapQueryCache = (bootstrapData = {}, preferredTenantId = null) => {
     const activeId =
       bootstrapData?.activeTenantId ||
       resolveInitialTenant(getBootstrapMemberships(bootstrapData), preferredTenantId) ||
       null;
     if (!activeId) return;
+
+    applyBootstrapWorkspaceState(bootstrapData);
 
     queryClient.setQueryData(['auth', 'bootstrap', activeId], {
       success: true,
@@ -122,6 +137,11 @@ export const AuthProvider = ({ children }) => {
       const organization = { success: true, data: settings.organization || {} };
       queryClient.setQueryData(['settings', 'organization'], organization);
       queryClient.setQueryData(['settings', 'organization', activeId], organization);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(settings, 'rental')) {
+      const rental = { success: true, data: settings.rental || {} };
+      queryClient.setQueryData(['settings', 'rental', activeId], rental);
     }
 
     const role = bootstrapData?.tenantRole || null;
@@ -455,6 +475,9 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setMemberships([]);
     setActiveTenantId(null);
+    setWorkspaceProfile(null);
+    setBootstrapAccess({ defaultBranchId: null, shops: [], studioLocations: [] });
+    setBootstrapSettings({});
     featureFlagsHydrateForTenantRef.current = null;
     queryClient.clear();
   };
@@ -475,6 +498,9 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setMemberships([]);
       setActiveTenantId(null);
+      setWorkspaceProfile(null);
+      setBootstrapAccess({ defaultBranchId: null, shops: [], studioLocations: [] });
+      setBootstrapSettings({});
       setSupportSession(null);
       featureFlagsHydrateForTenantRef.current = null;
       queryClient.clear();
@@ -864,6 +890,9 @@ export const AuthProvider = ({ children }) => {
       tenantMemberships: memberships,
       activeTenantId: resolvedActiveTenantId,
       activeTenant,
+      workspaceProfile,
+      bootstrapAccess,
+      bootstrapSettings,
       activeFeatureFlags,
       hasFeature,
       activeMembership,
@@ -905,6 +934,9 @@ export const AuthProvider = ({ children }) => {
       memberships,
       resolvedActiveTenantId,
       activeTenant,
+      workspaceProfile,
+      bootstrapAccess,
+      bootstrapSettings,
       activeFeatureFlags,
       hasFeature,
       activeMembership,

@@ -13,6 +13,19 @@ export const IBIS_WELCOME_GREETING =
 export const IBIS_WELCOME_SUBCOPY =
   "I'm here to help you understand and manage your business with ABS. You can ask me about your sales, customers, debts, expenses, jobs, reports, or even ask me to draft a message.";
 
+/** Rental workspace empty-state subcopy (no jobs/stock wording). */
+export const IBIS_WELCOME_SUBCOPY_RENTAL =
+  "I'm here to help you run your rental business with ABS. Ask about active hires, returns due today, overdue rentals, damage, revenue, collections, reports, or draft a customer message.";
+
+/**
+ * Welcome subcopy for Ask Ayebia empty state by business type.
+ * @param {string|null|undefined} businessType
+ * @returns {string}
+ */
+export function getIbisWelcomeSubcopy(businessType) {
+  return businessType === 'rental' ? IBIS_WELCOME_SUBCOPY_RENTAL : IBIS_WELCOME_SUBCOPY;
+}
+
 /**
  * Rewrite leftover iBIS self-introductions in assistant replies (Copy / PDF / chat).
  * @param {unknown} text

@@ -172,7 +172,7 @@ export default function CommissionGuidePage() {
               ],
               [
                 "When do I pay commissions?",
-                "Commission becomes due after a referred customer’s payment is collected. Marketers request cashout in Sabito; you pay outside ABS (e.g. MoMo), then mark the cashout paid.",
+                "Customer payments generate commissions. The business remits these to ABS. After remittance, marketers request cashout of their share and ABS records the payout.",
               ],
               [
                 "What's the difference between new and returning rates?",

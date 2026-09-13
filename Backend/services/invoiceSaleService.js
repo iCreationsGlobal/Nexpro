@@ -130,6 +130,12 @@ async function ensureSaleFromPaidInvoice(invoiceId, paymentId = null, options = 
 
   if (!invoice) return { sale: null, created: false, updated: false, reason: 'invoice_not_found' };
 
+  const { isRentalSourcedInvoice, syncRentalFromPaidInvoice } = require('./rentalInvoicePaymentService');
+  if (isRentalSourcedInvoice(invoice)) {
+    await syncRentalFromPaidInvoice(invoice.id, { tenantId: invoice.tenantId, invoice });
+    return { sale: null, created: false, updated: false, reason: 'rental_invoice' };
+  }
+
   const paymentState = getInvoicePaymentState(invoice);
   if (paymentState.amountPaid <= 0) {
     return { sale: null, created: false, updated: false, reason: 'invoice_not_paid' };

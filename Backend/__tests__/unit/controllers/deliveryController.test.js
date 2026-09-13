@@ -12,6 +12,7 @@ jest.mock('../../../config/database', () => ({
 jest.mock('../../../models', () => ({
   Job: { findAll: jest.fn(), findOne: jest.fn() },
   Sale: { findAll: jest.fn(), findOne: jest.fn() },
+  Rental: { findAll: jest.fn(), findOne: jest.fn(), update: jest.fn() },
   Customer: {},
   SaleActivity: { create: jest.fn() },
   User: {},
@@ -54,7 +55,7 @@ jest.mock('../../../services/tradeAssuranceService', () => ({
 }));
 
 const { sequelize } = require('../../../config/database');
-const { Job, Sale, SaleActivity, MarketplaceOrderPayment } = require('../../../models');
+const { Job, Sale, Rental, SaleActivity, MarketplaceOrderPayment } = require('../../../models');
 const { applyShopReadFilter } = require('../../../utils/shopUtils');
 const { invalidateSaleListCache } = require('../../../middleware/cache');
 const deliveryController = require('../../../controllers/deliveryController');
@@ -79,6 +80,9 @@ describe('deliveryController', () => {
     jest.clearAllMocks();
     Job.findAll.mockResolvedValue([]);
     Sale.findAll.mockResolvedValue([]);
+    Rental.findAll.mockResolvedValue([]);
+    Rental.findOne.mockResolvedValue(null);
+    Rental.update.mockResolvedValue([1]);
     SaleActivity.create.mockResolvedValue({ id: 'activity-1' });
     MarketplaceOrderPayment.findOne.mockResolvedValue(null);
   });
@@ -293,5 +297,102 @@ describe('deliveryController', () => {
         })],
       }),
     }));
+  });
+
+  it('includes scheduled rental deliveries in the active queue', async () => {
+    Rental.findAll.mockResolvedValue([{
+      id: 'rental-1',
+      status: 'confirmed',
+      amount: 250,
+      updatedAt: '2026-08-29T10:00:00.000Z',
+      customer: {
+        name: 'Rental Customer',
+        phone: '0240000001',
+        metadata: {
+          rental: {
+            delivery: {
+              address: '10 Fleet St',
+              city: 'Accra',
+              state: 'Greater Accra',
+            },
+          },
+        },
+      },
+      metadata: {
+        deliveries: {
+          pickup: {
+            type: 'rental_pickup',
+            rentalId: 'rental-1',
+            scheduled: true,
+            scheduledAt: '2026-08-29T09:00:00.000Z',
+            deliveryStatus: 'ready_for_delivery',
+            address: { line1: '10 Fleet St', city: 'Accra', state: 'Greater Accra' },
+          },
+        },
+      },
+    }]);
+
+    const res = mockRes();
+    await deliveryController.getDeliveryQueue(baseReq(), res, jest.fn());
+
+    expect(Rental.findAll).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        rows: [expect.objectContaining({
+          entityType: 'rental',
+          deliveryLeg: 'pickup',
+          deliveryType: 'rental_pickup',
+          customerName: 'Rental Customer',
+          addressSummary: '10 Fleet St, Accra, Greater Accra',
+        })],
+      }),
+    }));
+  });
+
+  it('updates rental delivery leg status in metadata', async () => {
+    const rental = {
+      id: 'rental-1',
+      metadata: {
+        deliveries: {
+          pickup: {
+            type: 'rental_pickup',
+            rentalId: 'rental-1',
+            scheduled: true,
+            deliveryStatus: 'ready_for_delivery',
+            address: { line1: '10 Fleet St', city: 'Accra' },
+          },
+        },
+      },
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    Rental.findOne.mockResolvedValue(rental);
+
+    const res = mockRes();
+    await deliveryController.patchDeliveryStatuses(
+      baseReq({
+        body: {
+          updates: [{
+            entityType: 'rental',
+            id: 'rental-1',
+            deliveryLeg: 'pickup',
+            deliveryStatus: 'out_for_delivery',
+          }],
+        },
+      }),
+      res,
+      jest.fn()
+    );
+
+    expect(rental.update).toHaveBeenCalledWith({
+      metadata: expect.objectContaining({
+        deliveries: expect.objectContaining({
+          pickup: expect.objectContaining({
+            deliveryStatus: 'out_for_delivery',
+          }),
+        }),
+      }),
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 });

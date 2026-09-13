@@ -6,7 +6,16 @@ const WORKSPACE_WIDE_ROLES = ['owner', 'admin', 'support'];
 const SHOP_ACCESS_CACHE_TTL_MS = 30 * 1000;
 const shopAccessCache = new Map();
 
-const isShopTenant = (tenant) => resolveBusinessType(tenant?.businessType) === 'shop';
+const SHOP_SCOPED_BUSINESS_TYPES = ['shop', 'pharmacy', 'rental'];
+
+const isShopScopedBusinessType = (businessType) =>
+  SHOP_SCOPED_BUSINESS_TYPES.includes(resolveBusinessType(businessType));
+
+/** Retail shop and rental workspaces share the Shop model as the default/main location. */
+const isShopTenant = (tenant) => {
+  const type = resolveBusinessType(tenant?.businessType);
+  return type === 'shop' || type === 'rental';
+};
 
 const hasWorkspaceWideShopAccess = (tenantRole) =>
   WORKSPACE_WIDE_ROLES.includes(tenantRole);
@@ -484,6 +493,8 @@ const getShopReadSqlFragment = (req, tableAlias = '') => {
 
 module.exports = {
   WORKSPACE_WIDE_ROLES,
+  SHOP_SCOPED_BUSINESS_TYPES,
+  isShopScopedBusinessType,
   isShopTenant,
   hasWorkspaceWideShopAccess,
   parseAddressFields,

@@ -14,6 +14,15 @@ type InvoiceParams = {
   endDate?: string;
 };
 
+export type InvoiceStats = {
+  totalInvoices?: number;
+  paidInvoices?: number;
+  unpaidInvoices?: number;
+  overdueInvoices?: number;
+  totalRevenue?: number;
+  outstandingAmount?: number;
+};
+
 function summarizeInvoiceParams(params: InvoiceParams) {
   return {
     page: params.page,
@@ -52,6 +61,14 @@ export const invoiceService = {
     });
     const res = await api.get(query ? `/invoices?${query}` : '/invoices');
     logger.info('InvoicesService', 'GET /invoices response', summarizeInvoiceResponse(res.data));
+    return res.data;
+  },
+
+  getStats: async (params: InvoiceParams = {}) => {
+    const query = await buildScopedQueryString(params);
+    const res = await api.get(
+      query ? `/invoices/stats/summary?${query}` : '/invoices/stats/summary'
+    );
     return res.data;
   },
 

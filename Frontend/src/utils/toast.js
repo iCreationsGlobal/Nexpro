@@ -60,9 +60,15 @@ export const getErrorMessage = (error, defaultMessage = 'Something went wrong. P
     return CHUNK_LOAD_REFRESH_MESSAGE;
   }
 
+  // Axios/proxy timeouts: do this before substring checks. "timeout of 30000ms exceeded"
+  // used to match "timeout" and look like the user went offline.
+  if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT' || /timeout/i.test(error?.message || '')) {
+    return 'Taking longer than expected. Try again or check your connection.';
+  }
+
   if (error?.message) {
     // Don't show technical error messages to users - use friendly versions
-    const technicalErrors = ['Network Error', 'Request failed', 'timeout'];
+    const technicalErrors = ['Network Error', 'Request failed'];
     if (technicalErrors.some(te => error.message.includes(te))) {
       return 'Connection lost. Check your internet and try again.';
     }
@@ -75,13 +81,8 @@ export const getErrorMessage = (error, defaultMessage = 'Something went wrong. P
   }
 
   // Check for network errors
-  if (error?.code === 'NETWORK_ERROR' || error?.message === 'Network Error') {
+  if (error?.code === 'NETWORK_ERROR' || error?.code === 'ERR_NETWORK' || error?.message === 'Network Error') {
     return 'Connection lost. Check your internet and try again.';
-  }
-
-  // Check for timeout errors
-  if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
-    return 'Taking longer than expected. Try again or check your connection.';
   }
 
   // Return default message

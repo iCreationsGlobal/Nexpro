@@ -32,7 +32,7 @@ import {
   resolveAssistantPeriod,
   resolveAssistantPeriodForMessage,
 } from '@/utils/assistantPeriod';
-import { IBIS_ASK_LABEL, IBIS_NAME, IBIS_WELCOME_GREETING, IBIS_WELCOME_SUBCOPY, sanitizeAssistantDisplayName } from '@/constants/ibis';
+import { IBIS_ASK_LABEL, IBIS_NAME, IBIS_WELCOME_GREETING, getIbisWelcomeSubcopy, sanitizeAssistantDisplayName } from '@/constants/ibis';
 import { IbisMoreMenu } from '@/components/IbisMoreMenu';
 import { useIbisChatPreferences } from '@/hooks/useIbisChatPreferences';
 
@@ -135,6 +135,8 @@ export default function AskAI() {
     [businessType, shopType]
   );
 
+  const welcomeSubcopy = useMemo(() => getIbisWelcomeSubcopy(businessType), [businessType]);
+
   const suggestionCards = useMemo(
     () => getAssistantSuggestionCards({ businessType, shopType, limit: 5 }),
     [businessType, shopType]
@@ -155,6 +157,9 @@ export default function AskAI() {
           'Compare this period to the previous period',
         ].filter((p) => {
           if (promptSets.kind === 'studio' && /restock|stock/i.test(p)) return false;
+          if (promptSets.kind === 'rental' && /restock|stock|open jobs|job pipeline/i.test(p)) {
+            return false;
+          }
           return true;
         })
         : [];
@@ -374,7 +379,7 @@ export default function AskAI() {
             {IBIS_WELCOME_GREETING}
           </h1>
           <p className="mt-3 max-w-xl text-center text-base text-muted-foreground md:text-lg">
-            {IBIS_WELCOME_SUBCOPY}
+            {welcomeSubcopy}
           </p>
 
           <div className="mt-8 w-full">{composer}</div>

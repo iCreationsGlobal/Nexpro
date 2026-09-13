@@ -37,6 +37,8 @@ const StatusChip = memo(({ status, className, ...props }) => {
     sold: 'Sold',
     sent: 'Sent',
     pending: 'Pending',
+    pending_review: 'Pending review',
+    live: 'Live',
     todo: 'To do',
   };
   const formatStatusText = (s) => {

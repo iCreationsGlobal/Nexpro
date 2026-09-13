@@ -36,6 +36,7 @@ import { formatStatusLabel } from '@/utils/formatLabels';
 import { showListFilters } from '@/utils/listEmptyLayout';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { refreshAfterJobChange } from '@/utils/queryInvalidation';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 import {
   JOB_CREATE_PAYMENT_DEFAULTS,
   JOB_CREATE_PAYMENT_METHODS,
@@ -687,6 +688,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   textArea: { minHeight: 90, textAlignVertical: 'top' },
-  saveBtn: { height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  saveBtn: {
+    ...standaloneFullWidth,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });

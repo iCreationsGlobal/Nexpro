@@ -104,17 +104,56 @@ const DEFAULT_CATEGORIES = {
     { name: 'Health & Wellness', description: 'Health and wellness products' },
     { name: 'Beauty Products', description: 'Beauty and cosmetic products' },
     { name: 'Other', description: 'Miscellaneous pharmacy products' }
-  ]
+  ],
+  rental: {
+    equipment_rental: [
+      { name: 'Power Tools', description: 'Drills, saws, generators, and power equipment' },
+      { name: 'Construction Equipment', description: 'Scaffolding, mixers, and construction tools' },
+      { name: 'Heavy Machinery', description: 'Excavators, loaders, and large equipment' },
+      { name: 'Hand Tools', description: 'Manual tools and accessories' },
+      { name: 'Safety Equipment', description: 'Helmets, harnesses, and protective gear' },
+      { name: 'Other Equipment', description: 'Miscellaneous rentable equipment' }
+    ],
+    event_rental: [
+      { name: 'Tents & Canopies', description: 'Event tents, marquees, and covers' },
+      { name: 'Seating & Tables', description: 'Chairs, tables, and event furniture' },
+      { name: 'Sound & Lighting', description: 'Speakers, microphones, and lighting' },
+      { name: 'Staging & Décor', description: 'Stages, backdrops, and decorations' },
+      { name: 'Catering Equipment', description: 'Chafing dishes, coolers, and serving items' },
+      { name: 'Other Event Items', description: 'Miscellaneous event rental items' }
+    ],
+    vehicle_rental: [
+      { name: 'Cars & Sedans', description: 'Passenger cars for hire' },
+      { name: 'SUVs & 4x4', description: 'SUVs and off-road vehicles' },
+      { name: 'Vans & Minibuses', description: 'Passenger vans and minibuses' },
+      { name: 'Trucks & Pickups', description: 'Commercial trucks and pickups' },
+      { name: 'Motorcycles & Bikes', description: 'Motorcycles and bicycles' },
+      { name: 'Other Vehicles', description: 'Miscellaneous vehicles' }
+    ],
+    general_rental: [
+      { name: 'General Items', description: 'General items for hire' },
+      { name: 'Electronics', description: 'Electronics and gadgets' },
+      { name: 'Appliances', description: 'Home and office appliances' },
+      { name: 'Other', description: 'Miscellaneous rental items' }
+    ],
+    default: [
+      { name: 'Equipment', description: 'Equipment and tools for hire' },
+      { name: 'Vehicles', description: 'Vehicles for hire' },
+      { name: 'Event Items', description: 'Event and party supplies' },
+      { name: 'Other', description: 'Miscellaneous rental items' }
+    ]
+  }
 };
 
 /**
- * Get default categories for a business type, optional studio type, and optional shop type
- * @param {string} businessType - The business type ('shop', 'studio', 'pharmacy')
+ * Get default categories for a business type, optional studio type, shop type, or rental sub-type
+ * @param {string} businessType - The business type ('shop', 'studio', 'pharmacy', 'rental')
  * @param {string|null} studioType - The studio type (for studio business type)
  * @param {string|null} shopType - The shop type (for shop business type; e.g. supermarket, hardware, restaurant)
+ * @param {string|null} rentalSubType - The rental sub-type (e.g. equipment_rental, event_rental, vehicle_rental)
  * @returns {Array} Array of category objects with name and description
  */
-const getDefaultCategories = (businessType, studioType = null, shopType = null) => {
+const getDefaultCategories = (businessType, studioType = null, shopType = null, rentalSubType = null) => {
   if (!businessType) {
     return [];
   }
@@ -124,6 +163,13 @@ const getDefaultCategories = (businessType, studioType = null, shopType = null) 
       return DEFAULT_CATEGORIES.studio[studioType];
     }
     return DEFAULT_CATEGORIES.studio.default;
+  }
+
+  if (businessType === 'rental') {
+    if (rentalSubType && DEFAULT_CATEGORIES.rental[rentalSubType]) {
+      return DEFAULT_CATEGORIES.rental[rentalSubType];
+    }
+    return DEFAULT_CATEGORIES.rental.default;
   }
 
   if (businessType === 'shop' && shopType) {

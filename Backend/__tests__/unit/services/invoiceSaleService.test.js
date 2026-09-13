@@ -22,6 +22,13 @@ jest.mock('../../../services/customerBalanceService', () => ({
   updateCustomerBalance: jest.fn(),
 }));
 
+jest.mock('../../../services/rentalInvoicePaymentService', () => ({
+  isRentalSourcedInvoice: jest.fn((invoice) => (
+    invoice?.sourceType === 'rental' || invoice?.metadata?.generatedFrom === 'rental'
+  )),
+  syncRentalFromPaidInvoice: jest.fn().mockResolvedValue({ rental: null, invoice: null }),
+}));
+
 const { Invoice, Payment, Sale, SaleItem, SaleActivity } = require('../../../models');
 const { updateCustomerBalance } = require('../../../services/customerBalanceService');
 const {
@@ -29,6 +36,7 @@ const {
   syncLinkedInvoiceFromSale,
   syncSaleInvoiceAndRefreshCustomerBalance,
 } = require('../../../services/invoiceSaleService');
+const { syncRentalFromPaidInvoice } = require('../../../services/rentalInvoicePaymentService');
 
 const buildInvoice = (overrides = {}) => ({
   id: 'invoice-1',
@@ -118,6 +126,31 @@ describe('invoiceSaleService.ensureSaleFromPaidInvoice', () => {
       saleId: 'sale-1',
       subject: 'Sale Created from Invoice Payment',
     }), { transaction: null });
+  });
+
+  it('does not create a sale from a rental invoice', async () => {
+    const invoice = buildInvoice({
+      sourceType: 'rental',
+      metadata: { generatedFrom: 'rental', rentalId: 'rental-1' },
+      amountPaid: 100,
+    });
+    Invoice.findOne.mockResolvedValue(invoice);
+
+    const result = await ensureSaleFromPaidInvoice('invoice-1', 'payment-1', {
+      tenantId: 'tenant-1',
+    });
+
+    expect(result).toEqual({
+      sale: null,
+      created: false,
+      updated: false,
+      reason: 'rental_invoice',
+    });
+    expect(Sale.create).not.toHaveBeenCalled();
+    expect(syncRentalFromPaidInvoice).toHaveBeenCalledWith('invoice-1', {
+      tenantId: 'tenant-1',
+      invoice,
+    });
   });
 
   it('updates the existing invoice sale instead of creating a duplicate', async () => {

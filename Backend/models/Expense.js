@@ -49,6 +49,14 @@ const Expense = sequelize.define('Expense', {
       key: 'id'
     }
   },
+  damageReportId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'damage_reports',
+      key: 'id'
+    }
+  },
   category: {
     type: DataTypes.STRING,
     allowNull: false

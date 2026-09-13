@@ -31,6 +31,8 @@ import {
   Truck,
   Building2,
   Globe,
+  CalendarClock,
+  Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -40,6 +42,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useBranding } from '@/context/BrandingContext';
 import { useStudioLocationOptional } from '@/context/StudioLocationContext';
 import { useScopedWorkspaceName } from '@/hooks/useScopedWorkspaceName';
+import { useWorkspaceProfile } from '@/hooks/useWorkspaceProfile';
 import SidebarScopeSwitcher from '@/components/SidebarScopeSwitcher';
 import AppLogo from '@/components/AppLogo';
 import { useHintMode } from '@/context/HintModeContext';
@@ -92,6 +95,7 @@ const MENU_HINTS = {
   '/dealers': 'Wholesale dealer accounts and balances',
   '/reviews': 'Ratings and comments from your customers',
   '/marketing': 'Email or text many customers at once',
+  '/messages': 'Compose SMS, templates, groups, and ABS Credits',
   '/invoices': 'Bills you send to customers',
   '/expenses': 'Money you spent on business',
   '/reports': 'Reports and data analysis',
@@ -107,10 +111,12 @@ const MENU_HINTS = {
   '/accounting': 'Money in and out',
   '/materials': 'Materials you use',
   '/equipment': 'Laptops, furniture, vehicles',
+  '/rentals': 'Items you hire out to customers',
+  '/watch': 'Physical activity compared with recorded sales',
   '/merchandise': 'Stock value of goods you sell',
   assets: 'Stock value of goods for sale, materials, and equipment',
   '/employees': 'Your staff',
-  '/shops': 'Your shops',
+  '/shops': 'Your shops and locations',
   '/studio-locations': 'Studio branches in your workspace',
   '/foot-traffic': 'Customers visiting',
   '/pharmacies': 'Your pharmacies',
@@ -166,14 +172,27 @@ const getMenuItems = (
     { key: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', tooltip: MENU_HINTS['/dashboard'] },
   ];
 
-  if (businessType === 'shop' && hasFeature('paymentsExpenses')) {
-    baseItems.push({ key: '/sales', icon: ShoppingCart, label: 'Sales', tooltip: MENU_HINTS['/sales'] });
+  if ((businessType === 'shop' || businessType === 'rental') && hasFeature('paymentsExpenses')) {
+    if (businessType === 'rental' && hasFeature('rentals')) {
+      baseItems.push({ key: '/rentals', icon: CalendarClock, label: 'Rentals', tooltip: MENU_HINTS['/rentals'] });
+    }
+    if (businessType !== 'rental') {
+      baseItems.push({ key: '/sales', icon: ShoppingCart, label: 'Sales', tooltip: MENU_HINTS['/sales'] });
+    }
     if (shopType === 'restaurant' && hasFeature('orders')) {
       baseItems.push({ key: '/orders', icon: ChefHat, label: 'Orders', tooltip: MENU_HINTS['/orders'] });
     }
     if (hasFeature('products')) {
       baseItems.push({ key: '/products', icon: Package, label: 'Products', tooltip: MENU_HINTS['/products'] });
     }
+  }
+  if (hasFeature('watch')) {
+    baseItems.push({
+      key: '/watch',
+      icon: Eye,
+      label: 'Watch',
+      tooltip: MENU_HINTS['/watch'],
+    });
   }
   if (!isPlatformAdmin && STUDIO_LIKE_TYPES.includes(businessType) && hasFeature('jobAutomation')) {
     baseItems.push({ key: '/jobs', icon: FileText, label: 'Jobs', tooltip: MENU_HINTS['/jobs'] });
@@ -231,6 +250,17 @@ const getMenuItems = (
     });
   }
 
+  // Rentals: items hired out to customers (separate from internal Company Assets)
+  // Note: rentals are now added above for rental businesses so they appear before Sales
+  if (hasFeature('rentals') && businessType !== 'rental') {
+    baseItems.push({
+      key: '/rentals',
+      icon: CalendarClock,
+      label: 'Rentals',
+      tooltip: MENU_HINTS['/rentals'],
+    });
+  }
+
   // Assets: stock value of goods for sale (Merchandise), plus materials and equipment the business uses
   if (hasFeature('materials')) {
     const canSeeMerchandise =
@@ -253,11 +283,15 @@ const getMenuItems = (
 
   // Advanced group: everything else (Leads, Vendors, Shops/Pharmacies, Payroll, Accounting, Quotes, Employees, Workspace, etc.)
   const advancedChildren = [
+    ...(businessType === 'rental' && hasFeature('paymentsExpenses')
+      ? [{ key: '/sales', label: 'Sales (optional)', tooltip: 'Sell items you also offer for hire (optional for rental businesses)' }]
+      : []),
     ...(!isPlatformAdmin && hasFeature('crm') ? [{ key: '/reviews', label: 'Reviews', tooltip: MENU_HINTS['/reviews'] }] : []),
     ...(hasFeature('deliveries') ? [{ key: '/deliveries', label: 'Deliveries', tooltip: MENU_HINTS['/deliveries'] }] : []),
     ...(!isPlatformAdmin && hasFeature('jobAutomation') ? [{ key: '/tasks', label: 'Tasks', tooltip: MENU_HINTS['/tasks'] }] : []),
     ...(hasFeature('automations') ? [{ key: '/automations', label: 'Automations', tooltip: MENU_HINTS['/automations'], managerOnly: true }] : []),
     ...(!isPlatformAdmin && hasFeature('leadPipeline') ? [{ key: '/leads', label: 'Leads', tooltip: MENU_HINTS['/leads'] }] : []),
+    ...(hasFeature('marketing') ? [{ key: '/messages', label: 'Messages', tooltip: MENU_HINTS['/messages'], managerOnly: true }] : []),
     ...(hasFeature('marketing') ? [{ key: '/marketing', label: 'Marketing', tooltip: MENU_HINTS['/marketing'], managerOnly: true }] : []),
     ...(hasFeature('vendors') ? [{ key: '/vendors', label: 'Vendors', tooltip: MENU_HINTS['/vendors'] }] : []),
     ...(hasFeature('payroll') ? [{ key: '/payroll', label: 'Payroll', tooltip: MENU_HINTS['/payroll'], managerOnly: true }] : []),
@@ -265,10 +299,10 @@ const getMenuItems = (
     ...(hasFeature('quoteAutomation') && isQuotesEnabledForTenant(businessType, shopType) ? [{ key: '/quotes', label: 'Quotes', tooltip: MENU_HINTS['/quotes'] }] : []),
     ...(hasFeature('payroll') ? [{ key: '/employees', label: 'Employees', tooltip: MENU_HINTS['/employees'], managerOnly: true }] : []),
   ];
-  if (businessType === 'shop' && hasFeature('shopsModule')) {
+  if ((businessType === 'shop' || businessType === 'rental') && hasFeature('shopsModule')) {
     advancedChildren.splice(2, 0, {
       key: '/shops',
-      label: 'Shops',
+      label: businessType === 'rental' ? 'Locations' : 'Shops',
       tooltip: MENU_HINTS['/shops'],
       managerOnly: true,
     });
@@ -355,7 +389,7 @@ const getMenuItems = (
 /**
  * Top 3 quick actions per business type and shop type (Point of Sale, Restock, New quote, etc.)
  * Quotes quick action only when isQuotesEnabledForTenant(businessType, shopType).
- * @param {string|null} businessType - 'shop' | 'pharmacy' | 'printing_press'
+ * @param {string|null} businessType - 'shop' | 'pharmacy' | 'printing_press' | 'rental'
  * @param {string|null} shopType - Tenant metadata.shopType (for shop only)
  * @returns {Array<{ label: string, path: string, icon: React.Component }>}
  */
@@ -383,6 +417,13 @@ const getQuickActions = (businessType, shopType) => {
       { label: 'Add customer', path: '/customers?add=1', icon: UserPlus, tooltip: 'Add a new customer' },
     ];
   }
+  if (businessType === 'rental') {
+    return [
+      { label: 'New Rental', path: '/rentals?add=1', icon: CalendarClock, tooltip: 'Create a new rental booking' },
+      { label: 'Add customer', path: '/customers?add=1', icon: UserPlus, tooltip: 'Add a new customer' },
+      { label: 'View Rentals', path: '/rentals', icon: Package, tooltip: 'View all rentals' },
+    ];
+  }
   return [];
 };
 
@@ -390,6 +431,7 @@ export function Sidebar({ collapsed, onCollapse }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin, isManager, isDriver, activeTenant, user, hasFeature, isPlatformAdmin, isSupportAccessActive } = useAuth();
+  const { kind, isShopScoped, hasWorkspaceFeature } = useWorkspaceProfile();
   const hidePlatformAdminNav = isPlatformAdmin && !isSupportAccessActive;
   const { appName, primaryColor } = useBranding();
   const { canInstall, promptInstall } = usePWAInstall();
@@ -409,13 +451,13 @@ export function Sidebar({ collapsed, onCollapse }) {
     [appName, businessName]
   );
   const showScopeSwitcher =
-    (activeTenant?.businessType === 'shop' && hasFeature('shopsModule')) ||
-    (STUDIO_LIKE_TYPES.includes(activeTenant?.businessType) && hasFeature('studioLocationsModule'));
+    isShopScoped ||
+    (STUDIO_LIKE_TYPES.includes(kind) && hasWorkspaceFeature('studioLocationsModule'));
 
   const activeStudioType = studio?.activeLocation?.studioType || null;
   const businessType = STUDIO_LIKE_TYPES.includes(activeStudioType)
     ? activeStudioType
-    : activeTenant?.businessType || null;
+    : kind || null;
   const shopType =
     activeTenant?.metadata?.businessSubType ||
     activeTenant?.metadata?.shopType ||
@@ -427,10 +469,10 @@ export function Sidebar({ collapsed, onCollapse }) {
     () =>
       sanitizeHiddenSidebarKeys(
         rawHiddenSidebarKeys,
-        activeTenant?.businessType || null,
+        kind || null,
         shopType
       ),
-    [rawHiddenSidebarKeys, activeTenant?.businessType, shopType]
+    [rawHiddenSidebarKeys, kind, shopType]
   );
 
   const menuItems = useMemo(() => {
@@ -440,7 +482,7 @@ export function Sidebar({ collapsed, onCollapse }) {
       isManager,
       isDriver,
       shopType,
-      hasFeature,
+      hasWorkspaceFeature,
       hidePlatformAdminNav
     );
     return filterHiddenNavItems(items, hiddenSidebarKeys);
@@ -450,7 +492,7 @@ export function Sidebar({ collapsed, onCollapse }) {
     isManager,
     isDriver,
     shopType,
-    hasFeature,
+    hasWorkspaceFeature,
     hidePlatformAdminNav,
     hiddenSidebarKeys,
   ]);
@@ -492,6 +534,7 @@ export function Sidebar({ collapsed, onCollapse }) {
     '/customers': () => import('../../pages/Customers'),
     '/reviews': () => import('../../pages/CustomerFeedback'),
     '/marketing': () => import('../../pages/Marketing'),
+    '/messages': () => import('../../pages/Messages'),
     '/vendors': () => import('../../pages/Vendors'),
     '/jobs': () => import('../../pages/Jobs'),
     '/sales': () => import('../../pages/Sales'),
@@ -507,6 +550,8 @@ export function Sidebar({ collapsed, onCollapse }) {
     '/compliance/evat': () => import('../../pages/compliance/ComplianceEvat'),
     '/materials': () => import('../../pages/Materials'),
     '/equipment': () => import('../../pages/Equipment'),
+    '/rentals': () => import('../../pages/Rentals'),
+    '/watch': () => import('../../pages/Watch'),
     '/merchandise': () => import('../../pages/Merchandise'),
     '/leads': () => import('../../pages/Leads'),
     '/users': () => import('../../pages/Users'),
@@ -837,6 +882,7 @@ export function MobileSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin, isManager, isDriver, activeTenant, hasFeature, isPlatformAdmin, isSupportAccessActive } = useAuth();
+  const { kind, isShopScoped, hasWorkspaceFeature } = useWorkspaceProfile();
   const hidePlatformAdminNav = isPlatformAdmin && !isSupportAccessActive;
   const { appName, primaryColor } = useBranding();
   const { canInstall, promptInstall } = usePWAInstall();
@@ -856,13 +902,13 @@ export function MobileSidebar() {
     [appName, businessName]
   );
   const showScopeSwitcher =
-    (activeTenant?.businessType === 'shop' && hasFeature('shopsModule')) ||
-    (STUDIO_LIKE_TYPES.includes(activeTenant?.businessType) && hasFeature('studioLocationsModule'));
+    isShopScoped ||
+    (STUDIO_LIKE_TYPES.includes(kind) && hasWorkspaceFeature('studioLocationsModule'));
 
   const activeStudioType = studio?.activeLocation?.studioType || null;
   const businessType = STUDIO_LIKE_TYPES.includes(activeStudioType)
     ? activeStudioType
-    : activeTenant?.businessType || null;
+    : kind || null;
   const shopType =
     activeTenant?.metadata?.businessSubType ||
     activeTenant?.metadata?.shopType ||
@@ -873,10 +919,10 @@ export function MobileSidebar() {
     () =>
       sanitizeHiddenSidebarKeys(
         rawHiddenSidebarKeys,
-        activeTenant?.businessType || null,
+        kind || null,
         shopType
       ),
-    [rawHiddenSidebarKeys, activeTenant?.businessType, shopType]
+    [rawHiddenSidebarKeys, kind, shopType]
   );
 
   const menuItems = useMemo(() => {
@@ -886,7 +932,7 @@ export function MobileSidebar() {
       isManager,
       isDriver,
       shopType,
-      hasFeature,
+      hasWorkspaceFeature,
       hidePlatformAdminNav
     );
     return filterHiddenNavItems(items, hiddenSidebarKeys);
@@ -896,7 +942,7 @@ export function MobileSidebar() {
     isManager,
     isDriver,
     shopType,
-    hasFeature,
+    hasWorkspaceFeature,
     hidePlatformAdminNav,
     hiddenSidebarKeys,
   ]);
@@ -923,6 +969,7 @@ export function MobileSidebar() {
     '/customers': () => import('../../pages/Customers'),
     '/reviews': () => import('../../pages/CustomerFeedback'),
     '/marketing': () => import('../../pages/Marketing'),
+    '/messages': () => import('../../pages/Messages'),
     '/vendors': () => import('../../pages/Vendors'),
     '/jobs': () => import('../../pages/Jobs'),
     '/sales': () => import('../../pages/Sales'),
@@ -938,6 +985,8 @@ export function MobileSidebar() {
     '/compliance/evat': () => import('../../pages/compliance/ComplianceEvat'),
     '/materials': () => import('../../pages/Materials'),
     '/equipment': () => import('../../pages/Equipment'),
+    '/rentals': () => import('../../pages/Rentals'),
+    '/watch': () => import('../../pages/Watch'),
     '/merchandise': () => import('../../pages/Merchandise'),
     '/leads': () => import('../../pages/Leads'),
     '/users': () => import('../../pages/Users'),

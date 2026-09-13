@@ -44,8 +44,8 @@ export default function PaymentCollectionRequiredBanner({
         <CreditCard className="h-5 w-5 shrink-0 text-amber-600" />
         <p className="text-sm text-foreground">
           {isManager
-            ? 'Automatic invoice sending is on but payment collection is not set up. Customers cannot pay online. Set up payment collection so invoice links work for payment.'
-            : 'Automatic invoice sending is on but payment collection is not set up. Ask a workspace manager or administrator to configure payment collection in Settings.'}
+            ? 'Online payments are enabled, but payment collection is not set up. Customers cannot pay online. Set up payment collection so payment links work.'
+            : 'Online payments are enabled, but payment collection is not configured. Ask a workspace manager to set this up in Settings.'}
         </p>
       </div>
       {(isManager || dismissible) && (

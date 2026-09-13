@@ -1856,6 +1856,7 @@ function AutomationTriggerFields({ triggerType, value, onPatch }) {
 
   switch (triggerType) {
     case 'invoice_due_in_days':
+    case 'rental_due_in_days':
       return (
         <div className="space-y-1.5">
           <Label htmlFor="auto-days-before-due">Days before due date</Label>
@@ -1872,6 +1873,8 @@ function AutomationTriggerFields({ triggerType, value, onPatch }) {
       );
     case 'invoice_overdue':
     case 'invoice_overdue_staff':
+    case 'rental_overdue':
+    case 'rental_overdue_staff':
       return (
         <div className="space-y-1.5">
           <Label htmlFor="auto-days-after-due">Days after due date</Label>

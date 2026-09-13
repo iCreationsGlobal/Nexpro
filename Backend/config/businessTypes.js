@@ -27,6 +27,7 @@ const BUSINESS_TYPE_FEATURES = {
     'dealersAccount',
     'shopsModule',
     'pos',
+    'watch',
     'materialsTracking',
     'payments',
     'expenses',
@@ -65,7 +66,8 @@ const BUSINESS_TYPE_FEATURES = {
     'salesReports',
     'arReports',
     'profitLossReports',
-    'studioLocationsModule'
+    'studioLocationsModule',
+    'watch'
   ],
   pharmacy: [
     'crm',
@@ -84,6 +86,7 @@ const BUSINESS_TYPE_FEATURES = {
     'tasks',
     'dealersAccount',
     'pharmacyManagement',
+    'watch',
     'prescriptions',
     'materialsTracking',
     'payments',
@@ -93,6 +96,34 @@ const BUSINESS_TYPE_FEATURES = {
     'salesReports',
     'arReports',
     'profitLossReports'
+  ],
+  rental: [
+    'crm',
+    'automations',
+    'vendors',
+    'marketing',
+    'leadPipeline',
+    'materials',
+    'deliveries',
+    'paymentsExpenses',
+    'reports',
+    'accounting',
+    'payroll',
+    'roleManagement',
+    'tasks',
+    'dealersAccount',
+    'materialsTracking',
+    'payments',
+    'expenses',
+    'invoices',
+    'basicReports',
+    'salesReports',
+    'arReports',
+    'profitLossReports',
+    'rentals',
+    'products',
+    'shopsModule',
+    'watch'
   ]
 };
 
@@ -123,6 +154,7 @@ const isQuotesEnabledForTenant = (businessType, shopType) => {
   if (resolved === 'shop') {
     return !QUOTES_HIDDEN_SHOP_TYPES.includes(shopType || '');
   }
+  if (resolved === 'rental') return false;
   return false;
 };
 
@@ -149,6 +181,14 @@ const filterFeaturesForTenant = (enabledFeatures, tenant) => {
 };
 
 /**
+ * Core modules always enabled for a resolved business type, even when the plan tier
+ * omits them (e.g. starter rental tenants need `rentals` though it is professional-only in plans).
+ */
+const BUSINESS_TYPE_CORE_FEATURES = {
+  rental: ['rentals', 'shopsModule'],
+};
+
+/**
  * Apply tenant feature gates to a feature-flag object (for /auth/me and API enforcement).
  */
 const applyFeatureGatesToFlags = (effectiveFeatureFlags, tenant) => {
@@ -163,18 +203,24 @@ const applyFeatureGatesToFlags = (effectiveFeatureFlags, tenant) => {
       result[key] = false;
     }
   }
+  const resolved = resolveBusinessType(tenant?.businessType);
+  for (const key of BUSINESS_TYPE_CORE_FEATURES[resolved] || []) {
+    if (isFeatureAvailableForBusinessType(tenant?.businessType, key)) {
+      result[key] = true;
+    }
+  }
   return result;
 };
 
 /**
  * Resolve effective business type (handles legacy values)
  * @param {string} businessType - From tenant
- * @returns {string} 'shop' | 'studio' | 'pharmacy'
+ * @returns {string} 'shop' | 'studio' | 'pharmacy' | 'rental'
  */
 const resolveBusinessType = (businessType) => {
   if (!businessType) return DEFAULT_BUSINESS_TYPE;
   if (LEGACY_TO_STUDIO.includes(businessType)) return 'studio';
-  if (['shop', 'studio', 'pharmacy'].includes(businessType)) return businessType;
+  if (['shop', 'studio', 'pharmacy', 'rental'].includes(businessType)) return businessType;
   return DEFAULT_BUSINESS_TYPE;
 };
 
@@ -204,7 +250,8 @@ const getBusinessTypeDisplayName = (businessType) => {
   const displayNames = {
     shop: 'Shop',
     studio: 'Studio',
-    pharmacy: 'Pharmacy'
+    pharmacy: 'Pharmacy',
+    rental: 'Rental'
   };
   return displayNames[resolved] || businessType;
 };

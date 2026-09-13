@@ -17,12 +17,12 @@ import SmartReportSectionHeader from './SmartReportSectionHeader';
 /**
  * Executive Summary tab — matches first Smart Report mockup.
  */
-export default function SmartReportExecutiveTab({ snapshot, periodLabel }) {
+export default function SmartReportExecutiveTab({ snapshot, periodLabel, isRental = false }) {
   const { kpis, trend, expenseDonut, topCustomers, cashFlow, executiveAiInsight, comparisonLabel } = snapshot;
   const revenue = kpis.revenue.value;
 
   const kpiItems = [
-    { label: 'Total Revenue', value: kpis.revenue.value, change: kpis.revenue.change, sparklineData: kpis.revenue.sparkline, icon: CircleDollarSign, iconBgColor: '#dcfce7', iconColor: '#166534', comparisonLabel, sourceLabel: kpis.revenue.sourceLabel },
+    { label: isRental ? 'Collected' : 'Total Revenue', value: kpis.revenue.value, change: kpis.revenue.change, sparklineData: kpis.revenue.sparkline, icon: CircleDollarSign, iconBgColor: '#dcfce7', iconColor: '#166534', comparisonLabel, sourceLabel: kpis.revenue.sourceLabel },
     { label: 'Net Profit', value: kpis.netProfit.value, change: kpis.netProfit.change, sparklineData: kpis.netProfit.sparkline, icon: TrendingUp, iconBgColor: '#dcfce7', iconColor: '#166534', comparisonLabel, sourceLabel: kpis.netProfit.sourceLabel },
     { label: 'Profit Margin', value: kpis.profitMargin.value, change: kpis.profitMargin.change, sparklineData: kpis.profitMargin.sparkline, valueFormatter: (v) => `${Number(v).toFixed(1)}%`, icon: Percent, iconBgColor: '#dcfce7', iconColor: '#166534', comparisonLabel, sourceLabel: kpis.profitMargin.sourceLabel },
     { label: 'Operating Expenses', value: kpis.expenses.value, change: kpis.expenses.change, sparklineData: kpis.expenses.sparkline, invertTrend: true, icon: Receipt, iconBgColor: '#fee2e2', iconColor: '#b91c1c', comparisonLabel, sourceLabel: kpis.expenses.sourceLabel },
@@ -56,6 +56,8 @@ export default function SmartReportExecutiveTab({ snapshot, periodLabel }) {
             customer: { name: c.name },
           }))}
           totalRevenue={revenue}
+          title={isRental ? 'Top Customers by Collections' : 'Top Customers by Revenue'}
+          amountColumnLabel={isRental ? 'Collected' : 'Revenue'}
         />
         <CashFlowSummaryCard cashFlow={{
           operating: {

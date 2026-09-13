@@ -7,7 +7,7 @@ import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus, Loader2, RefreshCw, Filter, Users, Repeat, XCircle, CheckCircle, Phone, Mail, Briefcase, Pencil, Printer, Download, Receipt, CloudOff, Trash2, Upload } from 'lucide-react';
+import { Plus, Loader2, RefreshCw, Filter, Users, Repeat, XCircle, CheckCircle, Phone, Mail, Briefcase, Pencil, Printer, Download, Receipt, CloudOff, Trash2, Upload, CalendarClock } from 'lucide-react';
 import customerService from '../services/customerService';
 import ImportContactsDialog from '../components/ImportContactsDialog';
 import { guardOnline } from '../utils/onlineRequired';
@@ -25,6 +25,8 @@ import { useSmartSearch } from '../context/SmartSearchContext';
 import { useCustomerEvat } from '../hooks/useCustomerEvat';
 import ActionColumn from '../components/ActionColumn';
 import CustomerEvatFields from '../components/CustomerEvatFields';
+import CustomerRentalFields from '../components/CustomerRentalFields';
+import CustomerRentalProfile from '../components/CustomerRentalProfile';
 import DetailsDrawer from '../components/DetailsDrawer';
 import DrawerSectionCard from '../components/DrawerSectionCard';
 import PhoneNumberInput from '../components/PhoneNumberInput';
@@ -94,6 +96,11 @@ import {
   enrichSaleCustomer,
   shouldUsePrintableInvoice,
 } from '../utils/receiptPreview';
+import {
+  RENTAL_FORM_DEFAULTS,
+  buildRentalMetadataFromForm,
+  rentalFormValuesFromCustomer,
+} from '../utils/customerRentalMetadata';
 import PrintableReceipt from '../components/PrintableReceipt';
 import PrintableInvoice from '../components/PrintableInvoice';
 
@@ -102,6 +109,28 @@ const customerString = z.preprocess(
   (val) => (val === null || val === undefined ? '' : val),
   z.string()
 );
+
+const rentalOptionalString = z.preprocess(
+  (val) => (val === null || val === undefined ? '' : val),
+  z.string()
+);
+
+const rentalFieldsSchema = z.object({
+  rentalRenterType: rentalOptionalString,
+  rentalIdType: rentalOptionalString,
+  rentalIdNumber: rentalOptionalString,
+  rentalIdExpiry: rentalOptionalString,
+  rentalEmergencyName: rentalOptionalString,
+  rentalEmergencyPhone: rentalOptionalString,
+  rentalEmergencyRelationship: rentalOptionalString,
+  rentalGuarantorName: rentalOptionalString,
+  rentalGuarantorPhone: rentalOptionalString,
+  rentalGuarantorIdType: rentalOptionalString,
+  rentalGuarantorIdNumber: rentalOptionalString,
+  rentalGuarantorRelationship: rentalOptionalString,
+  rentalRiskRating: rentalOptionalString,
+  rentalRiskNotes: rentalOptionalString,
+});
 
 const customerSchema = z.object({
   name: z.preprocess(
@@ -123,7 +152,7 @@ const customerSchema = z.object({
   referralName: customerString,
   taxId: customerString,
   ghanaCardPin: customerString,
-}).superRefine((data, ctx) => {
+}).merge(rentalFieldsSchema).superRefine((data, ctx) => {
   const hasMonth = Boolean(data.birthdayMonth);
   const hasDay = Boolean(data.birthdayDay);
   if (hasMonth !== hasDay) {
@@ -166,6 +195,7 @@ const Customers = () => {
   const queryClient = useQueryClient();
   const businessType = activeTenant?.businessType || 'printing_press';
   const isPrintingPress = businessType === 'printing_press';
+  const isRental = businessType === 'rental';
   const [showReferralName, setShowReferralName] = useState(false);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [viewingCustomer, setViewingCustomer] = useState(null);
@@ -207,6 +237,7 @@ const Customers = () => {
       referralName: '',
       taxId: '',
       ghanaCardPin: '',
+      ...RENTAL_FORM_DEFAULTS,
     },
   });
 
@@ -370,6 +401,7 @@ const Customers = () => {
         referralName: '',
         taxId: '',
         ghanaCardPin: '',
+        ...RENTAL_FORM_DEFAULTS,
       });
       setShowReferralName(false);
       setShowCustomerSourceOtherInput(false);
@@ -409,6 +441,7 @@ const Customers = () => {
       referralName: '',
       taxId: '',
       ghanaCardPin: '',
+      ...RENTAL_FORM_DEFAULTS,
     });
     setShowReferralName(false);
     setShowCustomerSourceOtherInput(false);
@@ -437,6 +470,7 @@ const Customers = () => {
       referralName: customer.referralName || '',
       taxId: customer.taxId || '',
       ghanaCardPin: customer.ghanaCardPin || '',
+      ...(isRental ? rentalFormValuesFromCustomer(customer) : RENTAL_FORM_DEFAULTS),
     });
     setShowReferralName(customer.howDidYouHear === 'Referral');
     setShowCustomerSourceOtherInput(false);
@@ -577,18 +611,35 @@ const Customers = () => {
     }
   }, [viewingCustomer, navigate]);
 
+  const handleViewRentals = useCallback(() => {
+    if (viewingCustomer) {
+      setDrawerVisible(false);
+      navigate(`/rentals?customerId=${viewingCustomer.id}`);
+    }
+  }, [viewingCustomer, navigate]);
+
   const handleDelete = useCallback((id) => {
     deleteMutation.mutate(id);
   }, [deleteMutation]);
 
   const customerDrawerPrimaryAction = useMemo(() => {
-    if (!viewingCustomer || !isPrintingPress) return null;
-    return {
-      label: 'Create Job',
-      icon: <Briefcase className="h-4 w-4" />,
-      onClick: handleCreateJob,
-    };
-  }, [viewingCustomer, isPrintingPress, handleCreateJob]);
+    if (!viewingCustomer) return null;
+    if (isRental) {
+      return {
+        label: 'View rentals',
+        icon: <CalendarClock className="h-4 w-4" />,
+        onClick: handleViewRentals,
+      };
+    }
+    if (isPrintingPress) {
+      return {
+        label: 'Create Job',
+        icon: <Briefcase className="h-4 w-4" />,
+        onClick: handleCreateJob,
+      };
+    }
+    return null;
+  }, [viewingCustomer, isRental, isPrintingPress, handleCreateJob, handleViewRentals]);
 
   const customerDrawerMoreMenuItems = useMemo(() => {
     if (!viewingCustomer) return [];
@@ -642,10 +693,27 @@ const Customers = () => {
       dateOfBirth: toBirthdayStorageDate(birthdayMonth, birthdayDay) || null,
     };
 
-    if (editingCustomer) {
-      updateMutation.mutate({ id: editingCustomer.id, values: payload });
-    } else {
-      createMutation.mutate(payload);
+    for (const key of Object.keys(RENTAL_FORM_DEFAULTS)) {
+      delete payload[key];
+    }
+
+    if (isRental) {
+      const rentalPatch = buildRentalMetadataFromForm(values);
+      if (rentalPatch) {
+        payload.metadata = { rental: rentalPatch };
+      }
+    }
+
+    if (createMutation.isPending || updateMutation.isPending) return;
+
+    try {
+      if (editingCustomer) {
+        await updateMutation.mutateAsync({ id: editingCustomer.id, values: payload });
+      } else {
+        await createMutation.mutateAsync(payload);
+      }
+    } catch {
+      // Errors are toasted in mutation onError
     }
   };
 
@@ -779,11 +847,8 @@ const Customers = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 md:gap-4">
         <WelcomeSection
           welcomeMessage="Customers"
-          subText={
-            shopContext?.isShopWorkspace && activeShopName
-              ? `Customers for ${activeShopName} — each shop keeps its own list`
-              : 'Manage your customer relationships and track interactions.'
-          }
+          subText="Manage your customer relationships and track interactions."
+          
         />
         <div className="flex items-center gap-2 flex-1 min-w-0 sm:justify-end sm:ml-auto">
           {!isOnline && (
@@ -944,7 +1009,11 @@ const Customers = () => {
             <Button type="button" variant="outline" onClick={requestClose}>
               Cancel
             </Button>
-            <Button type="submit" form="customer-form" loading={form.formState.isSubmitting}>
+            <Button
+              type="submit"
+              form="customer-form"
+              loading={form.formState.isSubmitting || createMutation.isPending || updateMutation.isPending}
+            >
               {editingCustomer ? 'Update' : 'Create'}
             </Button>
           </>
@@ -1210,6 +1279,8 @@ const Customers = () => {
                 )}
               />
             )}
+
+            {isRental && <CustomerRentalFields control={form.control} />}
           </form>
         </Form>
       </MobileFormDialog>
@@ -1378,6 +1449,7 @@ const Customers = () => {
                     </DescriptionItem>
                   </Descriptions>
                 </DrawerSectionCard>
+                {isRental ? <CustomerRentalProfile customer={viewingCustomer} /> : null}
               </div>
             )
           },

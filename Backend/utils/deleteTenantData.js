@@ -70,6 +70,9 @@ const {
   StockCount,
   StockCountItem,
   FootTraffic,
+  VisionIncident,
+  VisionEvent,
+  VisionCamera,
   SubscriptionPayment,
   SupportTicket,
   SupportAccessSession,
@@ -321,6 +324,9 @@ async function deleteTenantData(tenantId, transaction = null) {
   await del(SystemHealthIssue, { tenantId: id }, options);
   await del(StockCount, { tenantId: id }, options);
   await del(FootTraffic, { tenantId: id }, options);
+  await del(VisionIncident, { tenantId: id }, options);
+  await del(VisionEvent, { tenantId: id }, options);
+  await del(VisionCamera, { tenantId: id }, options);
   await del(Shop, { tenantId: id }, options);
   await del(UserTask, { tenantId: id }, options);
   if (checklistIds.length) await del(UserChecklistItem, { checklistId: checklistIds }, options);

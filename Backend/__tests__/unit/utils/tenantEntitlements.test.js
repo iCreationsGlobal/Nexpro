@@ -192,4 +192,36 @@ describe('tenantEntitlements', () => {
     expect(entitlements.effectiveFeatureFlags.dealersAccount).toBe(false);
     expect(entitlements.enabledFeatures).not.toContain('dealersAccount');
   });
+
+  it('grants rentals for starter rental tenants even when plan omits rentals', async () => {
+    SubscriptionPlan.findOne.mockResolvedValue(null);
+
+    const entitlements = await getTenantEffectiveEntitlements({
+      id: 'tenant-rental-starter',
+      plan: 'starter',
+      businessType: 'rental',
+      metadata: { businessSubType: 'equipment_rental' },
+    });
+
+    expect(entitlements.baseFeatureFlags.rentals).toBe(false);
+    expect(entitlements.effectiveFeatureFlags.rentals).toBe(true);
+    expect(entitlements.enabledFeatures).toContain('rentals');
+    expect(entitlements.effectiveFeatureFlags.shopsModule).toBe(true);
+    expect(entitlements.enabledFeatures).toContain('shopsModule');
+  });
+
+  it('strips rentals for non-rental tenants even on professional plan', async () => {
+    SubscriptionPlan.findOne.mockResolvedValue(null);
+
+    const entitlements = await getTenantEffectiveEntitlements({
+      id: 'tenant-shop-pro',
+      plan: 'professional',
+      businessType: 'shop',
+      metadata: {},
+    });
+
+    expect(entitlements.baseFeatureFlags.rentals).toBe(true);
+    expect(entitlements.effectiveFeatureFlags.rentals).toBe(false);
+    expect(entitlements.enabledFeatures).not.toContain('rentals');
+  });
 });

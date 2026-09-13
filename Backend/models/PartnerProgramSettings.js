@@ -3,7 +3,7 @@ const { sequelize } = require('../config/database');
 
 /**
  * Per-tenant Sabito Partner Program configuration.
- * When enabled + listed, the business appears on Sabito App marketplace.
+ * Public on Sabito App only when enabled, listed, and moderationStatus is approved.
  */
 const PartnerProgramSettings = sequelize.define(
   'PartnerProgramSettings',
@@ -82,6 +82,25 @@ const PartnerProgramSettings = sequelize.define(
       type: DataTypes.DATE,
       allowNull: true,
     },
+    moderationStatus: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: 'draft',
+      comment: 'draft | pending | approved | rejected | suspended',
+    },
+    moderationNote: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    moderatedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    moderatedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: { model: 'users', key: 'id' },
+    },
     metadata: {
       type: DataTypes.JSONB,
       allowNull: false,
@@ -95,6 +114,7 @@ const PartnerProgramSettings = sequelize.define(
       { unique: true, fields: ['slug'] },
       { fields: ['enabled', 'listed'] },
       { fields: ['category'] },
+      { fields: ['moderationStatus', 'enabled', 'listed'] },
     ],
   }
 );

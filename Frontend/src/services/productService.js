@@ -152,6 +152,7 @@ const productService = {
       isActive: options.isActive ?? true,
       ...(options.includeVariants ? { includeVariants: true } : {}),
       ...(options.shopId ? { shopId: options.shopId } : {}),
+      ...(options.isRentable != null ? { isRentable: options.isRentable } : {}),
     });
     Object.entries(scoped).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
@@ -538,6 +539,28 @@ const productService = {
     
     return tier ? tier.price : (parseFloat(product.sellingPrice) || 0);
   },
+
+  // =============================================
+  // RENTAL UNITS (serialized inventory)
+  // =============================================
+
+  getRentalUnits: async (productId, params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      searchParams.append(key, value);
+    });
+    const query = searchParams.toString();
+    return api.get(query ? `/products/${productId}/rental-units?${query}` : `/products/${productId}/rental-units`);
+  },
+
+  createRentalUnit: async (productId, payload) => api.post(`/products/${productId}/rental-units`, payload),
+
+  updateRentalUnit: async (productId, unitId, payload) =>
+    api.put(`/products/${productId}/rental-units/${unitId}`, payload),
+
+  deleteRentalUnit: async (productId, unitId) =>
+    api.delete(`/products/${productId}/rental-units/${unitId}`),
 };
 
 export default productService;

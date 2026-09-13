@@ -84,6 +84,8 @@ describe('defaultAutomationService', () => {
       'birthday_greeting',
       'win_back_campaign',
       'customer_created_welcome',
+      'rental_created_confirmation',
+      'rental_due_reminder',
     ]));
     expect(keys).not.toContain('review_request');
     expect(keys).not.toContain('high_value_invoice_alert');
@@ -120,6 +122,16 @@ describe('defaultAutomationService', () => {
     expect(pharmacyKeys).toContain('prescription_refill_reminder');
     expect(pharmacyKeys).not.toContain('sale_completed_receipt');
     expect(pharmacyKeys).not.toContain('job_completed_notification');
+
+    const rentalKeys = filterTemplatesForTenant(getDefaultTemplates(), {
+      businessType: 'rental',
+      metadata: {},
+    }).map((t) => t.key);
+    expect(rentalKeys).toContain('rental_created_confirmation');
+    expect(rentalKeys).toContain('rental_due_reminder');
+    expect(rentalKeys).toContain('payment_received_thank_you');
+    expect(rentalKeys).not.toContain('sale_completed_receipt');
+    expect(rentalKeys).not.toContain('job_completed_notification');
   });
 
   it('strips WhatsApp and SMS actions when those channels are off', () => {

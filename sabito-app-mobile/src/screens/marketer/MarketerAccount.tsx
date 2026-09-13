@@ -1,3 +1,4 @@
+import apiClient from '../../services/apiClient';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Image, Platform, Share, ActivityIndicator, Modal as RNModal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -81,14 +82,15 @@ const MarketerAccount: React.FC<MarketerAccountProps> = ({ navigation, onLogout 
   };
 
   const handleDeleteAccount = async (): Promise<void> => {
-    showDialog({
-      title: 'Not available',
-      message: 'Account deletion is not available in the app yet. Contact support to close your marketer account.',
-      buttons: [{ text: 'OK', onPress: hideDialog }],
-    });
-    setShowDeleteModal(false);
-    setDeletePassword('');
-    setIsDeleting(false);
+    setIsDeleting(true);
+    try {
+      await apiClient.delete('/public/sabito-marketer/auth/account', { data: { password: deletePassword } });
+      await logoutMarketer();
+      await AsyncStorage.removeItem('user');
+      await onLogout?.();
+    } catch (error: any) {
+      showDialog({ title: 'Unable to close account', message: error.response?.data?.message || 'Please retry.', buttons: [{ text: 'OK', onPress: hideDialog }] });
+    } finally { setIsDeleting(false); }
   };
 
   const handleLogout = (): void => {
@@ -161,6 +163,8 @@ const MarketerAccount: React.FC<MarketerAccountProps> = ({ navigation, onLogout 
     {
       title: 'Preferences',
       items: [
+        { icon: User, label: 'Privacy & security', subtitle: 'Change password', onPress: () => navigation.navigate('PrivacySecurity' as any) },
+        { icon: ClipboardList, label: 'Reports & analytics', subtitle: 'Referrals and earnings by business', onPress: () => navigation.navigate('MarketerReports' as any) },
         {
           icon: User,
           label: 'Edit profile',
@@ -292,19 +296,19 @@ const MarketerAccount: React.FC<MarketerAccountProps> = ({ navigation, onLogout 
           <ChevronRight size={20} color={colors.iconSecondary} strokeWidth={1.5} />
         </TouchableOpacity>
 
-        {/* Delete Account Button */}
+        {/* Close Account Button */}
         <TouchableOpacity 
           style={styles.deleteButton}
           onPress={() => setShowDeleteModal(true)}
         >
-          <Text style={[styles.deleteButtonText, { color: colors.textSecondary }]}>Delete Account</Text>
+          <Text style={[styles.deleteButtonText, { color: colors.textSecondary }]}>Close Account</Text>
         </TouchableOpacity>
 
         {/* App Version */}
         <Text style={[styles.versionText, { color: colors.textTertiary }]}>Sabito Marketer v1.0.0</Text>
       </ScrollView>
 
-      {/* Delete Account Confirmation Modal */}
+      {/* Close Account Confirmation Modal */}
       <RNModal
         visible={showDeleteModal}
         transparent={true}
@@ -329,7 +333,7 @@ const MarketerAccount: React.FC<MarketerAccountProps> = ({ navigation, onLogout 
           >
             <View style={styles.modalHeader}>
               <Trash2 size={32} color={COLORS.ERROR} strokeWidth={1.5} />
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Account</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Close Account</Text>
               <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
                 This action cannot be undone. All your data will be permanently deleted.
               </Text>
@@ -371,7 +375,7 @@ const MarketerAccount: React.FC<MarketerAccountProps> = ({ navigation, onLogout 
                 style={[styles.modalDeleteButton, { backgroundColor: COLORS.ERROR }]}
                 labelStyle={styles.modalDeleteLabel}
               >
-                Delete Account
+                Close Account
               </Button>
             </View>
           </TouchableOpacity>

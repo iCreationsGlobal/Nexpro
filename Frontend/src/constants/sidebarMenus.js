@@ -14,6 +14,8 @@ export const LOCKED_SIDEBAR_KEYS = [
   '/dealers',
   '/invoices',
   '/expenses',
+  '/rentals',
+  '/watch',
 ];
 
 /** Optional sidebar route keys users may hide. */
@@ -37,6 +39,7 @@ export const CONFIGURABLE_SIDEBAR_KEYS = [
   '/tasks',
   '/automations',
   '/leads',
+  '/messages',
   '/marketing',
   '/vendors',
   '/payroll',
@@ -77,6 +80,7 @@ const ADVANCED_CHILD_KEYS = [
   '/tasks',
   '/automations',
   '/leads',
+  '/messages',
   '/marketing',
   '/vendors',
   '/dealers',
@@ -151,11 +155,12 @@ export const SIDEBAR_MENU_GROUPS = [
       { key: '/tasks', label: 'Tasks' },
       { key: '/automations', label: 'Automations', managerOnly: true },
       { key: '/leads', label: 'Leads' },
+      { key: '/messages', label: 'Messages', managerOnly: true },
       { key: '/marketing', label: 'Marketing', managerOnly: true },
       { key: '/vendors', label: 'Vendors' },
       { key: '/dealers', label: 'Dealers' },
       { key: '/quotes', label: 'Quotes' },
-      { key: '/shops', label: 'Shops', managerOnly: true },
+      { key: '/shops', label: 'Shops / Locations', managerOnly: true },
       { key: '/pharmacies', label: 'Pharmacies' },
       { key: '/prescriptions', label: 'Prescriptions' },
       { key: '/drugs', label: 'Drugs' },
@@ -267,6 +272,8 @@ export const isConfigurableSidebarKeyForTenant = (key, ctx = {}) => {
       return hasFeature('automations');
     case '/leads':
       return !isPlatformAdmin && hasFeature('leadPipeline');
+    case '/messages':
+      return hasFeature('marketing');
     case '/marketing':
       return hasFeature('marketing');
     case '/vendors':
@@ -285,7 +292,7 @@ export const isConfigurableSidebarKeyForTenant = (key, ctx = {}) => {
     case '/employees':
       return hasFeature('payroll');
     case '/shops':
-      return businessType === 'shop' && hasFeature('shopsModule');
+      return (businessType === 'shop' || businessType === 'rental') && hasFeature('shopsModule');
     case '/pharmacies':
     case '/prescriptions':
     case '/drugs':

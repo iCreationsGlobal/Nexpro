@@ -1,6 +1,7 @@
-const { Lead, Job, Sale, Customer, Setting, Tenant, JobStatusHistory, Shop, StudioLocation } = require('../models');
+const { Lead, Job, Sale, Customer, Setting, Tenant, JobStatusHistory, Shop, StudioLocation, SalesAgent } = require('../models');
 const { Op } = require('sequelize');
 const emailService = require('../services/emailService');
+const salesAgentService = require('../services/salesAgentService');
 const { formatToE164, normalizePhoneNumber } = require('../utils/phoneUtils');
 const { resolveBusinessType } = require('../config/businessTypes');
 const { getTenantLogoUrl } = require('../utils/tenantLogo');
@@ -358,6 +359,38 @@ exports.submitSalesAgentApplication = async (req, res, next) => {
       createdBy: null
     });
 
+    let salesAgentStatusLine = null;
+    try {
+      const existingAgent = await SalesAgent.findOne({ where: { email: trimmedEmail } });
+      if (existingAgent) {
+        salesAgentStatusLine = `Already exists (status: ${existingAgent.status})`;
+      } else {
+        await salesAgentService.createSalesAgent({
+          name: trimmedName,
+          email: trimmedEmail,
+          phone: trimmedPhone,
+          status: 'pending',
+          notes,
+          leadId: lead.id,
+          metadata: {
+            source: 'website_sales_agent_application',
+            cityRegion: trimmedCityRegion,
+            experience: trimmedExperience || null,
+            whyJoin: trimmedWhyJoin || null
+          },
+          createCode: false
+        }, {});
+        salesAgentStatusLine = 'Created (pending review in Admin > Sales Agents)';
+      }
+    } catch (salesAgentError) {
+      console.error('[SalesAgentApplication] Failed to auto-create pending sales agent', {
+        leadId: lead.id,
+        email: emailService.maskEmail(trimmedEmail),
+        error: salesAgentError?.message || salesAgentError,
+      });
+      salesAgentStatusLine = null;
+    }
+
     const subject = `New ABS sales agent application from ${trimmedName}`;
     const html = `
       <h2>New ABS sales agent application</h2>
@@ -368,6 +401,7 @@ exports.submitSalesAgentApplication = async (req, res, next) => {
         <li><strong>Email:</strong> ${escapeHtml(toDisplay(trimmedEmail))}</li>
         <li><strong>City / Region:</strong> ${escapeHtml(toDisplay(trimmedCityRegion))}</li>
         <li><strong>Lead ID:</strong> ${escapeHtml(toDisplay(lead.id))}</li>
+        ${salesAgentStatusLine ? `<li><strong>Sales Agent record:</strong> ${escapeHtml(salesAgentStatusLine)}</li>` : ''}
       </ul>
       <h3>Experience</h3>
       <p>${escapeHtml(toDisplay(trimmedExperience, 'Not provided')).replace(/\n/g, '<br>')}</p>
@@ -382,13 +416,14 @@ exports.submitSalesAgentApplication = async (req, res, next) => {
       `Email: ${toDisplay(trimmedEmail)}`,
       `City / Region: ${toDisplay(trimmedCityRegion)}`,
       `Lead ID: ${toDisplay(lead.id)}`,
+      salesAgentStatusLine ? `Sales Agent record: ${salesAgentStatusLine}` : null,
       '',
       'Experience:',
       toDisplay(trimmedExperience, 'Not provided'),
       '',
       'Why they want to join:',
       toDisplay(trimmedWhyJoin, 'Not provided')
-    ].join('\n');
+    ].filter((line) => line !== null).join('\n');
 
     const emailResult = await emailService.sendPlatformMessage(
       SALES_AGENT_APPLICATION_RECIPIENT_EMAIL,

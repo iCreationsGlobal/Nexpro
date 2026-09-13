@@ -23,6 +23,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useIsStoreSetupRoute } from '@/hooks/useIsStoreSetupRoute';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
 import { useScreenColors } from '@/hooks/useScreenColors';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 import { storeService } from '@/services/storeService';
 import { resolveBusinessType } from '@/constants';
 import { formatCurrency } from '@/utils/formatCurrency';
@@ -268,13 +269,15 @@ const styles = StyleSheet.create({
   toggleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    alignSelf: 'flex-start',
+    ...standaloneFullWidth,
     marginTop: 12,
     borderWidth: 1,
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    minHeight: 44,
   },
   toggleText: { fontSize: 14, fontWeight: '600' },
 });

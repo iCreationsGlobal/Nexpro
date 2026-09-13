@@ -1,8 +1,8 @@
-const { resolveBusinessType } = require('../config/businessTypes');
 const {
   hasWorkspaceWideShopAccess,
   getUserShopIds,
   ensureDefaultShop,
+  isShopScopedBusinessType,
 } = require('../utils/shopUtils');
 
 const resolveHeaderShopId = (req) => {
@@ -19,26 +19,23 @@ const isShopAccessRoute = (req) =>
 
 const allowsAllShopScope = (req) => req.allowAllShopScope === true;
 
-const SHOP_SCOPED_BUSINESS_TYPES = ['shop', 'pharmacy'];
-
 /**
- * Resolves shop scope for retail (shop/pharmacy) tenants.
+ * Resolves shop/branch scope for retail, pharmacy, and rental tenants.
+ * Rental workspaces reuse Shop as the default/main location, same as shops.
  * Must run after tenantContext.
  */
 const shopContext = async (req, res, next) => {
   try {
-    const businessType = resolveBusinessType(req.tenant?.businessType);
-    if (!SHOP_SCOPED_BUSINESS_TYPES.includes(businessType)) {
+    if (!isShopScopedBusinessType(req.tenant?.businessType)) {
       req.shopScoped = false;
       return next();
     }
 
     req.shopScoped = true;
 
-    const defaultShop = await ensureDefaultShop(
-      req.tenantId,
-      req.tenant?.name || 'Main shop'
-    );
+    const defaultShop = await ensureDefaultShop(req.tenantId, {
+      name: req.tenant?.name || 'Main shop',
+    });
     req.defaultShopId = defaultShop?.id || null;
 
     const allowedIds = await getUserShopIds(

@@ -14,6 +14,7 @@ jest.mock('../../../models', () => ({
   Customer: {
     findOne: jest.fn(),
   },
+  Job: { findAll: jest.fn() },
   PartnerProgramSettings: {},
   Tenant: {},
 }));
@@ -28,8 +29,9 @@ jest.mock('../../../utils/customerUniquenessUtils', () => ({
   }),
 }));
 
-const { PartnerReferral, Partnership, Customer } = require('../../../models');
+const { PartnerReferral, Partnership, Customer, Job } = require('../../../models');
 const {
+  getReferralForMarketer,
   createReferral,
   matchPendingReferralsForCustomer,
 } = require('../../../services/partnerReferralService');
@@ -168,5 +170,28 @@ describe('partnerReferralService', () => {
     const results = await matchPendingReferralsForCustomer(customer);
     expect(results[0].outcome).toBe('matched');
     expect(customer.update).toHaveBeenCalled();
+  });
+});
+
+describe('marketer job visibility', () => {
+  beforeEach(() => jest.clearAllMocks());
+  test('does not look up jobs for an unowned referral', async () => {
+    PartnerReferral.findOne.mockResolvedValue(null);
+    expect(await getReferralForMarketer('marketer', 'referral')).toBeNull();
+    expect(PartnerReferral.findOne).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'referral', marketerId: 'marketer' } }));
+    expect(Job.findAll).not.toHaveBeenCalled();
+  });
+  test('does not expose jobs from conflicting referrals', async () => {
+    const referral = { status: 'conflict', customerId: 'customer', toJSON() { return { status: this.status }; } };
+    PartnerReferral.findOne.mockResolvedValue(referral);
+    expect((await getReferralForMarketer('marketer', 'referral')).jobs).toEqual([]);
+    expect(Job.findAll).not.toHaveBeenCalled();
+  });
+  test('scopes progress to the matched customer and tenant with a limited projection', async () => {
+    const referral = { status: 'matched', tenantId: 'tenant', customerId: 'customer', partnershipId: 'partner', matchedAt: new Date(), toJSON() { return { status: this.status }; } };
+    PartnerReferral.findOne.mockResolvedValue(referral);
+    Job.findAll.mockResolvedValue([{ id: 'job', status: 'in_progress' }]);
+    expect((await getReferralForMarketer('marketer', 'referral')).jobs[0].status).toBe('in_progress');
+    expect(Job.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: 'tenant', customerId: 'customer' }), attributes: ['id', 'jobNumber', 'title', 'status', 'dueDate', 'createdAt', 'updatedAt'] }));
   });
 });

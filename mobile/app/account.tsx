@@ -8,29 +8,29 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Image } from 'expo-image';
 
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
+import { UserAvatar } from '@/components/UserAvatar';
 import { useAuth } from '@/context/AuthContext';
 import { resetLocalSessionForOnboardingTest } from '@/utils/devSessionReset';
-import { resolveDisplayImageUrl } from '@/utils/fileUtils';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
 import { StackPageHeader } from '@/components/StackPageHeader';
+import { standaloneButtonStyles } from '@/styles/standaloneButton';
 
-type MenuItem = {
+const AVATAR_SIZE = 104;
+
+type LinkItem = {
   id: string;
   label: string;
   icon: AppIconName;
-  route?: string;
-  destructive?: boolean;
-  onPress?: () => void;
+  route: string;
 };
 
 export default function AccountScreen() {
   const router = useRouter();
   const { user, logout, isDriver } = useAuth();
-  const { bg, cardBg, borderColor, textColor, mutedColor, colors } = useScreenColors();
+  const { cardBg, borderColor, textColor, mutedColor, colors, danger } = useScreenColors();
 
   const handleLogout = useCallback(() => {
     Alert.alert(
@@ -69,90 +69,123 @@ export default function AccountScreen() {
     );
   }, [logout, router]);
 
-  const menuItems: MenuItem[] = isDriver
-    ? [
-        { id: 'profile', label: 'Profile', icon: 'user', route: '/profile' },
-        { id: 'logout', label: 'Log out', icon: 'sign-out', destructive: true, onPress: handleLogout },
-      ]
+  const handleEditProfile = useCallback(() => {
+    router.push({ pathname: '/profile', params: { edit: '1' } });
+  }, [router]);
+
+  const linkItems: LinkItem[] = isDriver
+    ? []
     : [
-        { id: 'profile', label: 'Profile', icon: 'user', route: '/profile' },
-        { id: 'settings', label: 'Settings', icon: 'cog', route: '/settings' },
-        { id: 'privacy', label: 'Privacy Policy', icon: 'info-circle', route: '/privacy-policy' },
-        { id: 'data-deletion', label: 'Delete account/data', icon: 'trash', route: '/data-deletion', destructive: true },
-        ...(__DEV__
-          ? [
-              {
-                id: 'reset-onboarding-test',
-                label: 'Reset onboarding test session',
-                icon: 'refresh' as AppIconName,
-                destructive: true,
-                onPress: handleResetOnboardingTestSession,
-              },
-            ]
-          : []),
-        { id: 'logout', label: 'Log out', icon: 'sign-out', destructive: true, onPress: handleLogout },
+        {
+          id: 'settings',
+          label: 'Settings',
+          icon: 'cog',
+          route: '/settings',
+        },
+        {
+          id: 'privacy',
+          label: 'Privacy Policy',
+          icon: 'info-circle',
+          route: '/privacy-policy',
+        },
       ];
 
-  const handleMenuPress = useCallback(
-    (item: MenuItem) => {
-      if (item.onPress) {
-        item.onPress();
-      } else if (item.route) {
-        router.push(item.route as any);
-      }
-    },
-    [router]
-  );
+  const isEmailVerified = Boolean(user?.emailVerifiedAt);
+  const displayName = user?.name?.trim() || 'User';
+  const displayEmail = user?.email?.trim() || '';
 
-  const avatarUrl = resolveDisplayImageUrl(user?.profilePicture);
+  const headerEditAction = (
+    <Pressable
+      onPress={handleEditProfile}
+      accessibilityRole="button"
+      accessibilityLabel="Edit profile"
+      hitSlop={8}
+      style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
+    >
+      <AppIcon name="pencil" size={20} color={textColor} />
+    </Pressable>
+  );
 
   return (
     <ScreenShell style={styles.screen}>
-      <StackPageHeader title="Account" />
+      <StackPageHeader title="Account" right={headerEditAction} />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <View style={[styles.profileCard, { backgroundColor: cardBg, borderColor }]}>
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} contentFit="cover" />
-          ) : (
-            <View style={[styles.avatarPlaceholder, { backgroundColor: colors.tint }]}>
-              <Text style={styles.avatarInitial}>
-                {(user?.name?.trim()?.[0] || user?.email?.[0] || '?').toUpperCase()}
-              </Text>
-            </View>
-          )}
-          <Text style={[styles.name, { color: textColor }]}>{user?.name || 'User'}</Text>
-          <Text style={[styles.email, { color: mutedColor }]}>{user?.email}</Text>
+        <View style={styles.profileHeader}>
+          <UserAvatar
+            size={AVATAR_SIZE}
+            onPress={handleEditProfile}
+            accessibilityLabel="View and edit profile"
+          />
+          <View style={styles.nameRow}>
+            <Text style={[styles.name, { color: textColor }]} numberOfLines={2}>
+              {displayName}
+            </Text>
+            {isEmailVerified ? (
+              <AppIcon name="check-circle" size={18} color={colors.tint} />
+            ) : null}
+          </View>
+          {displayEmail ? (
+            <Text style={[styles.email, { color: mutedColor }]} numberOfLines={1}>
+              {displayEmail}
+            </Text>
+          ) : null}
+          <Pressable
+            onPress={handleEditProfile}
+            accessibilityRole="button"
+            accessibilityLabel="Edit profile"
+            style={({ pressed }) => [styles.editLink, pressed && styles.pressed]}
+          >
+            <Text style={[styles.editLinkText, { color: mutedColor }]}>Tap to edit profile</Text>
+          </Pressable>
         </View>
 
-        <View style={[styles.menuCard, { backgroundColor: cardBg, borderColor }]}>
-          {menuItems.map((item, index) => (
-            <Pressable
-              key={item.id}
-              onPress={() => handleMenuPress(item)}
-              style={({ pressed }) => [
-                styles.menuRow,
-                index > 0 && styles.menuRowBorder,
-                { borderTopColor: borderColor },
-                pressed && styles.pressed,
-              ]}
-            >
-              <AppIcon
-                name={item.icon}
-                size={20}
-                color={item.destructive ? '#ef4444' : colors.tint}
-              />
-              <Text
-                style={[
-                  styles.menuLabel,
-                  { color: item.destructive ? '#ef4444' : textColor },
+        {linkItems.length > 0 ? (
+          <View style={[styles.menuCard, { backgroundColor: cardBg, borderColor }]}>
+            {linkItems.map((item, index) => (
+              <Pressable
+                key={item.id}
+                onPress={() => router.push(item.route as never)}
+                style={({ pressed }) => [
+                  styles.linkRow,
+                  index > 0 && styles.rowBorder,
+                  { borderTopColor: borderColor },
+                  pressed && styles.pressed,
                 ]}
               >
-                {item.label}
-              </Text>
-              <AppIcon name="chevron-right" size={14} color={mutedColor} />
-            </Pressable>
-          ))}
-        </View>
+                <AppIcon name={item.icon} size={22} color={textColor} />
+                <Text style={[styles.linkLabel, { color: textColor }]}>{item.label}</Text>
+                <AppIcon name="chevron-right" size={18} color={mutedColor} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
+        {__DEV__ && !isDriver ? (
+          <Pressable
+            onPress={handleResetOnboardingTestSession}
+            style={({ pressed }) => [
+              standaloneButtonStyles.outline,
+              { borderColor: danger, marginTop: 16 },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={{ color: danger, fontWeight: '600' }}>Reset onboarding test session</Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          onPress={handleLogout}
+          accessibilityRole="button"
+          accessibilityLabel="Log out"
+          style={({ pressed }) => [
+            standaloneButtonStyles.outline,
+            { borderColor: danger, marginTop: 24 },
+            pressed && styles.pressed,
+          ]}
+        >
+          <AppIcon name="sign-out" size={18} color={danger} />
+          <Text style={[styles.logoutText, { color: danger }]}>Log out</Text>
+        </Pressable>
       </ScrollView>
     </ScreenShell>
   );
@@ -161,35 +194,64 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   container: { flex: 1 },
-  content: { padding: 16, paddingBottom: 32 },
-  profileCard: {
-    alignItems: 'center',
-    padding: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 16,
-  },
-  avatar: { width: 72, height: 72, borderRadius: 36, marginBottom: 12 },
-  avatarPlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+  content: { paddingHorizontal: 16, paddingBottom: 32 },
+  headerAction: {
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
   },
-  avatarInitial: { fontSize: 28, fontWeight: '700', color: '#fff' },
-  name: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
-  email: { fontSize: 14 },
-  menuCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
-  menuRow: {
+  profileHeader: {
+    alignItems: 'center',
+    paddingTop: 8,
+    paddingBottom: 28,
+  },
+  nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 16,
+    paddingHorizontal: 16,
+  },
+  name: {
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  email: {
+    fontSize: 15,
+    marginTop: 4,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  editLink: {
+    marginTop: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  editLinkText: {
+    fontSize: 13,
+  },
+  menuCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 52,
     paddingHorizontal: 16,
     paddingVertical: 14,
+    gap: 14,
   },
-  menuRowBorder: { borderTopWidth: 1 },
-  menuLabel: { flex: 1, fontSize: 16, fontWeight: '500' },
+  linkLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  rowBorder: { borderTopWidth: 1 },
+  logoutText: { fontSize: 16, fontWeight: '600' },
   pressed: { opacity: 0.7 },
 });

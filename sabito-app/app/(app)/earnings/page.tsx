@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { canCashout, commissionAmount } from "@/lib/workspace";
 import { useEffect, useMemo, useState } from "react";
 import {
   getMarketerDashboard,
@@ -19,33 +20,38 @@ export default function EarningsPage() {
   const [totalEarned, setTotalEarned] = useState(0);
   const [hasMomo, setHasMomo] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    setLoading(true); setError("");
     (async () => {
       try {
         const [earn, cos, dash, me] = await Promise.all([
           listMyEarnings(),
           listMyCashouts(),
-          getMarketerDashboard().catch(() => ({ data: {} })),
+          getMarketerDashboard(),
           getMarketerSession(),
         ]);
         setEarnings((earn.data || []) as AnyRow[]);
         setCashouts((cos.data || []) as AnyRow[]);
         const dashData = (dash.data || {}) as Record<string, unknown>;
-        setDueBalance(Number(dashData.dueBalance || 0));
+        setDueBalance(Number(dashData.availableBalance || 0));
         setTotalEarned(Number(dashData.totalEarned || 0));
-        setHasMomo(Boolean(me.data.marketer.momoNumber));
+        setHasMomo(Boolean(me.data.marketer.momoNumber || me.data.marketer.bankDetails));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
-      }
+      } finally { setLoading(false); }
     })();
-  }, []);
+  }, [attempt]);
 
   const dueCount = useMemo(
-    () => earnings.filter((e) => e.status === "due").length,
+    () => earnings.filter(canCashout).length,
     [earnings]
   );
 
+  if (loading) return <div className="workspace-page" role="status">Loading earnings…</div>;
+  if (error) return <div className="workspace-page" role="alert"><p>{error}</p><Button onClick={() => setAttempt(a => a + 1)}>Try again</Button></div>;
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -61,7 +67,7 @@ export default function EarningsPage() {
       {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
       {!hasMomo ? (
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Add a MoMo number in{" "}
+          Add a MoMo number or bank details in{" "}
           <Link href="/account" className="font-semibold underline">
             Account
           </Link>{" "}
@@ -89,7 +95,7 @@ export default function EarningsPage() {
             earnings.map((e) => (
               <div key={String(e.id)} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
                 <p className="font-medium">
-                  GHS {Number(e.amount || 0).toFixed(2)} · {String(e.status)}
+                  GHS {commissionAmount(e).toFixed(2)} · {String(e.status)}
                 </p>
                 <p className="text-slate-500">
                   {String(e.rateType || "commission")}

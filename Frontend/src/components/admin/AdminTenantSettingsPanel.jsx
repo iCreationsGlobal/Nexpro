@@ -30,6 +30,7 @@ const EMPTY_SETTINGS = {
     autoSendReceiptToCustomer: false,
     sendPaymentReminderEmail: false,
     sendInvoicePaidConfirmationToCustomer: true,
+    acceptOnlinePayments: false,
   },
   sidebarDefaults: {
     hiddenSidebarKeys: [],

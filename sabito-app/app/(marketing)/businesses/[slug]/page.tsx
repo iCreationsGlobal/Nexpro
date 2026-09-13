@@ -97,7 +97,7 @@ export default function BusinessDetailPage() {
         </div>
         <div>
           <p className="text-xs text-slate-500">Payout notes</p>
-          <p className="text-sm">{business.payoutNotes || "Request cashout in Sabito; business pays outside ABS and marks paid in Settings"}</p>
+          <p className="text-sm">{business.payoutNotes || "After the business remits commissions to ABS, request cashout in Sabito. ABS pays your marketer share to your saved payout method."}</p>
         </div>
       </div>
 

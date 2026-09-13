@@ -4,18 +4,19 @@
 
 import { STUDIO_LIKE_TYPES, isQuotesEnabledForTenant, QUOTES_HIDDEN_SHOP_TYPES } from '../constants';
 
-const ALL_RESOLVED_TYPES = Object.freeze(['shop', 'studio', 'pharmacy']);
+const ALL_RESOLVED_TYPES = Object.freeze(['shop', 'studio', 'pharmacy', 'rental']);
 const ORDERS_ENABLED_SHOP_TYPES = Object.freeze(['restaurant']);
 
 /**
  * @param {string|null|undefined} businessType
- * @returns {'shop'|'studio'|'pharmacy'}
+ * @returns {'shop'|'studio'|'pharmacy'|'rental'}
  */
 export function resolveBusinessType(businessType) {
   if (!businessType) return 'shop';
   if (STUDIO_LIKE_TYPES.includes(businessType) || businessType === 'studio') return 'studio';
   if (businessType === 'pharmacy') return 'pharmacy';
   if (businessType === 'shop') return 'shop';
+  if (businessType === 'rental') return 'rental';
   return 'shop';
 }
 
@@ -40,6 +41,15 @@ export const TRIGGER_ELIGIBILITY = Object.freeze({
   job_created_staff: { allowedBusinessTypes: ['studio'] },
   job_assigned_staff: { allowedBusinessTypes: ['studio'] },
   prescription_refill_due: { allowedBusinessTypes: ['pharmacy'] },
+  rental_created: { allowedBusinessTypes: ['rental'] },
+  rental_created_staff: { allowedBusinessTypes: ['rental'] },
+  rental_checked_out: { allowedBusinessTypes: ['rental'] },
+  rental_returned: { allowedBusinessTypes: ['rental'] },
+  rental_returned_staff: { allowedBusinessTypes: ['rental'] },
+  rental_cancelled: { allowedBusinessTypes: ['rental'] },
+  rental_due_in_days: { allowedBusinessTypes: ['rental'] },
+  rental_overdue: { allowedBusinessTypes: ['rental'] },
+  rental_overdue_staff: { allowedBusinessTypes: ['rental'] },
   quote_no_response: { allowedBusinessTypes: ALL_RESOLVED_TYPES, requiresQuotes: true },
   quote_sent: { allowedBusinessTypes: ALL_RESOLVED_TYPES, requiresQuotes: true },
   quote_accepted_staff: { allowedBusinessTypes: ALL_RESOLVED_TYPES, requiresQuotes: true },

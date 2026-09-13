@@ -10,7 +10,7 @@ import { STUDIO_LIKE_TYPES, QUERY_CACHE } from '../constants';
 import { organizationSchema, resolveSettingsFileUrl } from '../utils/settingsUtils';
 
 const getWorkspaceTypeDisplay = (businessType) => {
-  const mapping = { shop: 'Shop', printing_press: 'Studio', pharmacy: 'Pharmacy' };
+  const mapping = { shop: 'Shop', printing_press: 'Studio', pharmacy: 'Pharmacy', rental: 'Rental' };
   return mapping[businessType] || 'Studio';
 };
 
@@ -19,11 +19,13 @@ const getWorkspaceDescription = (businessType) => {
     shop: 'Optimized for retail sales, inventory, and customer management',
     pharmacy: 'Optimized for pharmaceutical operations and inventory',
     printing_press: 'Optimized for jobs, services, quotes, and production workflows',
+    rental: 'Optimized for rental bookings, availability tracking, returns, and damage management',
   };
   return descriptions[businessType] || descriptions.printing_press;
 };
 
 const getAddAnotherWorkspaceLabel = (businessType) => {
+  if (businessType === 'rental') return 'Add another location';
   const typeName = getWorkspaceTypeDisplay(businessType).toLowerCase();
   return `Add another ${typeName}`;
 };
@@ -304,12 +306,12 @@ export const useSettingsOrganization = () => {
       showError(null, 'Only workspace managers can add new locations.');
       return;
     }
-    if (workspaceType === 'shop') {
+    if (workspaceType === 'shop' || workspaceType === 'rental') {
       if (hasFeature('shopsModule')) {
         navigate('/shops?add=1');
         return;
       }
-      showError(null, 'Multi-shop management is not on your plan. Contact support to upgrade.');
+      showError(null, 'Multi-location management is not on your plan. Contact support to upgrade.');
       return;
     }
     if (workspaceType === 'pharmacy') {

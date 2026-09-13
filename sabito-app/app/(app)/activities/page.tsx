@@ -18,8 +18,12 @@ type Item = {
 
 export default function ActivitiesPage() {
   const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    setLoading(true); setError("");
     (async () => {
       const [refs, cashouts, apps] = await Promise.all([
         listMyReferrals(),
@@ -45,7 +49,7 @@ export default function ActivitiesPage() {
           id: `app-${a.id}`,
           title: "Partnership application",
           subtitle: String(a.status || ""),
-          href: "/businesses",
+          href: "/businesses?view=applications",
           createdAt: a.createdAt ? String(a.createdAt) : undefined,
         })),
       ].sort((a, b) => {
@@ -54,9 +58,11 @@ export default function ActivitiesPage() {
         return tb - ta;
       });
       setItems(mapped);
-    })().catch(() => setItems([]));
-  }, []);
+    })().catch(err => setError(err instanceof Error ? err.message : "Could not load activity")).finally(() => setLoading(false));
+  }, [attempt]);
 
+  if (loading) return <div className="workspace-page" role="status">Loading activity…</div>;
+  if (error) return <div className="workspace-page" role="alert"><p>{error}</p><button className="workspace-action" onClick={() => setAttempt(a => a + 1)}>Try again</button></div>;
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <h1 className="text-2xl font-bold text-slate-900">All activities</h1>

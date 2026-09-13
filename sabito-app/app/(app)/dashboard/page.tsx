@@ -2,140 +2,47 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import {
-  getMarketerDashboard,
-  getMarketerSession,
-  listMyApplications,
-  listMyCashouts,
-  listMyEarnings,
-  listMyPartnerships,
-  listMyReferrals,
-  type Marketer,
-} from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { Eye, EyeOff, ArrowUpRight, Send, Wallet, Building2 } from "lucide-react";
+import { getMarketerDashboard, getMarketerSession, listMyApplications, listMyCashouts, listMyReferrals } from "@/lib/api";
 
-type AnyRow = Record<string, unknown>;
+type Row = Record<string, unknown>;
+const money = (amount: unknown) => `GHS ${Number(amount || 0).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function DashboardPage() {
-  const [marketer, setMarketer] = useState<Marketer | null>(null);
-  const [stats, setStats] = useState({ partners: 0, referrals: 0, due: 0, apps: 0 });
-  const [recent, setRecent] = useState<AnyRow[]>([]);
+  const [name, setName] = useState("");
+  const [stats, setStats] = useState<Row>({});
+  const [recent, setRecent] = useState<Row[]>([]);
+  const [applications, setApplications] = useState(0);
+  const [hidden, setHidden] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const me = await getMarketerSession();
-        if (cancelled) return;
-        setMarketer(me.data.marketer);
-        const [partners, refs, earn, apps, dash, cashouts] = await Promise.all([
-          listMyPartnerships(),
-          listMyReferrals(),
-          listMyEarnings("due"),
-          listMyApplications(),
-          getMarketerDashboard().catch(() => ({ data: {} })),
-          listMyCashouts().catch(() => ({ data: [] })),
-        ]);
-        if (cancelled) return;
-        const due = ((earn.data || []) as AnyRow[]).reduce(
-          (s: number, e) => s + Number(e.amount || 0),
-          0
-        );
-        const dashData = (dash.data || {}) as Record<string, unknown>;
-        setStats({
-          partners: (partners.data || []).length,
-          referrals: (refs.data || []).length,
-          due: Number(dashData.dueBalance ?? due),
-          apps: (apps.data || []).length,
-        });
-        const activities: AnyRow[] = [
-          ...(refs.data || []).slice(0, 5).map((r) => ({
-            ...(r as AnyRow),
-            _kind: "referral",
-          })),
-          ...(cashouts.data || []).slice(0, 3).map((c) => ({
-            ...(c as AnyRow),
-            _kind: "cashout",
-          })),
-        ];
-        setRecent(activities.slice(0, 6));
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            {marketer ? `Hi, ${marketer.name}` : "Home"}
-          </h1>
-          <p className="text-sm text-slate-500">
-            Partners, referrals, earnings — same journey as the Sabito mobile app
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/referrals">
-            <Button>Add referral</Button>
-          </Link>
-          <Link href="/cashout">
-            <Button variant="outline">Request cashout</Button>
-          </Link>
-        </div>
-      </div>
-
-      {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
-
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Applications", stats.apps],
-          ["Active partners", stats.partners],
-          ["Referrals", stats.referrals],
-          ["Due (GHS)", stats.due.toFixed(2)],
-        ].map(([label, value]) => (
-          <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4">
-            <p className="text-xs text-slate-500">{label}</p>
-            <p className="text-2xl font-bold text-slate-900">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      <section className="mt-10">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-slate-900">Recent activity</h2>
-          <Link href="/activities" className="text-sm text-[var(--sabito-green)]">
-            See all
-          </Link>
-        </div>
-        <div className="mt-3 space-y-2">
-          {recent.length === 0 ? (
-            <p className="text-sm text-slate-500">No activity yet. Browse businesses and apply.</p>
-          ) : (
-            recent.map((row) => (
-              <div
-                key={String(row.id) + String(row._kind)}
-                className="rounded-xl border border-slate-200 bg-white p-3 text-sm"
-              >
-                {row._kind === "cashout" ? (
-                  <p className="font-medium">
-                    Cashout GHS {Number(row.amount || 0).toFixed(2)} · {String(row.status)}
-                  </p>
-                ) : (
-                  <p className="font-medium">
-                    Referral: {String(row.clientName || "Client")} · {String(row.status)}
-                  </p>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-    </div>
-  );
+    setLoading(true); setError("");
+    Promise.all([getMarketerSession(), getMarketerDashboard(), listMyApplications(), listMyReferrals(), listMyCashouts()]).then(([me, dash, apps, refs, cashouts]) => {
+      if (cancelled) return;
+      setName(me.data.marketer.name); setStats(dash.data);
+      setApplications(apps.data.filter(a => (a as Row).status === "pending").length);
+      setRecent([
+        ...refs.data.map(row => ({ ...(row as Row), kind: "referral" })),
+        ...cashouts.data.map(row => ({ ...(row as Row), kind: "cashout" })),
+      ].sort((a, b) => (Date.parse(String((b as Row).createdAt)) || 0) - (Date.parse(String((a as Row).createdAt)) || 0)).slice(0, 6));
+    }).catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "Could not load dashboard"); }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [attempt]);
+  const amount = (value: unknown) => hidden ? "••••••" : money(value);
+  if (loading) return <div className="workspace-page" role="status">Loading your overview…</div>;
+  if (error) return <div className="workspace-page" role="alert"><h1>Overview unavailable</h1><p>{error}</p><button className="workspace-action" onClick={() => setAttempt(a => a + 1)}>Try again</button></div>;
+  return <div className="workspace-page">
+    <div className="workspace-page-heading"><div><p className="workspace-eyebrow">YOUR SABITO</p><h1>Hi, {name.split(" ")[0] || "there"}</h1><p>Here’s how your connections are paying off.</p></div><Link href="/businesses" className="workspace-link">Find a business <ArrowUpRight size={18} /></Link></div>
+    <section className="workspace-balance" aria-label="Earnings summary">
+      <div className="workspace-balance-top"><div><p>Available balance</p><div className="workspace-balance-value"><h2>{amount(stats.availableBalance)}</h2><button aria-label={hidden ? "Show balances" : "Hide balances"} aria-pressed={hidden} onClick={() => setHidden(v => !v)}>{hidden ? <EyeOff /> : <Eye />}</button></div><p>Available for withdrawal</p></div><Link href="/cashout" className="workspace-lemon-action">Request cashout <ArrowUpRight size={18} /></Link></div>
+      <div className="workspace-balance-details"><div><span>Awaiting business payment</span><strong>{amount(stats.pendingRemittanceAmount)}</strong></div><div><span>Cashout in progress</span><strong>{amount(stats.pendingCashoutAmount)}</strong></div><div><span>Total earned</span><strong>{amount(stats.totalEarned)}</strong></div></div>
+    </section>
+    <div className="workspace-metrics">{[["Active partners", stats.activePartnershipsCount], ["Referrals", (stats.referrals as Row)?.total], ["Pending applications", applications]].map(([label, value]) => <div key={String(label)}><p>{String(label)}</p><strong>{Number(value || 0)}</strong></div>)}</div>
+    <div className="workspace-quick-actions"><Link href="/referrals?add=1"><Send /><div><strong>Add a referral</strong><span>Connect a client with a partner</span></div><ArrowUpRight /></Link><Link href="/earnings"><Wallet /><div><strong>Your earnings</strong><span>Track commissions and payouts</span></div><ArrowUpRight /></Link></div>
+    {Number(stats.activePartnershipsCount || 0) === 0 && <section className="workspace-onboarding"><Building2 size={30} /><div><h2>Start with your first business partner</h2><p>Find a business you know, send an application, and refer clients once approved.</p></div><Link href="/businesses" className="workspace-action">Browse businesses</Link></section>}
+    <section className="workspace-activity"><div className="workspace-section-heading"><h2>Recent activity</h2><Link href="/activities" className="workspace-link">See all <ArrowUpRight size={16} /></Link></div>{recent.length === 0 ? <p className="workspace-empty">Your referrals and cashout updates will appear here.</p> : recent.map(row => <Link className="workspace-activity-row" key={`${row.kind}-${row.id}`} href={row.kind === "referral" ? `/referrals/${row.id}` : "/earnings"}><span className="workspace-activity-icon">{row.kind === "referral" ? <Send size={19} /> : <Wallet size={19} />}</span><div><strong>{row.kind === "referral" ? String(row.clientName || "Client referral") : hidden ? "Cashout · ••••••" : `Cashout · ${money(row.amount)}`}</strong><span>{row.createdAt ? new Date(String(row.createdAt)).toLocaleDateString() : ""}</span></div><span className="workspace-status">{String(row.status || "pending").replaceAll("_", " ")}</span></Link>)}</section>
+  </div>;
 }

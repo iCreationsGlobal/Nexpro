@@ -170,9 +170,9 @@ import {
   getStockStatus,
   getWorkspaceDisplayName,
 } from '../constants';
-import { numberInputValue, handleNumberChange } from '../utils/formUtils';
-import { formatAmount, formatInteger } from '../utils/formatNumber';
-import { getProductStockQuantity } from '../utils/productStock';
+import { numberInputValue, handleNumberChange } from "../utils/formUtils";
+import { formatAmount, formatInteger } from "../utils/formatNumber";
+import { getProductStockQuantity } from "../utils/productStock";
 // =============================================
 // HELPER FUNCTIONS
 // =============================================
@@ -363,7 +363,14 @@ const ProductMovementTab = ({ productId, unit = 'pcs', valueFormatter }) => {
 
 const numberOrEmpty = z.union([z.number().min(0), z.literal('')]).transform((v) => (v === '' ? 0 : v));
 
-const productSchema = z.object({
+const rentalProductFieldsSchema = z.object({
+  isRentable: z.boolean().default(true),
+  isSalable: z.boolean().default(false),
+  rentalRatePerDay: numberOrEmpty,
+  tracksSerialUnits: z.boolean().default(false),
+});
+
+const baseProductSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   sku: z.string().optional(),
   barcode: z.string().optional(),
@@ -417,14 +424,60 @@ const productSchema = z.object({
   // Toys
   ageRange: z.string().optional(),
   batteryRequired: z.boolean().optional(),
-}).refine((data) => {
-  const primaryBarcode = data.barcode?.trim();
-  const alternateBarcode = data.alternateBarcode?.trim();
-  return !primaryBarcode || !alternateBarcode || primaryBarcode !== alternateBarcode;
-}, {
-  message: 'Product code must be different from the primary barcode',
-  path: ['alternateBarcode'],
 });
+
+const RENTAL_PRODUCT_FORM_DEFAULTS = {
+  isRentable: true,
+  isSalable: false,
+  rentalRatePerDay: 0,
+  tracksSerialUnits: false,
+};
+
+/**
+ * Product form schema; rental tenants get conditional pricing validation.
+ * @param {boolean} isRental
+ * @returns {import('zod').ZodTypeAny}
+ */
+const createProductSchema = (isRental) => {
+  let schema = baseProductSchema;
+  if (isRental) {
+    schema = schema.merge(rentalProductFieldsSchema);
+  }
+  return schema
+    .refine((data) => {
+      const primaryBarcode = data.barcode?.trim();
+      const alternateBarcode = data.alternateBarcode?.trim();
+      return !primaryBarcode || !alternateBarcode || primaryBarcode !== alternateBarcode;
+    }, {
+      message: 'Product code must be different from the primary barcode',
+      path: ['alternateBarcode'],
+    })
+    .superRefine((data, ctx) => {
+      if (!isRental) return;
+
+      if (data.isRentable !== false) {
+        const rate = Number(data.rentalRatePerDay ?? 0);
+        if (!(rate > 0)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Rate per day is required for rentable products',
+            path: ['rentalRatePerDay'],
+          });
+        }
+      }
+
+      if (data.isSalable) {
+        const price = Number(data.sellingPrice ?? 0);
+        if (!(price > 0)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Selling price is required when product is salable',
+            path: ['sellingPrice'],
+          });
+        }
+      }
+    });
+};
 
 const stockAdjustSchema = z.object({
   adjustmentMode: z.enum(['set', 'delta']),
@@ -551,6 +604,10 @@ const quickVendorSchema = z.object({
 
 const Products = () => {
   const { activeTenant, activeTenantId, tenantRole, isManager, hasFeature } = useAuth();
+  const businessType = activeTenant?.businessType || null;
+  const isRental = businessType === 'rental';
+  const isShop = businessType === 'shop' || isRental;
+  const productSchema = useMemo(() => createProductSchema(isRental), [isRental]);
   const dealersAccountEnabled = hasFeature('dealersAccount');
   // Catalog wholesale price is for shop/pharmacy products. Do not gate on dealersAccount —
   // that flag unlocks the Dealers module / dealer POS, not the ability to set a wholesale list price.
@@ -624,6 +681,15 @@ const Products = () => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
+  const [rentalUnits, setRentalUnits] = useState([]);
+  const [rentalUnitsLoading, setRentalUnitsLoading] = useState(false);
+  const [rentalUnitSaving, setRentalUnitSaving] = useState(false);
+  const [newRentalUnit, setNewRentalUnit] = useState({
+    serialNumber: '',
+    plateNumber: '',
+    color: '',
+    status: 'available',
+  });
   const [adjustStockOpen, setAdjustStockOpen] = useState(false);
   const [productToAdjust, setProductToAdjust] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -848,6 +914,7 @@ const Products = () => {
       size: '',
       ageRange: '',
       batteryRequired: false,
+      ...(isRental ? RENTAL_PRODUCT_FORM_DEFAULTS : {}),
     },
   });
 
@@ -888,6 +955,8 @@ const Products = () => {
   // Watch form values for margin calculation
   const watchCostPrice = form.watch('costPrice');
   const watchSellingPrice = form.watch('sellingPrice');
+  const watchIsRentable = isRental ? form.watch('isRentable') : true;
+  const watchIsSalable = isRental ? form.watch('isSalable') : false;
   const calculatedMargin = useMemo(
     () => calculateMargin(watchCostPrice, watchSellingPrice),
     [watchCostPrice, watchSellingPrice]
@@ -1180,10 +1249,16 @@ const Products = () => {
       size: productForEdit.metadata?.size || '',
       ageRange: productForEdit.metadata?.ageRange || '',
       batteryRequired: productForEdit.metadata?.batteryRequired || false,
+      ...(isRental ? {
+        isRentable: productForEdit.isRentable !== false,
+        isSalable: productForEdit.isSalable === true,
+        rentalRatePerDay: parseFloat(productForEdit.rentalRatePerDay) || 0,
+        tracksSerialUnits: productForEdit.metadata?.tracksSerialUnits === true,
+      } : {}),
     });
     
     setFormOpen(true);
-  }, [activeTenantId, activeShopId, activeStudioLocationId, form, queryClient]);
+  }, [activeTenantId, activeShopId, activeStudioLocationId, form, isRental, queryClient]);
 
   const handleOpenStoreListing = useCallback((product) => {
     if (!product?.id) return;
@@ -1237,6 +1312,7 @@ const Products = () => {
       size: '',
       ageRange: '',
       batteryRequired: false,
+      ...(isRental ? RENTAL_PRODUCT_FORM_DEFAULTS : {}),
     });
     setFormOpen(true);
   };
@@ -1366,6 +1442,74 @@ const Products = () => {
     });
   }, [selectedProduct?.id]);
 
+  const fetchRentalUnits = useCallback(async (productId) => {
+    if (!productId) {
+      setRentalUnits([]);
+      return;
+    }
+    setRentalUnitsLoading(true);
+    try {
+      const response = await productService.getRentalUnits(productId, {
+        branchId: activeShopId || undefined,
+      });
+      const rows = response?.data?.data ?? response?.data ?? [];
+      setRentalUnits(Array.isArray(rows) ? rows : []);
+    } catch (error) {
+      console.error('Failed to load rental units', error);
+      setRentalUnits([]);
+    } finally {
+      setRentalUnitsLoading(false);
+    }
+  }, [activeShopId]);
+
+  useEffect(() => {
+    if (!drawerOpen || !isRental || !selectedProduct?.metadata?.tracksSerialUnits) {
+      setRentalUnits([]);
+      return;
+    }
+    fetchRentalUnits(selectedProduct.id);
+  }, [drawerOpen, isRental, selectedProduct?.id, selectedProduct?.metadata?.tracksSerialUnits, fetchRentalUnits]);
+
+  const handleAddRentalUnit = useCallback(async () => {
+    if (!selectedProduct?.id || !newRentalUnit.serialNumber.trim()) {
+      showError('Serial number is required');
+      return;
+    }
+    setRentalUnitSaving(true);
+    try {
+      await productService.createRentalUnit(selectedProduct.id, {
+        serialNumber: newRentalUnit.serialNumber.trim(),
+        branchId: activeShopId || undefined,
+        status: newRentalUnit.status,
+        metadata: {
+          plateNumber: newRentalUnit.plateNumber.trim() || undefined,
+          color: newRentalUnit.color.trim() || undefined,
+        },
+      });
+      showSuccess('Rental unit added');
+      setNewRentalUnit({ serialNumber: '', plateNumber: '', color: '', status: 'available' });
+      fetchRentalUnits(selectedProduct.id);
+    } catch (error) {
+      showError(error, 'Failed to add rental unit');
+    } finally {
+      setRentalUnitSaving(false);
+    }
+  }, [activeShopId, fetchRentalUnits, newRentalUnit, selectedProduct?.id]);
+
+  const handleDeleteRentalUnit = useCallback(async (unit) => {
+    if (!selectedProduct?.id || !unit?.id) return;
+    setRentalUnitSaving(true);
+    try {
+      await productService.deleteRentalUnit(selectedProduct.id, unit.id);
+      showSuccess(unit.status === 'retired' ? 'Unit retired' : 'Unit removed');
+      fetchRentalUnits(selectedProduct.id);
+    } catch (error) {
+      showError(error, 'Failed to remove rental unit');
+    } finally {
+      setRentalUnitSaving(false);
+    }
+  }, [fetchRentalUnits, selectedProduct?.id]);
+
   const handleOpenVariantDetail = useCallback((variant) => {
     setSelectedVariantDetail(variant);
     setVariantDetailOpen(true);
@@ -1493,6 +1637,18 @@ const Products = () => {
       if (canViewProductSensitiveFields) {
         payload.costPrice = values.costPrice === '' ? 0 : (Number(values.costPrice) ?? 0);
         payload.supplier = values.supplier || undefined;
+      }
+
+      if (isRental) {
+        payload.isRentable = values.isRentable !== false;
+        payload.isSalable = values.isSalable === true;
+        payload.rentalRatePerDay = payload.isRentable
+          ? (Number(values.rentalRatePerDay) || 0)
+          : null;
+        payload.metadata = {
+          ...(payload.metadata || {}),
+          tracksSerialUnits: values.tracksSerialUnits === true,
+        };
       }
 
       if (!guardOnline(showError)) return;
@@ -1635,9 +1791,12 @@ const Products = () => {
     const stockLine = product.trackStock === false
       ? `📦 Stock: Made to order\n`
       : `📦 Stock: ${product.quantityOnHand} ${product.unit}\n`;
+    const priceLine = isRental && product.isRentable !== false && product.rentalRatePerDay != null
+      ? `💰 Rate: ${valueFormatter(product.rentalRatePerDay)}/day\n`
+      : `💰 Price: ${valueFormatter(product.sellingPrice)}\n`;
     const message = encodeURIComponent(
       `🏷️ *${product.name}*\n\n` +
-      `💰 Price: ${valueFormatter(product.sellingPrice)}\n` +
+      priceLine +
       stockLine +
       (product.sku ? `🔖 SKU: ${product.sku}\n` : '') +
       (product.description ? `\n${product.description}\n` : '') +
@@ -1686,6 +1845,20 @@ const Products = () => {
                   SKU: {record.sku}
                 </span>
               )}
+              {isRental && (
+                <span className="flex shrink-0 items-center gap-1">
+                  {record.isRentable !== false && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-primary/30 text-primary">
+                      Rentable
+                    </Badge>
+                  )}
+                  {record.isSalable && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                      Salable
+                    </Badge>
+                  )}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -1720,11 +1893,20 @@ const Products = () => {
       render: (value) => valueFormatter(value),
       hidden: isMobile || !canViewProductSensitiveFields,
     },
-    {
-      key: 'sellingPrice',
-      title: 'Price',
-      render: (value) => valueFormatter(value),
-    },
+    ...(isRental
+      ? [{
+          key: 'rentalRatePerDay',
+          title: 'Rate/day',
+          render: (value, record) => {
+            if (record.isRentable === false) return '-';
+            return value != null && value !== '' ? valueFormatter(value) : '-';
+          },
+        }]
+      : [{
+          key: 'sellingPrice',
+          title: 'Price',
+          render: (value) => valueFormatter(value),
+        }]),
     {
       key: 'margin',
       title: 'Margin',
@@ -1759,6 +1941,7 @@ const Products = () => {
     },
   ], [
     isMobile,
+    isRental,
     canViewProductSensitiveFields,
     handleViewProduct,
   ]);
@@ -1796,11 +1979,17 @@ const Products = () => {
         primary: handleClearProductFilters,
       });
     }
+    if (isRental) {
+      return getEmptyStateProps(EMPTY_STATES.RENTAL_PRODUCTS, {
+        primary: handleCreateProduct,
+        secondary: () => setImportModalOpen(true),
+      });
+    }
     return getEmptyStateProps(EMPTY_STATES.PRODUCTS, {
       primary: handleCreateProduct,
       secondary: () => setImportModalOpen(true),
     });
-  }, [hasActiveProductFilters, handleClearProductFilters, handleCreateProduct]);
+  }, [hasActiveProductFilters, handleClearProductFilters, handleCreateProduct, isRental]);
 
   // =============================================
   // RENDER HELPERS
@@ -2439,8 +2628,6 @@ const Products = () => {
   // RENDER
   // =============================================
 
-  const businessType = activeTenant?.businessType || null;
-  const isShop = businessType === 'shop';
   if (!isShop) {
     return (
       <div className="space-y-4 md:space-y-6">
@@ -2686,8 +2873,8 @@ const Products = () => {
                 <SelectItem value="updated_desc">Recently updated</SelectItem>
                 <SelectItem value="stock_desc">Stock high–low</SelectItem>
                 <SelectItem value="stock_asc">Stock low–high</SelectItem>
-                <SelectItem value="price_asc">Price low–high</SelectItem>
-                <SelectItem value="price_desc">Price high–low</SelectItem>
+                <SelectItem value="price_asc">{isRental ? 'Rate low–high' : 'Price low–high'}</SelectItem>
+                <SelectItem value="price_desc">{isRental ? 'Rate high–low' : 'Price high–low'}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -2726,7 +2913,7 @@ const Products = () => {
                 title="Generate QR code for this product"
               >
                 <QrCode className="h-4 w-4 mr-2" />
-                Generate QR
+                Generate QR & Barcode
               </Button>
             )}
             <Button type="submit" form="product-form" loading={submitting}>
@@ -2937,6 +3124,57 @@ const Products = () => {
               {/* Pricing */}
               <div className="space-y-4">
                 <h4 className="font-medium text-sm text-muted-foreground">Pricing</h4>
+                {isRental && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="isRentable"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                          <div className="space-y-0.5">
+                            <FormLabel>Rentable</FormLabel>
+                            <p className="text-xs text-muted-foreground">Available for rental bookings</p>
+                          </div>
+                          <FormControl>
+                            <Switch checked={field.value !== false} onCheckedChange={field.onChange} />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="isSalable"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                          <div className="space-y-0.5">
+                            <FormLabel>Salable</FormLabel>
+                            <p className="text-xs text-muted-foreground">Can be sold outright (POS)</p>
+                          </div>
+                          <FormControl>
+                            <Switch checked={field.value === true} onCheckedChange={field.onChange} />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="tracksSerialUnits"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 md:col-span-2">
+                          <div className="space-y-0.5">
+                            <FormLabel>Track serial units</FormLabel>
+                            <p className="text-xs text-muted-foreground">
+                              Assign VIN/serial numbers per car, camera, or generator at checkout
+                            </p>
+                          </div>
+                          <FormControl>
+                            <Switch checked={field.value === true} onCheckedChange={field.onChange} />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
                 <div className={cn(
                   'grid grid-cols-1 gap-4',
                   canViewProductSensitiveFields && showWholesalePriceField
@@ -2952,7 +3190,7 @@ const Products = () => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            Cost Price {shopType === SHOP_TYPES.RESTAURANT ? '(optional)' : '*'}
+                            Cost Price {shopType === SHOP_TYPES.RESTAURANT || isRental ? '(optional)' : '*'}
                           </FormLabel>
                           <FormControl>
                             <Input
@@ -2969,26 +3207,53 @@ const Products = () => {
                       )}
                     />
                   )}
-                  <FormField
-                    control={form.control}
-                    name="sellingPrice"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Selling Price *</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            {...field}
-                            value={numberInputValue(field.value)}
-                            onChange={(e) => handleNumberChange(e, field.onChange)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {isRental && watchIsRentable !== false && (
+                    <FormField
+                      control={form.control}
+                      name="rentalRatePerDay"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Rate per day *</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              {...field}
+                              value={numberInputValue(field.value)}
+                              onChange={(e) => handleNumberChange(e, field.onChange)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                  {(!isRental || watchIsSalable) && (
+                    <FormField
+                      control={form.control}
+                      name="sellingPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            {isRental ? 'Selling price' : 'Selling Price'}
+                            {isRental ? (watchIsSalable ? ' *' : ' (optional)') : ' *'}
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              {...field}
+                              value={numberInputValue(field.value)}
+                              onChange={(e) => handleNumberChange(e, field.onChange)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                   {showWholesalePriceField && (
                     <FormField
                       control={form.control}
@@ -3116,7 +3381,6 @@ const Products = () => {
                             type="number"
                             step="0.01"
                             min="0"
-                            className="h-10 min-h-[44px] md:min-h-[40px]"
                             {...field}
                             value={numberInputValue(field.value)}
                             onChange={(e) => handleNumberChange(e, field.onChange)}
@@ -3598,7 +3862,7 @@ const Products = () => {
                   <button
                     type="button"
                     onClick={() => setImagePreviewUrl(resolveProductImageUrl(selectedProduct.imageUrl))}
-                    className="w-full h-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset rounded-lg"
+                    className="w-full h-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset"
                   >
                     <img
                       src={resolveProductImageUrl(selectedProduct.imageUrl)}
@@ -3670,7 +3934,7 @@ const Products = () => {
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => handleOpenQRGenerate(selectedProduct)}>
                     <QrCode className="h-4 w-4 mr-2" />
-                    Generate QR
+                    Generate QR & Barcode
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => handleOpenVariantForm()}>
                     <Plus className="h-4 w-4 mr-2" />
@@ -3722,9 +3986,33 @@ const Products = () => {
 
             <DrawerSectionCard title="Pricing">
               <Descriptions column={1} className="space-y-0">
-                <DescriptionItem label="Selling Price">
-                  {valueFormatter(selectedProduct.sellingPrice)}
-                </DescriptionItem>
+                {isRental && (
+                  <>
+                    <DescriptionItem label="Rentable">
+                      <Badge variant="outline">{selectedProduct.isRentable !== false ? 'Yes' : 'No'}</Badge>
+                    </DescriptionItem>
+                    <DescriptionItem label="Salable">
+                      <Badge variant="outline">{selectedProduct.isSalable ? 'Yes' : 'No'}</Badge>
+                    </DescriptionItem>
+                    <DescriptionItem label="Serial units">
+                      <Badge variant="outline">
+                        {selectedProduct.metadata?.tracksSerialUnits ? 'Tracked' : 'Quantity only'}
+                      </Badge>
+                    </DescriptionItem>
+                    {selectedProduct.isRentable !== false && (
+                      <DescriptionItem label="Rate per day">
+                        {selectedProduct.rentalRatePerDay != null
+                          ? valueFormatter(selectedProduct.rentalRatePerDay)
+                          : '-'}
+                      </DescriptionItem>
+                    )}
+                  </>
+                )}
+                {(!isRental || selectedProduct.isSalable) && (
+                  <DescriptionItem label="Selling Price">
+                    {valueFormatter(selectedVariantDetail?.sellingPrice ?? selectedProduct?.sellingPrice)}
+                  </DescriptionItem>
+                )}
                 {showWholesalePriceField
                   && selectedProduct.wholesalePrice != null
                   && selectedProduct.wholesalePrice !== '' && (
@@ -3735,20 +4023,103 @@ const Products = () => {
                 {canViewProductSensitiveFields && (
                   <>
                     <DescriptionItem label="Cost Price">
-                      {valueFormatter(selectedProduct.costPrice)}
+                      {valueFormatter(selectedProduct?.costPrice ?? 0)}
                     </DescriptionItem>
                     <DescriptionItem label="Profit Margin">
                       <Badge
                         variant="outline"
-                        className={getMarginColor(calculateMargin(selectedProduct.costPrice, selectedProduct.sellingPrice))}
+                        className={getMarginColor(calculateMargin(selectedProduct?.costPrice ?? 0, selectedProduct?.sellingPrice ?? 0))}
                       >
-                        {marginFormatter(selectedProduct.costPrice, selectedProduct.sellingPrice)}
+                        {marginFormatter(selectedProduct?.costPrice ?? 0, selectedProduct?.sellingPrice ?? 0)}
                       </Badge>
                     </DescriptionItem>
                   </>
                 )}
               </Descriptions>
             </DrawerSectionCard>
+
+            {isRental && selectedProduct.metadata?.tracksSerialUnits && (
+              <DrawerSectionCard title="Serial units">
+                {rentalUnitsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading units...
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {rentalUnits.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No units registered yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {rentalUnits.map((unit) => (
+                          <div
+                            key={unit.id}
+                            className="flex items-start justify-between gap-3 border border-border rounded-md p-3"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm">{unit.serialNumber}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {[
+                                  unit.metadata?.plateNumber,
+                                  unit.metadata?.color,
+                                  unit.status,
+                                ].filter(Boolean).join(' · ')}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              disabled={rentalUnitSaving || unit.status === 'rented'}
+                              onClick={() => handleDeleteRentalUnit(unit)}
+                              aria-label="Remove unit"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border border-border rounded-md p-3">
+                      <div className="space-y-1 sm:col-span-2">
+                        <Label className="text-xs text-muted-foreground">Serial / VIN</Label>
+                        <Input
+                          value={newRentalUnit.serialNumber}
+                          onChange={(e) => setNewRentalUnit((prev) => ({ ...prev, serialNumber: e.target.value }))}
+                          placeholder="e.g. 1HGCM82633A004352"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Plate number (optional)</Label>
+                        <Input
+                          value={newRentalUnit.plateNumber}
+                          onChange={(e) => setNewRentalUnit((prev) => ({ ...prev, plateNumber: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Color (optional)</Label>
+                        <Input
+                          value={newRentalUnit.color}
+                          onChange={(e) => setNewRentalUnit((prev) => ({ ...prev, color: e.target.value }))}
+                        />
+                      </div>
+                      <div className="sm:col-span-2 flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleAddRentalUnit}
+                          disabled={rentalUnitSaving || !newRentalUnit.serialNumber.trim()}
+                        >
+                          {rentalUnitSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                          <span className="ml-2">Add unit</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </DrawerSectionCard>
+            )}
 
             <DrawerSectionCard title="Stock information">
               <Descriptions column={1} className="space-y-0">
@@ -3775,7 +4146,7 @@ const Products = () => {
                     </DescriptionItem>
                     {canViewProductSensitiveFields && (
                       <DescriptionItem label="Stock Value">
-                        {valueFormatter(parseFloat(selectedProduct.sellingPrice || 0) * getProductStockQuantity(selectedProduct))}
+                        {valueFormatter((Number(selectedProduct?.sellingPrice ?? 0) || 0) * getProductStockQuantity(selectedProduct))}
                       </DescriptionItem>
                     )}
                   </>
@@ -3888,7 +4259,7 @@ const Products = () => {
                         <div className="flex items-center gap-2 shrink-0">
                           <div className="text-right">
                             <p className="font-medium text-foreground">
-                              {valueFormatter(variant.sellingPrice ?? selectedProduct.sellingPrice)}
+                              {valueFormatter(variant.sellingPrice ?? selectedProduct?.sellingPrice)}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               Stock: {variant.quantityOnHand}

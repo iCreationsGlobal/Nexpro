@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  clearAuth,
   getMarketerSession,
   updateMarketerProfile,
   type Marketer,
@@ -11,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function AccountPage() {
+  const router = useRouter();
   const [marketer, setMarketer] = useState<Marketer | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -101,6 +104,9 @@ export default function AccountPage() {
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" disabled={saving} onClick={save}>
           {saving ? "Saving…" : "Save changes"}
+        </Button>
+        <Button variant="outline" onClick={() => { clearAuth(); router.replace("/login"); }}>
+          Sign out
         </Button>
         {message ? <p className="text-sm text-slate-500">{message}</p> : null}
       </div>

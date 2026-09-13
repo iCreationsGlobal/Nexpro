@@ -8,16 +8,24 @@ import {
   FlatList,
   Alert,
 } from 'react-native';
-import * as Contacts from 'expo-contacts';
 import * as DocumentPicker from 'expo-document-picker';
 
 import { FormSheetModal } from '@/components/FormSheetModal';
+import { AppIcon } from '@/components/AppIcon';
+import { ContactPickerSearchBar } from '@/components/ContactPickerSearchBar';
 import {
   contactImportService,
   type ContactImportDestination,
   type ContactImportItem,
 } from '@/services/contactImportService';
+import {
+  loadDeviceContacts,
+  refreshLimitedDeviceContacts,
+  resetAccessPickerGuard,
+} from '@/utils/deviceContacts';
+import { filterDeviceContactRows } from '@/utils/filterDeviceContacts';
 import { getApiErrorMessage } from '@/utils/parseApiListResponse';
+import { logger } from '@/utils/logger';
 
 type Props = {
   visible: boolean;
@@ -32,8 +40,6 @@ type Props = {
 };
 
 type PhoneContactRow = ContactImportItem & { id: string };
-
-const MAX_CONTACTS = 500;
 
 /**
  * Mobile import sheet: destination + From phone / From file.
@@ -55,6 +61,15 @@ export function ImportContactsSheet({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [loadingContacts, setLoadingContacts] = useState(false);
+  const [contactsAccessLimited, setContactsAccessLimited] = useState(false);
+  const [contactsAccessDenied, setContactsAccessDenied] = useState(false);
+  const [hiddenForPicker, setHiddenForPicker] = useState(false);
+  const [searchText, setSearchText] = useState('');
+
+  const filteredPhoneRows = useMemo(
+    () => filterDeviceContactRows(phoneRows, searchText),
+    [phoneRows, searchText]
+  );
 
   useEffect(() => {
     if (visible) {
@@ -64,7 +79,15 @@ export function ImportContactsSheet({
       setSelectedIds(new Set());
       setLoading(false);
       setLoadingContacts(false);
+      setContactsAccessLimited(false);
+      setContactsAccessDenied(false);
+      setHiddenForPicker(false);
+      setSearchText('');
+      return;
     }
+
+    setHiddenForPicker(false);
+    resetAccessPickerGuard();
   }, [defaultDestination, visible]);
 
   const selectedContacts = useMemo(
@@ -75,38 +98,19 @@ export function ImportContactsSheet({
   const handleLoadPhoneContacts = useCallback(async () => {
     setLoadingContacts(true);
     try {
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Permission needed',
-          'Allow contacts access to import from your phone, or use Import from file instead.'
-        );
+      const result = await loadDeviceContacts();
+      if (!result) {
+        setContactsAccessDenied(true);
+        setPhoneRows([]);
+        setMode('phone');
         return;
       }
 
-      const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers, Contacts.Fields.Emails],
-        pageSize: MAX_CONTACTS,
-        sort: Contacts.SortTypes.FirstName,
-      });
-
-      const rows: PhoneContactRow[] = (data || [])
-        .map((contact, index) => {
-          const name = contact.name || [contact.firstName, contact.lastName].filter(Boolean).join(' ') || 'Unnamed';
-          const phone = contact.phoneNumbers?.[0]?.number || '';
-          const email = contact.emails?.[0]?.email || '';
-          if (!name && !phone && !email) return null;
-          return {
-            id: contact.id || `contact-${index}`,
-            name,
-            phone: phone || undefined,
-            email: email || undefined,
-          };
-        })
-        .filter(Boolean) as PhoneContactRow[];
-
-      setPhoneRows(rows.slice(0, MAX_CONTACTS));
+      setContactsAccessDenied(false);
+      setContactsAccessLimited(result.accessLimited);
+      setPhoneRows(result.rows);
       setSelectedIds(new Set());
+      setSearchText('');
       setMode('phone');
     } catch (error) {
       Alert.alert('Could not load contacts', getApiErrorMessage(error, 'Try again or use file import.'));
@@ -114,6 +118,40 @@ export function ImportContactsSheet({
       setLoadingContacts(false);
     }
   }, []);
+
+  const handleSelectMoreContacts = useCallback(async () => {
+    logger.debug('Contacts', 'Import sheet select contacts tapped', {
+      accessLimited: contactsAccessLimited,
+      accessDenied: contactsAccessDenied,
+      rowCount: phoneRows.length,
+      loadingContacts,
+    });
+    setLoadingContacts(true);
+    try {
+      const result = await refreshLimitedDeviceContacts({
+        hideModal: () => setHiddenForPicker(true),
+        showModal: () => setHiddenForPicker(false),
+      });
+      if (!result) {
+        setContactsAccessDenied(true);
+        return;
+      }
+      logger.debug('Contacts', 'Import sheet select contacts complete', { count: result.rows.length });
+      setContactsAccessDenied(false);
+      setContactsAccessLimited(result.accessLimited);
+      setPhoneRows(result.rows);
+      setSelectedIds(new Set());
+      setSearchText('');
+    } catch (error) {
+      logger.error('Contacts', 'Import sheet select contacts failed', error);
+      Alert.alert(
+        'Could not open contact picker',
+        getApiErrorMessage(error, 'Allow contacts access in Settings, then try again.')
+      );
+    } finally {
+      setLoadingContacts(false);
+    }
+  }, [contactsAccessDenied, contactsAccessLimited, loadingContacts, phoneRows.length]);
 
   const toggleSelected = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -124,9 +162,24 @@ export function ImportContactsSheet({
     });
   }, []);
 
-  const selectAllVisible = useCallback(() => {
-    setSelectedIds(new Set(phoneRows.map((row) => row.id)));
-  }, [phoneRows]);
+  const allVisibleSelected = useMemo(() => {
+    if (filteredPhoneRows.length === 0) return false;
+    return filteredPhoneRows.every((row) => selectedIds.has(row.id));
+  }, [filteredPhoneRows, selectedIds]);
+
+  const toggleSelectAllVisible = useCallback(() => {
+    const visibleIds = filteredPhoneRows.map((row) => row.id);
+    setSelectedIds((prev) => {
+      const allSelected = visibleIds.length > 0 && visibleIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }, [filteredPhoneRows]);
 
   const handleImportSelected = useCallback(async () => {
     if (!selectedContacts.length) {
@@ -191,10 +244,12 @@ export function ImportContactsSheet({
   }, [destination, onClose, onImported]);
 
   return (
+    hiddenForPicker ? null : (
     <FormSheetModal
       visible={visible}
       title="Import contacts"
       onClose={onClose}
+      scrollable={mode !== 'phone'}
       cardBg={cardBg}
       borderColor={borderColor}
       textColor={textColor}
@@ -225,7 +280,7 @@ export function ImportContactsSheet({
         ) : null
       }
     >
-      <View style={styles.body}>
+      <View style={[styles.body, mode === 'phone' && styles.bodyPhone]}>
         <Text style={[styles.label, { color: mutedColor }]}>Import into</Text>
         <View style={styles.destRow}>
           {(['customers', 'leads'] as const).map((value) => {
@@ -282,53 +337,108 @@ export function ImportContactsSheet({
           <View style={styles.phoneList}>
             <View style={styles.phoneHeader}>
               <Text style={[styles.label, { color: mutedColor }]}>
-                {phoneRows.length} contacts
+                {searchText.trim()
+                  ? `${filteredPhoneRows.length} of ${phoneRows.length} contacts`
+                  : `${phoneRows.length} contacts`}
               </Text>
-              <Pressable onPress={selectAllVisible}>
-                <Text style={{ color: colors.tint, fontWeight: '600' }}>Select all</Text>
-              </Pressable>
+              {filteredPhoneRows.length > 0 ? (
+                <Pressable onPress={toggleSelectAllVisible}>
+                  <Text style={{ color: colors.tint, fontWeight: '600' }}>
+                    {allVisibleSelected ? 'Deselect all' : 'Select all'}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
-            <FlatList
-              data={phoneRows}
-              keyExtractor={(item) => item.id}
-              style={styles.list}
-              renderItem={({ item }) => {
-                const selected = selectedIds.has(item.id);
-                return (
-                  <Pressable
-                    onPress={() => toggleSelected(item.id)}
-                    style={[styles.contactRow, { borderColor }]}
-                  >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        {
-                          borderColor: selected ? colors.tint : borderColor,
-                          backgroundColor: selected ? colors.tint : 'transparent',
-                        },
-                      ]}
-                    />
-                    <View style={styles.contactText}>
-                      <Text style={[styles.contactName, { color: textColor }]} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      <Text style={{ color: mutedColor, fontSize: 12 }} numberOfLines={1}>
-                        {[item.phone, item.email].filter(Boolean).join(' · ') || 'No phone/email'}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              }}
-            />
+            {phoneRows.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={[styles.emptyTitle, { color: textColor }]}>No contacts found</Text>
+                <Text style={[styles.hint, { color: mutedColor }]}>
+                  {contactsAccessDenied
+                    ? 'Allow ABS to access your phone contacts when prompted, or enable Contacts in Settings.'
+                    : contactsAccessLimited
+                      ? 'You may have allowed only selected contacts. Choose which contacts ABS can access, or allow full access in Settings.'
+                      : 'Add contacts in your phone’s Contacts app, then try again. Simulators often have no contacts — test on a real device.'}
+                </Text>
+                <Pressable
+                  onPress={handleSelectMoreContacts}
+                  disabled={loadingContacts}
+                  style={[styles.menuBtn, { borderColor, marginTop: 12 }]}
+                >
+                  {loadingContacts ? (
+                    <ActivityIndicator color={colors.tint} />
+                  ) : (
+                    <Text style={[styles.menuBtnText, { color: colors.tint }]}>
+                      {contactsAccessDenied ? 'Allow access to contacts' : 'Select contacts'}
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            ) : (
+              <>
+                <ContactPickerSearchBar
+                  value={searchText}
+                  onChangeText={setSearchText}
+                  borderColor={borderColor}
+                  textColor={textColor}
+                  mutedColor={mutedColor}
+                  inputBg={cardBg}
+                />
+                {filteredPhoneRows.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={[styles.emptyTitle, { color: textColor }]}>No matching contacts</Text>
+                    <Text style={[styles.hint, { color: mutedColor }]}>
+                      Try a different name, phone, or email.
+                    </Text>
+                  </View>
+                ) : (
+              <FlatList
+                data={filteredPhoneRows}
+                keyExtractor={(item) => item.id}
+                style={styles.list}
+                contentContainerStyle={styles.listContent}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => {
+                  const selected = selectedIds.has(item.id);
+                  return (
+                    <Pressable
+                      onPress={() => toggleSelected(item.id)}
+                      style={[styles.contactRow, { borderColor }]}
+                    >
+                      <View
+                        style={[
+                          styles.checkbox,
+                          selected ? styles.checkboxChecked : styles.checkboxUnchecked,
+                          selected && { borderColor: colors.tint, backgroundColor: colors.tint },
+                        ]}
+                      >
+                        {selected ? <AppIcon name="check" size={14} color="#fff" /> : null}
+                      </View>
+                      <View style={styles.contactText}>
+                        <Text style={[styles.contactName, { color: textColor }]} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <Text style={{ color: mutedColor, fontSize: 12 }} numberOfLines={1}>
+                          {[item.phone, item.email].filter(Boolean).join(' · ') || 'No phone/email'}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                }}
+              />
+                )}
+              </>
+            )}
           </View>
         )}
       </View>
     </FormSheetModal>
+    )
   );
 }
 
 const styles = StyleSheet.create({
-  body: { gap: 12, minHeight: 220 },
+  body: { flex: 1, gap: 12, minHeight: 220 },
+  bodyPhone: { minHeight: 0 },
   label: { fontSize: 13, fontWeight: '600' },
   destRow: { flexDirection: 'row', gap: 8 },
   destChip: {
@@ -354,7 +464,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  list: { maxHeight: 320 },
+  list: { flex: 1 },
+  listContent: { paddingBottom: 8 },
+  emptyState: { flex: 1, justifyContent: 'center', paddingVertical: 12 },
+  emptyTitle: { fontSize: 16, fontWeight: '600', marginBottom: 8 },
   contactRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -365,11 +478,19 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   checkbox: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
-    borderWidth: 1,
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
+  checkboxUnchecked: {
+    borderColor: '#d1d5db',
+    backgroundColor: '#ffffff',
+  },
+  checkboxChecked: {},
   contactText: { flex: 1, minWidth: 0 },
   contactName: { fontSize: 14, fontWeight: '600' },
   footerRow: { flexDirection: 'row', gap: 10 },

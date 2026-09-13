@@ -43,6 +43,13 @@ export default {
     plugins: [
       'expo-router',
       'expo-secure-store',
+      'expo-asset',
+      'expo-font',
+      'expo-image',
+      'expo-sharing',
+      'expo-splash-screen',
+      'expo-status-bar',
+      'expo-web-browser',
       'expo-audio',
       'expo-camera',
       [

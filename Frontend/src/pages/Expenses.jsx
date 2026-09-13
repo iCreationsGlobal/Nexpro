@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -162,6 +163,7 @@ const rejectionSchema = z.object({
 const SELECT_NONE_VALUE = '__none__';
 
 const Expenses = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isAdmin, activeTenant, activeTenantId } = useAuth();
   const shopContext = useShopOptional();
   const activeShopId = shopContext?.activeShopId ?? null;
@@ -528,6 +530,39 @@ const Expenses = () => {
       console.error('Failed to refresh expense details:', err);
     }
   };
+
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId) return undefined;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await expenseService.getById(openId);
+        const expense = response?.data || response;
+        if (!cancelled && expense?.id) {
+          setViewingExpense(expense);
+          setDrawerVisible(true);
+          loadExpenseActivities(expense.id);
+        }
+      } catch (err) {
+        console.error('Failed to open expense from link:', err);
+      } finally {
+        if (!cancelled) {
+          setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete('open');
+            return next;
+          }, { replace: true });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to deep-link id
+  }, [searchParams.get('open'), setSearchParams]);
 
   const handleCloseDrawer = () => {
     setDrawerVisible(false);

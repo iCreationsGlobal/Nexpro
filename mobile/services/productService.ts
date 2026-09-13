@@ -8,6 +8,7 @@ type ProductParams = {
   search?: string;
   barcode?: string;
   isActive?: boolean;
+  isRentable?: boolean;
   shopId?: string;
 };
 

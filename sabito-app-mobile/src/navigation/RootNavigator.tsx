@@ -1,7 +1,9 @@
+import AbsDetailScreen from '../screens/marketer/AbsDetailScreen';
+import AccountSecurityScreen from '../screens/auth/AccountSecurityScreen';
 import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, DeviceEventEmitter } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hasSeenOnboarding, setOnboardingCompleted } from '../utils/storage';
 import { TOKEN_KEY } from '../config/env';
@@ -58,6 +60,11 @@ const RootNavigator: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('sabito:logout', () => setIsLoggedIn(false));
+    return () => subscription.remove();
+  }, []);
+
   const checkAuthAndOnboardingStatus = useCallback(async () => {
     try {
       const seen = await hasSeenOnboarding();
@@ -74,9 +81,13 @@ const RootNavigator: React.FC = () => {
           setIsLoggedIn(true);
           // Returning users with a valid session skip onboarding
           setShowOnboarding(false);
-        } catch {
-          await AsyncStorage.removeItem(TOKEN_KEY);
-          setIsLoggedIn(false);
+        } catch (error: any) {
+          if (error?.response?.status === 401) {
+            await AsyncStorage.removeItem(TOKEN_KEY);
+            setIsLoggedIn(false);
+          } else {
+            setIsLoggedIn(true);
+          }
         }
       } else {
         setIsLoggedIn(false);
@@ -131,6 +142,7 @@ const RootNavigator: React.FC = () => {
               <Stack.Screen name="Login">
                 {(props) => <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />}
               </Stack.Screen>
+              <Stack.Screen name="PasswordRecovery" component={AccountSecurityScreen} />
               <Stack.Screen name="Signup" component={SignupScreen} />
               <Stack.Screen name="SignupProfile" component={SignupProfileScreen} />
               <Stack.Screen name="SignupPassword">
@@ -144,6 +156,9 @@ const RootNavigator: React.FC = () => {
               <Stack.Screen name="MarketerTabs">
                 {() => <MarketerTabNavigator onLogout={handleLogout} />}
               </Stack.Screen>
+              <Stack.Screen name="CashoutDetails" component={AbsDetailScreen} />
+              <Stack.Screen name="MarketerReports" component={AbsDetailScreen} />
+              <Stack.Screen name="PrivacySecurity" component={AccountSecurityScreen} />
               <Stack.Screen name="BusinessDetails" component={BusinessDetailsScreen} />
               <Stack.Screen name="AddReferral" component={AddReferralScreen} />
               <Stack.Screen name="MarketerReferralDetails" component={MarketerReferralDetailsScreen} />

@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '@/context/AuthContext';
-import { STORAGE_KEYS, resolveBusinessType } from '@/constants';
+import { STORAGE_KEYS } from '@/constants';
 import { shopService } from '@/services/shopService';
 import { setApiShopContext } from '@/services/api';
 import { refreshAfterWorkspaceScopeChange } from '@/utils/queryInvalidation';
@@ -36,7 +36,9 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   const isShopWorkspace = useMemo(
-    () => resolveBusinessType(activeTenant?.businessType) === 'shop' && hasFeature('shopsModule'),
+    () =>
+      (activeTenant?.businessType === 'shop' || activeTenant?.businessType === 'rental') &&
+      hasFeature('shopsModule'),
     [activeTenant?.businessType, hasFeature]
   );
 
@@ -79,7 +81,8 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       }
 
       const fallback =
-        (access?.defaultShopId && validIds.includes(access.defaultShopId)
+        (access?.defaultShopId &&
+        (validIds.length === 0 || validIds.includes(access.defaultShopId))
           ? access.defaultShopId
           : null) ||
         access?.activeShopId ||

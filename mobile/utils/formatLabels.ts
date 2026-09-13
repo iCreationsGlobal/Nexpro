@@ -5,6 +5,7 @@ import { BRAND_GREEN } from '@/constants/brand';
  */
 export function formatStatusLabel(status?: string | null): string {
   if (!status) return 'Unknown';
+  if (status === 'partial') return 'Partially paid';
   return status
     .split('_')
     .filter(Boolean)

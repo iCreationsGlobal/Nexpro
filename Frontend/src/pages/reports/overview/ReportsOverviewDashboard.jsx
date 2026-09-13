@@ -50,7 +50,8 @@ export default function ReportsOverviewDashboard({
   downloading = false,
   isShop = false,
   isPharmacy = false,
-  isStudio = false
+  isStudio = false,
+  isRental = false
 }) {
   const navigate = useNavigate();
   const isRetail = isShop || isPharmacy;
@@ -73,6 +74,7 @@ export default function ReportsOverviewDashboard({
     serviceAnalytics,
     productSales,
     topCustomers,
+    rental,
     extendedKpis,
     profitLossDetail,
     cashFlow,
@@ -125,9 +127,11 @@ export default function ReportsOverviewDashboard({
       productSales,
       isShop,
       isPharmacy,
-      isStudio
+      isStudio,
+      isRental,
+      rentalOverview: rental
     }),
-    [totalRevenue, serviceAnalytics, productSales, isShop, isPharmacy, isStudio]
+    [totalRevenue, serviceAnalytics, productSales, isShop, isPharmacy, isStudio, isRental, rental]
   );
 
   const revenueSparkline = useMemo(
@@ -163,9 +167,11 @@ export default function ReportsOverviewDashboard({
       collectionRate: current.collectionRate ?? 0,
       isShop,
       isPharmacy,
-      productSales
+      isRental,
+      productSales,
+      rentalOverview: rental
     }),
-    [totalRevenue, operatingExpenses, comparison, topCustomers, outstanding, current.collectionRate, isShop, isPharmacy, productSales]
+    [totalRevenue, operatingExpenses, comparison, topCustomers, outstanding, current.collectionRate, isShop, isPharmacy, isRental, productSales, rental]
   );
 
   const overdueInvoices = useMemo(
@@ -195,7 +201,14 @@ export default function ReportsOverviewDashboard({
   }), [totalRevenue, cogs, totalExpenses, operatingExpenses, grossProfit, netProfit, metricSource]);
 
   const averageValueLabel = isRetail ? 'Average Sale Value' : 'Average Invoice Value';
-  const topCustomersTitle = isRetail ? 'Top Customers by Sales' : 'Top Customers by Revenue';
+  const topCustomersTitle = isRental
+    ? 'Top Customers by Collections'
+    : isRetail
+      ? 'Top Customers by Sales'
+      : 'Top Customers by Revenue';
+  const collectedLabel = isRental ? 'Collected' : 'Total Revenue';
+  const categoryChartTitle = isRental ? 'Collections by Category' : 'Revenue by Category';
+  const trendChartTitle = isRental ? 'Collections vs Operating Expenses Trend' : 'Revenue vs Operating Expenses Trend';
 
   const Sparkline = ({ data, positive }) => (
     <MiniSparkline data={data} positive={positive} />
@@ -215,7 +228,7 @@ export default function ReportsOverviewDashboard({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 md:gap-4 mb-4">
         <OverviewKpiCard
-          label="Total Revenue"
+          label={collectedLabel}
           value={totalRevenue}
           change={comparison.totalRevenue}
           comparisonLabel={comparisonLabel}
@@ -298,12 +311,17 @@ export default function ReportsOverviewDashboard({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-4 mb-4">
         <div className="lg:col-span-6">
-          <RevenueExpensesTrendChart data={trendData} />
+          <RevenueExpensesTrendChart
+            data={trendData}
+            title={trendChartTitle}
+            revenueSeriesName={isRental ? 'Collected' : 'Revenue'}
+          />
         </div>
         <div className="lg:col-span-3">
           <RevenueByCategoryChart
             data={categoryData}
             totalRevenue={totalRevenue}
+            title={categoryChartTitle}
             onViewFullReport={() => navigate('/compliance/statements')}
           />
         </div>
@@ -372,6 +390,7 @@ export default function ReportsOverviewDashboard({
           customers={topCustomers}
           totalRevenue={totalRevenue}
           title={topCustomersTitle}
+          amountColumnLabel={isRental ? 'Collected' : 'Revenue'}
         />
         <ProfitLossSummaryCard
           profitLoss={plData}

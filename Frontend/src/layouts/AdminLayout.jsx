@@ -21,6 +21,7 @@ import {
   LifeBuoy,
   ShoppingBag,
   Workflow,
+  Megaphone,
   BadgePercent,
   Store,
   Server,
@@ -79,7 +80,8 @@ const menuItems = [
   { path: '/admin/ops', icon: Server, label: 'IT Ops' },
   { path: '/admin/automations', icon: Workflow, label: 'Automations' },
   { path: '/admin/support-tickets', icon: LifeBuoy, label: 'Support Tickets' },
-  { path: '/admin/sabito/overview', icon: ShoppingBag, label: 'Sabito Admin', activePrefix: '/admin/sabito' },
+  { path: '/admin/sabito/overview', icon: ShoppingBag, label: 'Sabito Store Admin', activePrefix: '/admin/sabito/' },
+  { path: '/admin/sabito-app/overview', icon: Megaphone, label: 'Sabito App Admin', activePrefix: '/admin/sabito-app' },
   {
     path: '/admin/online-store/setup',
     icon: Store,
@@ -199,6 +201,7 @@ const AdminLayout = () => {
           '/admin/automations': 'automations.view',
           '/admin/support-tickets': 'tickets.view',
           '/admin/sabito/overview': 'overview.view',
+          '/admin/sabito-app/overview': 'overview.view',
           '/admin/tasks': 'settings.view',
           '/admin/settings': 'settings.view',
         };

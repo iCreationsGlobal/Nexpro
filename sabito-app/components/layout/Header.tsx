@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/button";
-import { clearAuth, getStoredToken } from "@/lib/api";
+import { getStoredToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const MARKETING_NAV = [
@@ -17,7 +17,6 @@ const MARKETING_NAV = [
 
 export function Header() {
   const pathname = usePathname();
-  const router = useRouter();
   const [loggedIn, setLoggedIn] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -57,52 +56,18 @@ export function Header() {
                 {item.label}
               </Link>
             ))}
-            {loggedIn ? (
-              <>
-                <Link
-                  href="/dashboard"
-                  className="rounded-full px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  href="/referrals"
-                  className="hidden rounded-full px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 lg:inline"
-                >
-                  Referrals
-                </Link>
-              </>
-            ) : null}
           </nav>
         </div>
 
-        <div className="hidden items-center gap-2 sm:flex">
-          {loggedIn ? (
-            <>
-              <Link href="/account">
-                <Button variant="ghost">Account</Button>
-              </Link>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  clearAuth();
-                  setLoggedIn(false);
-                  router.push("/");
-                }}
-              >
-                Sign out
-              </Button>
-            </>
-          ) : (
-            <Link href="/signup">
-              <Button>Join Sabito</Button>
-            </Link>
-          )}
+        <div className="hidden items-center md:flex">
+          <Link href={loggedIn ? "/dashboard" : "/login"}>
+            <Button>{loggedIn ? "Account" : "Login"}</Button>
+          </Link>
         </div>
 
         <button
           type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 sm:hidden"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 md:hidden"
           aria-label={mobileOpen ? "Close menu" : "Open menu"}
           aria-expanded={mobileOpen}
           onClick={() => setMobileOpen((v) => !v)}
@@ -127,7 +92,7 @@ export function Header() {
       </div>
 
       {mobileOpen ? (
-        <div className="border-t border-slate-200 bg-white px-4 py-4 sm:hidden">
+        <div className="border-t border-slate-200 bg-white px-4 py-4 md:hidden">
           <nav className="flex flex-col gap-1" aria-label="Mobile">
             {MARKETING_NAV.map((item) => (
               <Link
@@ -152,15 +117,9 @@ export function Header() {
             </Link>
           </nav>
           <div className="mt-4 flex flex-col gap-2">
-            {loggedIn ? (
-              <Link href="/dashboard">
-                <Button className="w-full">Dashboard</Button>
-              </Link>
-            ) : (
-              <Link href="/signup">
-                <Button className="w-full">Join Sabito</Button>
-              </Link>
-            )}
+            <Link href={loggedIn ? "/dashboard" : "/login"} onClick={() => setMobileOpen(false)}>
+              <Button className="w-full">{loggedIn ? "Account" : "Login"}</Button>
+            </Link>
           </div>
         </div>
       ) : null}

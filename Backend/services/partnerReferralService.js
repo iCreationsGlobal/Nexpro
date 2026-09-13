@@ -258,24 +258,24 @@ const getReferralForMarketer = async (marketerId, referralId) => {
       { association: 'customer', attributes: ['id', 'name', 'email', 'phone'] },
     ],
   });
-
   if (!referral) return null;
-  const result = referral.toJSON();
-  result.jobs = [];
-  if (referral.status === 'matched' && referral.customerId && referral.matchedAt) {
-    result.jobs = await Job.findAll({
-      where: {
-        tenantId: referral.tenantId, customerId: referral.customerId,
-        [Op.or]: [
-          { partnershipId: referral.partnershipId, partnerMarketerId: marketerId },
-          { partnershipId: null, partnerMarketerId: null, createdAt: { [Op.gte]: referral.matchedAt } },
-        ],
-      },
-      attributes: ['id', 'jobNumber', 'title', 'status', 'dueDate', 'createdAt', 'updatedAt'],
-      order: [['createdAt', 'DESC']],
-    });
-  }
-  return result;
+  const data = referral.toJSON();
+  data.jobs = [];
+  if (referral.status !== 'matched' || !referral.customerId || !referral.matchedAt) return data;
+  // Explicit attribution wins. Otherwise include only jobs started after the match,
+  // with no attribution to a different partner. Never expose internal notes/costs.
+  data.jobs = await Job.findAll({
+    where: {
+      tenantId: referral.tenantId, customerId: referral.customerId,
+      [Op.or]: [
+        { partnershipId: referral.partnershipId, partnerMarketerId: marketerId },
+        { partnershipId: null, partnerMarketerId: null, createdAt: { [Op.gte]: referral.matchedAt } },
+      ],
+    },
+    attributes: ['id', 'jobNumber', 'title', 'status', 'dueDate', 'createdAt', 'updatedAt'],
+    order: [['createdAt', 'DESC']],
+  });
+  return data;
 };
 
 const listReferralsForTenant = async (tenantId, { status } = {}) => {

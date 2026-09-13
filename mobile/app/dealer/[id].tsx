@@ -35,6 +35,7 @@ import { dealerService, type DealerPayload } from '@/services/dealerService';
 import { getApiErrorMessage, parseApiEntity, parseApiListResponse } from '@/utils/parseApiListResponse';
 import { refreshAfterDealerChange } from '@/utils/queryInvalidation';
 import { formatCurrency, formatDate } from '@/utils/formatCurrency';
+import { standaloneFullWidth } from '@/styles/standaloneButton';
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 
 type DealerDetail = {
@@ -582,6 +583,7 @@ const styles = StyleSheet.create({
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   secondaryBtn: {
     marginTop: 12,
+    ...standaloneFullWidth,
     minHeight: 44,
     borderWidth: 1,
     borderRadius: 10,
@@ -591,6 +593,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: { fontSize: 15, fontWeight: '600' },
   primaryBtn: {
+    ...standaloneFullWidth,
     marginTop: 8,
     padding: 16,
     borderRadius: 12,

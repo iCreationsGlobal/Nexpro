@@ -1,5 +1,14 @@
 const express = require('express');
 const {
+  getRentalReportsOverview,
+  getRentalRevenueReport,
+  getLateReturnsReport: getRentalLateReturnsReport,
+  getUtilizationReport,
+  getDamageTrendsReport,
+  getRentalSmartReport,
+} = require('../controllers/rentalReportController');
+const { requireFeature } = require('../middleware/featureAccess');
+const {
   getRevenueReport,
   getExpenseReport,
   getOutstandingPaymentsReport,
@@ -76,6 +85,15 @@ router.get('/materials-movements', reportCache, getMaterialsMovements);
 router.get('/fastest-moving-items', reportCache, getFastestMovingItems);
 router.get('/revenue-by-channel', reportCache, getRevenueByChannel);
 router.get('/vat', reportCache, getVatReport);
+
+// Rental business reports (branch-scoped via shopContext)
+router.get('/rental/overview', requireFeature('rentals'), reportCache, getRentalReportsOverview);
+router.get('/rental/revenue', requireFeature('rentals'), reportCache, getRentalRevenueReport);
+router.get('/rental/late-returns', requireFeature('rentals'), reportCache, getRentalLateReturnsReport);
+router.get('/rental/utilization', requireFeature('rentals'), reportCache, getUtilizationReport);
+router.get('/rental/damage-trends', requireFeature('rentals'), reportCache, getDamageTrendsReport);
+router.get('/rental/smart-report', requireFeature('rentals'), reportCache, getRentalSmartReport);
+
 router.post('/ai-analysis', exportLimiter, generateAIAnalysis); // Rate-limited; no cache for POST
 
 module.exports = router;

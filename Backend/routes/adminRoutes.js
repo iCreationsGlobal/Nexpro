@@ -376,6 +376,43 @@ router.get('/sabito/customers', requirePlatformAdminPermission('tenants.view'), 
 router.get('/sabito/settings', requirePlatformAdminPermission('settings.view'), getSabitoSettings);
 
 /**
+ * Sabito App Admin (marketer program) — distinct from /sabito/* marketplace store admin.
+ */
+const {
+  getSabitoAppOverview,
+  getSabitoAppBusinesses,
+  approveSabitoAppBusiness,
+  rejectSabitoAppBusiness,
+  suspendSabitoAppBusiness,
+  unsuspendSabitoAppBusiness,
+  getSabitoAppMarketers,
+  getSabitoAppReferrals,
+  getSabitoAppCollections,
+  recordSabitoAppCollection,
+  getSabitoAppCashouts,
+  paySabitoAppCashout,
+  rejectSabitoAppCashout,
+  getSabitoAppSettings,
+  updateSabitoAppSettings,
+} = require('../controllers/adminSabitoAppController');
+
+router.get('/sabito-app/overview', requirePlatformAdminPermission('overview.view'), getSabitoAppOverview);
+router.get('/sabito-app/businesses', requirePlatformAdminPermission('tenants.view'), getSabitoAppBusinesses);
+router.post('/sabito-app/businesses/:id/approve', requirePlatformAdminPermission('tenants.update'), approveSabitoAppBusiness);
+router.post('/sabito-app/businesses/:id/reject', requirePlatformAdminPermission('tenants.update'), rejectSabitoAppBusiness);
+router.post('/sabito-app/businesses/:id/suspend', requirePlatformAdminPermission('tenants.update'), suspendSabitoAppBusiness);
+router.post('/sabito-app/businesses/:id/unsuspend', requirePlatformAdminPermission('tenants.update'), unsuspendSabitoAppBusiness);
+router.get('/sabito-app/marketers', requirePlatformAdminPermission('tenants.view'), getSabitoAppMarketers);
+router.get('/sabito-app/referrals', requirePlatformAdminPermission('tenants.view'), getSabitoAppReferrals);
+router.get('/sabito-app/collections', requirePlatformAdminPermission('billing.view'), getSabitoAppCollections);
+router.post('/sabito-app/collections', requirePlatformAdminPermission('billing.manage'), recordSabitoAppCollection);
+router.get('/sabito-app/cashouts', requirePlatformAdminPermission('billing.view'), getSabitoAppCashouts);
+router.post('/sabito-app/cashouts/:id/pay', requirePlatformAdminPermission('billing.manage'), paySabitoAppCashout);
+router.post('/sabito-app/cashouts/:id/reject', requirePlatformAdminPermission('billing.manage'), rejectSabitoAppCashout);
+router.get('/sabito-app/settings', requirePlatformAdminPermission('settings.view'), getSabitoAppSettings);
+router.put('/sabito-app/settings', requirePlatformAdminPermission('settings.manage'), updateSabitoAppSettings);
+
+/**
  * Online Store hero library (platform CMS — not Sabito).
  */
 const {

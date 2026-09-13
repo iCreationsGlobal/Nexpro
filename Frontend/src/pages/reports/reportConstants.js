@@ -162,6 +162,28 @@ export function getBusinessTerminology(businessType, metadata = {}) {
       analyticsDescription: 'A detailed summary of all drugs and their prescription status.',
       topRevenueLabel: 'Top 5 Products',
       topCategoryInsightLabel: 'drug'
+    },
+    rental: {
+      analytics: 'Hire Analytics',
+      items: 'Hire items',
+      sales: 'Hires',
+      salesLabel: 'Total Hires',
+      salesValueLabel: 'Hire Booked Value',
+      rateLabel: 'Collection Rate',
+      trendLabel: 'Collections Trend',
+      incomingLabel: 'Incoming hires',
+      completedLabel: 'Returned hires',
+      salesByTypeLabel: 'Hire booked by Product',
+      typeColumnLabel: 'Product',
+      countColumnLabel: 'Hires',
+      reportLabel: 'Rental Report',
+      categories: 'Hire Categories',
+      units: 'Item-days',
+      revenue: 'Collections',
+      analyticsTitle: 'Hire Analytics Summary',
+      analyticsDescription: 'Invoice collections and hire activity for the period.',
+      topRevenueLabel: 'Top 5 Hire Items',
+      topCategoryInsightLabel: 'hire item'
     }
   };
 

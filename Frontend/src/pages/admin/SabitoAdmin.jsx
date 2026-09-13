@@ -420,7 +420,7 @@ const PermissionDenied = () => (
   <div className="flex items-center justify-center min-h-[400px]">
     <div className="text-center">
       <h3 className="text-lg font-semibold text-foreground mb-2">Access Denied</h3>
-      <p className="text-sm text-muted-foreground">You do not have permission to view this Sabito Admin page.</p>
+      <p className="text-sm text-muted-foreground">You do not have permission to view this Sabito Store Admin page.</p>
     </div>
   </div>
 );
@@ -438,7 +438,7 @@ function SectionHeader({ section }) {
           <p className="text-sm text-muted-foreground">{config.description}</p>
         </div>
         <Badge variant="outline" className="w-fit border-brand/30 text-brand">
-          Sabito Admin
+          Sabito Store Admin
         </Badge>
       </div>
     </div>

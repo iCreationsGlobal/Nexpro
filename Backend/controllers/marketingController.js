@@ -7,13 +7,14 @@ const emailService = require('../services/emailService');
 const smsService = require('../services/smsService');
 const whatsappService = require('../services/whatsappService');
 const { getTenantLogoUrl } = require('../utils/tenantLogo');
+const { applySmsTemplate } = require('../utils/smsTemplateMerge');
 const {
   enrichCapabilitiesWithVerification,
   applyVerificationAfterBroadcast,
 } = require('../services/marketingChannelVerification');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-const MAX_BROADCAST_RECIPIENTS = 500;
+const MAX_BROADCAST_RECIPIENTS = 2000;
 const MAX_FAILED_SAMPLES = 40;
 const CAMPAIGN_STATUSES = new Set(['draft', 'scheduled', 'sent', 'failed']);
 
@@ -496,7 +497,14 @@ async function executeBroadcast(req, payload, options = {}) {
         seenSmsPhones.add(ph);
         result.sms.sent += 1;
       } else {
-        const sendRes = await smsService.sendMessage(req.tenantId, ph, message.smsBody);
+        const smsBody = applySmsTemplate(message.smsBody, {
+          name: customerDisplayName(c),
+          businessName: company?.name || req.tenant?.name || '',
+        });
+        const sendRes = await smsService.sendMessage(req.tenantId, ph, smsBody, null, {
+          source: 'marketing_campaign',
+          context: { campaignId: campaign?.id || null, customerId: c.id },
+        });
         seenSmsPhones.add(ph);
         if (sendRes.success) {
           result.sms.sent += 1;
@@ -816,4 +824,41 @@ exports.scheduleCampaign = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+/**
+ * Cron: send marketing campaigns whose scheduledAt is due.
+ * @returns {Promise<Array<{ id: string, ok: boolean, error?: string }>>}
+ */
+exports.dispatchDueScheduledCampaigns = async () => {
+  const due = await MarketingCampaign.findAll({
+    where: {
+      status: 'scheduled',
+      scheduledAt: { [Op.lte]: new Date() },
+    },
+    order: [['scheduledAt', 'ASC']],
+    limit: 25,
+  });
+
+  const outcomes = [];
+  for (const campaign of due) {
+    try {
+      const req = { tenantId: campaign.tenantId, tenant: null, user: null };
+      const payload = getCampaignSendPayload(campaign);
+      await executeBroadcast(req, { ...payload, dryRun: false }, {
+        campaign,
+        updateCampaign: true,
+      });
+      outcomes.push({ id: campaign.id, ok: true });
+    } catch (error) {
+      try {
+        await campaign.update({ status: 'failed' });
+      } catch (_) {
+        /* ignore */
+      }
+      outcomes.push({ id: campaign.id, ok: false, error: error?.message || 'dispatch failed' });
+      console.error('[Marketing] Scheduled campaign dispatch failed:', campaign.id, error?.message);
+    }
+  }
+  return outcomes;
 };

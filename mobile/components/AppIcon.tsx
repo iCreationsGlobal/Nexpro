@@ -5,6 +5,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Archive,
+  ArrowRight,
   Brain,
   Banknote,
   Bell,
@@ -93,6 +94,7 @@ const ICON_MAP = {
   menu: Menu,
   'chevron-left': ChevronLeft,
   'chevron-right': ChevronRight,
+  'arrow-right': ArrowRight,
   'chevron-down': ChevronDown,
   'chevron-forward': ChevronRight,
   'chevron-back': ChevronLeft,
@@ -175,6 +177,7 @@ const ICON_MAP = {
   'restaurant-outline': UtensilsCrossed,
   'medical-outline': Pill,
   'camera-outline': Camera,
+  'package-outline': Package,
   list: List,
 } satisfies Record<string, LucideIcon>;
 

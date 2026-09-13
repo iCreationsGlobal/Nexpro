@@ -1,5 +1,6 @@
 import React from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 
 import { StackPageHeader } from '@/components/StackPageHeader';
 import { useScreenColors } from '@/hooks/useScreenColors';
@@ -30,7 +31,9 @@ const sections = [
   {
     title: 'Retention and deletion',
     body:
-      'We retain account and business data while your account is active or as needed for legal, security, accounting, and operational reasons. You can request account and data deletion from the app under Account or Settings.',
+      'We retain account and business data while your account is active or as needed for legal, security, accounting, and operational reasons. You can request account and data deletion at any time, whether or not you are signed in.',
+    route: '/data-deletion' as const,
+    linkLabel: 'Request data deletion',
   },
   {
     title: 'Contact',
@@ -63,6 +66,15 @@ export default function PrivacyPolicyScreen() {
           <View key={section.title} style={styles.section}>
             <Text style={[styles.sectionTitle, { color: textColor }]}>{section.title}</Text>
             <Text style={[styles.sectionBody, { color: mutedColor }]}>{section.body}</Text>
+            {section.route ? (
+              <Pressable
+                onPress={() => router.push(section.route)}
+                accessibilityRole="link"
+                style={styles.sectionLinkWrap}
+              >
+                <Text style={[styles.sectionLink, { color: colors.tint }]}>{section.linkLabel}</Text>
+              </Pressable>
+            ) : null}
           </View>
         ))}
       </ScrollView>
@@ -80,4 +92,6 @@ const styles = StyleSheet.create({
   section: { marginBottom: 20 },
   sectionTitle: { fontSize: 17, fontWeight: '700', marginBottom: 8 },
   sectionBody: { fontSize: 15, lineHeight: 22 },
+  sectionLinkWrap: { marginTop: 8 },
+  sectionLink: { fontSize: 15, fontWeight: '600' },
 });

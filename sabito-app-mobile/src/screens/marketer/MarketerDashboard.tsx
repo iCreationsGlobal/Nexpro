@@ -27,6 +27,7 @@ import { ICON_SIZES } from '../../constants/icons';
 import { Button } from 'react-native-paper';
 import {
   getMarketerDashboard,
+  listPartners,
   getMarketerSession,
   listMyReferrals,
 } from '../../api/absMarketer';
@@ -301,7 +302,7 @@ const MarketerDashboard: React.FC<MarketerDashboardScreenProps> = ({ navigation 
     setIsSearching(true);
 
     try {
-      const referrals = await listMyReferrals();
+      const [referrals, businesses] = await Promise.all([listMyReferrals(), listPartners({ search: query })]);
       const q = query.toLowerCase();
       const matched = (referrals || []).filter((r: any) =>
         String(r.clientName || '').toLowerCase().includes(q)
@@ -312,7 +313,7 @@ const MarketerDashboard: React.FC<MarketerDashboardScreenProps> = ({ navigation 
         data: {
           data: {
             referrals: matched.slice(0, 8),
-            businesses: [],
+            businesses: businesses.map(b => ({ ...b, id: b.slug, businessName: b.name, industry: b.category })),
             projects: [],
           } as SearchResults,
         },
@@ -649,7 +650,7 @@ const MarketerDashboard: React.FC<MarketerDashboardScreenProps> = ({ navigation 
               <TextInput
                 ref={searchInputRef}
                 style={[styles.searchInput, { color: colors.inputText }]}
-                placeholder="Search referrals..."
+                placeholder="Search businesses and referrals..."
                 placeholderTextColor={colors.inputPlaceholder}
                 value={searchQuery}
                 onChangeText={handleSearchChange}

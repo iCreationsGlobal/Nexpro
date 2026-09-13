@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useUnsavedChangesGuard } from '../hooks/useUnsavedChangesGuard';
 import UnsavedChangesDialog from '../components/UnsavedChangesDialog';
 import { shallowEqualObjects } from '../utils/formDirty';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Calendar, CheckCircle2, Clock3, Eye, Filter, MessageSquare, MoreVertical, PauseCircle, Plus, UserRound } from 'lucide-react';
+import {
+  CheckSquare,
+  ExternalLink,
+  Filter,
+  MessageSquare,
+  MoreVertical,
+  Plus,
+  X
+} from 'lucide-react';
 import { DragDropContext, Draggable, Droppable } from 'react-beautiful-dnd';
 
 import { useAuth } from '../context/AuthContext';
@@ -17,8 +26,32 @@ import { resolveImageUrl } from '../utils/fileUtils';
 import { showError, showSuccess } from '../utils/toast';
 import WelcomeSection from '../components/WelcomeSection';
 import StatusChip from '../components/StatusChip';
-import { DEBOUNCE_DELAYS, PRIORITY_CHIP_CLASSES, SEARCH_PLACEHOLDERS, STATUS_CHIP_CLASSES, STATUS_CHIP_DEFAULT_CLASS, STUDIO_LIKE_TYPES } from '../constants';
+import TaskBoardCard from '../components/tasks/TaskBoardCard';
+import TaskCalendarView from '../components/tasks/TaskCalendarView';
+import {
+  DEBOUNCE_DELAYS,
+  PRIORITY_CHIP_CLASSES,
+  SEARCH_PLACEHOLDERS,
+  STATUS_CHIP_CLASSES,
+  STATUS_CHIP_DEFAULT_CLASS,
+  STUDIO_LIKE_TYPES
+} from '../constants';
 import { getSearchNoResultsEmptyStateProps } from '../utils/searchEmptyState';
+import {
+  SOURCE_LABEL,
+  formatTaskDate,
+  getChecklistProgress,
+  getDueLabel,
+  getDueState,
+  getInitials,
+  getTaskProvenance,
+  getTaskSourceHref,
+  groupTasks,
+  normalizeTagInput,
+  normalizeTaskChecklists,
+  normalizeTaskTags,
+  sortTasks
+} from '../utils/taskHelpers';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,12 +82,14 @@ import { Label } from '@/components/ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const STATUS_OPTIONS = ['todo', 'in_progress', 'on_hold', 'completed'];
 const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'urgent'];
+const SORT_STORAGE_KEY = 'abs.tasks.sortBy';
+const GROUP_STORAGE_KEY = 'abs.tasks.groupBy';
 
 const STATUS_LABELS = {
   todo: 'To do',
@@ -63,56 +98,27 @@ const STATUS_LABELS = {
   completed: 'Completed'
 };
 
-const SOURCE_LABEL = {
-  lead: 'Lead follow-up',
-  invoice: 'Invoice collection',
-  quote: 'Quote follow-up',
-  stock: 'Restock'
-};
-
 const getPriorityChipClass = (priority = 'medium') =>
   PRIORITY_CHIP_CLASSES[priority] || PRIORITY_CHIP_CLASSES.medium;
 
 const getSourceChipClass = (source = 'manual') =>
   STATUS_CHIP_CLASSES[`task_source_${source}`] || STATUS_CHIP_CLASSES.task_source_manual || STATUS_CHIP_DEFAULT_CLASS;
 
-function getDueState(task) {
-  if (!task?.dueDate) return 'none';
-  const today = new Date().toISOString().slice(0, 10);
-  const due = String(task.dueDate).slice(0, 10);
-  if (task.status === 'completed') return 'none';
-  if (due < today) return 'overdue';
-  if (due === today) return 'today';
-  const dueTs = new Date(`${due}T00:00:00`).getTime();
-  const todayTs = new Date(`${today}T00:00:00`).getTime();
-  const diffDays = Math.floor((dueTs - todayTs) / (1000 * 60 * 60 * 24));
-  if (diffDays <= 2) return 'soon';
-  return 'none';
-}
-
-const DUE_BORDER_CLASS = {
-  overdue: '',
-  today: '',
-  soon: '',
-  none: ''
+const DUE_TEXT_CLASS = {
+  overdue: 'text-destructive',
+  today: 'text-amber-700',
+  soon: 'text-amber-600',
+  none: 'text-muted-foreground'
 };
 
-function formatDate(value) {
-  if (!value) return 'No due date';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return 'No due date';
-  return d.toLocaleDateString();
-}
-
-function getInitials(name) {
-  const value = String(name || '').trim();
-  if (!value) return 'U';
-  return value
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() || '')
-    .join('') || 'U';
-}
+const readStoredPreference = (key, fallback) => {
+  try {
+    const value = window.localStorage.getItem(key);
+    return value || fallback;
+  } catch {
+    return fallback;
+  }
+};
 
 const initialForm = {
   id: null,
@@ -128,6 +134,7 @@ const initialForm = {
 
 const Tasks = () => {
   const { user, activeTenant } = useAuth();
+  const navigate = useNavigate();
   const { searchValue, setSearchValue, setPageSearchConfig } = useSmartSearch();
   const { activeShopId, activeStudioLocationId, isShopWorkspace, isStudioWorkspace, scopeReady } = useWorkspaceScope();
   const shopContext = useShopOptional();
@@ -136,13 +143,18 @@ const Tasks = () => {
   const queryClient = useQueryClient();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
-  const [scopeFilter, setScopeFilter] = useState('all');
+  const [scopeFilter, setScopeFilter] = useState('assigned_to_me');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [privacyFilter, setPrivacyFilter] = useState('all');
+  const [tagFilter, setTagFilter] = useState('all');
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [sortBy, setSortBy] = useState(() => readStoredPreference(SORT_STORAGE_KEY, 'created_desc'));
+  const [groupBy, setGroupBy] = useState(() => readStoredPreference(GROUP_STORAGE_KEY, 'none'));
   const [locationFilter, setLocationFilter] = useState('all');
   const [viewMode, setViewMode] = useState('list');
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [openCreateModal, setOpenCreateModal] = useState(false);
   const [openDetails, setOpenDetails] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -155,6 +167,8 @@ const Tasks = () => {
   const [highlightedTaskId, setHighlightedTaskId] = useState(null);
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [commentText, setCommentText] = useState('');
+  const [checklistDraft, setChecklistDraft] = useState('');
+  const [tagDraft, setTagDraft] = useState('');
   const taskCardRefs = useRef({});
   const businessType = activeTenant?.businessType || '';
   const isShopLike = isShopWorkspace || ['shop', 'pharmacy'].includes(businessType);
@@ -220,6 +234,22 @@ const Tasks = () => {
       setLocationFilter('all');
     }
   }, [locationFilter, locationOptions]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SORT_STORAGE_KEY, sortBy);
+    } catch {
+      /* ignore */
+    }
+  }, [sortBy]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(GROUP_STORAGE_KEY, groupBy);
+    } catch {
+      /* ignore */
+    }
+  }, [groupBy]);
 
   useEffect(() => {
     setPageSearchConfig({
@@ -478,11 +508,17 @@ const Tasks = () => {
       if (!['all', 'me', 'unassigned'].includes(assigneeFilter) && task.assigneeId !== assigneeFilter) return false;
       if (privacyFilter === 'private' && task.isPrivate !== true) return false;
       if (privacyFilter === 'public' && task.isPrivate === true) return false;
+      if (tagFilter !== 'all') {
+        const tags = normalizeTaskTags(task);
+        if (!tags.includes(tagFilter)) return false;
+      }
+      if (overdueOnly && getDueState(task) !== 'overdue') return false;
       if (!q) return true;
       return (
         String(task.title || '').toLowerCase().includes(q) ||
         String(task.description || '').toLowerCase().includes(q) ||
-        String(task.assignee?.name || '').toLowerCase().includes(q)
+        String(task.assignee?.name || '').toLowerCase().includes(q) ||
+        normalizeTaskTags(task).some((tag) => tag.includes(q))
       );
     });
   }, [
@@ -494,15 +530,33 @@ const Tasks = () => {
     sourceFilter,
     assigneeFilter,
     privacyFilter,
+    tagFilter,
+    overdueOnly,
     user?.id
   ]);
 
+  const sortedTasks = useMemo(() => sortTasks(filteredTasks, sortBy), [filteredTasks, sortBy]);
+
+  const groupedListSections = useMemo(
+    () => groupTasks(sortedTasks, viewMode === 'list' ? groupBy : 'none'),
+    [sortedTasks, groupBy, viewMode]
+  );
+
+  const availableTags = useMemo(() => {
+    const set = new Set();
+    tasksData.forEach((task) => normalizeTaskTags(task).forEach((tag) => set.add(tag)));
+    return Array.from(set).sort();
+  }, [tasksData]);
+
   const tasksByStatus = useMemo(() => {
     return STATUS_OPTIONS.reduce((acc, status) => {
-      acc[status] = filteredTasks.filter((t) => t.status === status);
+      acc[status] = sortTasks(
+        filteredTasks.filter((t) => t.status === status),
+        sortBy
+      );
       return acc;
     }, {});
-  }, [filteredTasks]);
+  }, [filteredTasks, sortBy]);
 
   const dueTodayTasks = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -566,6 +620,109 @@ const Tasks = () => {
   const selectedAssignee = membersData.find((m) => m.id === form.assigneeId) || taskDetail?.assignee || null;
   const selectedAssigneeName = selectedAssignee?.name || 'Unassigned';
   const selectedAssigneeImage = resolveImageUrl(selectedAssignee?.profilePicture || '') || undefined;
+  const detailSourceHref = getTaskSourceHref(taskDetail || filteredTasks.find((t) => t.id === selectedTaskId));
+  const detailProvenance = getTaskProvenance(taskDetail || filteredTasks.find((t) => t.id === selectedTaskId));
+  const detailChecklists = normalizeTaskChecklists(taskDetail);
+  const detailTags = normalizeTaskTags(taskDetail);
+
+  const persistTaskMetadata = useCallback(
+    async ({ checklists, tags }) => {
+      if (!selectedTaskId) return;
+      await userWorkspaceService.updateTask(
+        selectedTaskId,
+        {
+          ...(checklists !== undefined ? { checklists } : {}),
+          ...(tags !== undefined ? { tags } : {}),
+        },
+        taskLocationQueryParams
+      );
+      queryClient.invalidateQueries({ queryKey: ['user-workspace', 'tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['user-workspace', 'task-detail', selectedTaskId] });
+      queryClient.invalidateQueries({ queryKey: ['user-workspace', 'task-activity', selectedTaskId] });
+    },
+    [selectedTaskId, taskLocationQueryParams, queryClient]
+  );
+
+  const handleToggleChecklistItem = useCallback(
+    async (itemId, done) => {
+      const next = detailChecklists.map((item) =>
+        item.id === itemId ? { ...item, done } : item
+      );
+      try {
+        await persistTaskMetadata({ checklists: next });
+      } catch (err) {
+        showError(err?.response?.data?.message || 'Failed to update checklist');
+      }
+    },
+    [detailChecklists, persistTaskMetadata]
+  );
+
+  const handleAddChecklistItem = useCallback(async () => {
+    const text = checklistDraft.trim();
+    if (!text) return;
+    if (detailChecklists.length >= 50) {
+      showError('Checklist is limited to 50 items');
+      return;
+    }
+    const next = [
+      ...detailChecklists,
+      {
+        id: `cl_${Date.now()}`,
+        text,
+        done: false,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    try {
+      await persistTaskMetadata({ checklists: next });
+      setChecklistDraft('');
+      showSuccess('Checklist item added');
+    } catch (err) {
+      showError(err?.response?.data?.message || 'Failed to add checklist item');
+    }
+  }, [checklistDraft, detailChecklists, persistTaskMetadata]);
+
+  const handleRemoveChecklistItem = useCallback(
+    async (itemId) => {
+      const next = detailChecklists.filter((item) => item.id !== itemId);
+      try {
+        await persistTaskMetadata({ checklists: next });
+      } catch (err) {
+        showError(err?.response?.data?.message || 'Failed to remove checklist item');
+      }
+    },
+    [detailChecklists, persistTaskMetadata]
+  );
+
+  const handleAddTag = useCallback(async () => {
+    const tag = normalizeTagInput(tagDraft);
+    if (!tag) return;
+    if (detailTags.includes(tag)) {
+      setTagDraft('');
+      return;
+    }
+    if (detailTags.length >= 5) {
+      showError('Maximum 5 tags per task');
+      return;
+    }
+    try {
+      await persistTaskMetadata({ tags: [...detailTags, tag] });
+      setTagDraft('');
+    } catch (err) {
+      showError(err?.response?.data?.message || 'Failed to add tag');
+    }
+  }, [tagDraft, detailTags, persistTaskMetadata]);
+
+  const handleRemoveTag = useCallback(
+    async (tag) => {
+      try {
+        await persistTaskMetadata({ tags: detailTags.filter((item) => item !== tag) });
+      } catch (err) {
+        showError(err?.response?.data?.message || 'Failed to remove tag');
+      }
+    },
+    [detailTags, persistTaskMetadata]
+  );
   const activityItems = useMemo(() => {
     const normalizeText = (value) => String(value || '').trim().toLowerCase();
     const activity = taskActivity.map((entry) => ({
@@ -645,7 +802,7 @@ const Tasks = () => {
           subText="Track meetings, follow-ups, due work, and automated tasks in one place."
         />
         <div className="flex items-center gap-2">
-          <div className="sm:hidden flex items-center gap-1 rounded-md border border-border p-1">
+          <div className="flex items-center gap-1 rounded-md border border-border p-1">
             <Button
               type="button"
               size="sm"
@@ -662,23 +819,13 @@ const Tasks = () => {
             >
               Kanban
             </Button>
-          </div>
-          <div className="hidden sm:flex items-center gap-1 rounded-md border border-border p-1">
             <Button
               type="button"
               size="sm"
-              variant={viewMode === 'list' ? 'default' : 'ghost'}
-              onClick={() => setViewMode('list')}
+              variant={viewMode === 'calendar' ? 'default' : 'ghost'}
+              onClick={() => setViewMode('calendar')}
             >
-              List
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={viewMode === 'kanban' ? 'default' : 'ghost'}
-              onClick={() => setViewMode('kanban')}
-            >
-              Kanban
+              Calendar
             </Button>
           </div>
           <Button
@@ -699,7 +846,7 @@ const Tasks = () => {
       </div>
 
       <Card>
-        <CardContent className="pt-3 sm:pt-6 px-2.5 sm:px-6">
+        <CardContent className="pt-3 sm:pt-6 px-2.5 sm:px-6 space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="outline">Status: {statusFilter === 'all' ? 'All' : STATUS_LABELS[statusFilter]}</Badge>
             <Badge variant="outline">
@@ -716,9 +863,50 @@ const Tasks = () => {
             </Badge>
             <Badge variant="outline">Priority: {priorityFilter === 'all' ? 'All' : priorityFilter}</Badge>
             <Badge variant="outline">{locationFilterLabel}: {selectedLocationName}</Badge>
+            {tagFilter !== 'all' ? <Badge variant="outline">Tag: {tagFilter}</Badge> : null}
             <Badge variant="outline">
               Results: {filteredTasks.length}/{tasksData.length}
             </Badge>
+            {overdueTasks.length > 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                variant={overdueOnly ? 'default' : 'outline'}
+                className="h-7"
+                onClick={() => setOverdueOnly((prev) => !prev)}
+              >
+                Overdue ({overdueTasks.length})
+              </Button>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-[160px] h-8">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="created_desc">Newest</SelectItem>
+                <SelectItem value="created_asc">Oldest</SelectItem>
+                <SelectItem value="due_asc">Due soonest</SelectItem>
+                <SelectItem value="due_desc">Due latest</SelectItem>
+                <SelectItem value="priority">Priority</SelectItem>
+                <SelectItem value="title">Title</SelectItem>
+              </SelectContent>
+            </Select>
+            {viewMode === 'list' ? (
+              <Select value={groupBy} onValueChange={setGroupBy}>
+                <SelectTrigger className="w-[160px] h-8">
+                  <SelectValue placeholder="Group" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No grouping</SelectItem>
+                  <SelectItem value="assignee">Assignee</SelectItem>
+                  <SelectItem value="priority">Priority</SelectItem>
+                  <SelectItem value="source">Source</SelectItem>
+                  <SelectItem value="tag">Tag</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -728,7 +916,7 @@ const Tasks = () => {
           <Card>
             <CardContent className="pt-3 sm:pt-6 px-2.5 sm:px-6 text-sm text-muted-foreground">Loading tasks...</CardContent>
           </Card>
-        ) : filteredTasks.length === 0 ? (
+        ) : filteredTasks.length === 0 && viewMode !== 'calendar' ? (
           <Card>
             <CardContent className="pt-3 sm:pt-6 px-2.5 sm:px-6">
               {debouncedSearchValue.trim() ? (
@@ -742,68 +930,127 @@ const Tasks = () => {
               )}
             </CardContent>
           </Card>
+        ) : viewMode === 'calendar' ? (
+          <TaskCalendarView
+            tasks={sortedTasks}
+            monthDate={calendarMonth}
+            onMonthChange={setCalendarMonth}
+            onSelectTask={openTaskDetails}
+            onSelectDay={(dateKey) => {
+              const next = {
+                ...initialForm,
+                assigneeId: user?.id || '',
+                startDate: new Date().toISOString().slice(0, 10),
+                dueDate: dateKey,
+              };
+              setCreateForm(next);
+              setCreateFormBaseline(next);
+              setOpenCreateModal(true);
+            }}
+          />
         ) : viewMode === 'list' ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <div className="lg:col-span-2 space-y-2 sm:space-y-3">
-              {filteredTasks.map((task) => {
-                return (
-                  <Card
-                    key={task.id}
-                    ref={(node) => {
-                      if (node) {
-                        taskCardRefs.current[task.id] = node;
-                      } else {
-                        delete taskCardRefs.current[task.id];
-                      }
-                    }}
-                    className={`${DUE_BORDER_CLASS[getDueState(task)] || ''} ${
-                      highlightedTaskId === task.id ? 'ring-2 ring-primary/40 border-primary/40 transition-colors' : ''
-                    }`}
-                  >
-                    <CardHeader className="pb-2">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <CardTitle className="text-base">{task.title}</CardTitle>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            <span className="inline-flex items-center gap-1">
-                              <UserRound className="h-3 w-3" />
-                              {task.assignee?.name || 'Unassigned'}
-                            </span>
-                            <span>Due: {formatDate(task.dueDate)}</span>
-                            {task.sourceType ? (
-                              <Badge variant="outline" className={getSourceChipClass(task.sourceType)}>
-                                {SOURCE_LABEL[task.sourceType] || task.sourceType}
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className={getSourceChipClass('manual')}>
-                                Manual
-                              </Badge>
-                            )}
-                            {task.isPrivate && <Badge variant="outline">Private</Badge>}
-                            <Badge variant="outline" className={getPriorityChipClass(task.priority || 'medium')}>
-                              {String(task.priority || 'medium').toUpperCase()}
-                            </Badge>
+            <div className="lg:col-span-2 space-y-4 sm:space-y-5">
+              {groupedListSections.map((section) => (
+                <div key={section.key} className="space-y-2 sm:space-y-3">
+                  {groupBy !== 'none' ? (
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {section.label} ({section.tasks.length})
+                    </p>
+                  ) : null}
+                  {section.tasks.map((task) => {
+                    const dueState = getDueState(task);
+                    const progress = getChecklistProgress(task);
+                    const sourceHref = getTaskSourceHref(task);
+                    const tags = normalizeTaskTags(task);
+                    const assigneeName = task.assignee?.name || 'Unassigned';
+                    const avatarUrl = resolveImageUrl(task.assignee?.profilePicture || '') || undefined;
+                    return (
+                      <Card
+                        key={task.id}
+                        ref={(node) => {
+                          if (node) {
+                            taskCardRefs.current[task.id] = node;
+                          } else {
+                            delete taskCardRefs.current[task.id];
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openTaskDetails(task.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            openTaskDetails(task.id);
+                          }
+                        }}
+                        className={`cursor-pointer hover:bg-muted/30 ${
+                          highlightedTaskId === task.id ? 'ring-2 ring-primary/40 border-primary/40 transition-colors' : ''
+                        }`}
+                      >
+                        <CardHeader className="pb-2">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <CardTitle className="text-base">{task.title}</CardTitle>
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                                <Avatar className="h-6 w-6" title={assigneeName}>
+                                  {avatarUrl ? <AvatarImage src={avatarUrl} alt={assigneeName} /> : null}
+                                  <AvatarFallback className="text-[10px]">{getInitials(assigneeName)}</AvatarFallback>
+                                </Avatar>
+                                <span className={DUE_TEXT_CLASS[dueState] || DUE_TEXT_CLASS.none}>
+                                  {getDueLabel(task)}
+                                </span>
+                                {progress ? (
+                                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                    <CheckSquare className="h-3 w-3" />
+                                    {progress.done}/{progress.total}
+                                  </span>
+                                ) : null}
+                                {task.sourceType ? (
+                                  sourceHref ? (
+                                    <Link
+                                      to={sourceHref}
+                                      onClick={(event) => event.stopPropagation()}
+                                      className="inline-flex"
+                                    >
+                                      <Badge variant="outline" className={`hover:underline ${getSourceChipClass(task.sourceType)}`}>
+                                        {SOURCE_LABEL[task.sourceType] || task.sourceType}
+                                      </Badge>
+                                    </Link>
+                                  ) : (
+                                    <Badge variant="outline" className={getSourceChipClass(task.sourceType)}>
+                                      {SOURCE_LABEL[task.sourceType] || task.sourceType}
+                                    </Badge>
+                                  )
+                                ) : (
+                                  <Badge variant="outline" className={getSourceChipClass('manual')}>
+                                    Manual
+                                  </Badge>
+                                )}
+                                {task.isPrivate && <Badge variant="outline">Private</Badge>}
+                                <Badge variant="outline" className={getPriorityChipClass(task.priority || 'medium')}>
+                                  {String(task.priority || 'medium').toUpperCase()}
+                                </Badge>
+                                {tags.map((tag) => (
+                                  <Badge key={tag} variant="secondary">
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                            <StatusChip status={task.status} />
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <StatusChip status={task.status} />
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      {task.description ? (
-                        <p className="mb-3 text-sm text-muted-foreground">{task.description}</p>
-                      ) : null}
-                      <div className="flex items-center justify-end">
-                        <Button size="sm" variant="outline" onClick={() => openTaskDetails(task.id)} className="gap-1">
-                          <Eye className="h-3.5 w-3.5" />
-                          View
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                        </CardHeader>
+                        {task.description ? (
+                          <CardContent className="pt-0">
+                            <p className="text-sm text-muted-foreground line-clamp-2">{task.description}</p>
+                          </CardContent>
+                        ) : null}
+                      </Card>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
 
             <div className="hidden lg:block lg:col-span-1 min-w-0">
@@ -866,7 +1113,7 @@ const Tasks = () => {
                                 <div className="min-w-0">
                                   <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
                                   <p className="text-xs text-muted-foreground truncate">
-                                    Due {formatDate(task.dueDate)} • {task.assignee?.name || 'Unassigned'}
+                                    Due {formatTaskDate(task.dueDate)} • {task.assignee?.name || 'Unassigned'}
                                   </p>
                                 </div>
                                 <Badge variant="destructive" className="capitalize shrink-0">
@@ -885,21 +1132,23 @@ const Tasks = () => {
           </div>
         ) : (
           <DragDropContext onDragEnd={handleDragEnd}>
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-4 h-[calc(100vh-16rem)] min-h-[420px]">
               {STATUS_OPTIONS.map((statusKey) => (
-                <Card key={statusKey} className="min-h-[420px]">
-                  <CardHeader className="pb-1.5 sm:pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+                <Card key={statusKey} className="flex h-full min-h-0 flex-col overflow-hidden">
+                  <CardHeader className="shrink-0 pb-1.5 sm:pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
                     <CardTitle className="text-sm">
                       {STATUS_LABELS[statusKey]} ({tasksByStatus[statusKey]?.length || 0})
                     </CardTitle>
                   </CardHeader>
-                    <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+                  <CardContent className="flex min-h-0 flex-1 flex-col px-3 sm:px-6 pb-3 sm:pb-6">
                     <Droppable droppableId={statusKey}>
                       {(provided, snapshot) => (
                         <div
                           ref={provided.innerRef}
                           {...provided.droppableProps}
-                          className={`space-y-2 rounded-md p-1 ${snapshot.isDraggingOver ? 'bg-muted/60' : ''}`}
+                          className={`min-h-0 flex-1 space-y-2 overflow-y-auto rounded-md p-1 ${
+                            snapshot.isDraggingOver ? 'bg-muted/60' : ''
+                          }`}
                         >
                           {(tasksByStatus[statusKey] || []).map((task, index) => (
                             <Draggable key={task.id} draggableId={task.id} index={index}>
@@ -907,47 +1156,13 @@ const Tasks = () => {
                                 <div
                                   ref={dragProvided.innerRef}
                                   {...dragProvided.draggableProps}
-                                  {...dragProvided.dragHandleProps}
-                                  className={`rounded-md border border-border p-2 bg-card ${
-                                    dragSnapshot.isDragging ? 'ring-2 ring-primary/30' : ''
-                                  }`}
+                                  className={dragSnapshot.isDragging ? 'ring-2 ring-primary/30 rounded-md' : ''}
                                 >
-                                  <p className="text-sm font-medium leading-tight">{task.title}</p>
-                                  <p className="mt-1 text-[11px] text-muted-foreground">
-                                    {task.assignee?.name || 'Unassigned'} • {formatDate(task.dueDate)}
-                                  </p>
-                                  <div className="mt-2 flex flex-wrap items-center gap-1">
-                                    {task.sourceType ? (
-                                      <Badge
-                                        variant="outline"
-                                        className={`text-[10px] ${getSourceChipClass(task.sourceType)}`}
-                                      >
-                                        {SOURCE_LABEL[task.sourceType] || task.sourceType}
-                                      </Badge>
-                                    ) : null}
-                                    {task.isPrivate ? (
-                                      <Badge variant="outline" className="text-[10px]">
-                                        Private
-                                      </Badge>
-                                    ) : null}
-                                    <Badge
-                                      variant="outline"
-                                      className={`text-[10px] ${getPriorityChipClass(task.priority || 'medium')}`}
-                                    >
-                                      {String(task.priority || 'medium').toUpperCase()}
-                                    </Badge>
-                                  </div>
-                                  <div className="mt-2 flex items-center justify-end gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="gap-1"
-                                      onClick={() => openTaskDetails(task.id)}
-                                    >
-                                      <Eye className="h-3.5 w-3.5" />
-                                      View
-                                    </Button>
-                                  </div>
+                                  <TaskBoardCard
+                                    task={task}
+                                    onOpen={openTaskDetails}
+                                    dragHandleProps={dragProvided.dragHandleProps}
+                                  />
                                 </div>
                               )}
                             </Draggable>
@@ -1291,13 +1506,13 @@ const Tasks = () => {
                           <div className="flex items-start justify-between gap-4">
                             <p className="text-sm text-muted-foreground">Start date</p>
                             <Badge variant="outline">
-                              {formatDate(form.startDate || taskDetail?.startDate || taskDetail?.createdAt)}
+                              {formatTaskDate(form.startDate || taskDetail?.startDate || taskDetail?.createdAt)}
                             </Badge>
                           </div>
                           <div className="flex items-start justify-between gap-4">
                             <p className="text-sm text-muted-foreground">Due date</p>
                             <Badge variant="outline">
-                              {formatDate(form.dueDate || taskDetail?.dueDate)}
+                              {formatTaskDate(form.dueDate || taskDetail?.dueDate)}
                             </Badge>
                           </div>
                         </div>
@@ -1322,6 +1537,99 @@ const Tasks = () => {
                       </div>
                     </div>
                   )}
+                  {detailProvenance ? (
+                    <div className="rounded-md border border-border bg-muted/30 p-3">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Why this task exists</p>
+                      <p className="mt-1 text-sm text-foreground">{detailProvenance}</p>
+                    </div>
+                  ) : null}
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">Checklist</p>
+                      {detailChecklists.length > 0 ? (
+                        <span className="text-xs text-muted-foreground">
+                          {detailChecklists.filter((item) => item.done).length}/{detailChecklists.length}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="space-y-2">
+                      {detailChecklists.map((item) => (
+                        <div key={item.id} className="flex items-start gap-2">
+                          <Checkbox
+                            checked={item.done}
+                            onCheckedChange={(checked) => handleToggleChecklistItem(item.id, Boolean(checked))}
+                            className="mt-0.5"
+                          />
+                          <p className={`flex-1 text-sm ${item.done ? 'text-muted-foreground line-through' : ''}`}>
+                            {item.text}
+                          </p>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 shrink-0"
+                            onClick={() => handleRemoveChecklistItem(item.id)}
+                            aria-label="Remove checklist item"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        value={checklistDraft}
+                        onChange={(e) => setChecklistDraft(e.target.value)}
+                        placeholder="Add checklist item"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddChecklistItem();
+                          }
+                        }}
+                      />
+                      <Button type="button" variant="outline" onClick={handleAddChecklistItem}>
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    <p className="text-sm font-medium">Tags (optional)</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {detailTags.map((tag) => (
+                        <Badge key={tag} variant="secondary" className="gap-1">
+                          {tag}
+                          <button
+                            type="button"
+                            className="ml-0.5"
+                            onClick={() => handleRemoveTag(tag)}
+                            aria-label={`Remove ${tag}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                      {detailTags.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No tags yet</p>
+                      ) : null}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        value={tagDraft}
+                        onChange={(e) => setTagDraft(e.target.value)}
+                        placeholder="Add tag"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddTag();
+                          }
+                        }}
+                      />
+                      <Button type="button" variant="outline" onClick={handleAddTag}>
+                        Add
+                      </Button>
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="task-comment">Add comment</Label>
                     <Textarea
@@ -1368,7 +1676,7 @@ const Tasks = () => {
                               <span className={`absolute -left-[31px] top-1.5 h-3.5 w-3.5 rounded-full border-2 border-background ${toneClass}`} />
                               <div className="rounded-md border border-border p-2.5 sm:p-3">
                                 <p className="text-xs text-muted-foreground">
-                                  {entry.userName || 'User'} • {formatDate(entry.createdAt)}
+                                  {entry.userName || 'User'} • {formatTaskDate(entry.createdAt)}
                                 </p>
                                 <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
                                   {entry.summary || 'Activity updated'}
@@ -1434,6 +1742,17 @@ const Tasks = () => {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+            ) : null}
+            {detailSourceHref ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                onClick={() => navigate(detailSourceHref)}
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open source
+              </Button>
             ) : null}
             <Button onClick={onSubmit} disabled={saveTaskMutation.isPending || !isDetailsEditing}>
               Update task
@@ -1578,6 +1897,23 @@ const Tasks = () => {
             </div>
 
             <div className="space-y-1.5">
+              <Label>Tag</Label>
+              <Select value={tagFilter} onValueChange={setTagFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tag" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All tags</SelectItem>
+                  {availableTags.map((tag) => (
+                    <SelectItem key={tag} value={tag}>
+                      {tag}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
               <Label>Privacy</Label>
               <Select value={privacyFilter} onValueChange={setPrivacyFilter}>
                 <SelectTrigger>
@@ -1596,11 +1932,13 @@ const Tasks = () => {
                 variant="outline"
                 onClick={() => {
                   setStatusFilter('all');
-                  setScopeFilter('all');
+                  setScopeFilter('assigned_to_me');
                   setPriorityFilter('all');
                   setSourceFilter('all');
                   setAssigneeFilter('all');
                   setPrivacyFilter('all');
+                  setTagFilter('all');
+                  setOverdueOnly(false);
                   setLocationFilter('all');
                 }}
               >

@@ -70,7 +70,7 @@ const Invoice = sequelize.define('Invoice', {
     }
   },
   sourceType: {
-    type: DataTypes.ENUM('job', 'sale', 'prescription', 'quote'),
+    type: DataTypes.ENUM('job', 'sale', 'prescription', 'quote', 'rental'),
     allowNull: false,
     defaultValue: 'job'
   },

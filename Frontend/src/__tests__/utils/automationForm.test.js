@@ -199,6 +199,8 @@ describe('automationForm action prefill', () => {
     expect(triggers).toContain('job_completed');
     expect(triggers).toContain('daily_sales_summary');
     expect(triggers).toContain('job_due_in_hours');
+    expect(triggers).toContain('rental_created');
+    expect(triggers).toContain('rental_due_in_days');
     for (const triggerType of triggers) {
       const actions = DEFAULT_ACTION_CONTENT[triggerType];
       expect(Object.keys(actions).length).toBeGreaterThan(0);
@@ -206,7 +208,7 @@ describe('automationForm action prefill', () => {
         expect(content, `${triggerType}/${actionType}`).toBeTruthy();
       }
       // Some internal triggers are email/task only (no SMS/WhatsApp defaults)
-      if (!['job_due_in_hours', 'task_assigned_staff'].includes(triggerType)) {
+      if (!['job_due_in_hours', 'task_assigned_staff', 'rental_created_staff', 'rental_returned_staff', 'rental_overdue_staff'].includes(triggerType)) {
         for (const actionType of ['send_sms', 'send_whatsapp', 'send_email_platform']) {
           expect(actions[actionType], `${triggerType}/${actionType}`).toBeTruthy();
         }
@@ -218,7 +220,10 @@ describe('automationForm action prefill', () => {
 describe('automationForm frequency / schedule', () => {
   it('marks sticky triggers and defaults overdue to weekly', () => {
     expect(isStickyTrigger('invoice_overdue')).toBe(true);
+    expect(isStickyTrigger('rental_due_in_days')).toBe(true);
+    expect(isStickyTrigger('rental_overdue')).toBe(true);
     expect(isStickyTrigger('payment_received')).toBe(false);
+    expect(isStickyTrigger('rental_created')).toBe(false);
     expect(defaultFrequencyForTrigger('invoice_overdue')).toBe('weekly');
     expect(defaultFrequencyForTrigger('low_stock_detected')).toBe('daily');
   });
@@ -371,6 +376,8 @@ describe('resolveAutomationBranchLabel', () => {
 describe('staff vs customer test audience', () => {
   it('detects internal staff triggers and recipient configs', () => {
     expect(isInternalStaffTrigger('invoice_paid_staff')).toBe(true);
+    expect(isInternalStaffTrigger('rental_created_staff')).toBe(true);
+    expect(isInternalStaffTrigger('rental_created')).toBe(false);
     expect(isStaffAutomationAudience({ triggerType: 'invoice_paid_staff' })).toBe(true);
     expect(isStaffAutomationAudience({
       triggerType: 'payment_received',

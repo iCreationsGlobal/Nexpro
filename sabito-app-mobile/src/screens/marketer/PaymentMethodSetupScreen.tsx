@@ -125,7 +125,8 @@ const PaymentMethodSetupScreen: React.FC<PaymentMethodSetupScreenProps> = ({ nav
       
       const payload = {
         momoNumber: cleanedPhoneFinal,
-        bankDetails: `${selectedProvider}|${accountName.trim()}`,
+        paymentProvider: selectedProvider,
+        accountName: accountName.trim(),
       };
 
       await updateMarketerProfile(payload);

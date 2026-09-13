@@ -31,6 +31,8 @@ const {
   updateMessageDeliveryRules,
   getDeliverySettings,
   updateDeliverySettings,
+  getRentalSettings,
+  updateRentalSettings,
   updateCustomerNotificationPreferences,
   getSidebarPreferences,
   updateSidebarPreferences,
@@ -211,6 +213,10 @@ router
   .route('/delivery')
   .get(getDeliverySettings)
   .put(authorize('admin', 'manager'), timeCrudAction('settings.delivery.update'), updateDeliverySettings);
+router
+  .route('/rental')
+  .get(authorize('admin', 'manager'), getRentalSettings)
+  .put(authorize('admin', 'manager'), timeCrudAction('settings.rental.update'), updateRentalSettings);
 router.put(
   '/customer-notification-preferences',
   authorize('admin', 'manager'),

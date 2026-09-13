@@ -68,8 +68,8 @@ export default function TermsAndConditionsPage() {
           <h3 className="mt-4 font-semibold text-slate-800">4.2 Commission obligations</h3>
           <p className="mt-2 leading-relaxed">
             Businesses agree to honor stated commission rates for successful referrals when payment
-            is collected. Marketers may request cashout; businesses pay outside ABS and mark
-            cashouts paid in Settings.
+            is collected. Businesses remit commissions to ABS. Once collected, marketers may request
+            cashout of their share; ABS processes and records the payout.
           </p>
           <h3 className="mt-4 font-semibold text-slate-800">4.3 ABS billing</h3>
           <p className="mt-2 leading-relaxed">

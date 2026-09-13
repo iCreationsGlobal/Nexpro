@@ -72,6 +72,7 @@ import { releaseBodyInteractionLocks } from '@/utils/releaseBodyInteractionLocks
  * @param {Array} moreMenuItems - When set with primaryAction, items for the More dropdown. [{ label, onClick, icon?, destructive? }]
  * @param {Boolean} moreMenuLoading - Shows a loading state on the More dropdown trigger
  * @param {String} moreMenuLoadingLabel - Custom loading label for the More dropdown trigger
+ * @param {String} moreMenuLabel - Custom label for the More dropdown trigger (desktop)
  */
 const DetailsDrawer = ({ 
   open, 
@@ -100,7 +101,8 @@ const DetailsDrawer = ({
   secondaryAction = null,
   moreMenuItems = [],
   moreMenuLoading = false,
-  moreMenuLoadingLabel = 'Updating...'
+  moreMenuLoadingLabel = 'Updating...',
+  moreMenuLabel = 'More'
 }) => {
   const { isMobile } = useResponsive();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -264,7 +266,7 @@ const DetailsDrawer = ({
                         ) : (
                           <MoreVertical className="h-4 w-4 mr-2 shrink-0" />
                         )}
-                        {moreMenuLoading ? moreMenuLoadingLabel : (isMobile ? 'More Actions' : 'More')}
+                        {moreMenuLoading ? moreMenuLoadingLabel : (isMobile ? 'More Actions' : moreMenuLabel)}
                       </SecondaryButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
