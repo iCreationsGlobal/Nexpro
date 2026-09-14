@@ -11,6 +11,7 @@ interface CustomTextInputProps extends Omit<RNTextInput['props'], 'style'> {
   value?: string;
   onChangeText?: (text: string) => void;
   helperText?: string;
+  error?: string;
   keyboardType?: 'default' | 'email-address' | 'numeric' | 'phone-pad' | 'number-pad' | 'decimal-pad';
   secureTextEntry?: boolean;
   style?: ViewStyle;
@@ -22,13 +23,14 @@ const TextInput: React.FC<CustomTextInputProps> = ({
   value,
   onChangeText,
   helperText,
+  error,
   keyboardType = 'default',
   secureTextEntry = false,
   style,
   ...props
 }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   const [isFocused, setIsFocused] = useState(false);
 
   return (
@@ -54,6 +56,7 @@ const TextInput: React.FC<CustomTextInputProps> = ({
             backgroundColor: isDark ? colors.cardBackground : '#F9FFF7',
           },
           props.multiline && styles.multilineInput,
+          error && { borderColor: '#dc2626' },
           style, // Apply style prop to input field
         ]}
         placeholder={placeholder}
@@ -68,7 +71,7 @@ const TextInput: React.FC<CustomTextInputProps> = ({
       />
       
       {/* Helper Text */}
-      {helperText && <Text style={[styles.helperText, { color: colors.textSecondary }]}>{helperText}</Text>}
+      {(error || helperText) && <Text accessibilityRole={error ? 'alert' : undefined} style={[styles.helperText, { color: error ? '#dc2626' : colors.textSecondary }]}>{error || helperText}</Text>}
     </View>
   );
 };

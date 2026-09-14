@@ -21,10 +21,10 @@ import { SPACING, FONT_SIZES, FONT_WEIGHTS } from '../../constants/sizes';
 import EmptyState from '../../components/common/EmptyState';
 import { fetchPublicBusinesses } from '../../api/marketplace';
 import { listMyApplications, listMyPartnerships } from '../../api/absMarketer';
-import type { RootStackScreenProps } from '../../types/navigation';
+import type { MarketerTabScreenProps } from '../../types/navigation';
 import type { Business } from '../../types/api';
 
-type MarketerBusinessesScreenProps = RootStackScreenProps<'MarketerBusinesses'>;
+type MarketerBusinessesScreenProps = MarketerTabScreenProps<'Businesses'>;
 
 const STATUS_FILTERS = ['All', 'My businesses'] as const;
 type StatusFilter = typeof STATUS_FILTERS[number];
@@ -42,8 +42,8 @@ interface ExtendedBusiness extends Business {
 
 const MarketerBusinesses: React.FC<MarketerBusinessesScreenProps> = ({ navigation }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors: themeColors, isDark } = getTheme(effectiveTheme || theme);
-  const themedStyles = getCommonThemedStyles(theme);
+  const { colors: themeColors, isDark } = getTheme(effectiveTheme);
+  const themedStyles = getCommonThemedStyles(effectiveTheme);
   
   const [businesses, setBusinesses] = useState<ExtendedBusiness[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -312,7 +312,7 @@ const MarketerBusinesses: React.FC<MarketerBusinessesScreenProps> = ({ navigatio
     <EmptyState 
       icon={Building2}
       title="No Businesses Found"
-      subtitle={activeFilter === 'My businesses' 
+      message={activeFilter === 'My businesses'
         ? 'You haven\'t partnered with any businesses yet. Browse "All" businesses to send partnership requests.'
         : 'No businesses available. Check back later.'}
     />
@@ -743,7 +743,6 @@ const styles = StyleSheet.create({
 });
 
 export default MarketerBusinesses;
-
 
 
 

@@ -37,8 +37,8 @@ function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Welcome</h1>
-        <p className="mt-1 text-sm text-slate-500">Sign in to your Sabito marketer account</p>
+        <h1 className="text-2xl font-bold text-brand-900">Welcome</h1>
+        <p className="mt-1 text-sm text-brand-500">Sign in to your Sabito marketer account</p>
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Email</label>
@@ -53,17 +53,18 @@ function LoginForm() {
           onChange={(e) => setPassword(e.target.value)}
         />
       </div>
+      <Link href="/forgot-password" className="block text-sm underline">Forgot password?</Link>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Signing in…" : "Sign in"}
       </Button>
-      <p className="text-center text-sm text-slate-500">
+      <p className="text-center text-sm text-brand-500">
         New to Sabito?{" "}
         <Link href={`/signup?next=${encodeURIComponent(next)}`} className="text-[var(--sabito-teal)]">
           Create an account
         </Link>
       </p>
-      <p className="text-center text-sm text-slate-500">
+      <p className="text-center text-sm text-brand-500">
         Business account?{" "}
         <a href={ABS_SITE_URL} className="text-[var(--sabito-green)]">Continue to ABS</a>
       </p>
@@ -73,7 +74,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-slate-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-brand-500">Loading…</p>}>
       <LoginForm />
     </Suspense>
   );

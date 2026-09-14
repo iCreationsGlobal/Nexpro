@@ -27,7 +27,7 @@ function originFromEnv(): string {
   const raw = (
     process.env.ABS_API_ORIGIN ||
     process.env.NEXT_PUBLIC_ABS_API_ORIGIN ||
-    "http://127.0.0.1:5002"
+    (process.env.NODE_ENV === "production" ? "https://api.africanbusinesssuite.com" : "http://127.0.0.1:5002")
   ).trim();
   return stripTrailingSlash(raw).replace(/\/api$/i, "");
 }

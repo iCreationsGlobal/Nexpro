@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Green-tinted surfaces and text shared by marketing and account pages. */
+@theme {
+  --color-brand-50: #f5faf7;
+  --color-brand-100: #e9f3eb;
+  --color-brand-200: #dce7df;
+  --color-brand-300: #b7cdbf;
+  --color-brand-400: #7d9b89;
+  --color-brand-500: #526f60;
+  --color-brand-600: #3f5e4d;
+  --color-brand-700: #2d4e3b;
+  --color-brand-800: #005538;
+  --color-brand-900: #00351f;
+  --color-brand-950: #001b0c;
+}
+
 :root {
   /* Original Sabito brand tokens from sabito marketing app */
   --sabito-green: #1ca700;
@@ -8,7 +23,7 @@
   --sabito-green-light: #cef3c6;
   --sabito-mint: #f9fff9;
   --sabito-orange: #f59e0b;
-  --sabito-ink: #111827;
+  --sabito-ink: #00351f;
   --sabito-teal: var(--sabito-green);
   --sabito-teal-dark: var(--sabito-green-dark);
 }
@@ -45,7 +60,7 @@ a {
 .sabito-hero-brand img { border-radius: 6px; }
 .sabito-hero h1 { font-size: clamp(48px, 4.15vw, 80px); font-weight: 800; line-height: 1.03; letter-spacing: -3px; }
 .sabito-hero h1 span { color: var(--sabito-lemon-green); }
-.sabito-hero-description { margin-top: 22px; color: #dbe2ef; font-size: 27px; line-height: 1.3; letter-spacing: -.5px; }
+.sabito-hero-description { margin-top: 22px; color: #dce9e2; font-size: 27px; line-height: 1.3; letter-spacing: -.5px; }
 .sabito-hero-actions { display: flex; gap: 16px; margin-top: 55px; }
 .sabito-hero-button { display: inline-flex; align-items: center; justify-content: center; gap: 20px; min-height: 68px; padding: 16px 31px; border: 2px solid var(--sabito-lemon-green); border-radius: 999px; font-size: 20px; font-weight: 700; white-space: nowrap; transition: background .2s, transform .2s; }
 .sabito-hero-button svg { width: 28px; height: 28px; }
@@ -53,7 +68,7 @@ a {
 .sabito-hero-button-secondary { color: #fff; }
 .sabito-hero-button:hover { transform: translateY(-2px); background: var(--sabito-lemon-green); color: #071000; }
 .sabito-hero-button:focus-visible { outline: 3px solid #fff; outline-offset: 5px; }
-.sabito-hero-note { max-width: 635px; margin-top: 24px; font-size: 18px; line-height: 1.5; color: #e2e7ee; }
+.sabito-hero-note { max-width: 635px; margin-top: 24px; font-size: 18px; line-height: 1.5; color: #e1eee5; }
 .sabito-hero-visual { position: absolute; z-index: 1; width: 960px; height: 800px; bottom: 0; right: -160px; }
 .sabito-hero-portrait { object-fit: cover; object-position: center bottom; mask-image: linear-gradient(90deg, transparent, #000 14%, #000 90%, transparent); }
 .sabito-hero-commission { position: absolute; top: 35.5%; left: 10%; display: flex; align-items: center; gap: 16px; border: 1px solid #276b39; border-radius: 19px; padding: 18px 17px; background: #032310ed; box-shadow: 0 10px 35px #0002; }
@@ -97,10 +112,10 @@ a {
   .sabito-hero-check { width: 34px; height: 34px; }
 }
 
-.sabito-audience { max-width: 1600px; margin: 0 auto; padding: 28px 28px 22px; color: #080e2b; }
+.sabito-audience { max-width: 1600px; margin: 0 auto; padding: 28px 28px 22px; color: var(--color-brand-900); }
 .sabito-audience-heading { text-align: center; margin-bottom: 28px; }
 .sabito-audience-heading h2, .sabito-how h2 { font-size: clamp(32px, 2.7vw, 46px); line-height: 1.15; font-weight: 800; letter-spacing: -1.5px; }
-.sabito-audience-heading p, .sabito-how-heading p { margin-top: 10px; color: #4d5975; font-size: 20px; line-height: 1.4; }
+.sabito-audience-heading p, .sabito-how-heading p { margin-top: 10px; color: var(--color-brand-500); font-size: 20px; line-height: 1.4; }
 .sabito-audience-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .sabito-audience-card { display: grid; grid-template-columns: 1.15fr 1fr; gap: 28px; padding: 24px 26px 22px 36px; border: 1.5px solid #076333; border-radius: 14px; min-height: 395px; }
 .sabito-audience-marketer { background: #effde5; }
@@ -119,7 +134,7 @@ a {
 .sabito-audience-cta:focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
 .sabito-audience-photo { position: relative; overflow: hidden; border-radius: 12px; min-height: 345px; }
 .sabito-audience-photo img { object-fit: cover; object-position: center; }
-.sabito-how { background: #fff; color: #080e2b; }
+.sabito-how { background: #fff; color: var(--color-brand-900); }
 .sabito-how-inner { max-width: 1440px; margin: 0 auto; padding: 34px 28px 30px; }
 .sabito-how-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .sabito-how-heading p { margin-top: 2px; }
@@ -130,7 +145,7 @@ a {
 .sabito-how-track::after { content: ""; flex: 1; height: 1.5px; background: #2d7857; }
 .sabito-how-track span { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--sabito-lemon-green); font-size: 18px; font-weight: 800; color: #061b07; }
 .sabito-how-steps h3 { margin-top: 14px; font-size: 21px; line-height: 1.3; font-weight: 750; letter-spacing: -.5px; }
-.sabito-how-steps p { max-width: 285px; margin-top: 4px; color: #4d5975; font-size: 18px; line-height: 1.4; }
+.sabito-how-steps p { max-width: 285px; margin-top: 4px; color: var(--color-brand-500); font-size: 18px; line-height: 1.4; }
 @media (max-width: 1400px) and (min-width: 1101px) {
   .sabito-audience-card { padding: 22px; gap: 18px; grid-template-columns: 1.25fr 1fr; }
   .sabito-audience-card li { font-size: 15px; gap: 8px; }
@@ -160,10 +175,10 @@ a {
   .sabito-how-steps p { max-width: none; }
 }
 
-.sabito-partners { max-width: 1348px; padding: 36px 28px 28px; margin: 0 auto; color: #080e2b; }
+.sabito-partners { max-width: 1348px; padding: 36px 28px 28px; margin: 0 auto; color: var(--color-brand-900); }
 .sabito-partners-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
 .sabito-partners h2, .sabito-benefits h2 { font-size: clamp(28px, 2.4vw, 38px); font-weight: 800; line-height: 1.2; letter-spacing: -1px; }
-.sabito-partners-description { margin-top: 7px; color: #4d5975; font-size: 20px; line-height: 1.4; }
+.sabito-partners-description { margin-top: 7px; color: var(--color-brand-500); font-size: 20px; line-height: 1.4; }
 .sabito-partners-see-all { display: inline-flex; align-items: center; gap: 7px; margin-top: 7px; color: #005538; font-size: 18px; font-weight: 700; white-space: nowrap; }
 .sabito-partners-see-all:hover { text-decoration: underline; }
 .sabito-partner-filters { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px; margin-top: 22px; }
@@ -183,14 +198,14 @@ a {
 .sabito-partner-location svg { flex-shrink: 0; }
 .sabito-partner-rate { display: inline-block; margin-top: 8px; padding: 6px 23px; border-radius: 999px; background: var(--sabito-lemon-green); font-size: 15px; font-weight: 750; color: #09210c; }
 .sabito-partner-closed { margin-top: 8px; font-size: 13px; color: #975b00; }
-.sabito-benefits { background: #f2fdef; color: #080e2b; }
+.sabito-benefits { background: #f2fdef; color: var(--color-brand-900); }
 .sabito-benefits-inner { max-width: 1348px; padding: 34px 28px 26px; margin: 0 auto; }
-.sabito-benefits-description { margin-top: 7px; color: #4d5975; font-size: 18px; }
+.sabito-benefits-description { margin-top: 7px; color: var(--color-brand-500); font-size: 18px; }
 .sabito-benefits-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px; margin-top: 27px; }
 .sabito-benefit { display: flex; align-items: center; gap: 26px; }
 .sabito-benefit-icon { display: grid; place-items: center; flex-shrink: 0; width: 82px; height: 82px; border-radius: 50%; background: var(--sabito-lemon-green); color: #063a20; }
 .sabito-benefit h3 { font-size: 20px; font-weight: 750; line-height: 1.3; letter-spacing: -.5px; }
-.sabito-benefit p { margin-top: 7px; color: #4d5975; font-size: 16px; line-height: 1.35; }
+.sabito-benefit p { margin-top: 7px; color: var(--color-brand-500); font-size: 16px; line-height: 1.35; }
 .sabito-benefits-cta { display: flex; align-items: center; justify-content: center; width: fit-content; min-width: 285px; min-height: 50px; margin: 26px auto 0; padding: 12px 28px; border-radius: 14px; background: #004a2e; color: #fff; font-size: 18px; font-weight: 700; }
 .sabito-benefits-cta:hover { background: #00623d; }
 .sabito-benefits-cta:focus-visible { outline: 3px solid #005538; outline-offset: 4px; }
@@ -302,8 +317,8 @@ a {
 }
 
 
-.sabito-bottom-cta { background: #eff8f3; color: #080e2b; }
-.sabito-bottom-description { color: #4d5975; }
+.sabito-bottom-cta { background: #eff8f3; color: var(--color-brand-900); }
+.sabito-bottom-description { color: var(--color-brand-500); }
 .sabito-bottom-cta .sabito-bottom-button { border-color: #005538; }
 .sabito-bottom-cta .sabito-bottom-button-primary { background: #005538; color: #fff; }
 .sabito-bottom-cta .sabito-bottom-button-outline { color: #005538; }

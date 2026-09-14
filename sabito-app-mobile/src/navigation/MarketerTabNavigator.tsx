@@ -17,14 +17,14 @@ import MarketerEarnings from '../screens/marketer/MarketerEarnings';
 import MarketerAccount from '../screens/marketer/MarketerAccount';
 import type { MarketerTabParamList } from '../types/navigation';
 
-const Tab = createBottomTabNavigator<MarketerTabParamList>();
+const Tab = createBottomTabNavigator<MarketerTabParamList, 'SabitoTabs'>();
 
 interface AnimatedTabButtonProps extends BottomTabBarButtonProps {
   children: React.ReactNode;
 }
 
 // Animated Tab Button Component
-const AnimatedTabButton: React.FC<AnimatedTabButtonProps> = ({ children, onPress, ...props }) => {
+const AnimatedTabButton: React.FC<AnimatedTabButtonProps> = ({ children, onPress, ref: _ref, ...props }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = (): void => {
@@ -72,11 +72,12 @@ const AnimatedTabButton: React.FC<AnimatedTabButtonProps> = ({ children, onPress
 
 const MarketerTabNavigator: React.FC<{ onLogout?: () => void | Promise<void> }> = ({ onLogout }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   const insets = useSafeAreaInsets();
   
   return (
     <Tab.Navigator
+      id="SabitoTabs"
       screenOptions={{
         lazy: true, // Lazy load tab screens - only mount when first navigated to
         headerShown: false,

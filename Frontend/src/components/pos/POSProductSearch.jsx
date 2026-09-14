@@ -566,6 +566,7 @@ const QRCodeScanner = ({
                   navigator.vibrate(100);
                 }
 
+                console.log('[SCANNER] ✅ Code scanned (front camera):', decodedText);
                 onScan(decodedText);
 
                 if (continuousMode) {
@@ -618,6 +619,7 @@ const QRCodeScanner = ({
                       console.warn('Audio feedback failed:', audioErr);
                     }
                     if (navigator.vibrate) navigator.vibrate(100);
+                    console.log('[SCANNER] ✅ Code scanned (first available camera):', decodedText);
                     onScan(decodedText);
                     if (continuousMode) {
                       setTimeout(() => { scanCooldownRef.current = false; }, 1500);
@@ -1461,42 +1463,49 @@ const POSProductSearch = ({
 
     const text = (decodedText || '').trim();
     const looksLikeQRJson = text.startsWith('{');
+    console.log('[POS Scan] Resolving scanned code:', { code: text, looksLikeQRJson });
 
     try {
       if (looksLikeQRJson) {
         const result = parseProductQRPayload(text);
         if (!result.success) {
+          console.warn('[POS Scan] QR payload parse failed:', result.error);
           setSearchError(result.error || 'Invalid QR – use a product QR code');
           setIsSearching(false);
           return;
         }
         const product = await resolveProductFromQRPayload(result.data);
         if (product) {
+          console.log('[POS Scan] Product resolved from QR:', { productId: product.id, name: product.name });
           onSelectProduct(product);
           setScannerOpen(false);
           setSearchQuery('');
           setResults([]);
         } else {
+          console.warn('[POS Scan] No product matched QR payload:', result.data);
           setSearchError('Product not found for this QR code');
         }
       } else {
         if (!getProductByBarcode) {
+          console.warn('[POS Scan] getProductByBarcode not provided to POSProductSearch');
           setSearchError('Barcode lookup not available');
           setIsSearching(false);
           return;
         }
         const product = await getProductByBarcode(text);
         if (product) {
+          console.log('[POS Scan] Product resolved from barcode:', { code: text, productId: product.id, name: product.name });
           onSelectProduct(product);
           setScannerOpen(false);
           setSearchQuery('');
           setResults([]);
         } else {
+          console.warn('[POS Scan] No product matched barcode:', text);
           setSearchError('Product not found for this barcode');
         }
       }
     } catch (error) {
-      console.error('Scan resolve error:', error);
+      console.error('[POS Scan] Scan resolve error:', { code: text, looksLikeQRJson, error: error?.message || error });
       setSearchError(looksLikeQRJson ? 'Could not find product for this QR code' : 'Could not find product for this barcode');
     } finally {
       setIsSearching(false);

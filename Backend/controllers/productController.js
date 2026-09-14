@@ -1623,7 +1623,16 @@ exports.getProductByBarcode = async (req, res, next) => {
       req.query.candidates
     );
 
+    console.log('[getProductByBarcode] Lookup requested:', {
+      barcode,
+      candidates: barcodeCandidates,
+      tenantId: req.tenantId,
+      shopScoped: Boolean(req.shopScoped),
+      shopFilterId: req.shopFilterId,
+    });
+
     if (barcodeCandidates.length === 0) {
+      console.warn('[getProductByBarcode] No usable barcode candidates in request:', { barcode });
       return res.status(400).json({
         success: false,
         message: 'Barcode is required'
@@ -1659,7 +1668,16 @@ exports.getProductByBarcode = async (req, res, next) => {
       }]
     });
 
+    if (product) {
+      console.log('[getProductByBarcode] Matched directly on Product:', {
+        candidates: barcodeCandidates,
+        productId: product.id,
+        name: product.name,
+      });
+    }
+
     if (!product) {
+      console.log('[getProductByBarcode] No direct Product match, trying ProductVariant:', { candidates: barcodeCandidates });
       const variant = await ProductVariant.findOne({
         where: {
           isActive: true,
@@ -1686,6 +1704,11 @@ exports.getProductByBarcode = async (req, res, next) => {
       });
 
       if (variant?.product) {
+        console.log('[getProductByBarcode] Matched via ProductVariant:', {
+          candidates: barcodeCandidates,
+          productId: variant.product.id,
+          variantId: variant.id,
+        });
         const data = variant.product.get({ plain: true });
         data.selectedVariant = variant.get({ plain: true });
         return res.status(200).json({
@@ -1694,6 +1717,7 @@ exports.getProductByBarcode = async (req, res, next) => {
         });
       }
 
+      console.log('[getProductByBarcode] No ProductVariant match, trying Barcode table:', { candidates: barcodeCandidates });
       // Try finding by barcode in Barcode table
       const barcodeRecord = await Barcode.findOne({
         where: { barcode: { [Op.in]: barcodeCandidates }, tenantId: req.tenantId, isActive: true },
@@ -1733,6 +1757,11 @@ exports.getProductByBarcode = async (req, res, next) => {
       });
 
       if (barcodeRecord && barcodeRecord.product) {
+        console.log('[getProductByBarcode] Matched via Barcode table (product):', {
+          candidates: barcodeCandidates,
+          barcodeRecordId: barcodeRecord.id,
+          productId: barcodeRecord.product.id,
+        });
         const data = barcodeRecord.product.get({ plain: true });
         if (barcodeRecord.productVariant) {
           data.selectedVariant = barcodeRecord.productVariant.get({ plain: true });
@@ -1744,6 +1773,12 @@ exports.getProductByBarcode = async (req, res, next) => {
       }
 
       if (barcodeRecord?.productVariant?.product) {
+        console.log('[getProductByBarcode] Matched via Barcode table (variant):', {
+          candidates: barcodeCandidates,
+          barcodeRecordId: barcodeRecord.id,
+          productId: barcodeRecord.productVariant.product.id,
+          variantId: barcodeRecord.productVariant.id,
+        });
         const data = barcodeRecord.productVariant.product.get({ plain: true });
         data.selectedVariant = barcodeRecord.productVariant.get({ plain: true });
         return res.status(200).json({
@@ -1752,6 +1787,12 @@ exports.getProductByBarcode = async (req, res, next) => {
         });
       }
 
+      console.warn('[getProductByBarcode] No match in Product, ProductVariant, or Barcode table:', {
+        candidates: barcodeCandidates,
+        tenantId: req.tenantId,
+        shopScoped: Boolean(req.shopScoped),
+        shopFilterId: req.shopFilterId,
+      });
       return res.status(404).json({
         success: false,
         message: 'Product not found'
@@ -1763,6 +1804,11 @@ exports.getProductByBarcode = async (req, res, next) => {
       data: stripSensitiveProductFields(product, req)
     });
   } catch (error) {
+    console.error('[getProductByBarcode] Lookup failed:', {
+      barcode: req.params?.barcode,
+      tenantId: req.tenantId,
+      error: error?.message || error,
+    });
     next(error);
   }
 };

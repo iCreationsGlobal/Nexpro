@@ -26,7 +26,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
   iconSize = 48 
 }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
 
   return (
     <View style={styles.container}>

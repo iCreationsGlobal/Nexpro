@@ -28,10 +28,28 @@ export const usePOS = () => {
 
   const getProductByBarcode = useCallback(async (barcode) => {
     requireOnline();
-    const response = await productService.getProductByBarcode(barcode);
-    const product =
-      response.data?.data ?? response.data?.product ?? response.product ?? response.data;
-    return product?.id ? product : null;
+    console.info('[POS Scan] Looking up product by barcode:', barcode);
+    try {
+      const response = await productService.getProductByBarcode(barcode);
+      const product =
+        response.data?.data ?? response.data?.product ?? response.product ?? response.data;
+      const resolved = product?.id ? product : null;
+      console.info('[POS Scan] Barcode lookup response:', {
+        barcode,
+        found: Boolean(resolved),
+        productId: resolved?.id,
+        name: resolved?.name,
+        hasSelectedVariant: Boolean(resolved?.selectedVariant?.id),
+      });
+      return resolved;
+    } catch (error) {
+      console.error('[POS Scan] Barcode lookup failed:', {
+        barcode,
+        status: error?.response?.status,
+        message: error?.response?.data?.message || error?.message,
+      });
+      throw error;
+    }
   }, []);
 
   const resolveProductFromQRPayload = useCallback(async (qrData) => {

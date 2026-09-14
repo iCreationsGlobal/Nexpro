@@ -5,7 +5,7 @@ import { File, Paths } from 'expo-file-system';
 import { API_BASE_URL } from './api';
 import { formatCurrency, formatDate, toNumber } from '@/utils/formatCurrency';
 import { formatLineItemQuantity } from '@/utils/documentLineItems';
-import { buildPrintableInvoiceHtml } from '@/utils/printableInvoiceHtml';
+import { buildPrintableInvoiceHtml, type InvoicePrintFormat } from '@/utils/printableInvoiceHtml';
 import { logger } from '@/utils/logger';
 
 type AnyRecord = Record<string, unknown>;
@@ -367,22 +367,30 @@ export function getInvoicePdfFilename(invoice: AnyRecord): string {
   return `${filenameSafe(pickFirst(invoice.invoiceNumber, invoice.id, 'invoice'))}.pdf`;
 }
 
+type InvoicePdfOptions = {
+  showProductCode?: boolean;
+  footerNote?: string;
+  businessType?: string;
+  printFormat?: InvoicePrintFormat;
+};
+
 function buildInvoicePdfBody(
   invoice: AnyRecord,
-  options: { showProductCode?: boolean; footerNote?: string; businessType?: string } = {}
+  options: InvoicePdfOptions = {}
 ): { html: string; number: string } {
   const number = pickFirst(invoice.invoiceNumber, invoice.id);
   const html = buildPrintableInvoiceHtml(invoice, getBaseAssetUrl(), {
     showProductCode: options.showProductCode,
     footerNote: options.footerNote,
     businessType: options.businessType,
+    printFormat: options.printFormat,
   });
   return { html, number };
 }
 
 export async function prepareInvoicePdf(
   invoice: AnyRecord,
-  options: { showProductCode?: boolean; footerNote?: string; businessType?: string } = {}
+  options: InvoicePdfOptions = {}
 ): Promise<PreparedPdfFile> {
   const { html, number } = buildInvoicePdfBody(invoice, options);
   logger.info('PDFDocuments', 'Preparing invoice PDF', { invoiceId: invoice.id, invoiceNumber: number });
@@ -391,7 +399,7 @@ export async function prepareInvoicePdf(
 
 export async function shareInvoicePdf(
   invoice: AnyRecord,
-  options: { showProductCode?: boolean; businessType?: string } = {}
+  options: InvoicePdfOptions = {}
 ) {
   const prepared = await prepareInvoicePdf(invoice, options);
   logger.info('PDFDocuments', 'Sharing invoice PDF', {
@@ -399,6 +407,20 @@ export async function shareInvoicePdf(
     invoiceNumber: pickFirst(invoice.invoiceNumber, invoice.id),
   });
   await sharePreparedPdf(prepared, { dialogTitle: 'Download Invoice' });
+}
+
+/**
+ * Open the native print dialog directly (AirPrint / Android print service) instead of
+ * generating a PDF and handing it to the share sheet. Lets an OS-registered thermal
+ * receipt printer show up as a normal print destination.
+ */
+export async function printInvoice(
+  invoice: AnyRecord,
+  options: InvoicePdfOptions = {}
+) {
+  const { html, number } = buildInvoicePdfBody(invoice, options);
+  logger.info('PDFDocuments', 'Printing invoice', { invoiceId: invoice.id, invoiceNumber: number });
+  await Print.printAsync({ html });
 }
 
 export function getReceiptPdfFilename(sale: AnyRecord): string {

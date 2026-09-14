@@ -31,7 +31,7 @@ interface FormErrors {
 
 const SignupProfileScreen: React.FC<SignupProfileScreenProps> = ({ navigation }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   const [fullName, setFullName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [phone, setPhone] = useState<string>('');

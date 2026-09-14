@@ -36,7 +36,7 @@ const PlanCard: React.FC<PlanCardProps> = ({
   isSelected = false,
 }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const heightAnim = useRef(new RNAnimated.Value(defaultExpanded ? 1 : 0)).current;
 

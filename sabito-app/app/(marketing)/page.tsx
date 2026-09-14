@@ -182,11 +182,11 @@ export default function HomePage() {
 
         <div className="sabito-partner-grid" aria-live="polite">
           {loading ? (
-            <p className="col-span-full text-sm text-slate-500">Loading partners…</p>
+            <p className="col-span-full text-sm text-brand-500">Loading partners…</p>
           ) : preview.length === 0 ? (
-            <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-[var(--sabito-mint)] px-6 py-14 text-center">
-              <p className="text-xl font-semibold text-slate-900">Marketplace is warming up</p>
-              <p className="mx-auto mt-2 max-w-lg text-sm text-slate-600">
+            <div className="col-span-full rounded-2xl border border-dashed border-brand-300 bg-[var(--sabito-mint)] px-6 py-14 text-center">
+              <p className="text-xl font-semibold text-brand-900">Marketplace is warming up</p>
+              <p className="mx-auto mt-2 max-w-lg text-sm text-brand-600">
                 No partner businesses are listed yet. Create your marketer account now — when
                 businesses enable Sabito Partners in ABS, you&apos;ll be ready to apply.
               </p>
@@ -226,7 +226,7 @@ export default function HomePage() {
 
       {/* FAQ */}
       <section className="mx-auto max-w-3xl px-4 py-16">
-        <h2 className="text-center text-3xl font-bold text-slate-900">Got questions?</h2>
+        <h2 className="text-center text-3xl font-bold text-brand-900">Got questions?</h2>
         <div className="mt-8 space-y-3">
           {[
             [
@@ -250,11 +250,11 @@ export default function HomePage() {
               "Sign up on African Business Suite at absghana.com, then enable Sabito Partners in ABS Settings to list on this marketplace.",
             ],
           ].map(([q, a], i) => (
-            <details key={q} className="rounded-xl border border-slate-200 bg-white p-4">
-              <summary className="cursor-pointer font-semibold text-slate-900">
+            <details key={q} className="rounded-xl border border-brand-200 bg-white p-4">
+              <summary className="cursor-pointer font-semibold text-brand-900">
                 {String(i + 1).padStart(2, "0")} · {q}
               </summary>
-              <p className="mt-2 text-sm text-slate-600">{a}</p>
+              <p className="mt-2 text-sm text-brand-600">{a}</p>
             </details>
           ))}
         </div>

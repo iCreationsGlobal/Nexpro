@@ -22,18 +22,18 @@ import { SPACING, FONT_SIZES, FONT_WEIGHTS } from '../../constants/sizes';
 import EmptyState from '../../components/common/EmptyState';
 import { listMyReferrals } from '../../api/absMarketer';
 import { getStatusColor } from '../../utils/statusColors';
-import type { RootStackScreenProps } from '../../types/navigation';
+import type { MarketerTabScreenProps } from '../../types/navigation';
 import type { Referral, User as UserType } from '../../types/api';
 
-type MarketerReferralsScreenProps = RootStackScreenProps<'MarketerReferrals'>;
+type MarketerReferralsScreenProps = MarketerTabScreenProps<'Referrals'>;
 
 const STATUS_FILTERS = ['All', 'New', 'Contacted', 'Interested', 'Qualified', 'Converted', 'Unresponsive', 'Rejected'] as const;
 type StatusFilter = typeof STATUS_FILTERS[number];
 
 const MarketerReferrals: React.FC<MarketerReferralsScreenProps> = ({ navigation }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors: themeColors, isDark } = getTheme(effectiveTheme || theme);
-  const themedStyles = getCommonThemedStyles(theme);
+  const { colors: themeColors, isDark } = getTheme(effectiveTheme);
+  const themedStyles = getCommonThemedStyles(effectiveTheme);
   
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [filteredReferrals, setFilteredReferrals] = useState<Referral[]>([]);
@@ -126,7 +126,7 @@ const MarketerReferrals: React.FC<MarketerReferralsScreenProps> = ({ navigation 
     const colors = getStatusColor(status, 'referral');
     return (
       <View style={[styles.statusBadge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
-        <Text style={[styles.statusText, { color: colors.text }]}>{status}</Text>
+        <Text style={[styles.statusText, { color: colors.color }]}>{status}</Text>
       </View>
     );
   };
@@ -179,7 +179,7 @@ const MarketerReferrals: React.FC<MarketerReferralsScreenProps> = ({ navigation 
         <EmptyState 
           icon={UserPlus}
           title="No Referrals Found"
-          subtitle={`No referrals with "${activeFilter}" status.`}
+          message={`No referrals with "${activeFilter}" status.`}
         />
       );
     }

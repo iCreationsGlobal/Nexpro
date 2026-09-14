@@ -6,6 +6,7 @@ import { SPACING, FONT_SIZES, FONT_WEIGHTS } from '../../constants/sizes';
 
 interface PasswordRequirementsProps {
   password?: string;
+  basicPolicy?: boolean;
 }
 
 interface Requirement {
@@ -18,7 +19,7 @@ interface Requirement {
  * Password Requirements Checklist
  * Shows validation status for password requirements
  */
-const PasswordRequirements: React.FC<PasswordRequirementsProps> = ({ password = '' }) => {
+const PasswordRequirements: React.FC<PasswordRequirementsProps> = ({ password = '', basicPolicy = false }) => {
   const requirements: Requirement[] = [
     {
       id: 'length',
@@ -45,7 +46,7 @@ const PasswordRequirements: React.FC<PasswordRequirementsProps> = ({ password = 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Password must include:</Text>
-      {requirements.map((req) => (
+      {(basicPolicy ? [{ id: 'length', label: '8–128 characters', met: password.length >= 8 && password.length <= 128 }] : requirements).map((req) => (
         <View key={req.id} style={styles.requirement}>
           <View style={[
             styles.circle,

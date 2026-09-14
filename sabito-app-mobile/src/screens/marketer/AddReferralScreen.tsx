@@ -52,7 +52,7 @@ interface FormErrors {
 
 const AddReferralScreen: React.FC<AddReferralScreenProps> = ({ navigation }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   const { dialog, showDialog, hideDialog } = useDialog();
   
   const [loading, setLoading] = useState<boolean>(true);
@@ -572,7 +572,7 @@ const styles = StyleSheet.create({
   },
   optional: {
     fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.normal,
+    fontWeight: FONT_WEIGHTS.regular,
   },
   errorText: {
     fontSize: FONT_SIZES.sm,

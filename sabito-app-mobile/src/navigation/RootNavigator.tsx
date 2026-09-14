@@ -1,3 +1,4 @@
+import type { RootStackParamList } from '../types/navigation';
 import AbsDetailScreen from '../screens/marketer/AbsDetailScreen';
 import AccountSecurityScreen from '../screens/auth/AccountSecurityScreen';
 import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
@@ -52,7 +53,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
-const Stack = createStackNavigator();
+const Stack = createStackNavigator<RootStackParamList, 'SabitoRoot'>();
 
 const RootNavigator: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -130,7 +131,7 @@ const RootNavigator: React.FC = () => {
   return (
     <NavigationContainer>
       <Suspense fallback={<ScreenLoader />}>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Navigator id="SabitoRoot" screenOptions={{ headerShown: false }}>
           {showOnboarding ? (
             <Stack.Screen name="Onboarding">
               {(props) => (

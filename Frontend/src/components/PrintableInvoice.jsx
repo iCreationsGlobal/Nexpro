@@ -6,6 +6,7 @@ import { getInvoiceTaxDisplay } from '../utils/invoiceTaxDisplay';
 import { formatLineItemQuantity } from '../utils/documentLineItems';
 import { resolvePrintedInvoiceTerms } from '../utils/invoicePrintTerms';
 import { resolveInvoiceDocumentContext } from '../utils/invoiceDocumentContext';
+import { getPrintStyles } from '../utils/printStyles';
 import GraEvatStampBlock from './GraEvatStampBlock';
 
 const DEFAULT_THANK_YOU = 'Thank you for doing business with us.';
@@ -19,20 +20,6 @@ const formatAddress = (address) => {
     address.country
   ].filter(Boolean);
   return parts.join('\n');
-};
-
-const getPrintStyles = (printConfig) => {
-  const format = printConfig?.format || 'a4';
-  const isThermal = format === 'thermal_58' || format === 'thermal_80';
-  const pageWidth = format === 'thermal_58' ? '58mm' : format === 'thermal_80' ? '80mm' : 'A4';
-  const contentWidth = format === 'thermal_58' ? '52mm' : format === 'thermal_80' ? '72mm' : '210mm';
-  const showLogo = printConfig?.showLogo !== false && !isThermal;
-  const fontSize = isThermal ? 'small' : (printConfig?.fontSize || 'normal');
-  const titleSize = fontSize === 'small' ? '14px' : '32px';
-  const bodySize = fontSize === 'small' ? '10px' : '12px';
-  const tableSize = fontSize === 'small' ? '9px' : '11px';
-  const grayscale = isThermal ? 'filter: grayscale(100%); -webkit-print-color-adjust: none; print-color-adjust: none;' : '';
-  return { isThermal, showLogo, titleSize, bodySize, tableSize, grayscale, pageWidth, contentWidth, fontSize };
 };
 
 const getItemProductCode = (item) => {

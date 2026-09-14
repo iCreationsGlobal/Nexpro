@@ -48,8 +48,8 @@ interface PortfolioItem {
 }
 
 const BusinessDetailsScreen: React.FC<BusinessDetailsScreenProps> = ({ navigation, route }) => {
-  const { theme } = useTheme();
-  const { colors, isDark } = getTheme(theme);
+  const { effectiveTheme } = useTheme();
+  const { colors, isDark } = getTheme(effectiveTheme);
   const { dialog, showDialog, hideDialog } = useDialog();
   
   // Accept initialData from navigation params for instant loading

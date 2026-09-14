@@ -1,5 +1,6 @@
 "use client";
 
+import { AccountSecurity } from "@/components/AccountSecurity";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -40,9 +41,9 @@ export default function AccountPage() {
     try {
       const res = await updateMarketerProfile({
         name: name.trim(),
-        phone: phone.trim() || undefined,
-        momoNumber: momoNumber.trim() || undefined,
-        bankDetails: bankDetails.trim() || undefined,
+        phone: phone.trim(),
+        momoNumber: momoNumber.trim(),
+        bankDetails: bankDetails.trim(),
       });
       setMarketer(res.data.marketer);
       setMessage("Saved.");
@@ -56,31 +57,31 @@ export default function AccountPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-8 px-4 py-8">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Account</h1>
-        <p className="text-sm text-slate-500">{marketer?.email}</p>
+        <h1 className="text-2xl font-bold text-brand-900">Account</h1>
+        <p className="text-sm text-brand-500">{marketer?.email}</p>
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4">
-        <h2 className="font-semibold text-slate-900">Profile</h2>
+      <section className="rounded-2xl border border-brand-200 bg-white p-4">
+        <h2 className="font-semibold text-brand-900">Profile</h2>
         <div className="mt-3 grid gap-2">
-          <label className="text-sm text-slate-600">
+          <label className="text-sm text-brand-600">
             Full name
             <Input className="mt-1" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
-          <label className="text-sm text-slate-600">
+          <label className="text-sm text-brand-600">
             Phone (optional)
             <Input className="mt-1" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </label>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4">
-        <h2 className="font-semibold text-slate-900">Payment method</h2>
-        <p className="mt-1 text-sm text-slate-500">
+      <section className="rounded-2xl border border-brand-200 bg-white p-4">
+        <h2 className="font-semibold text-brand-900">Payment method</h2>
+        <p className="mt-1 text-sm text-brand-500">
           Shown to businesses so they can pay your cashouts outside ABS.
         </p>
         <div className="mt-3 grid gap-2">
-          <label className="text-sm text-slate-600">
+          <label className="text-sm text-brand-600">
             MoMo number
             <Input
               className="mt-1"
@@ -89,7 +90,7 @@ export default function AccountPage() {
               placeholder="0555155972"
             />
           </label>
-          <label className="text-sm text-slate-600">
+          <label className="text-sm text-brand-600">
             Bank details (optional)
             <Input
               className="mt-1"
@@ -108,8 +109,10 @@ export default function AccountPage() {
         <Button variant="outline" onClick={() => { clearAuth(); router.replace("/login"); }}>
           Sign out
         </Button>
-        {message ? <p className="text-sm text-slate-500">{message}</p> : null}
+        {message ? <p className="text-sm text-brand-500">{message}</p> : null}
       </div>
+
+      <AccountSecurity />
 
       <div className="flex flex-wrap gap-3 text-sm">
         <Link href="/activities" className="text-[var(--sabito-green)]">

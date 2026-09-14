@@ -15,7 +15,7 @@ const SUPPORT_EMAIL = 'support@sabito.app';
 
 const HelpSupportScreen: React.FC<Props> = ({ navigation }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
 
   const openWhatsApp = () => {
     Linking.openURL(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent('Hi Sabito support')}`);

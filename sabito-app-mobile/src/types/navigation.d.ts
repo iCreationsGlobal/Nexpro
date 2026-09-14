@@ -60,11 +60,11 @@ export type AuthStackParamList = {
 
 // Marketer Tab Navigator
 export type MarketerTabParamList = {
-  Dashboard: undefined;
-  Discover: undefined;
+  Home: undefined;
+  Businesses: undefined;
   Referrals: undefined;
   Earnings: undefined;
-  Profile: undefined;
+  Account: undefined;
 };
 
 // Business Tab Navigator
@@ -86,7 +86,9 @@ export type AdminTabParamList = {
 };
 
 // Root Navigator
-export type RootStackParamList = {
+export type RootStackParamList = AuthStackParamList & {
+  PasswordRecovery: undefined;
+  CashoutDetails: { id: string };
   Auth: NavigatorScreenParams<AuthStackParamList>;
   MarketerTabs: NavigatorScreenParams<MarketerTabParamList>;
   BusinessTabs: NavigatorScreenParams<BusinessTabParamList>;
@@ -184,7 +186,7 @@ declare global {
 }
 
 // Type helpers for screen props
-export type AuthStackScreenProps<T extends keyof AuthStackParamList> = StackScreenProps<AuthStackParamList, T>;
+export type AuthStackScreenProps<T extends keyof AuthStackParamList> = StackScreenProps<RootStackParamList, T>;
 export type MarketerTabScreenProps<T extends keyof MarketerTabParamList> = CompositeScreenProps<
   BottomTabScreenProps<MarketerTabParamList, T>,
   StackScreenProps<RootStackParamList>

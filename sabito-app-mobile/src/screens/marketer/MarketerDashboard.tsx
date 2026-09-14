@@ -31,10 +31,10 @@ import {
   getMarketerSession,
   listMyReferrals,
 } from '../../api/absMarketer';
-import type { RootStackScreenProps } from '../../types/navigation';
+import type { MarketerTabScreenProps } from '../../types/navigation';
 import type { User, Business, Referral, Project } from '../../types/api';
 
-type MarketerDashboardScreenProps = RootStackScreenProps<'MarketerDashboard'>;
+type MarketerDashboardScreenProps = MarketerTabScreenProps<'Home'>;
 
 interface DashboardStats {
   availableBalance: { current: number };
@@ -77,7 +77,7 @@ interface ActivitiesResponse {
 
 const MarketerDashboard: React.FC<MarketerDashboardScreenProps> = ({ navigation }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   
   const [user, setUser] = useState<User | null>(null);
   const [showBalance, setShowBalance] = useState<boolean>(true);
@@ -98,7 +98,7 @@ const MarketerDashboard: React.FC<MarketerDashboardScreenProps> = ({ navigation 
   const [searchResults, setSearchResults] = useState<SearchResults | null>(null);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const searchInputRef = useRef<TextInput>(null);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Animation refs for rotating symbols
   const spinTopLeft = useRef(new Animated.Value(0)).current;
@@ -511,7 +511,7 @@ const MarketerDashboard: React.FC<MarketerDashboardScreenProps> = ({ navigation 
             activities.map((activity) => {
               // Determine icon and navigation target based on activity type
               let ActivityIcon: LucideIcon = Mail;
-              let navigationTarget: string | null = null;
+              let navigationTarget: 'Businesses' | 'Referrals' | null = null;
               
               const activityType = activity.entityType?.toLowerCase();
               const description = activity.description?.toLowerCase() || '';
@@ -520,10 +520,10 @@ const MarketerDashboard: React.FC<MarketerDashboardScreenProps> = ({ navigation 
               // Determine icon and navigation based on entity type or description
               if (activityType === 'partnership' || description.includes('partnership')) {
                 ActivityIcon = UserCheck;
-                navigationTarget = 'Marketers';
+                navigationTarget = 'Businesses';
               } else if (activityType === 'project' || description.includes('project')) {
                 ActivityIcon = CheckCircle;
-                navigationTarget = 'Projects';
+                navigationTarget = 'Referrals';
               } else if (activityType === 'referral' || description.includes('referral')) {
                 ActivityIcon = Mail;
                 navigationTarget = 'Referrals';
@@ -534,7 +534,7 @@ const MarketerDashboard: React.FC<MarketerDashboardScreenProps> = ({ navigation 
 
               const handleActivityPress = (): void => {
                 if (navigationTarget) {
-                  navigation.navigate(navigationTarget as any);
+                  navigation.navigate(navigationTarget);
                 }
               };
 

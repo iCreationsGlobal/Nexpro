@@ -6,13 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/AppLogo.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "owner": "eamankyim",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.sabito.app",
@@ -33,7 +27,6 @@
       },
       "package": "com.sabito.app",
       "versionCode": 11,
-      "edgeToEdgeEnabled": true,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -44,7 +37,7 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "com.googleusercontent.apps.YOUR_IOS_CLIENT_ID",
+    "scheme": "sabito",
     "extra": {
       "googleAuthEnabled": true,
       "eas": {
@@ -52,7 +45,15 @@
       }
     },
     "plugins": [
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ]
     ]
   }
 }

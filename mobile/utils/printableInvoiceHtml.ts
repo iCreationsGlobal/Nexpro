@@ -6,12 +6,16 @@ import { formatLineItemQuantity } from '@/utils/documentLineItems';
 
 type AnyRecord = Record<string, unknown>;
 
+export type InvoicePrintFormat = 'a4' | 'thermal_58' | 'thermal_80';
+
 export type PrintableInvoiceHtmlOptions = {
   showProductCode?: boolean;
   showBalanceDue?: boolean;
   footerNote?: string;
   businessType?: string;
   documentTitle?: string;
+  /** Paper format for the generated PDF — matches the web app's invoice/receipt print setting. Default 'a4'. */
+  printFormat?: InvoicePrintFormat;
 };
 
 const DEFAULT_THANK_YOU = 'Thank you for doing business with us.';
@@ -370,6 +374,41 @@ const PRINTABLE_INVOICE_CSS = `
   .gra-qr { width: 96px; height: 96px; }
 `;
 
+/**
+ * Additive overrides for narrow thermal receipt rolls (58mm/80mm) — appended after the
+ * base A4 styles above so the A4 path stays byte-identical to before. Mirrors the sizing
+ * logic in Frontend/src/utils/printStyles.js (getPrintStyles) so both platforms match.
+ */
+function getThermalInvoiceCssOverrides(format: 'thermal_58' | 'thermal_80'): string {
+  const pageWidth = format === 'thermal_58' ? '58mm' : '80mm';
+  const contentWidth = format === 'thermal_58' ? '52mm' : '72mm';
+  return `
+  @page { size: ${pageWidth} auto; margin: 0; }
+  body { padding: 3mm; font-size: 10px; }
+  .printable-invoice { max-width: ${contentWidth}; filter: grayscale(100%); }
+  .company-logo { display: none !important; }
+  .invoice-header { flex-direction: column; gap: 6px; }
+  .invoice-info { text-align: left; max-width: 100%; flex: none; }
+  .invoice-title { font-size: 16px; margin-bottom: 6px; }
+  .invoice-meta-row { font-size: 10px; }
+  .company-name-placeholder { font-size: 14px; }
+  .company-details, .billing-info { font-size: 10px; }
+  .invoice-parties { grid-template-columns: 1fr; }
+  .billing-section + .billing-section { border-left: none; border-top: 1px solid #e5e7eb; padding-left: 0; }
+  .items-table, .items-table th, .items-table td { font-size: 9px; padding: 4px 5px; }
+  .total-row { font-size: 10px; }
+  .total-row.bold { font-size: 11px; }
+  .total-row.balance, .total-row.balance span { font-size: 12px; }
+  `;
+}
+
+function buildPrintableInvoiceCss(printFormat: InvoicePrintFormat = 'a4'): string {
+  if (printFormat === 'thermal_58' || printFormat === 'thermal_80') {
+    return `${PRINTABLE_INVOICE_CSS}\n${getThermalInvoiceCssOverrides(printFormat)}`;
+  }
+  return PRINTABLE_INVOICE_CSS;
+}
+
 function renderCompanyHeader(organization: AnyRecord, logoUrl: string): string {
   const name = pickFirst(organization.name, organization.legalName, 'Company name');
   const location = formatAddress(organization.address);
@@ -593,7 +632,7 @@ export function buildPrintableInvoiceHtml(
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>${PRINTABLE_INVOICE_CSS}</style>
+    <style>${buildPrintableInvoiceCss(options.printFormat)}</style>
     <title>${escapeHtml(`Invoice ${number}`)}</title>
   </head>
   <body>${body}</body>

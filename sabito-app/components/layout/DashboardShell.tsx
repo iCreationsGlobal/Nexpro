@@ -4,8 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LayoutDashboard, Building2, Send, Wallet, UserRound, ArrowLeft, Menu, X, History, LifeBuoy } from "lucide-react";
+import { useStoredToken } from "@/lib/browserState";
 import { Logo } from "@/components/ui/Logo";
-import { getMarketerSession, getStoredToken, clearAuth, ApiError } from "@/lib/api";
+import { getMarketerSession, clearAuth, ApiError } from "@/lib/api";
 
 const links = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -23,7 +24,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const drawer = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [name, setName] = useState("");
-  const [ready, setReady] = useState(false);
+  const token = useStoredToken();
+  const [validatedToken, setValidatedToken] = useState<string | null>(null);
+  const ready = Boolean(token && token === validatedToken);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [open, setOpen] = useState(false);
@@ -33,19 +36,19 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     const login = () => router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-    if (!getStoredToken()) { setReady(false); login(); return; }
-    setError("");
+    if (token === undefined) return;
+    if (!token) { login(); return; }
     getMarketerSession().then(({ data }) => {
-      if (!cancelled) { setName(data.marketer.name); setReady(true); }
+      if (!cancelled) { setName(data.marketer.name); setValidatedToken(token); }
     }).catch((err) => {
       if (cancelled) return;
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) { setReady(false); clearAuth(); login(); }
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) { setValidatedToken(null); clearAuth(); login(); }
       else setError("We couldn't load your account. Please try again.");
     });
     return () => { cancelled = true; };
-  }, [pathname, router, attempt]);
+  }, [pathname, router, attempt, token]);
 
-  useEffect(() => { setOpen(false); drawer.current?.close(); }, [pathname]);
+  useEffect(() => { drawer.current?.close(); }, [pathname]);
   useEffect(() => {
     if (!open) return;
     const previous = document.body.style.overflow;
@@ -64,7 +67,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     <div className="workspace-sidebar-bottom"><Link href="/"><ArrowLeft size={18} aria-hidden="true" />Back to website</Link><p>Connect. Refer. Earn.</p></div>
   </>;
 
-  if (!ready) return <div className="workspace-loading" role="status">{error ? <><p>{error}</p><button className="workspace-action" onClick={() => setAttempt(a => a + 1)}>Try again</button></> : "Loading your workspace…"}</div>;
+  if (!ready) return <div className="workspace-loading" role="status">{error ? <><p>{error}</p><button className="workspace-action" onClick={() => { setError(""); setAttempt(a => a + 1); }}>Try again</button></> : "Loading your workspace…"}</div>;
   return <div className="workspace-shell">
     <a href="#workspace-main" className="workspace-skip">Skip to content</a>
     <aside className="workspace-sidebar">{navigation}</aside>

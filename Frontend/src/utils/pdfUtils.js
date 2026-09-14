@@ -18,15 +18,21 @@ const rethrowPdfError = (error) => {
   throw error;
 };
 
+const MM_PER_PX = 25.4 / 96;
+
 /**
  * Generate a PDF from an HTML element
  * @param {HTMLElement} element - The HTML element to convert to PDF
  * @param {Object} options - PDF generation options
  * @param {string} options.filename - The filename for the PDF (default: 'document.pdf')
- * @param {string} options.format - Page format (default: 'a4')
+ * @param {string} options.format - Page format (default: 'a4'). Ignored when contentWidthMm is set.
  * @param {string} options.orientation - Page orientation: 'portrait' or 'landscape' (default: 'portrait')
  * @param {number} options.scale - Scale factor for rendering (default: 2)
  * @param {boolean} options.download - Whether to download immediately (default: true)
+ * @param {number} [options.contentWidthMm] - Render at this width instead of the default A4 190mm
+ *   (e.g. 52/72 for 58mm/80mm thermal receipt rolls). Pairs with dynamicHeight for continuous-roll paper.
+ * @param {boolean} [options.dynamicHeight] - Size the PDF page to the element's actual rendered
+ *   height instead of a fixed A4 page height, for thermal receipt rolls with no fixed page length.
  * @returns {Promise} - Promise that resolves when PDF is generated
  */
 export const generatePDF = async (element, options = {}) => {
@@ -37,6 +43,8 @@ export const generatePDF = async (element, options = {}) => {
     scale = 2,
     download = true,
     margin = [10, 10, 10, 10],
+    contentWidthMm = null,
+    dynamicHeight = false,
   } = options;
 
   const html2pdf = await loadHtml2Pdf();
@@ -46,10 +54,22 @@ export const generatePDF = async (element, options = {}) => {
   const originalMaxWidth = element.style.maxWidth;
   const originalPadding = element.style.padding;
 
-  // Set fixed width for PDF generation (A4 width minus margins = ~190mm = ~718px at 96dpi)
-  element.style.width = '190mm';
-  element.style.maxWidth = '190mm';
-  element.style.padding = '10mm';
+  // Default: A4 width minus margins = ~190mm. contentWidthMm overrides this for thermal receipt widths.
+  const widthMm = contentWidthMm || 190;
+  element.style.width = `${widthMm}mm`;
+  element.style.maxWidth = `${widthMm}mm`;
+  element.style.padding = contentWidthMm ? '0' : '10mm';
+
+  let jsPdfFormat = format;
+  let windowWidth = 794; // A4 width in pixels at 96dpi
+
+  if (dynamicHeight) {
+    // Force a reflow at the new width before measuring — height depends on width (text rewraps narrower).
+    void element.offsetHeight;
+    const heightMm = Math.max(element.scrollHeight * MM_PER_PX, 40);
+    jsPdfFormat = [widthMm, heightMm];
+    windowWidth = Math.round(widthMm / MM_PER_PX);
+  }
 
   const opt = {
     margin,
@@ -60,11 +80,11 @@ export const generatePDF = async (element, options = {}) => {
       useCORS: true,
       logging: false,
       letterRendering: true,
-      windowWidth: 794, // A4 width in pixels at 96dpi
+      windowWidth,
     },
     jsPDF: {
       unit: 'mm',
-      format,
+      format: jsPdfFormat,
       orientation,
       compress: true,
     },

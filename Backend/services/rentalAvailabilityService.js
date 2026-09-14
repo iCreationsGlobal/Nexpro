@@ -12,12 +12,10 @@ const {
   countOperationalUnits,
   getBookedUnitIdsForRange,
 } = require('./rentalUnitService');
-
-/** Rental statuses that reserve inventory for overlapping date ranges. */
-const INVENTORY_BLOCKING_STATUSES = ['pending', 'confirmed', 'active', 'overdue'];
-
-/** Pre-booking statuses that reserve inventory for overlapping date ranges. */
-const PRE_BOOKING_BLOCKING_STATUSES = ['pending', 'confirmed'];
+const {
+  INVENTORY_BLOCKING_STATUSES,
+  PRE_BOOKING_BLOCKING_STATUSES,
+} = require('./rentalStatusConstants');
 
 /** Allowed manual/API status transitions (from → to[]). */
 const RENTAL_STATUS_TRANSITIONS = {

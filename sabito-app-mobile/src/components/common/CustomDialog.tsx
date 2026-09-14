@@ -15,7 +15,7 @@ import { SPACING, FONT_SIZES, FONT_WEIGHTS } from '../../constants/sizes';
 
 interface DialogButton {
   text: string;
-  onPress: () => void;
+  onPress?: () => void;
   style?: 'default' | 'destructive' | 'cancel';
 }
 
@@ -35,7 +35,7 @@ const CustomDialog: React.FC<CustomDialogProps> = ({
   onClose,
 }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -71,7 +71,7 @@ const CustomDialog: React.FC<CustomDialogProps> = ({
 
   const getButtonStyle = (buttonStyle?: string) => {
     if (buttonStyle === 'destructive') {
-      return [styles.destructiveButton, { backgroundColor: colors.error || COLORS.RED }];
+      return [styles.destructiveButton, { backgroundColor: colors.error || '#dc2626' }];
     }
     return [styles.defaultButton, { backgroundColor: colors.primary || COLORS.APP_GREEN }];
   };

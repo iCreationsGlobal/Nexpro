@@ -26,7 +26,7 @@ type Props = { navigation: any };
 
 const ProfileEditScreen: React.FC<Props> = ({ navigation }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   const { dialog, showDialog, hideDialog } = useDialog();
 
   const [name, setName] = useState('');

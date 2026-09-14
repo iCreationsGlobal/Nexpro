@@ -92,3 +92,13 @@ test('signup → approval → match → job progress → payment → remittance 
   expect(commission.status).toBe('paid');
   expect((await getMarketerDashboard(marketer.id)).availableBalance).toBe(0);
 });
+
+test.each([7, 129])('registration rejects passwords of length %i before creating an account', async length => {
+  const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+  const next = jest.fn();
+  const before = models.Marketer.rows.length;
+  await registerMarketer({ body: { name: 'Validation Test', email: 'validation@example.test', password: 'a'.repeat(length) } }, res, next);
+  expect(res.status).toHaveBeenCalledWith(400);
+  expect(models.Marketer.rows).toHaveLength(before);
+  expect(next).not.toHaveBeenCalled();
+});

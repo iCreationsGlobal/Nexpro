@@ -1,4 +1,4 @@
-import type * as Contacts from 'expo-contacts';
+import type * as Contacts from 'expo-contacts/legacy';
 
 import {
   mapContactToCustomerForm,
@@ -83,7 +83,7 @@ jest.mock('@/utils/logger', () => ({
   },
 }));
 
-jest.mock('expo-contacts', () => ({
+jest.mock('expo-contacts/legacy', () => ({
   Fields: {
     FirstName: 'firstName',
     LastName: 'lastName',
@@ -101,7 +101,7 @@ jest.mock('expo-contacts', () => ({
   presentAccessPickerAsync: jest.fn(),
 }));
 
-import * as ExpoContacts from 'expo-contacts';
+import * as ExpoContacts from 'expo-contacts/legacy';
 
 import {
   loadDeviceContacts,

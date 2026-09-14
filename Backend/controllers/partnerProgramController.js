@@ -80,8 +80,8 @@ exports.registerMarketer = async (req, res, next) => {
     if (!email || !EMAIL_REGEX.test(email)) {
       return res.status(400).json({ success: false, message: 'Enter a valid email address.' });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters.' });
+    if (password.length < 8 || password.length > 128) {
+      return res.status(400).json({ success: false, message: 'Use a password between 8 and 128 characters.' });
     }
 
     const existing = await Marketer.findOne({ where: { email } });

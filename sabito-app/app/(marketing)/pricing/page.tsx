@@ -64,10 +64,10 @@ export default function PricingPage() {
     <div>
       <section className="mx-auto max-w-6xl px-4 py-16">
         <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900 md:text-5xl">
+          <h1 className="text-4xl font-bold tracking-tight text-brand-900 md:text-5xl">
             Find a plan to power your growth
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-brand-600">
             Marketers use Sabito free. Businesses run on{" "}
             <a
               href={ABS_SITE_URL}
@@ -79,7 +79,7 @@ export default function PricingPage() {
             </a>
             , then enable Sabito Partners — commissions accrue when customers pay and become withdrawable after remittance to ABS.
           </p>
-          <p className="mt-3 text-sm text-slate-500">Secure business billing on ABS · MoMo or card</p>
+          <p className="mt-3 text-sm text-brand-500">Secure business billing on ABS · MoMo or card</p>
         </div>
 
         <div className="mt-12 grid gap-6 lg:grid-cols-3">
@@ -89,7 +89,7 @@ export default function PricingPage() {
               className={`relative flex flex-col rounded-2xl border bg-white p-6 ${
                 plan.popular
                   ? "border-[var(--sabito-green)] ring-1 ring-[var(--sabito-green)]"
-                  : "border-slate-200"
+                  : "border-brand-200"
               }`}
             >
               {plan.popular ? (
@@ -97,13 +97,13 @@ export default function PricingPage() {
                   Most popular for businesses
                 </span>
               ) : null}
-              <h2 className="text-xl font-bold text-slate-900">{plan.name}</h2>
-              <p className="mt-1 text-3xl font-bold text-slate-900">{plan.price}</p>
-              {plan.period ? <p className="text-sm text-slate-500">{plan.period}</p> : null}
-              <p className="mt-2 text-sm text-slate-600">{plan.blurb}</p>
+              <h2 className="text-xl font-bold text-brand-900">{plan.name}</h2>
+              <p className="mt-1 text-3xl font-bold text-brand-900">{plan.price}</p>
+              {plan.period ? <p className="text-sm text-brand-500">{plan.period}</p> : null}
+              <p className="mt-2 text-sm text-brand-600">{plan.blurb}</p>
               <ul className="mt-6 flex-1 space-y-3">
                 {plan.features.map((f) => (
-                  <li key={f} className="flex gap-2 text-sm text-slate-700">
+                  <li key={f} className="flex gap-2 text-sm text-brand-700">
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--sabito-green)]" />
                     <span>{f}</span>
                   </li>
@@ -129,9 +129,9 @@ export default function PricingPage() {
         </div>
       </section>
 
-      <section className="border-t border-slate-200 bg-slate-50">
+      <section className="border-t border-brand-200 bg-brand-50">
         <div className="mx-auto max-w-3xl px-4 py-14">
-          <h2 className="text-center text-2xl font-bold text-slate-900">Pricing FAQ</h2>
+          <h2 className="text-center text-2xl font-bold text-brand-900">Pricing FAQ</h2>
           <div className="mt-8 space-y-3">
             {[
               [
@@ -147,9 +147,9 @@ export default function PricingPage() {
                 "Commission goes to the marketer per your ABS Sabito Partners rates. Business software billing is through ABS, not a separate Sabito SaaS fee on this site.",
               ],
             ].map(([q, a]) => (
-              <details key={q} className="rounded-xl border border-slate-200 bg-white p-4">
-                <summary className="cursor-pointer font-semibold text-slate-900">{q}</summary>
-                <p className="mt-2 text-sm text-slate-600">{a}</p>
+              <details key={q} className="rounded-xl border border-brand-200 bg-white p-4">
+                <summary className="cursor-pointer font-semibold text-brand-900">{q}</summary>
+                <p className="mt-2 text-sm text-brand-600">{a}</p>
               </details>
             ))}
           </div>

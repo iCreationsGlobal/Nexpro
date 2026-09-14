@@ -27,7 +27,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useExclusiveAction } from '@/hooks/useExclusiveAction';
 import { invoiceService } from '@/services/invoiceService';
 import { settingsService } from '@/services/settings';
-import { shareInvoicePdf, formatLineItemQuantityDisplay } from '@/services/pdfDocumentService';
+import { shareInvoicePdf, printInvoice, formatLineItemQuantityDisplay } from '@/services/pdfDocumentService';
+import { usePrintFormat } from '@/hooks/usePrintFormat';
 import { formatCurrency, formatDate } from '@/utils/formatCurrency';
 import { formatStatusLabel } from '@/utils/formatLabels';
 import {
@@ -77,7 +78,7 @@ type InvoiceDetail = {
   }>;
 };
 
-type InvoiceAction = 'pdf' | 'payment' | 'send' | 'markPaid' | 'shareWhatsapp' | 'shareSms' | 'shareEmail';
+type InvoiceAction = 'pdf' | 'print' | 'payment' | 'send' | 'markPaid' | 'shareWhatsapp' | 'shareSms' | 'shareEmail';
 type InvoiceDangerAction = InvoiceAction | 'cancel' | 'delete';
 
 function getItemProductCode(item: NonNullable<InvoiceDetail['items']>[number]) {
@@ -98,6 +99,7 @@ export default function InvoiceDetailScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { activeTenantId, activeTenant, isAdmin, isManager } = useAuth();
+  const { printFormat } = usePrintFormat();
   const { colors, cardBg, borderColor, textColor, mutedColor } = useEntityDetailTheme();
   const [showPaymentSheet, setShowPaymentSheet] = useState(false);
   const [awaitingPaystackReturn, setAwaitingPaystackReturn] = useState(false);
@@ -211,6 +213,9 @@ export default function InvoiceDetailScreen() {
     if (!invoice) return;
     await runExclusiveAction('pdf', async () => {
       try {
+        // PDF (view/download/share) always renders A4 regardless of the print-format
+        // setting — that setting only governs the direct "Print" action below, which
+        // sends straight to whatever printer/paper size the workspace configured.
         await shareInvoicePdf(invoice as unknown as Record<string, unknown>, {
           showProductCode,
           businessType: activeTenant?.businessType,
@@ -219,7 +224,22 @@ export default function InvoiceDetailScreen() {
         Alert.alert('Invoice unavailable', err instanceof Error ? err.message : 'Could not prepare this invoice PDF.');
       }
     });
-  }, [invoice, runExclusiveAction]);
+  }, [invoice, runExclusiveAction, showProductCode, activeTenant?.businessType]);
+
+  const handlePrintInvoice = useCallback(async () => {
+    if (!invoice) return;
+    await runExclusiveAction('print', async () => {
+      try {
+        await printInvoice(invoice as unknown as Record<string, unknown>, {
+          showProductCode,
+          businessType: activeTenant?.businessType,
+          printFormat,
+        });
+      } catch (err: unknown) {
+        Alert.alert('Print unavailable', err instanceof Error ? err.message : 'Could not print this invoice.');
+      }
+    });
+  }, [invoice, runExclusiveAction, showProductCode, activeTenant?.businessType, printFormat]);
 
   const shareOptions = useMemo(
     () => ({
@@ -507,6 +527,14 @@ export default function InvoiceDetailScreen() {
           },
         ]
       : []),
+    {
+      key: 'print',
+      label: 'Print Invoice',
+      icon: 'printer' as const,
+      onPress: handlePrintInvoice,
+      loading: isActionActive('print'),
+      disabled: isAnyActionActive,
+    },
     ...(canRecordInvoicePayment
       ? [{
           key: 'download',

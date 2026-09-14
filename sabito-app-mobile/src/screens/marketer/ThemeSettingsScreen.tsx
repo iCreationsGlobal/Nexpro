@@ -18,7 +18,7 @@ const OPTIONS: { value: ThemeMode; label: string; subtitle: string }[] = [
 
 const ThemeSettingsScreen: React.FC<Props> = ({ navigation }) => {
   const { theme, effectiveTheme, toggleTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>

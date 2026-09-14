@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { RentalUnit, RentalItem, Rental, Product, ProductCategory } = require('../models');
-const { INVENTORY_BLOCKING_STATUSES } = require('./rentalAvailabilityService');
+const { INVENTORY_BLOCKING_STATUSES } = require('./rentalStatusConstants');
 
 const RENTAL_UNIT_STATUSES = ['available', 'rented', 'maintenance', 'retired'];
 

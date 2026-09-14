@@ -46,7 +46,7 @@ export const usePOSConfig = () => {
 
 /**
  * Whether barcode/camera scanning is enabled for the workspace (opt-in).
- * @returns {{ scanningEnabled: boolean, allowManualBarcodeEntry: boolean, isLoading: boolean }}
+ * @returns {{ scanningEnabled: boolean, allowExternalScanner: boolean, allowManualBarcodeEntry: boolean, isLoading: boolean }}
  */
 export const useScanningEnabled = () => {
   const { posConfig, isLoading } = usePOSConfig();
@@ -54,6 +54,7 @@ export const useScanningEnabled = () => {
 
   return {
     scanningEnabled: isScanningEnabled(posConfig),
+    allowExternalScanner: scanning.allowExternalScanner === true,
     allowManualBarcodeEntry: scanning.allowManualBarcodeEntry,
     isLoading,
   };

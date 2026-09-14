@@ -16,7 +16,7 @@ export function AppNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="border-b border-slate-200 bg-white">
+    <nav className="border-b border-brand-200 bg-white">
       <div className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4">
         {LINKS.map((link) => {
           const active =
@@ -31,7 +31,7 @@ export function AppNav() {
                 "shrink-0 border-b-2 px-3 py-3 text-sm font-medium",
                 active
                   ? "border-[var(--sabito-green)] text-[var(--sabito-green)]"
-                  : "border-transparent text-slate-500 hover:text-slate-800"
+                  : "border-transparent text-brand-500 hover:text-brand-800"
               )}
             >
               {link.label}

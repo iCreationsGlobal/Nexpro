@@ -194,7 +194,8 @@ export default defineConfig(({ mode }) => {
         mode === 'production'
           ? {
               compress: {
-                pure_funcs: ['console.log', 'console.info', 'console.debug', 'console.trace'],
+                // Keep info-level operational diagnostics, including hardware scans.
+                pure_funcs: ['console.log', 'console.debug', 'console.trace'],
                 passes: 2,
               },
             }

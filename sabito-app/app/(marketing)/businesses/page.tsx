@@ -1,8 +1,10 @@
 "use client";
 
+import { useStoredToken, useBrowserSearch } from "@/lib/browserState";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getStoredToken, listPartners, listMyApplications, listMyPartnerships, type MarketplaceBusiness } from "@/lib/api";
+import { listPartners, listMyApplications, listMyPartnerships, type MarketplaceBusiness } from "@/lib/api";
 import { BusinessCard } from "@/components/businesses/BusinessCard";
 import { Input } from "@/components/ui/input";
 import { SABITO_CATEGORY_CHIPS, sabitoCategoryQuery, type SabitoCategoryChipId } from "@/lib/partnerCategories";
@@ -12,23 +14,20 @@ export default function BusinessesPage() {
   const [businesses, setBusinesses] = useState<MarketplaceBusiness[]>([]);
   const [applications, setApplications] = useState<Row[]>([]);
   const [partners, setPartners] = useState<Row[]>([]);
-  const [signedIn, setSignedIn] = useState(false);
-  const [tab, setTab] = useState("discover");
+  const signedIn = Boolean(useStoredToken());
+  const browserSearch = useBrowserSearch();
+  const requestedTab = new URLSearchParams(browserSearch).get('view');
+  const [tabChoice, setTab] = useState<string | null>(null);
+  const tab = tabChoice ?? (signedIn && (requestedTab === 'applications' || requestedTab === 'partners') ? requestedTab : 'discover');
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<SabitoCategoryChipId>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    const authenticated = Boolean(getStoredToken());
-    setSignedIn(authenticated);
-    const view = new URLSearchParams(window.location.search).get("view");
-    if (authenticated && (view === "applications" || view === "partners")) setTab(view);
-  }, []);
-  useEffect(() => {
     let cancelled = false;
-    setLoading(true); setError("");
     const timer = setTimeout(async () => {
+      setLoading(true); setError("");
       try {
         if (tab === "discover") {
           const data = await listPartners({ search: search || undefined, category: sabitoCategoryQuery(category) });
@@ -51,7 +50,7 @@ export default function BusinessesPage() {
       const tenant = row.tenant as Row | undefined;
       const settings = tenant?.partnerProgramSettings as Row | undefined;
       const title = String(settings?.displayName || tenant?.name || "Business partner");
-      return <article key={String(row.id)} className="rounded-2xl border border-slate-200 bg-white p-5"><div className="flex items-center justify-between gap-3"><h2 className="font-semibold">{title}</h2><span className="workspace-status">{String(row.status || "pending")}</span></div>{row.createdAt ? <p className="mt-2 text-sm text-slate-500">{new Date(String(row.createdAt)).toLocaleDateString()}</p> : null}{tab === "partners" && row.status === "active" && <Link href={`/referrals?add=1&partnership=${encodeURIComponent(String(row.id))}`} className="workspace-link mt-4">Add a referral →</Link>}</article>;
+      return <article key={String(row.id)} className="rounded-2xl border border-brand-200 bg-white p-5"><div className="flex items-center justify-between gap-3"><h2 className="font-semibold">{title}</h2><span className="workspace-status">{String(row.status || "pending")}</span></div>{row.createdAt ? <p className="mt-2 text-sm text-brand-500">{new Date(String(row.createdAt)).toLocaleDateString()}</p> : null}{tab === "partners" && row.status === "active" && <Link href={`/referrals?add=1&partnership=${encodeURIComponent(String(row.id))}`} className="workspace-link mt-4">Add a referral →</Link>}</article>;
     })}</div>}
   </div>;
 }

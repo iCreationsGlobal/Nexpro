@@ -13,8 +13,8 @@ export function Button({ className, variant = "primary", ...props }: Props) {
         variant === "primary" &&
           "bg-[var(--sabito-green)] text-white hover:bg-[var(--sabito-green-dark)]",
         variant === "outline" &&
-          "border border-slate-300 bg-white text-slate-800 hover:bg-slate-50",
-        variant === "ghost" && "text-slate-700 hover:bg-slate-100",
+          "border border-brand-300 bg-white text-brand-800 hover:bg-brand-50",
+        variant === "ghost" && "text-brand-700 hover:bg-brand-100",
         variant === "onBrand" &&
           "bg-white text-[var(--sabito-green)] hover:bg-[var(--sabito-mint)]",
         variant === "onBrandOutline" &&

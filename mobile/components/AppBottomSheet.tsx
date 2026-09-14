@@ -116,7 +116,11 @@ export function AppBottomSheet({
                 onPress={onClose}
                 hitSlop={12}
                 accessibilityLabel="Close"
-                style={styles.closeBtn}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.closeBtn,
+                  { backgroundColor: theme.inputBg, opacity: pressed ? 0.7 : 1 },
+                ]}
               >
                 <AppIcon name="times" size={22} color={mutedColor} />
               </Pressable>
@@ -222,7 +226,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   sheetWrap: {
@@ -263,6 +267,7 @@ const styles = StyleSheet.create({
   closeBtn: {
     width: 40,
     height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },

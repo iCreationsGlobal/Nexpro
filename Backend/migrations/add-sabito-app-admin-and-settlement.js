@@ -102,7 +102,7 @@ const addSabitoAppAdminAndSettlement = async ({ closeConnection = true } = {}) =
       DO $$
       BEGIN
         IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint WHERE conname = 'partner_commissions_remittanceId_fkey'
+          SELECT 1 FROM pg_constraint WHERE conname = 'partner_commissions_remittanceid_fkey'
         ) THEN
           ALTER TABLE ${quoteIdent('partner_commissions')}
             ADD CONSTRAINT partner_commissions_remittanceId_fkey

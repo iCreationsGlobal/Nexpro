@@ -63,6 +63,8 @@ import { useAuth } from '../context/AuthContext';
 import { useShopOptional } from '../context/ShopContext';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useDebounce } from '../hooks/useDebounce';
+import { findLoadedBarcodeProduct } from '../utils/posBarcodeLookup';
+import { useHardwareBarcodeScanner } from '../hooks/useHardwareBarcodeScanner';
 import { useResponsive, useSafeAreaInsets } from '../hooks/useResponsive';
 import customerService from '../services/customerService';
 import settingsService from '../services/settingsService';
@@ -86,6 +88,7 @@ import {
   isVariantOutOfStock,
 } from '../utils/productStock';
 import { FEATURE_NOT_AVAILABLE } from '../constants/microcopy';
+import { parseProductQRPayload } from '../utils/productQR';
 import { QUERY_STALE, refreshAfterSale } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
 import { shouldSkipReceiptModal } from '../utils/receiptChannels';
@@ -392,7 +395,7 @@ const POS = () => {
   const queryClient = useQueryClient();
 
   const { posConfig } = usePOSConfig();
-  const { scanningEnabled } = useScanningEnabled();
+  const { scanningEnabled, allowExternalScanner } = useScanningEnabled();
 
   const {
     isOnline,
@@ -724,6 +727,54 @@ const POS = () => {
 
     addResolvedItemToCart(product, null);
   }, [addResolvedItemToCart]);
+
+  // Physical USB/Bluetooth scanner support — works anywhere on this page, no field needs focus.
+  // Mirrors POSScanMode's camera-scan handling so lookups/logging/toasts stay consistent.
+  const handleHardwareScan = useCallback(async (decodedText) => {
+    const text = (decodedText || '').trim();
+    const looksLikeQRJson = text.startsWith('{');
+    console.info('[Hardware Scan] Received scan:', { code: text, looksLikeQRJson });
+
+    let product = null;
+    try {
+      if (looksLikeQRJson) {
+        const result = parseProductQRPayload(text);
+        if (result.success) {
+          product = await resolveProductFromQRPayload(result.data);
+          console.info('[Hardware Scan] QR payload resolved:', product ? { productId: product.id, name: product.name } : 'no match');
+          if (!product) {
+            showError('No product found for this QR code');
+          }
+        } else {
+          console.warn('[Hardware Scan] QR payload parse failed:', result.error);
+          showError(result.error || 'Invalid QR code');
+        }
+      } else if (getProductByBarcode) {
+        product = findLoadedBarcodeProduct(allProducts, text);
+        if (product) {
+          console.info('[Hardware Scan] Matched loaded catalog:', { productId: product.id });
+        } else {
+          product = await getProductByBarcode(text);
+        }
+        console.info('[Hardware Scan] Barcode lookup result:', { code: text, matched: Boolean(product), productId: product?.id, name: product?.name });
+        if (!product) {
+          showError(`No product found for barcode "${text}"`);
+        }
+      } else {
+        console.warn('[Hardware Scan] getProductByBarcode not available');
+      }
+      if (product) {
+        console.info('[Hardware Scan] Adding scanned product to cart:', { productId: product.id, name: product.name });
+        addToCart(product);
+      }
+    } catch (err) {
+      console.error('[Hardware Scan] Scan resolve error:', { code: text, looksLikeQRJson, error: err?.message || err });
+      showError(looksLikeQRJson ? 'Could not look up product for this QR code' : 'Could not look up product for this barcode');
+    }
+  }, [addToCart, allProducts, getProductByBarcode, resolveProductFromQRPayload]);
+
+  // Physical keyboard scanners work independently of the optional camera scan mode.
+  useHardwareBarcodeScanner(handleHardwareScan, { enabled: allowExternalScanner });
 
   const resetCustomItemForm = useCallback(() => {
     setCustomItemForm({

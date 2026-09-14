@@ -19,13 +19,13 @@ export function GetTheAppModal({ open, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6"
+        className="w-full max-w-md rounded-2xl border border-brand-200 bg-white p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="get-app-title" className="text-xl font-bold text-slate-900">
+        <h2 id="get-app-title" className="text-xl font-bold text-brand-900">
           Get the Sabito app
         </h2>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-2 text-sm text-brand-600">
           Track referrals, apply to partners, and request cashouts on the go. Use the marketer web
           app now — mobile builds are available via Expo for partners.
         </p>

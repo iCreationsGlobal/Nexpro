@@ -17,6 +17,8 @@ import { useAuth } from '../context/AuthContext';
 import { useShopOptional } from '../context/ShopContext';
 import { useSmartSearch } from '../context/SmartSearchContext';
 import { useWorkspaceScope } from '../hooks/useWorkspaceScope';
+import { usePOSConfig } from '../hooks/usePOSConfig';
+import { getContentWidthMm } from '../utils/printStyles';
 import ActionColumn from '../components/ActionColumn';
 import DashboardTable from '../components/DashboardTable';
 import ViewToggle from '../components/ViewToggle';
@@ -258,6 +260,9 @@ const Invoices = () => {
     }
     return organization;
   }, [viewingInvoice, organization]);
+
+  const { posConfig } = usePOSConfig();
+  const invoicePrintConfig = posConfig?.print || { format: 'a4' };
 
   const paymentForm = useForm({
     resolver: zodResolver(paymentSchema),
@@ -555,11 +560,15 @@ const Invoices = () => {
         return;
       }
 
+      const isThermal = invoicePrintConfig.format === 'thermal_58' || invoicePrintConfig.format === 'thermal_80';
+
       await generatePDF(invoiceElement, {
-        margin: isMobile ? [4, 4, 4, 4] : [0, 0, 0, 0],
+        margin: isThermal ? [0, 0, 0, 0] : (isMobile ? [4, 4, 4, 4] : [0, 0, 0, 0]),
         filename: `Invoice_${viewingInvoice.invoiceNumber}.pdf`,
         format: 'a4',
         orientation: 'portrait',
+        contentWidthMm: isThermal ? getContentWidthMm(invoicePrintConfig) : null,
+        dynamicHeight: isThermal,
       });
 
       showSuccess('PDF downloaded successfully!');
@@ -1526,6 +1535,7 @@ const Invoices = () => {
                   invoice={viewingInvoice}
                   organization={printOrganization}
                   screenLayout={isMobile ? 'mobile' : 'auto'}
+                  printConfig={invoicePrintConfig}
                 />
               </div>
             </div>

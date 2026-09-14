@@ -46,12 +46,12 @@ const PRACTICES = [
 export default function CommissionGuidePage() {
   return (
     <div>
-      <section className="border-b border-slate-200 bg-[var(--sabito-mint)]">
+      <section className="border-b border-brand-200 bg-[var(--sabito-mint)]">
         <div className="mx-auto max-w-3xl px-4 py-16 text-center md:py-20">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900 md:text-5xl">
+          <h1 className="text-4xl font-bold tracking-tight text-brand-900 md:text-5xl">
             Commission guide
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-brand-600">
             Set competitive rates in ABS that attract quality marketers and drive results — you only
             pay when payment is collected.
           </p>
@@ -60,33 +60,33 @@ export default function CommissionGuidePage() {
 
       <section className="mx-auto max-w-3xl space-y-12 px-4 py-14">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Understanding commission rates</h2>
-          <p className="mt-3 text-slate-600 leading-relaxed">
+          <h2 className="text-2xl font-bold text-brand-900">Understanding commission rates</h2>
+          <p className="mt-3 text-brand-600 leading-relaxed">
             Commission rates are the percentage of a customer&apos;s collected payment that you pay
             marketers for successful referrals. Configure them when you enable Sabito Partners in
             African Business Suite Settings.
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-xl font-bold text-slate-900">Commission for new clients</h2>
+        <div className="rounded-2xl border border-brand-200 bg-white p-6">
+          <h2 className="text-xl font-bold text-brand-900">Commission for new clients</h2>
           <h3 className="mt-4 text-sm font-semibold uppercase tracking-wide text-[var(--sabito-green)]">
             What is it?
           </h3>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          <p className="mt-2 text-sm leading-relaxed text-brand-600">
             The percentage of the customer&apos;s payment you pay when a <strong>new client</strong>{" "}
             referred by a marketer completes their first paid work with you.
           </p>
           <h3 className="mt-5 text-sm font-semibold uppercase tracking-wide text-[var(--sabito-green)]">
             Example
           </h3>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-brand-600">
             If a new client pays ₵1,000 and your rate is 15%, you pay ₵150 to the marketer.
           </p>
           <h3 className="mt-5 text-sm font-semibold uppercase tracking-wide text-[var(--sabito-green)]">
             Recommendation
           </h3>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-brand-600">
             <strong>Higher rates (10–25%)</strong> attract more marketers and increase quality
             referrals.
           </p>
@@ -97,36 +97,36 @@ export default function CommissionGuidePage() {
                 className={`rounded-xl border p-4 ${
                   tier.recommended
                     ? "border-[var(--sabito-green)] bg-[var(--sabito-mint)]"
-                    : "border-slate-200 bg-slate-50"
+                    : "border-brand-200 bg-brand-50"
                 }`}
               >
-                <p className="text-xs font-semibold uppercase text-slate-500">{tier.label}</p>
-                <p className="mt-1 text-lg font-bold text-slate-900">{tier.value}</p>
-                <p className="mt-1 text-xs text-slate-500">{tier.note}</p>
+                <p className="text-xs font-semibold uppercase text-brand-500">{tier.label}</p>
+                <p className="mt-1 text-lg font-bold text-brand-900">{tier.value}</p>
+                <p className="mt-1 text-xs text-brand-500">{tier.note}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-xl font-bold text-slate-900">Commission for returning clients</h2>
+        <div className="rounded-2xl border border-brand-200 bg-white p-6">
+          <h2 className="text-xl font-bold text-brand-900">Commission for returning clients</h2>
           <h3 className="mt-4 text-sm font-semibold uppercase tracking-wide text-[var(--sabito-green)]">
             What is it?
           </h3>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          <p className="mt-2 text-sm leading-relaxed text-brand-600">
             The percentage paid when an <strong>existing client</strong> brought by a marketer comes
             back for more work.
           </p>
           <h3 className="mt-5 text-sm font-semibold uppercase tracking-wide text-[var(--sabito-green)]">
             Example
           </h3>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-brand-600">
             If a returning client pays ₵1,000 and your rate is 10%, you pay ₵100 to the marketer.
           </p>
           <h3 className="mt-5 text-sm font-semibold uppercase tracking-wide text-[var(--sabito-green)]">
             Recommendation
           </h3>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-brand-600">
             <strong>Lower rates (5–10%)</strong> for relationship maintenance are standard — the
             marketer already did the initial work.
           </p>
@@ -137,33 +137,33 @@ export default function CommissionGuidePage() {
                 className={`rounded-xl border p-4 ${
                   tier.recommended
                     ? "border-[var(--sabito-green)] bg-[var(--sabito-mint)]"
-                    : "border-slate-200 bg-slate-50"
+                    : "border-brand-200 bg-brand-50"
                 }`}
               >
-                <p className="text-xs font-semibold uppercase text-slate-500">{tier.label}</p>
-                <p className="mt-1 text-lg font-bold text-slate-900">{tier.value}</p>
-                <p className="mt-1 text-xs text-slate-500">{tier.note}</p>
+                <p className="text-xs font-semibold uppercase text-brand-500">{tier.label}</p>
+                <p className="mt-1 text-lg font-bold text-brand-900">{tier.value}</p>
+                <p className="mt-1 text-xs text-brand-500">{tier.note}</p>
               </div>
             ))}
           </div>
         </div>
 
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Best practices</h2>
+          <h2 className="text-2xl font-bold text-brand-900">Best practices</h2>
           <div className="mt-6 space-y-4">
             {PRACTICES.map((item, i) => (
-              <div key={item.title} className="rounded-xl border border-slate-200 bg-white p-5">
-                <h3 className="font-semibold text-slate-900">
+              <div key={item.title} className="rounded-xl border border-brand-200 bg-white p-5">
+                <h3 className="font-semibold text-brand-900">
                   {i + 1}. {item.title}
                 </h3>
-                <p className="mt-2 text-sm text-slate-600">{item.body}</p>
+                <p className="mt-2 text-sm text-brand-600">{item.body}</p>
               </div>
             ))}
           </div>
         </div>
 
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">FAQ</h2>
+          <h2 className="text-2xl font-bold text-brand-900">FAQ</h2>
           <div className="mt-6 space-y-3">
             {[
               [
@@ -183,19 +183,19 @@ export default function CommissionGuidePage() {
                 "You pay marketers the rates you set. Business software billing is through your ABS plan — not a separate Sabito SaaS fee on this marketing site.",
               ],
             ].map(([q, a]) => (
-              <details key={q} className="rounded-xl border border-slate-200 bg-white p-4">
-                <summary className="cursor-pointer font-semibold text-slate-900">{q}</summary>
-                <p className="mt-2 text-sm text-slate-600">{a}</p>
+              <details key={q} className="rounded-xl border border-brand-200 bg-white p-4">
+                <summary className="cursor-pointer font-semibold text-brand-900">{q}</summary>
+                <p className="mt-2 text-sm text-brand-600">{a}</p>
               </details>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="border-t border-slate-200 bg-slate-50">
+      <section className="border-t border-brand-200 bg-brand-50">
         <div className="mx-auto max-w-3xl px-4 py-14 text-center">
-          <h2 className="text-2xl font-bold text-slate-900">Ready to set your rates?</h2>
-          <p className="mt-2 text-slate-600">
+          <h2 className="text-2xl font-bold text-brand-900">Ready to set your rates?</h2>
+          <p className="mt-2 text-brand-600">
             Sign up on ABS, enable Sabito Partners, and start attracting marketers.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">

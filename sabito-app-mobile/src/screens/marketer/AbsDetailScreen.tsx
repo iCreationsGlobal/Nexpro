@@ -1,3 +1,4 @@
+import { commissionAmount } from '../../utils/commission';
 import React, { useCallback, useState } from 'react';
 import { ScrollView, Text, View, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,7 +10,7 @@ import { getMyCashout, listMyEarnings, listMyReferrals } from '../../api/absMark
 
 export default function AbsDetailScreen({ navigation, route }: any) {
   const { theme, effectiveTheme } = useTheme();
-  const { colors } = getTheme(effectiveTheme || theme);
+  const { colors } = getTheme(effectiveTheme);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,7 +25,7 @@ export default function AbsDetailScreen({ navigation, route }: any) {
         earnings.forEach((e: any) => {
           const key = e.tenantId;
           const b = businesses[key] ||= { name: e.tenant?.name || 'Business', earned: 0, paid: 0 };
-          const amount = Number(e.marketerAmount ?? e.amount ?? 0);
+          const amount = commissionAmount(e);
           b.earned += amount;
           if (e.status === 'paid') b.paid += amount;
         });

@@ -9,6 +9,7 @@ import {
   Dimensions,
   StatusBar,
   Linking,
+  Alert,
   Animated,
   NativeSyntheticEvent,
   NativeScrollEvent,
@@ -17,6 +18,7 @@ import { Button } from 'react-native-paper';
 import COLORS from '../../constants/colors';
 import { SPACING, FONT_SIZES, FONT_WEIGHTS } from '../../constants/sizes';
 import { setOnboardingCompleted } from '../../utils/storage';
+import { SABITO_SITE_URL } from '../../config/env';
 import AnimatedSlide1 from '../../components/onboarding/AnimatedSlide1';
 import AnimatedSlide2 from '../../components/onboarding/AnimatedSlide2';
 import AnimatedSlide3 from '../../components/onboarding/AnimatedSlide3';
@@ -83,18 +85,16 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }) => {
   };
 
   const handlePrivacyPolicy = (): void => {
-    // TODO: Navigate to privacy policy or open URL
-    Linking.openURL('https://sabito.com/privacy');
+    Linking.openURL(`${SABITO_SITE_URL}/privacy-policy`).catch(() => Alert.alert('Unable to open page', 'Please try again when your connection is available.'));
   };
 
   const handleTerms = (): void => {
-    // TODO: Navigate to terms or open URL
-    Linking.openURL('https://sabito.com/terms');
+    Linking.openURL(`${SABITO_SITE_URL}/terms-and-conditions`).catch(() => Alert.alert('Unable to open page', 'Please try again when your connection is available.'));
   };
 
-  const renderSlide = ({ item, index: slideIndex }: { item: Slide; index: number }): JSX.Element => {
+  const renderSlide = ({ item, index: slideIndex }: { item: Slide; index: number }): React.JSX.Element => {
     // Render the appropriate animation component
-    const renderAnimation = (): JSX.Element | null => {
+    const renderAnimation = (): React.JSX.Element | null => {
       if (!item.isAnimated) return null;
       
       const isVisible = currentIndex === slideIndex;
@@ -278,7 +278,6 @@ const styles = StyleSheet.create({
 });
 
 export default OnboardingScreen;
-
 
 
 

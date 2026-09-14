@@ -24,7 +24,7 @@ type MarketerReferralDetailsScreenProps = RootStackScreenProps<'MarketerReferral
 
 const MarketerReferralDetailsScreen: React.FC<MarketerReferralDetailsScreenProps> = ({ navigation, route }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   
   // Accept initialData from navigation params for instant loading
   const { referralId, initialData } = route.params as { referralId: string; initialData?: Referral };

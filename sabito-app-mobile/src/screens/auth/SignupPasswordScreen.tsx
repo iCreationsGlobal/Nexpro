@@ -38,10 +38,10 @@ const SignupPasswordScreen: React.FC<SignupPasswordScreenProps> = ({
   onLoginSuccess,
 }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   const { dialog, showDialog, hideDialog } = useDialog();
 
-  const params = route?.params ?? {};
+  const params: Partial<NonNullable<typeof route.params>> = route?.params ?? {};
   const fullName = typeof params.fullName === 'string' ? params.fullName : undefined;
   const email = typeof params.email === 'string' ? params.email : undefined;
   const phone = typeof params.phone === 'string' ? params.phone : undefined;
@@ -63,15 +63,7 @@ const SignupPasswordScreen: React.FC<SignupPasswordScreenProps> = ({
     if (!pwd || pwd.length < 8) {
       return 'Password must be at least 8 characters long.';
     }
-    if (!/[A-Z]/.test(pwd)) {
-      return 'Password must include at least one uppercase letter.';
-    }
-    if (!/[0-9]/.test(pwd)) {
-      return 'Password must include at least one number.';
-    }
-    if (!/[!@#$%^&*(),.?":{}|<>]/.test(pwd)) {
-      return 'Password must include at least one special character.';
-    }
+    if (pwd.length > 128) return 'Password must be at most 128 characters long.';
     if (pwd !== confirmPwd) {
       return 'Passwords do not match.';
     }
@@ -219,7 +211,7 @@ const SignupPasswordScreen: React.FC<SignupPasswordScreenProps> = ({
                 }}
               />
 
-              <PasswordRequirements password={password} />
+              <PasswordRequirements password={password} basicPolicy />
               {passwordError ? (
                 <Text style={[styles.errorText, { color: COLORS.ERROR }]}>{passwordError}</Text>
               ) : null}

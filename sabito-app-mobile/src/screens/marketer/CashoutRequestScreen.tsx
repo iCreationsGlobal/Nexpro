@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { canCashout, commissionAmount } from '../../utils/commission';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -54,7 +56,7 @@ interface Earning {
 
 const CashoutRequestScreen: React.FC<CashoutRequestScreenProps> = ({ navigation, route }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   const { dialog, showDialog, hideDialog } = useDialog();
   
   const { availableBalance } = route.params || {};
@@ -68,9 +70,9 @@ const CashoutRequestScreen: React.FC<CashoutRequestScreenProps> = ({ navigation,
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     loadData();
-  }, []);
+  }, []));
 
   const loadData = async (): Promise<void> => {
     try {
@@ -92,9 +94,9 @@ const CashoutRequestScreen: React.FC<CashoutRequestScreenProps> = ({ navigation,
   const fetchEarnings = async (): Promise<void> => {
     try {
       const rows = await listMyEarnings('due');
-      const availableEarnings = (rows || []).map((e: any) => ({
+      const availableEarnings = (rows || []).filter(canCashout).map((e: any) => ({
         ...e,
-        amount: Number(e.amount || 0),
+        amount: commissionAmount(e),
         project: {
           id: e.id,
           projectName: e.tenant?.name || e.rateType || 'Commission',
@@ -105,6 +107,7 @@ const CashoutRequestScreen: React.FC<CashoutRequestScreenProps> = ({ navigation,
       setSelectedProjects([]);
     } catch (error: any) {
       setEarnings([]);
+      throw error;
     }
   };
 
@@ -376,7 +379,7 @@ const CashoutRequestScreen: React.FC<CashoutRequestScreenProps> = ({ navigation,
           {isSubmitting ? 'Submitting...' : `Request ₵${finalAmount.toFixed(2)}`}
         </Button>
         <Text style={[styles.feeNotice, { color: colors.textSecondary }]}>
-          {isProfessional ? '1% fee for Professional members' : `${withdrawalFee}% withdrawal fee applies`}
+          Your available amount is your marketer share after the platform fee.
         </Text>
       </View>
 

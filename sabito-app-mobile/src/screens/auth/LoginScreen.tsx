@@ -32,7 +32,7 @@ interface FormErrors {
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, onLoginSuccess }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
 
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');

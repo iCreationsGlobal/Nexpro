@@ -61,7 +61,7 @@ async function proxy(req: NextRequest, path: string[]) {
       signal: AbortSignal.timeout(30_000),
     });
 
-  let origin = await resolveLocalAbsOrigin();
+  const origin = await resolveLocalAbsOrigin();
   try {
     return forwardResponse(await attempt(origin));
   } catch (error) {

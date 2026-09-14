@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { commissionAmount } from '../../utils/commission';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,11 +21,11 @@ import { Button } from 'react-native-paper';
 import EmptyState from '../../components/common/EmptyState';
 import { getMarketerDashboard, listMyEarnings, listMyCashouts } from '../../api/absMarketer';
 import { getStatusColor } from '../../utils/statusColors';
-import type { RootStackScreenProps } from '../../types/navigation';
+import type { MarketerTabScreenProps } from '../../types/navigation';
 import type { Project, Business } from '../../types/api';
 import { LucideIcon } from 'lucide-react-native';
 
-type MarketerEarningsScreenProps = RootStackScreenProps<'MarketerEarnings'>;
+type MarketerEarningsScreenProps = MarketerTabScreenProps<'Earnings'>;
 
 type EarningStatus = 'paid' | 'pending' | 'rejected' | 'cancelled' | 'processing';
 type CashoutStatus = 'pending' | 'processing' | 'paid' | 'rejected';
@@ -81,7 +83,7 @@ const STATUS_ICONS: Record<string, LucideIcon> = {
 
 const MarketerEarnings: React.FC<MarketerEarningsScreenProps> = ({ navigation }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   
   const [earnings, setEarnings] = useState<Earning[]>([]);
   const [cashouts, setCashouts] = useState<CashoutRow[]>([]);
@@ -93,9 +95,9 @@ const MarketerEarnings: React.FC<MarketerEarningsScreenProps> = ({ navigation })
     pendingCommissions: 0,
   });
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     fetchEarnings();
-  }, []);
+  }, []));
 
   const fetchEarnings = async (): Promise<void> => {
     try {
@@ -105,7 +107,7 @@ const MarketerEarnings: React.FC<MarketerEarningsScreenProps> = ({ navigation })
         listMyCashouts().catch(() => []),
       ]);
 
-      setEarnings((earningsData || []) as Earning[]);
+      setEarnings((earningsData || []).map(row => ({ ...row, amount: commissionAmount(row) })) as Earning[]);
       setCashouts((cashoutData || []) as CashoutRow[]);
 
       setSummary({
@@ -142,8 +144,8 @@ const MarketerEarnings: React.FC<MarketerEarningsScreenProps> = ({ navigation })
     
     return (
       <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
-        <IconComponent size={14} color={statusColors.text} strokeWidth={2} />
-        <Text style={[styles.statusText, { color: statusColors.text }]}>
+        <IconComponent size={14} color={statusColors.color} strokeWidth={2} />
+        <Text style={[styles.statusText, { color: statusColors.color }]}>
           {status?.charAt(0)?.toUpperCase() + status?.slice(1) || 'Pending'}
         </Text>
       </View>
@@ -199,7 +201,7 @@ const MarketerEarnings: React.FC<MarketerEarningsScreenProps> = ({ navigation })
     <EmptyState 
       icon={CreditCard}
       title="No Earnings Yet"
-      subtitle="Your commission earnings will appear here once your referrals convert to projects."
+      message="Your commission earnings will appear here once your referrals convert to projects."
     />
   );
 

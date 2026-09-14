@@ -1,4 +1,4 @@
-import type * as Contacts from 'expo-contacts';
+import type * as Contacts from 'expo-contacts/legacy';
 
 export type CustomerFormFromContact = {
   name: string;

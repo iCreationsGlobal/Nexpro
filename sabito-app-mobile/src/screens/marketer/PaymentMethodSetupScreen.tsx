@@ -47,7 +47,7 @@ const PROVIDERS: PaymentProvider[] = [
 
 const PaymentMethodSetupScreen: React.FC<PaymentMethodSetupScreenProps> = ({ navigation }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   const { dialog, showDialog, hideDialog } = useDialog();
   
   const [user, setUser] = useState<UserType | null>(null);
@@ -64,24 +64,18 @@ const PaymentMethodSetupScreen: React.FC<PaymentMethodSetupScreenProps> = ({ nav
 
   const loadUser = async (): Promise<void> => {
     try {
-      const userData = await AsyncStorage.getItem('user');
-      if (userData) {
-        const parsedUser = JSON.parse(userData) as UserType;
-        setUser(parsedUser);
-        
-        // Pre-fill if user already has payment method
-        if (parsedUser.paymentProvider) {
-          setSelectedProvider(parsedUser.paymentProvider);
-        }
-        if (parsedUser.paymentNumber) {
-          setPhoneNumber(parsedUser.paymentNumber);
-        }
-        if (parsedUser.accountName) {
-          setAccountName(parsedUser.accountName);
-        }
-      }
+      setIsLoading(true);
+      const { marketer } = await getMarketerSession();
+      const currentUser = { ...marketer, userID: marketer.id } as UserType;
+      setUser(currentUser);
+      setSelectedProvider(marketer.paymentProvider || null);
+      setPhoneNumber(marketer.momoNumber || '');
+      setAccountName(marketer.accountName || '');
+      await AsyncStorage.setItem('user', JSON.stringify(currentUser));
     } catch (error) {
-      // Handle error
+      showDialog({ title: 'Unable to load payment details', message: 'Check your connection and try again.', buttons: [{ text: 'Retry', onPress: () => { hideDialog(); loadUser(); } }, { text: 'Cancel', onPress: hideDialog }] });
+    } finally {
+      setIsLoading(false);
     }
   };
 

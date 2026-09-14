@@ -18,6 +18,10 @@ Auth: `Authorization: Bearer <jwt>` where JWT payload is `{ id, type: "sabito_ma
 | POST | `/public/sabito-marketer/auth/login` | no |
 | GET | `/public/sabito-marketer/auth/me` | marketer |
 | PATCH | `/public/sabito-marketer/auth/profile` | marketer |
+| POST | `/public/sabito-marketer/auth/forgot-password` | no | body `{ email }`; generic acknowledgement |
+| POST | `/public/sabito-marketer/auth/reset-password` | no | body `{ email, code, password }` |
+| POST | `/public/sabito-marketer/auth/change-password` | marketer | body `{ currentPassword, password }` |
+| DELETE | `/public/sabito-marketer/auth/account` | marketer | body `{ password }`; closes access while retaining settlement records |
 
 ## Partnerships
 
@@ -47,6 +51,8 @@ Match: normalized email OR phone to tenant `Customer`; first-touch attribution.
 | POST | `/public/sabito-marketer/cashouts` | marketer | body `{ commissionIds: string[], notes? }` |
 | GET | `/public/sabito-marketer/cashouts` | marketer |
 | GET | `/public/sabito-marketer/cashouts/:id` | marketer |
+
+Cashout eligibility: `status === "due"`, `remittanceStatus === "collected"`, and no `cashoutRequestId`. A request contains commissions from one business only. Display `marketerShareAmount ?? amount`, preserving an explicit zero share. The server computes the final amount.
 
 Commission statuses: `due` → `cashout_pending` → `paid` (reject cashout → back to `due`).
 

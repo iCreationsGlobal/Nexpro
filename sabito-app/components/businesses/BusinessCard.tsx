@@ -25,7 +25,7 @@ export function BusinessCard({ business, featured = false }: { business: Marketp
   return (
     <Link
       href={`/businesses/${business.slug}`}
-      className="group block overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:border-[var(--sabito-green)]"
+      className="group block overflow-hidden rounded-2xl border border-brand-200 bg-white transition hover:border-[var(--sabito-green)]"
     >
       <div className="aspect-[4/3] bg-[var(--sabito-mint)]">
         {business.logoUrl ? (
@@ -43,11 +43,11 @@ export function BusinessCard({ business, featured = false }: { business: Marketp
       </div>
       <div className="space-y-1 p-4">
         <p className="text-xs font-medium text-[var(--sabito-green)]">{business.category}</p>
-        <h3 className="font-semibold text-slate-900 group-hover:text-[var(--sabito-green-dark)]">
+        <h3 className="font-semibold text-brand-900 group-hover:text-[var(--sabito-green-dark)]">
           {business.name}
         </h3>
-        <p className="text-sm text-slate-500">{business.location}</p>
-        <p className="text-sm font-semibold text-slate-900">
+        <p className="text-sm text-brand-500">{business.location}</p>
+        <p className="text-sm font-semibold text-brand-900">
           Commission from {business.commissionFrom}%
         </p>
         {business.applicationsOpen === false ? (

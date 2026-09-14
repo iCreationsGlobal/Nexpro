@@ -54,6 +54,7 @@ import {
   productRequiresVariantSelection,
   type ProductVariantStockInput,
 } from '@/utils/productStock';
+import { findLoadedBarcodeProduct } from '@/utils/posBarcodeLookup';
 import { deriveBarcodeSearchCandidates } from '@/utils/barcodeSearchCandidates';
 import { Image } from 'expo-image';
 
@@ -186,12 +187,12 @@ export default function ScanScreen() {
   // Check if search query looks like a barcode (numeric or alphanumeric, typically longer)
   const isLikelyBarcode = barcodeSearchCandidates.some((candidate) => /^[A-Z0-9]{6,}$/i.test(candidate));
 
-  // Fetch default product list (most frequent/popular products) when no search
+  // Load the active catalog for immediate barcode matches; show 30 suggestions below.
   const { data: defaultProductsResponse, isLoading: loadingDefaultProducts } = useQuery({
-    queryKey: ['products', 'default', activeTenantId, activeShopId, activeStudioLocationId],
+    queryKey: ['products', 'default', activeTenantId, activeShopId, activeStudioLocationId, 'barcode-catalog'],
     queryFn: () =>
       productService.getProducts({
-        limit: 30,
+        limit: 1000,
         isActive: true,
       }),
     enabled: productQueriesEnabled && !debouncedSearch && !scannedProduct,
@@ -441,6 +442,24 @@ export default function ScanScreen() {
           }
         }
       } else {
+        const loadedProduct = productQueriesEnabled
+          ? findLoadedBarcodeProduct([
+              ...parseApiListResponse<ScanProduct>(defaultProductsResponse),
+              ...parseApiListResponse<ScanProduct>(productsResponse),
+            ], scannedData)
+          : null;
+        if (loadedProduct) {
+          pendingScanAddRef.current = false;
+          console.info('[Scan] Matched loaded catalog', { productId: loadedProduct.id });
+          if (scanToSell) {
+            handleProductSelect(loadedProduct);
+          } else {
+            setScannedProduct(loadedProduct);
+            setSearchQuery(loadedProduct.barcode || scannedData);
+          }
+          setScannerVisible(false);
+          return;
+        }
         setSearchQuery(scannedData);
         setScannedProduct(null);
         if (scanToSell) {
@@ -448,7 +467,7 @@ export default function ScanScreen() {
         }
       }
     },
-    [scanToSell, handleProductSelect]
+    [scanToSell, handleProductSelect, productQueriesEnabled, defaultProductsResponse, productsResponse]
   );
 
   const handleSelectVariantForCart = useCallback(
@@ -532,7 +551,7 @@ export default function ScanScreen() {
         return stockB - stockA; // Higher stock first
       }
       return (a.name || '').localeCompare(b.name || ''); // Alphabetical if same stock
-    });
+    }).slice(0, 30);
   }, [defaultProductsResponse]);
 
   // Products from search

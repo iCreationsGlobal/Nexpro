@@ -1,5 +1,5 @@
 import { Alert, Linking, Platform } from 'react-native';
-import * as Contacts from 'expo-contacts';
+import * as Contacts from 'expo-contacts/legacy';
 
 import {
   mapContactToRow,

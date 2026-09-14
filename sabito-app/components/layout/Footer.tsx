@@ -34,7 +34,7 @@ export function Footer() {
               </li>
               <li>
                 <Link href="/ai-match" className="hover:text-[var(--sabito-lemon-green)]">
-                  AI Match
+                  Partner search
                 </Link>
               </li>
               <li>

@@ -10,7 +10,7 @@ export function Logo({ light = false }: { light?: boolean } = {}) {
         alt=""
         className="h-8 w-8 rounded-lg object-contain"
       />
-      <span className={light ? "text-white" : "text-slate-900"}>{SITE_NAME}</span>
+      <span className={light ? "text-white" : "text-brand-900"}>{SITE_NAME}</span>
     </Link>
   );
 }

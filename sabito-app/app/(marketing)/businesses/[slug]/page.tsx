@@ -62,7 +62,7 @@ export default function BusinessDetailPage() {
   };
 
   if (loading) {
-    return <p className="mx-auto max-w-3xl px-4 py-10 text-sm text-slate-500">Loading…</p>;
+    return <p className="mx-auto max-w-3xl px-4 py-10 text-sm text-brand-500">Loading…</p>;
   }
   if (!business) {
     return (
@@ -78,33 +78,33 @@ export default function BusinessDetailPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <p className="text-sm font-medium text-[var(--sabito-teal)]">{business.category}</p>
-      <h1 className="mt-1 text-3xl font-bold text-slate-900">{business.name}</h1>
-      <p className="mt-1 text-slate-500">{business.location}</p>
-      <p className="mt-4 text-slate-700">{business.pitch || business.description}</p>
+      <h1 className="mt-1 text-3xl font-bold text-brand-900">{business.name}</h1>
+      <p className="mt-1 text-brand-500">{business.location}</p>
+      <p className="mt-4 text-brand-700">{business.pitch || business.description}</p>
 
-      <div className="mt-6 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+      <div className="mt-6 grid gap-3 rounded-2xl border border-brand-200 bg-brand-50 p-4 sm:grid-cols-2">
         <div>
-          <p className="text-xs text-slate-500">First-client commission</p>
+          <p className="text-xs text-brand-500">First-client commission</p>
           <p className="font-semibold">{business.firstClientRatePercent ?? business.commissionFrom}%</p>
         </div>
         <div>
-          <p className="text-xs text-slate-500">Returning-client commission</p>
+          <p className="text-xs text-brand-500">Returning-client commission</p>
           <p className="font-semibold">{business.returningClientRatePercent ?? "—"}%</p>
         </div>
         <div>
-          <p className="text-xs text-slate-500">Slots left</p>
+          <p className="text-xs text-brand-500">Slots left</p>
           <p className="font-semibold">{business.slotsLeft ?? "—"}</p>
         </div>
         <div>
-          <p className="text-xs text-slate-500">Payout notes</p>
+          <p className="text-xs text-brand-500">Payout notes</p>
           <p className="text-sm">{business.payoutNotes || "After the business remits commissions to ABS, request cashout in Sabito. ABS pays your marketer share to your saved payout method."}</p>
         </div>
       </div>
 
       {business.services && business.services.length > 0 ? (
         <div className="mt-6">
-          <h2 className="font-semibold text-slate-900">Services in program</h2>
-          <ul className="mt-2 space-y-1 text-sm text-slate-700">
+          <h2 className="font-semibold text-brand-900">Services in program</h2>
+          <ul className="mt-2 space-y-1 text-sm text-brand-700">
             {business.services.map((s) => (
               <li key={s.id}>
                 {s.label} — first {s.firstClientRatePercent}% / returning {s.returningClientRatePercent}%
@@ -114,8 +114,8 @@ export default function BusinessDetailPage() {
         </div>
       ) : null}
 
-      <form onSubmit={onApply} className="mt-8 space-y-3 rounded-2xl border border-slate-200 p-5">
-        <h2 className="font-semibold text-slate-900">Apply to partner</h2>
+      <form onSubmit={onApply} className="mt-8 space-y-3 rounded-2xl border border-brand-200 p-5">
+        <h2 className="font-semibold text-brand-900">Apply to partner</h2>
         <Input
           placeholder="Short pitch / experience (optional)"
           value={pitch}

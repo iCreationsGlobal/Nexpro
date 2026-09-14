@@ -36,8 +36,8 @@ export default function SignupPage() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Create account</h1>
-        <p className="mt-1 text-sm text-slate-500">Join Sabito as a marketer</p>
+        <h1 className="text-2xl font-bold text-brand-900">Create account</h1>
+        <p className="mt-1 text-sm text-brand-500">Join Sabito as a marketer</p>
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Full name</label>
@@ -57,6 +57,7 @@ export default function SignupPage() {
           type="password"
           required
           minLength={8}
+          maxLength={128}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
@@ -65,7 +66,7 @@ export default function SignupPage() {
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Creating…" : "Create account"}
       </Button>
-      <p className="text-center text-sm text-slate-500">
+      <p className="text-center text-sm text-brand-500">
         Already have an account?{" "}
         <Link href="/login" className="text-[var(--sabito-teal)]">
           Sign in

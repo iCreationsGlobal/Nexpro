@@ -1,5 +1,7 @@
 "use client";
 
+import { useBrowserSearch } from "@/lib/browserState";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
@@ -11,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 type AnyRow = Record<string, unknown>;
+const fetchRows = () => Promise.all([listMyPartnerships(), listMyReferrals()]);
 
 export default function ReferralsPage() {
   const [partnerships, setPartnerships] = useState<AnyRow[]>([]);
@@ -25,12 +28,13 @@ export default function ReferralsPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [showForm, setShowForm] = useState(false);
+  const browserSearch = useBrowserSearch();
+  const [formChoice, setShowForm] = useState<boolean | null>(null);
+  const showForm = formChoice ?? (new URLSearchParams(browserSearch).get("add") === "1");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
 
-  const load = async () => {
-    const [partners, refs] = await Promise.all([listMyPartnerships(), listMyReferrals()]);
+  const applyRows = ([partners, refs]: Awaited<ReturnType<typeof fetchRows>>) => {
     const partnerRows = ((partners.data || []) as AnyRow[]).filter(p => p.status === "active");
     setPartnerships(partnerRows);
     setReferrals((refs.data || []) as AnyRow[]);
@@ -40,9 +44,14 @@ export default function ReferralsPage() {
     });
   };
 
+  const load = () => fetchRows().then(applyRows);
+
   useEffect(() => {
-    setShowForm(new URLSearchParams(window.location.search).get("add") === "1");
-    load().catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load")).finally(() => setLoading(false));
+    let active = true;
+    fetchRows().then((rows) => { if (active) applyRows(rows); })
+      .catch((err) => { if (active) setLoadError(err instanceof Error ? err.message : "Failed to load"); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
 
   const submit = async () => {
@@ -86,8 +95,8 @@ export default function ReferralsPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Referrals</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-2xl font-bold text-brand-900">Referrals</h1>
+        <p className="text-sm text-brand-500">
           Refer clients to your partners and track each connection in one place.
         </p>
       </div>
@@ -95,14 +104,14 @@ export default function ReferralsPage() {
       {message && <p role="status" className={`rounded-xl p-4 text-sm ${message.startsWith("Referral submitted") ? "bg-green-50 text-green-900" : "bg-red-50 text-red-800"}`}>{message}</p>}
       {partnerships.length === 0 ? (
         <section className="workspace-onboarding"><div><h2>Partner with a business to start referring clients</h2><p>Browse businesses and send an application. Once approved, you can submit referrals here.</p></div><Link href="/businesses" className="workspace-action">Browse businesses</Link></section>
-      ) : <Button disabled={saving} onClick={() => setShowForm(v => !v)}>{showForm ? "Cancel" : "Add referral"}</Button>}
-      {showForm && partnerships.length > 0 && <form className="rounded-2xl border border-slate-200 bg-white p-5" aria-label="Add referral" onSubmit={event => { event.preventDefault(); void submit(); }}>
-        <h2 className="font-semibold text-slate-900">Add referral</h2>
+      ) : <Button disabled={saving} onClick={() => setShowForm(!showForm)}>{showForm ? "Cancel" : "Add referral"}</Button>}
+      {showForm && partnerships.length > 0 && <form className="rounded-2xl border border-brand-200 bg-white p-5" aria-label="Add referral" onSubmit={event => { event.preventDefault(); void submit(); }}>
+        <h2 className="font-semibold text-brand-900">Add referral</h2>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
-            <label className="text-sm text-slate-600">
+            <label className="text-sm text-brand-600">
               Partnership
               <select
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm"
                 value={partnershipId}
                 onChange={(e) => setPartnershipId(e.target.value)}
               >
@@ -117,23 +126,23 @@ export default function ReferralsPage() {
                 })}
               </select>
             </label>
-            <label className="text-sm text-slate-600">
+            <label className="text-sm text-brand-600">
               Client name *
               <Input className="mt-1" value={clientName} onChange={(e) => setClientName(e.target.value)} />
             </label>
-            <label className="text-sm text-slate-600">
+            <label className="text-sm text-brand-600">
               Client email (or phone)
               <Input className="mt-1" type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
             </label>
-            <label className="text-sm text-slate-600">
+            <label className="text-sm text-brand-600">
               Client phone (or email)
               <Input className="mt-1" type="tel" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} />
             </label>
-            <label className="text-sm text-slate-600">
+            <label className="text-sm text-brand-600">
               Location (optional)
               <Input className="mt-1" value={location} onChange={(e) => setLocation(e.target.value)} />
             </label>
-            <label className="text-sm text-slate-600">
+            <label className="text-sm text-brand-600">
               Note (optional)
               <Input className="mt-1" value={note} onChange={(e) => setNote(e.target.value)} />
             </label>
@@ -146,23 +155,23 @@ export default function ReferralsPage() {
       </form>}
 
       <section>
-        <h2 className="font-semibold text-slate-900">Your referrals</h2>
+        <h2 className="font-semibold text-brand-900">Your referrals</h2>
         <div className="my-4 flex flex-wrap gap-3">
           <Input aria-label="Search referrals" placeholder="Search by client name, email or phone" value={search} onChange={e => setSearch(e.target.value)} className="max-w-sm" />
-          <select aria-label="Referral status" value={status} onChange={e => setStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><option value="all">All statuses</option>{Array.from(new Set(referrals.map(r => String(r.status)))).sort().map(value => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select>
+          <select aria-label="Referral status" value={status} onChange={e => setStatus(e.target.value)} className="rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm"><option value="all">All statuses</option>{Array.from(new Set(referrals.map(r => String(r.status)))).sort().map(value => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select>
         </div>
         <div className="mt-3 space-y-2">
           {filtered.length === 0 ? (
-            <p className="text-sm text-slate-500">{referrals.length ? "No referrals match your search." : "Your referrals will appear here once submitted."}</p>
+            <p className="text-sm text-brand-500">{referrals.length ? "No referrals match your search." : "Your referrals will appear here once submitted."}</p>
           ) : (
             filtered.map((r) => (
               <Link
                 key={String(r.id)}
                 href={`/referrals/${r.id}`}
-                className="block rounded-xl border border-slate-200 bg-white p-3 text-sm hover:border-[var(--sabito-green)]"
+                className="block rounded-xl border border-brand-200 bg-white p-3 text-sm hover:border-[var(--sabito-green)]"
               >
                 <p className="font-medium">{String(r.clientName || "Client")}</p>
-                <p className="text-slate-500">
+                <p className="text-brand-500">
                   {String(r.status)}
                   {r.email ? ` · ${String(r.email)}` : ""}
                   {r.phone ? ` · ${String(r.phone)}` : ""}

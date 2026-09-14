@@ -19,7 +19,6 @@ export default function DashboardPage() {
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); setError("");
     Promise.all([getMarketerSession(), getMarketerDashboard(), listMyApplications(), listMyReferrals(), listMyCashouts()]).then(([me, dash, apps, refs, cashouts]) => {
       if (cancelled) return;
       setName(me.data.marketer.name); setStats(dash.data);
@@ -33,7 +32,7 @@ export default function DashboardPage() {
   }, [attempt]);
   const amount = (value: unknown) => hidden ? "••••••" : money(value);
   if (loading) return <div className="workspace-page" role="status">Loading your overview…</div>;
-  if (error) return <div className="workspace-page" role="alert"><h1>Overview unavailable</h1><p>{error}</p><button className="workspace-action" onClick={() => setAttempt(a => a + 1)}>Try again</button></div>;
+  if (error) return <div className="workspace-page" role="alert"><h1>Overview unavailable</h1><p>{error}</p><button className="workspace-action" onClick={() => { setLoading(true); setError(""); setAttempt(a => a + 1); }}>Try again</button></div>;
   return <div className="workspace-page">
     <div className="workspace-page-heading"><div><p className="workspace-eyebrow">YOUR SABITO</p><h1>Hi, {name.split(" ")[0] || "there"}</h1><p>Here’s how your connections are paying off.</p></div><Link href="/businesses" className="workspace-link">Find a business <ArrowUpRight size={18} /></Link></div>
     <section className="workspace-balance" aria-label="Earnings summary">

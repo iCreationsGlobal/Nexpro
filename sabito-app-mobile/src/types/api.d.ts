@@ -24,6 +24,14 @@ export interface LoginResponse {
 }
 
 export interface User {
+  userID?: string;
+  phone?: string;
+  momoNumber?: string;
+  bankDetails?: string;
+  paymentProvider?: string;
+  paymentNumber?: string;
+  accountName?: string;
+  paymentMethod?: string;
   id: string;
   email: string;
   name: string;
@@ -60,6 +68,7 @@ export interface SignupResponse {
 // Business Types
 export interface Business {
   id: string;
+  website?: string;
   businessId?: string;
   businessName: string;
   name?: string;
@@ -78,12 +87,13 @@ export interface Business {
   partnershipStatus?: string;
   averageRating?: number;
   totalRatings?: number;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // Referral Types
 export interface Referral {
+  note?: string;
   id: string;
   clientName: string;
   clientEmail?: string;

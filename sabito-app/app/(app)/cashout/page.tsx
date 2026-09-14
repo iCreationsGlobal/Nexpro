@@ -28,7 +28,6 @@ export default function CashoutPage() {
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    setLoading(true); setLoadError("");
     (async () => {
       const [earn, me] = await Promise.all([listMyEarnings("due"), getMarketerSession()]);
       const rows = ((earn.data || []) as AnyRow[]).filter(canCashout);
@@ -78,15 +77,15 @@ export default function CashoutPage() {
 
   if (loading) return <div className="workspace-page" role="status">Loading available commissions…</div>;
 
-  if (loadError) return <div className="workspace-page" role="alert"><p>{loadError}</p><Button onClick={() => setAttempt(a => a + 1)}>Try again</Button></div>;
+  if (loadError) return <div className="workspace-page" role="alert"><p>{loadError}</p><Button onClick={() => { setLoading(true); setLoadError(""); setAttempt(a => a + 1); }}>Try again</Button></div>;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <Link href="/earnings">
         <Button variant="ghost">← Back to earnings</Button>
       </Link>
-      <h1 className="mt-4 text-2xl font-bold text-slate-900">Request cashout</h1>
-      <p className="mt-1 text-sm text-slate-500">
+      <h1 className="mt-4 text-2xl font-bold text-brand-900">Request cashout</h1>
+      <p className="mt-1 text-sm text-brand-500">
         Select available commissions from one business per request. Track the payout status in Earnings.
       </p>
 
@@ -100,20 +99,20 @@ export default function CashoutPage() {
       ) : null}
 
       {due.length > 0 && <label className="mt-6 block text-sm">Business
-        <select className="mt-2 block w-full rounded-lg border border-slate-200 bg-white p-3" value={businessId} onChange={event => { const id = event.target.value; setBusinessId(id); setSelected(new Set(due.filter(row => String(row.tenantId) === id).map(row => String(row.id)))); }}>
+        <select className="mt-2 block w-full rounded-lg border border-brand-200 bg-white p-3" value={businessId} onChange={event => { const id = event.target.value; setBusinessId(id); setSelected(new Set(due.filter(row => String(row.tenantId) === id).map(row => String(row.id)))); }}>
           {Array.from(new Set(due.map(row => String(row.tenantId)))).map(id => { const row = due.find(row => String(row.tenantId) === id); return <option key={id} value={id}>{String((row?.tenant as AnyRow)?.name || id)}</option>; })}
         </select>
       </label>}
       <div className="mt-6 space-y-2">
         {due.length === 0 ? (
-          <p className="text-sm text-slate-500">No due commissions.</p>
+          <p className="text-sm text-brand-500">No due commissions.</p>
         ) : (
           due.filter(e => String(e.tenantId) === businessId).map((e) => {
             const id = String(e.id);
             return (
               <label
                 key={id}
-                className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm"
+                className="flex cursor-pointer items-center gap-3 rounded-xl border border-brand-200 bg-white p-3 text-sm"
               >
                 <input
                   type="checkbox"
@@ -129,7 +128,7 @@ export default function CashoutPage() {
         )}
       </div>
 
-      <label className="mt-4 block text-sm text-slate-600">
+      <label className="mt-4 block text-sm text-brand-600">
         Notes (optional)
         <Input className="mt-1" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
@@ -138,7 +137,7 @@ export default function CashoutPage() {
         <Button type="button" disabled={loading || saving || !hasPayout || selected.size === 0} onClick={submit}>
           {saving ? "Submitting…" : `Request GHS ${total.toFixed(2)}`}
         </Button>
-        {message ? <p className="text-sm text-slate-500">{message}</p> : null}
+        {message ? <p className="text-sm text-brand-500">{message}</p> : null}
       </div>
     </div>
   );

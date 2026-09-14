@@ -64,7 +64,7 @@ export default function HowItWorksPage() {
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: "url(/brand/marketing/how-it-works-hero.webp)" }}
         />
-        <div className="absolute inset-0 bg-[#0f172a]/80" />
+        <div className="absolute inset-0 bg-[#00351f]/80" />
         <div className="relative mx-auto max-w-4xl px-4 py-20 text-center md:py-28">
           <h1 className="text-4xl font-bold tracking-tight md:text-5xl">
             Get performance-based referrals — only pay when you win
@@ -94,45 +94,45 @@ export default function HowItWorksPage() {
         </h2>
         <div className="mt-8 grid gap-8 md:grid-cols-3">
           {BUSINESS_STEPS.map((step) => (
-            <div key={step.n} className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div key={step.n} className="rounded-2xl border border-brand-200 bg-white p-5">
               <div className="flex items-center gap-3">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--sabito-green)] text-sm font-bold text-white">
                   {step.n}
                 </span>
-                <h3 className="text-lg font-semibold text-slate-900">{step.title}</h3>
+                <h3 className="text-lg font-semibold text-brand-900">{step.title}</h3>
               </div>
-              <p className="mt-3 text-sm leading-relaxed text-slate-600">{step.description}</p>
+              <p className="mt-3 text-sm leading-relaxed text-brand-600">{step.description}</p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={step.image}
                 alt=""
-                className="mt-5 w-full rounded-xl border border-slate-100 object-cover"
+                className="mt-5 w-full rounded-xl border border-brand-100 object-cover"
               />
             </div>
           ))}
         </div>
       </section>
 
-      <section className="border-y border-slate-200 bg-slate-50" id="for-marketers">
+      <section className="border-y border-brand-200 bg-brand-50" id="for-marketers">
         <div className="mx-auto max-w-6xl px-4 py-16">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--sabito-green)]">
             For marketers
           </h2>
           <div className="mt-8 grid gap-8 md:grid-cols-3">
             {MARKETER_STEPS.map((step) => (
-              <div key={step.n} className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div key={step.n} className="rounded-2xl border border-brand-200 bg-white p-5">
                 <div className="flex items-center gap-3">
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--sabito-green)] text-sm font-bold text-white">
                     {step.n}
                   </span>
-                  <h3 className="text-lg font-semibold text-slate-900">{step.title}</h3>
+                  <h3 className="text-lg font-semibold text-brand-900">{step.title}</h3>
                 </div>
-                <p className="mt-3 text-sm leading-relaxed text-slate-600">{step.description}</p>
+                <p className="mt-3 text-sm leading-relaxed text-brand-600">{step.description}</p>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={step.image}
                   alt=""
-                  className="mt-5 w-full rounded-xl border border-slate-100 object-cover"
+                  className="mt-5 w-full rounded-xl border border-brand-100 object-cover"
                 />
               </div>
             ))}
@@ -141,9 +141,9 @@ export default function HowItWorksPage() {
       </section>
 
       <section className="mx-auto max-w-6xl px-4 py-16">
-        <h2 className="text-3xl font-bold text-slate-900">See Sabito in action</h2>
-        <div className="mt-6 max-w-3xl space-y-4 text-slate-600">
-          <h3 className="text-xl font-semibold text-slate-900">
+        <h2 className="text-3xl font-bold text-brand-900">See Sabito in action</h2>
+        <div className="mt-6 max-w-3xl space-y-4 text-brand-600">
+          <h3 className="text-xl font-semibold text-brand-900">
             Track referrals · Manage partnerships · Earn commissions
           </h3>
           <p>
@@ -185,7 +185,7 @@ export default function HowItWorksPage() {
       </section>
 
       <section className="mx-auto max-w-3xl px-4 py-16">
-        <h2 className="text-center text-3xl font-bold text-slate-900">Got questions?</h2>
+        <h2 className="text-center text-3xl font-bold text-brand-900">Got questions?</h2>
         <div className="mt-8 space-y-3">
           {[
             [
@@ -201,9 +201,9 @@ export default function HowItWorksPage() {
               "Businesses remit commissions to ABS. Once collected, marketers request cashout in Sabito and ABS pays their share by MoMo or bank.",
             ],
           ].map(([q, a]) => (
-            <details key={q} className="rounded-xl border border-slate-200 bg-white p-4">
-              <summary className="cursor-pointer font-semibold text-slate-900">{q}</summary>
-              <p className="mt-2 text-sm text-slate-600">{a}</p>
+            <details key={q} className="rounded-xl border border-brand-200 bg-white p-4">
+              <summary className="cursor-pointer font-semibold text-brand-900">{q}</summary>
+              <p className="mt-2 text-sm text-brand-600">{a}</p>
             </details>
           ))}
         </div>

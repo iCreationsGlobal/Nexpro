@@ -15,7 +15,7 @@ interface BackButtonProps {
 
 const BackButton: React.FC<BackButtonProps> = ({ onPress, style, iconColor, iconSize = 24 }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   
   const finalIconColor = iconColor || colors.text;
   const borderColor = colors.border;

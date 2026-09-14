@@ -493,6 +493,7 @@ const POSScanMode = ({
   const handleScan = useCallback(async (decodedText) => {
     const text = (decodedText || '').trim();
     const looksLikeQRJson = text.startsWith('{');
+    console.log('[POS Scan] Received scan:', { code: text, looksLikeQRJson });
 
     let product = null;
     try {
@@ -500,24 +501,42 @@ const POSScanMode = ({
         const result = parseProductQRPayload(text);
         if (result.success) {
           product = await resolveProductFromQRPayload(result.data);
+          console.log('[POS Scan] QR payload resolved:', product ? { productId: product.id, name: product.name } : 'no match');
+          if (!product) {
+            showError('No product found for this QR code');
+          }
+        } else {
+          console.warn('[POS Scan] QR payload parse failed:', result.error);
+          showError(result.error || 'Invalid QR code');
         }
       } else if (getProductByBarcode) {
         product = await getProductByBarcode(text);
+        console.log('[POS Scan] Barcode lookup result:', { code: text, matched: Boolean(product), productId: product?.id, name: product?.name });
+        if (!product) {
+          showError(`No product found for barcode "${text}"`);
+        }
+      } else {
+        console.warn('[POS Scan] getProductByBarcode not provided to POSScanMode');
+        showError('Barcode lookup not available');
       }
       if (product) {
         if (product.selectedVariant?.id) {
+          console.log('[POS Scan] Adding scanned variant to cart:', { productId: product.id, variantId: product.selectedVariant.id });
           addProductToCart(product, product.selectedVariant);
         } else {
           const variants = getActiveVariants(product);
           if (variants.length > 0) {
+            console.log('[POS Scan] Product has variants — opening variant picker:', { productId: product.id, variantCount: variants.length });
             setVariantPickerProduct(product);
           } else {
+            console.log('[POS Scan] Adding scanned product to cart:', { productId: product.id, name: product.name });
             addProductToCart(product);
           }
         }
       }
     } catch (err) {
-      console.warn('Scan resolve error:', err);
+      console.error('[POS Scan] Scan resolve error:', { code: text, looksLikeQRJson, error: err?.message || err });
+      showError(looksLikeQRJson ? 'Could not look up product for this QR code' : 'Could not look up product for this barcode');
     }
   }, [addProductToCart, getProductByBarcode, resolveProductFromQRPayload]);
 

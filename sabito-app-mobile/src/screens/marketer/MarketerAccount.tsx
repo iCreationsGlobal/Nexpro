@@ -23,17 +23,17 @@ import { SPACING, FONT_SIZES, FONT_WEIGHTS } from '../../constants/sizes';
 import CustomDialog from '../../components/common/CustomDialog';
 import useDialog from '../../hooks/useDialog';
 import { logoutMarketer, getMarketerSession } from '../../api/absMarketer';
-import { TOKEN_KEY } from '../../config/env';
-import type { RootStackScreenProps } from '../../types/navigation';
+import { TOKEN_KEY, SABITO_SITE_URL } from '../../config/env';
+import type { MarketerTabScreenProps } from '../../types/navigation';
 import type { User as UserType } from '../../types/api';
 
-type MarketerAccountProps = RootStackScreenProps<'MarketerAccount'> & {
+type MarketerAccountProps = MarketerTabScreenProps<'Account'> & {
   onLogout?: () => void | Promise<void>;
 };
 
 const MarketerAccount: React.FC<MarketerAccountProps> = ({ navigation, onLogout }) => {
   const { theme, effectiveTheme } = useTheme();
-  const { colors, isDark } = getTheme(effectiveTheme || theme);
+  const { colors, isDark } = getTheme(effectiveTheme);
   const { dialog, showDialog, hideDialog } = useDialog();
   
   const [user, setUser] = useState<UserType | null>(null);
@@ -69,7 +69,7 @@ const MarketerAccount: React.FC<MarketerAccountProps> = ({ navigation, onLogout 
   const handleShare = async (): Promise<void> => {
     try {
       await Share.share({
-        message: 'Join me on Sabito! Connect with businesses and grow together. Download now: https://sabito.app',
+        message: `Join me on Sabito! Connect with businesses and grow together. Learn more: ${SABITO_SITE_URL}`,
         title: 'Sabito - Grow Your Network',
       });
     } catch {
@@ -335,7 +335,7 @@ const MarketerAccount: React.FC<MarketerAccountProps> = ({ navigation, onLogout 
               <Trash2 size={32} color={COLORS.ERROR} strokeWidth={1.5} />
               <Text style={[styles.modalTitle, { color: colors.text }]}>Close Account</Text>
               <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
-                This action cannot be undone. All your data will be permanently deleted.
+                Closing your account revokes access. Financial records are retained for outstanding settlements.
               </Text>
             </View>
 
@@ -675,7 +675,6 @@ const styles = StyleSheet.create({
 });
 
 export default MarketerAccount;
-
 
 
 

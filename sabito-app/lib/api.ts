@@ -57,7 +57,7 @@ async function request<T>(
     signal: options.signal ?? AbortSignal.timeout(10000),
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
+  if (!res.ok || json?.success === false) {
     const message = json?.message || json?.error || `Request failed (${res.status})`;
     throw new ApiError(message, res.status);
   }
@@ -216,14 +216,42 @@ export async function updateMarketerProfile(payload: {
 }
 
 export function persistAuth(token: string) {
-  if (typeof window !== "undefined") localStorage.setItem(TOKEN_KEY, token);
+  if (typeof window !== "undefined") { localStorage.setItem(TOKEN_KEY, token); window.dispatchEvent(new Event("sabito:auth-changed")); }
 }
 
 export function clearAuth() {
-  if (typeof window !== "undefined") localStorage.removeItem(TOKEN_KEY);
+  if (typeof window !== "undefined") { localStorage.removeItem(TOKEN_KEY); window.dispatchEvent(new Event("sabito:auth-changed")); }
 }
 
 export function getStoredToken() {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
+}
+
+export function requestPasswordReset(email: string) {
+  return request<{ success: boolean; data: { message: string } }>(
+    '/public/sabito-marketer/auth/forgot-password',
+    { method: 'POST', body: JSON.stringify({ email }) }
+  );
+}
+
+export function resetPassword(payload: { email: string; code: string; password: string }) {
+  return request<{ success: boolean; data: { message: string } }>(
+    '/public/sabito-marketer/auth/reset-password',
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+}
+
+export function changePassword(payload: { currentPassword: string; password: string }) {
+  return request<{ success: boolean; data: { message: string } }>(
+    '/public/sabito-marketer/auth/change-password',
+    { method: 'POST', auth: true, body: JSON.stringify(payload) }
+  );
+}
+
+export function closeAccount(password: string) {
+  return request<{ success: boolean; data: { message: string } }>(
+    '/public/sabito-marketer/auth/account',
+    { method: 'DELETE', auth: true, body: JSON.stringify({ password }) }
+  );
 }

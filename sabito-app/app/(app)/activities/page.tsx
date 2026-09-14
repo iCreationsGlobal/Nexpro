@@ -23,7 +23,6 @@ export default function ActivitiesPage() {
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    setLoading(true); setError("");
     (async () => {
       const [refs, cashouts, apps] = await Promise.all([
         listMyReferrals(),
@@ -62,22 +61,22 @@ export default function ActivitiesPage() {
   }, [attempt]);
 
   if (loading) return <div className="workspace-page" role="status">Loading activity…</div>;
-  if (error) return <div className="workspace-page" role="alert"><p>{error}</p><button className="workspace-action" onClick={() => setAttempt(a => a + 1)}>Try again</button></div>;
+  if (error) return <div className="workspace-page" role="alert"><p>{error}</p><button className="workspace-action" onClick={() => { setLoading(true); setError(""); setAttempt(a => a + 1); }}>Try again</button></div>;
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      <h1 className="text-2xl font-bold text-slate-900">All activities</h1>
+      <h1 className="text-2xl font-bold text-brand-900">All activities</h1>
       <div className="mt-6 space-y-2">
         {items.length === 0 ? (
-          <p className="text-sm text-slate-500">No activity yet.</p>
+          <p className="text-sm text-brand-500">No activity yet.</p>
         ) : (
           items.map((item) => (
             <Link
               key={item.id}
               href={item.href || "/dashboard"}
-              className="block rounded-xl border border-slate-200 bg-white p-3 text-sm hover:border-[var(--sabito-green)]"
+              className="block rounded-xl border border-brand-200 bg-white p-3 text-sm hover:border-[var(--sabito-green)]"
             >
               <p className="font-medium">{item.title}</p>
-              <p className="text-slate-500">
+              <p className="text-brand-500">
                 {item.subtitle}
                 {item.createdAt ? ` · ${new Date(item.createdAt).toLocaleDateString()}` : ""}
               </p>
