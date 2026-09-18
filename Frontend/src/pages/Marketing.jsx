@@ -4,11 +4,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   ArrowLeft,
-  CheckCircle2,
+  ArrowRight,
+  Calendar,
+  FileText,
   Loader2,
+  Mail,
   Megaphone,
+  MessageSquare,
   Plus,
   Send,
+  Tag as TagIcon,
+  UserPlus,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import marketingService from '../services/marketingService';
@@ -28,6 +35,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import {
   Table,
   TableBody,
@@ -37,6 +46,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { WhatsAppIcon } from '@/components/ui/WhatsAppIcon';
 
 const CARD_BORDER = { border: '1px solid #e5e7eb' };
 const DEFAULT_CAMPAIGN_PAGE_SIZE = 10;
@@ -44,11 +54,17 @@ const DEFAULT_CAMPAIGN_PAGE_SIZE = 10;
 const DEFAULT_FORM = {
   name: '',
   goal: 'Promotion',
+  audienceType: 'customer',
   activeOnly: true,
   marketingConsentOnly: false,
   lastPurchaseWindowDays: '',
   owingOnly: false,
   inactiveDays: '',
+  hasEmail: false,
+  hasPhone: false,
+  status: '',
+  source: '',
+  priority: '',
   channels: [],
   subject: '',
   emailBody: '',
@@ -58,10 +74,40 @@ const DEFAULT_FORM = {
   whatsappParamsText: '',
   whatsappPrependCustomerName: false,
   customerIds: undefined,
+  leadIds: undefined,
   scheduledAt: '',
+  tags: [],
 };
 
-const STEPS = ['Campaign details', 'Audience', 'Message', 'Review'];
+const LEAD_STATUS_OPTIONS = ['new', 'contacted', 'qualified', 'lost', 'converted'];
+const LEAD_PRIORITY_OPTIONS = ['low', 'medium', 'high'];
+const GOAL_OPTIONS = ['Promotion', 'Announcement', 'Win-back', 'Re-engagement', 'Product launch', 'Other'];
+
+const AUDIENCE_TYPES = [
+  { value: 'customer', label: 'Customers', description: 'Your existing customers', Icon: Users },
+  { value: 'lead', label: 'Leads', description: 'People who are not yet customers', Icon: UserPlus },
+];
+
+const CHANNEL_OPTIONS = [
+  { value: 'whatsapp', label: 'WhatsApp', description: 'Send via WhatsApp', Icon: WhatsAppIcon, iconClass: 'bg-[#25D366]/15 text-[#25D366]' },
+  { value: 'sms', label: 'SMS', description: 'Send text messages', Icon: MessageSquare, iconClass: 'bg-muted text-muted-foreground' },
+  { value: 'email', label: 'Email', description: 'Send via email', Icon: Mail, iconClass: 'bg-muted text-muted-foreground' },
+];
+
+/** Local datetime-local default value: one hour from now, seconds stripped. */
+function defaultScheduleValue() {
+  const d = new Date(Date.now() + 60 * 60 * 1000);
+  d.setSeconds(0, 0);
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+const STEPS = [
+  { title: 'Campaign details', subtitle: 'Basic information' },
+  { title: 'Audience', subtitle: 'Choose customers' },
+  { title: 'Message', subtitle: 'Write your message' },
+  { title: 'Review', subtitle: 'Check and send' },
+];
 const STATUS_STYLES = {
   draft: 'bg-slate-100 text-slate-700 border-slate-200',
   scheduled: 'bg-amber-100 text-amber-800 border-amber-200',
@@ -89,6 +135,7 @@ function getDefaultForm() {
     ...DEFAULT_FORM,
     channels: [],
     customerIds: undefined,
+    leadIds: undefined,
   };
 }
 
@@ -121,18 +168,34 @@ function toCampaignPayload(form) {
     .map((line) => line.trim())
     .filter(Boolean);
 
+  const audienceFilter = form.audienceType === 'lead'
+    ? {
+        activeOnly: form.activeOnly,
+        hasEmail: form.hasEmail,
+        hasPhone: form.hasPhone,
+        status: form.status || null,
+        source: form.source ? form.source.trim() : null,
+        priority: form.priority || null,
+        leadIds: form.leadIds,
+      }
+    : {
+        activeOnly: form.activeOnly,
+        marketingConsentOnly: form.marketingConsentOnly,
+        lastPurchaseWindowDays: form.lastPurchaseWindowDays ? Number(form.lastPurchaseWindowDays) : null,
+        owingOnly: form.owingOnly,
+        inactiveDays: form.inactiveDays ? Number(form.inactiveDays) : null,
+        hasEmail: form.hasEmail,
+        hasPhone: form.hasPhone,
+        customerIds: form.customerIds,
+      };
+
   return {
     name: form.name.trim(),
     goal: form.goal.trim() || null,
+    audienceType: form.audienceType,
+    tags: form.tags,
     channels: form.channels,
-    audienceFilter: {
-      activeOnly: form.activeOnly,
-      marketingConsentOnly: form.marketingConsentOnly,
-      lastPurchaseWindowDays: form.lastPurchaseWindowDays ? Number(form.lastPurchaseWindowDays) : null,
-      owingOnly: form.owingOnly,
-      inactiveDays: form.inactiveDays ? Number(form.inactiveDays) : null,
-      customerIds: form.customerIds,
-    },
+    audienceFilter,
     messageContent: {
       subject: form.subject.trim(),
       emailBody: form.emailBody,
@@ -149,16 +212,25 @@ function toCampaignPayload(form) {
 function formFromCampaign(campaign) {
   const audience = campaign?.audienceFilter || {};
   const message = campaign?.messageContent || {};
+  const audienceType = campaign?.audienceType === 'lead' ? 'lead' : 'customer';
   return {
     ...DEFAULT_FORM,
     name: campaign?.name || '',
     goal: campaign?.goal || '',
+    audienceType,
+    tags: Array.isArray(campaign?.tags) ? campaign.tags : [],
     activeOnly: audience.activeOnly !== false,
     marketingConsentOnly: Boolean(audience.marketingConsentOnly),
     lastPurchaseWindowDays: audience.lastPurchaseWindowDays || '',
     owingOnly: Boolean(audience.owingOnly),
     inactiveDays: audience.inactiveDays || '',
+    hasEmail: Boolean(audience.hasEmail),
+    hasPhone: Boolean(audience.hasPhone),
+    status: audience.status || '',
+    source: audience.source || '',
+    priority: audience.priority || '',
     customerIds: audience.customerIds,
+    leadIds: audience.leadIds,
     channels: Array.isArray(campaign?.channels) ? campaign.channels : [],
     subject: message.subject || '',
     emailBody: message.emailBody || '',
@@ -176,6 +248,7 @@ function formFromCampaign(campaign) {
 function validateStep(step, form) {
   if (step === 0) {
     if (!form.name.trim()) return 'Campaign name is required';
+    if (form.channels.length === 0) return 'Select at least one channel';
   }
   if (step === 2 || step === 3) {
     if (form.channels.length === 0) return 'Select at least one channel';
@@ -240,7 +313,7 @@ function MarketingOverview() {
     <div className="w-full space-y-4 md:space-y-6" data-tour="marketing-main">
       <PageHeader
         title="Marketing"
-        description="Plan, send, and track consent-aware customer campaigns across email, SMS, and WhatsApp."
+        description="Plan, send, and track campaigns to customers or leads across email, SMS, and WhatsApp."
         actions={
           <>
             <Button type="button" className="bg-brand hover:bg-brand-dark" onClick={openCreateDialog}>
@@ -298,6 +371,7 @@ function CampaignTable({ campaigns }) {
           <TableRow className="hover:bg-transparent">
             <TableHead>Name</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead className="hidden sm:table-cell">Audience</TableHead>
             <TableHead className="hidden md:table-cell">Channels</TableHead>
             <TableHead className="hidden lg:table-cell">Sent</TableHead>
             <TableHead className="text-right">Updated</TableHead>
@@ -313,6 +387,7 @@ function CampaignTable({ campaigns }) {
                 {campaign.goal ? <div className="text-xs text-muted-foreground">{campaign.goal}</div> : null}
               </TableCell>
               <TableCell><StatusBadge status={campaign.status} /></TableCell>
+              <TableCell className="hidden sm:table-cell text-sm text-muted-foreground capitalize">{campaign.audienceType === 'lead' ? 'Leads' : 'Customers'}</TableCell>
               <TableCell className="hidden md:table-cell capitalize">{channelsLabel(campaign.channels)}</TableCell>
               <TableCell className="hidden lg:table-cell">{statValue(campaign, 'totalSent')}</TableCell>
               <TableCell className="text-right text-sm text-muted-foreground">{formatDate(campaign.updatedAt)}</TableCell>
@@ -511,28 +586,46 @@ function CampaignList() {
   );
 }
 
-function ChannelToggle({ channel, label, available, form, setForm }) {
-  const checked = form.channels.includes(channel);
+function TagsInput({ value = [], onChange }) {
+  const [draft, setDraft] = useState('');
+
+  const commit = () => {
+    const tag = draft.trim();
+    if (tag && !value.includes(tag)) onChange([...value, tag]);
+    setDraft('');
+  };
+
   return (
-    <label className="flex items-start gap-3 rounded-md border border-border p-3">
-      <Checkbox
-        className="mt-0.5"
-        checked={checked}
-        disabled={!available}
-        onCheckedChange={(value) => {
-          setForm((prev) => ({
-            ...prev,
-            channels: value
-              ? [...new Set([...prev.channels, channel])]
-              : prev.channels.filter((item) => item !== channel),
-          }));
+    <div className="flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2">
+      {value.map((tag) => (
+        <span key={tag} className="flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs">
+          {tag}
+          <button
+            type="button"
+            onClick={() => onChange(value.filter((t) => t !== tag))}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label={`Remove tag ${tag}`}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ',') {
+            event.preventDefault();
+            commit();
+          } else if (event.key === 'Backspace' && !draft && value.length > 0) {
+            onChange(value.slice(0, -1));
+          }
         }}
+        onBlur={commit}
+        placeholder={value.length ? '' : 'Select tags'}
+        className="flex-1 min-w-[100px] bg-transparent text-sm outline-none placeholder:text-muted-foreground"
       />
-      <span>
-        <span className="block font-medium">{label}</span>
-        {!available ? <span className="text-xs text-muted-foreground">Configure this channel in Settings first.</span> : null}
-      </span>
-    </label>
+    </div>
   );
 }
 
@@ -545,6 +638,7 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [manualSelection, setManualSelection] = useState(false);
   const [form, setForm] = useState(() => getDefaultForm());
+  const recipientIdsField = form.audienceType === 'lead' ? 'leadIds' : 'customerIds';
 
   const { data: campaignResponse, isLoading: campaignLoading } = useQuery({
     queryKey: ['marketing', 'campaign', activeTenantId, id],
@@ -562,21 +656,35 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
   useEffect(() => {
     if (campaignResponse?.data) {
       const next = formFromCampaign(campaignResponse.data);
+      const nextIdsField = next.audienceType === 'lead' ? 'leadIds' : 'customerIds';
       setForm(next);
-      setManualSelection(Array.isArray(next.customerIds) && next.customerIds.length > 0);
-      setSelectedIds(new Set(next.customerIds || []));
+      setManualSelection(Array.isArray(next[nextIdsField]) && next[nextIdsField].length > 0);
+      setSelectedIds(new Set(next[nextIdsField] || []));
     }
   }, [campaignResponse]);
 
-  const previewParams = useMemo(() => ({
+  const previewParams = useMemo(() => (form.audienceType === 'lead' ? {
+    audienceType: 'lead',
+    activeOnly: form.activeOnly ? 'true' : 'false',
+    hasEmail: form.hasEmail ? 'true' : undefined,
+    hasPhone: form.hasPhone ? 'true' : undefined,
+    status: form.status || undefined,
+    source: form.source || undefined,
+    priority: form.priority || undefined,
+    channels: form.channels,
+    leadIds: manualSelection ? Array.from(selectedIds) : undefined,
+  } : {
+    audienceType: 'customer',
     activeOnly: form.activeOnly ? 'true' : 'false',
     marketingConsentOnly: form.marketingConsentOnly ? 'true' : 'false',
     lastPurchaseWindowDays: form.lastPurchaseWindowDays || undefined,
     owingOnly: form.owingOnly ? 'true' : undefined,
     inactiveDays: form.inactiveDays || undefined,
+    hasEmail: form.hasEmail ? 'true' : undefined,
+    hasPhone: form.hasPhone ? 'true' : undefined,
     channels: form.channels,
     customerIds: manualSelection ? Array.from(selectedIds) : undefined,
-  }), [form.activeOnly, form.marketingConsentOnly, form.lastPurchaseWindowDays, form.owingOnly, form.inactiveDays, form.channels, manualSelection, selectedIds]);
+  }), [form.audienceType, form.activeOnly, form.marketingConsentOnly, form.lastPurchaseWindowDays, form.owingOnly, form.inactiveDays, form.hasEmail, form.hasPhone, form.status, form.source, form.priority, form.channels, manualSelection, selectedIds]);
 
   const { data: previewResponse, isLoading: previewLoading } = useQuery({
     queryKey: ['marketing', 'preview', activeTenantId, previewParams],
@@ -615,7 +723,7 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
       const payload = {
         ...toCampaignPayload({
           ...form,
-          customerIds: manualSelection ? Array.from(selectedIds) : undefined,
+          [recipientIdsField]: manualSelection ? Array.from(selectedIds) : undefined,
         }),
       };
       const saved = isEdit
@@ -639,7 +747,7 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
       const payload = {
         ...toCampaignPayload({
           ...form,
-          customerIds: manualSelection ? Array.from(selectedIds) : undefined,
+          [recipientIdsField]: manualSelection ? Array.from(selectedIds) : undefined,
         }),
       };
       const saved = isEdit
@@ -681,7 +789,7 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
     }
     saveMutation.mutate(toCampaignPayload({
       ...form,
-      customerIds: manualSelection ? Array.from(selectedIds) : undefined,
+      [recipientIdsField]: manualSelection ? Array.from(selectedIds) : undefined,
     }));
   };
 
@@ -706,34 +814,180 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
     <>
       <DialogBody>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {STEPS.map((label, index) => (
-              <button
-                key={label}
-                type="button"
-                className={`rounded-md border px-3 py-2 text-left text-sm ${index === step ? 'border-brand bg-brand/10 text-brand' : 'border-border bg-background'}`}
-                onClick={() => setStep(index)}
-              >
-                <span className="block text-xs text-muted-foreground">Step {index + 1}</span>
-                <span className="font-medium">{label}</span>
-              </button>
+          <div className="flex items-start overflow-x-auto pb-1">
+            {STEPS.map((item, index) => (
+              <div key={item.title} className="flex items-start last:flex-none">
+                <button
+                  type="button"
+                  className="flex shrink-0 items-center gap-2.5 rounded-md py-1 pr-2 text-left"
+                  onClick={() => setStep(index)}
+                >
+                  <span
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                      index === step ? 'bg-brand text-white' : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {index + 1}
+                  </span>
+                  <span className="hidden sm:block">
+                    <span className={`block text-sm font-semibold whitespace-nowrap ${index === step ? 'text-brand' : 'text-foreground'}`}>
+                      {item.title}
+                    </span>
+                    <span className="block text-xs text-muted-foreground whitespace-nowrap">{item.subtitle}</span>
+                  </span>
+                </button>
+                {index < STEPS.length - 1 ? <span className="mt-4 h-px w-6 shrink-0 bg-border sm:w-10" /> : null}
+              </div>
             ))}
           </div>
 
           {step === 0 && (
         <Card style={CARD_BORDER}>
-          <CardHeader>
-            <CardTitle className="text-base">Campaign details</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-sm font-medium">Campaign name</span>
-              <Input value={form.name} onChange={(event) => setField('name', event.target.value)} placeholder="June promo" />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-medium">Goal (optional)</span>
-              <Input value={form.goal} onChange={(event) => setField('goal', event.target.value)} placeholder="Win back inactive customers" />
-            </label>
+          <CardContent className="space-y-6 pt-6">
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Who are you messaging?</span>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {AUDIENCE_TYPES.map(({ value, label, description, Icon }) => {
+                  const selected = form.audienceType === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      className={`flex items-start gap-3 rounded-lg border p-4 text-left transition ${
+                        selected ? 'border-brand bg-brand/5' : 'border-border bg-background hover:bg-muted/40'
+                      }`}
+                      onClick={() => {
+                        setForm((prev) => ({ ...prev, audienceType: value }));
+                        setManualSelection(false);
+                        setSelectedIds(new Set());
+                      }}
+                    >
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${selected ? 'bg-brand/15 text-brand' : 'bg-muted text-muted-foreground'}`}>
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-semibold">{label}</span>
+                        <span className="block text-xs text-muted-foreground">{description}</span>
+                      </span>
+                      <span className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${selected ? 'border-brand' : 'border-border'}`}>
+                        {selected ? <span className="h-2.5 w-2.5 rounded-full bg-brand" /> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Campaign name</span>
+                <Input value={form.name} onChange={(event) => setField('name', event.target.value)} placeholder="June Promotion" />
+                <p className="text-xs text-muted-foreground">Give your campaign a name (e.g. June Promo).</p>
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Goal (optional)</span>
+                <Select value={form.goal || undefined} onValueChange={(value) => setField('goal', value)}>
+                  <SelectTrigger>
+                    <span className="flex items-center gap-2 text-left">
+                      <Megaphone className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <SelectValue placeholder="Select a goal" />
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GOAL_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={option}>{option}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">What is the purpose of this campaign?</p>
+              </label>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div>
+                <span className="block text-sm font-semibold">Choose channel(s)</span>
+                <span className="block text-xs text-muted-foreground">Select where you want to send the campaign (you can choose more than one).</span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {CHANNEL_OPTIONS.map(({ value, label, description, Icon, iconClass }) => {
+                  const available = caps[value]?.available;
+                  const checked = form.channels.includes(value);
+                  return (
+                    <label
+                      key={value}
+                      className={`relative flex items-start gap-3 rounded-lg border p-4 transition ${
+                        checked ? 'border-brand bg-brand/5' : 'border-border bg-background'
+                      } ${available === false ? 'opacity-60' : 'cursor-pointer hover:bg-muted/40'}`}
+                    >
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconClass}`}>
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <span className="flex-1 min-w-0 pr-6">
+                        <span className="block text-sm font-semibold">{label}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {available === false ? 'Configure this channel in Settings first.' : description}
+                        </span>
+                      </span>
+                      <Checkbox
+                        className="absolute right-3 top-3"
+                        checked={checked}
+                        disabled={available === false}
+                        onCheckedChange={(value_) => {
+                          setForm((prev) => ({
+                            ...prev,
+                            channels: value_
+                              ? [...new Set([...prev.channels, value])]
+                              : prev.channels.filter((c) => c !== value),
+                          }));
+                        }}
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  Schedule (optional)
+                </span>
+                <Select
+                  value={form.scheduledAt ? 'later' : 'now'}
+                  onValueChange={(value) => setField('scheduledAt', value === 'now' ? '' : (form.scheduledAt || defaultScheduleValue()))}
+                >
+                  <SelectTrigger>
+                    <span className="flex items-center gap-2 text-left">
+                      <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <SelectValue />
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="now">Send now</SelectItem>
+                    <SelectItem value="later">Schedule for later</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.scheduledAt ? (
+                  <Input
+                    type="datetime-local"
+                    value={form.scheduledAt}
+                    onChange={(event) => setField('scheduledAt', event.target.value)}
+                  />
+                ) : null}
+                <p className="text-xs text-muted-foreground">Choose when to send this campaign.</p>
+              </label>
+              <label className="space-y-2">
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  <TagIcon className="h-4 w-4 text-muted-foreground" />
+                  Tags (optional)
+                </span>
+                <TagsInput value={form.tags} onChange={(next) => setField('tags', next)} />
+                <p className="text-xs text-muted-foreground">Use tags to organize your campaigns.</p>
+              </label>
+            </div>
           </CardContent>
         </Card>
           )}
@@ -743,27 +997,79 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
           <Card style={CARD_BORDER}>
             <CardHeader>
               <CardTitle className="text-base">Smart filters</CardTitle>
-              <CardDescription>Start broad, then narrow with consent and behavior filters.</CardDescription>
+              <CardDescription>Start broad, then narrow with consent, contact-info, and behavior filters.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {[
-                ['activeOnly', 'Active customers only'],
-                ['marketingConsentOnly', 'Marketing consent only'],
-                ['owingOnly', 'Customers owing money'],
-              ].map(([field, label]) => (
-                <label key={field} className="flex items-center justify-between rounded-md border border-border p-3">
-                  <span className="text-sm font-medium">{label}</span>
-                  <Checkbox checked={Boolean(form[field])} onCheckedChange={(value) => setField(field, Boolean(value))} />
-                </label>
-              ))}
-              <label className="space-y-2">
-                <span className="text-sm font-medium">Purchased in last N days (optional)</span>
-                <Input type="number" min="1" value={form.lastPurchaseWindowDays} onChange={(event) => setField('lastPurchaseWindowDays', event.target.value)} placeholder="30" />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium">Inactive for N days (optional)</span>
-                <Input type="number" min="1" value={form.inactiveDays} onChange={(event) => setField('inactiveDays', event.target.value)} placeholder="90" />
-              </label>
+              {form.audienceType === 'lead' ? (
+                <>
+                  <label className="flex items-center justify-between rounded-md border border-border p-3">
+                    <span className="text-sm font-medium">Active leads only</span>
+                    <Checkbox checked={Boolean(form.activeOnly)} onCheckedChange={(value) => setField('activeOnly', Boolean(value))} />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium">Status (optional)</span>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      value={form.status}
+                      onChange={(event) => setField('status', event.target.value)}
+                    >
+                      <option value="">Any status</option>
+                      {LEAD_STATUS_OPTIONS.map((option) => (
+                        <option key={option} value={option} className="capitalize">{option}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium">Priority (optional)</span>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      value={form.priority}
+                      onChange={(event) => setField('priority', event.target.value)}
+                    >
+                      <option value="">Any priority</option>
+                      {LEAD_PRIORITY_OPTIONS.map((option) => (
+                        <option key={option} value={option} className="capitalize">{option}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium">Source (optional)</span>
+                    <Input value={form.source} onChange={(event) => setField('source', event.target.value)} placeholder="Website" />
+                  </label>
+                  {[
+                    ['hasEmail', 'Has an email address'],
+                    ['hasPhone', 'Has a phone number'],
+                  ].map(([field, label]) => (
+                    <label key={field} className="flex items-center justify-between rounded-md border border-border p-3">
+                      <span className="text-sm font-medium">{label}</span>
+                      <Checkbox checked={Boolean(form[field])} onCheckedChange={(value) => setField(field, Boolean(value))} />
+                    </label>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {[
+                    ['activeOnly', 'Active customers only'],
+                    ['marketingConsentOnly', 'Marketing consent only'],
+                    ['owingOnly', 'Customers owing money'],
+                    ['hasEmail', 'Has an email address'],
+                    ['hasPhone', 'Has a phone number'],
+                  ].map(([field, label]) => (
+                    <label key={field} className="flex items-center justify-between rounded-md border border-border p-3">
+                      <span className="text-sm font-medium">{label}</span>
+                      <Checkbox checked={Boolean(form[field])} onCheckedChange={(value) => setField(field, Boolean(value))} />
+                    </label>
+                  ))}
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium">Purchased in last N days (optional)</span>
+                    <Input type="number" min="1" value={form.lastPurchaseWindowDays} onChange={(event) => setField('lastPurchaseWindowDays', event.target.value)} placeholder="30" />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium">Inactive for N days (optional)</span>
+                    <Input type="number" min="1" value={form.inactiveDays} onChange={(event) => setField('inactiveDays', event.target.value)} placeholder="90" />
+                  </label>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -781,7 +1087,9 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
             </CardHeader>
             <CardContent>
               {contacts.length === 0 ? (
-                <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No customers match these filters.</p>
+                <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                  {form.audienceType === 'lead' ? 'No leads match these filters.' : 'No customers match these filters.'}
+                </p>
               ) : (
                 <div className="max-h-80 overflow-y-auto rounded-md border border-border">
                   <Table>
@@ -810,11 +1118,13 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
                             />
                           </TableCell>
                           <TableCell>
-                            <div className="font-medium">{contact.name || contact.company || 'Customer'}</div>
+                            <div className="font-medium">{contact.name || contact.company || (form.audienceType === 'lead' ? 'Lead' : 'Customer')}</div>
                             <div className="text-xs text-muted-foreground">{contact.email || contact.phone || 'No contact info'}</div>
                           </TableCell>
                           <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                            Marketing {contact.consent?.marketing === true ? 'yes' : 'missing'}
+                            {form.audienceType === 'lead'
+                              ? (contact.consent?.marketing === true ? 'Contactable' : 'Do not contact')
+                              : `Marketing ${contact.consent?.marketing === true ? 'yes' : 'missing'}`}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -829,17 +1139,6 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
 
           {step === 2 && (
         <div className="space-y-4">
-          <Card style={CARD_BORDER}>
-            <CardHeader>
-              <CardTitle className="text-base">Channels</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-3">
-              <ChannelToggle channel="email" label="Email" available={caps.email?.available} form={form} setForm={setForm} />
-              <ChannelToggle channel="sms" label="SMS" available={caps.sms?.available} form={form} setForm={setForm} />
-              <ChannelToggle channel="whatsapp" label="WhatsApp" available={caps.whatsapp?.available} form={form} setForm={setForm} />
-            </CardContent>
-          </Card>
-
           {form.channels.includes('email') && (
             <Card style={CARD_BORDER}>
               <CardHeader><CardTitle className="text-base">Email message</CardTitle></CardHeader>
@@ -898,9 +1197,11 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
               </div>
               <Alert className="border-amber-200 bg-amber-50/80">
                 <AlertCircle className="h-4 w-4 text-amber-800" />
-                <AlertTitle className="text-amber-900">Consent warnings</AlertTitle>
+                <AlertTitle className="text-amber-900">{form.audienceType === 'lead' ? 'Contact warnings' : 'Consent warnings'}</AlertTitle>
                 <AlertDescription className="text-sm text-amber-950/90">
-                  {preview.consentWarnings?.marketingConsentRequired || 0} contacts need marketing consent. SMS opt-outs: {preview.consentWarnings?.smsOptedOut || 0}. WhatsApp opt-outs: {preview.consentWarnings?.whatsappOptedOut || 0}.
+                  {form.audienceType === 'lead'
+                    ? <>{preview.consentWarnings?.marketingConsentRequired || 0} leads are marked do-not-contact and will be skipped.</>
+                    : <>{preview.consentWarnings?.marketingConsentRequired || 0} contacts need marketing consent. SMS opt-outs: {preview.consentWarnings?.smsOptedOut || 0}. WhatsApp opt-outs: {preview.consentWarnings?.whatsappOptedOut || 0}.</>}
                 </AlertDescription>
               </Alert>
               {preview.truncated ? (
@@ -916,17 +1217,13 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
           <Card style={CARD_BORDER}>
             <CardHeader>
               <CardTitle className="text-base">Ready to send</CardTitle>
-              <CardDescription>Send now, or schedule for later. Scheduled campaigns dispatch automatically within about 5 minutes of the chosen time.</CardDescription>
+              <CardDescription>
+                {form.scheduledAt
+                  ? `Scheduled for ${formatDate(form.scheduledAt)}. Change this in Campaign details.`
+                  : 'Sends immediately. Set a schedule in Campaign details to send later.'}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Schedule for (optional)</label>
-                <Input
-                  type="datetime-local"
-                  value={form.scheduledAt || ''}
-                  onChange={(event) => setField('scheduledAt', event.target.value)}
-                />
-              </div>
               <p className="text-muted-foreground">Use Save draft to keep editing, Schedule if you set a time, or Send now.</p>
             </CardContent>
           </Card>
@@ -948,12 +1245,13 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
             Cancel
           </Button>
           <Button type="button" variant="outline" onClick={saveDraft} disabled={saveMutation.isPending || sendMutation.isPending || scheduleMutation.isPending}>
-            {saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+            {saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
             Save draft
           </Button>
           {step < STEPS.length - 1 ? (
             <Button type="button" className="bg-brand hover:bg-brand-dark" onClick={handleNext}>
               Next
+              <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           ) : (
             <>
@@ -988,10 +1286,17 @@ function CreateCampaignDialog({ open, mode = 'create', campaignId, onOpenChange,
         aria-describedby="create-campaign-dialog-description"
       >
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit campaign' : 'Create campaign'}</DialogTitle>
-          <DialogDescription id="create-campaign-dialog-description">
-            Build a campaign in four steps: details, audience, message, and review.
-          </DialogDescription>
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
+              <Megaphone className="h-5 w-5" />
+            </span>
+            <div>
+              <DialogTitle>{isEdit ? 'Edit Campaign' : 'Create Campaign'}</DialogTitle>
+              <DialogDescription id="create-campaign-dialog-description">
+                Send promotions, updates or announcements to your customers.
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
         {open ? (
           <CampaignWizardContent
@@ -1068,6 +1373,7 @@ function CampaignDetail() {
           <Card style={CARD_BORDER}>
             <CardHeader><CardTitle className="text-base">Campaign summary</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
+              <p><span className="text-muted-foreground">Audience:</span> <span className="capitalize">{campaign.audienceType === 'lead' ? 'Leads' : 'Customers'}</span></p>
               <p><span className="text-muted-foreground">Channels:</span> <span className="capitalize">{channelsLabel(campaign.channels)}</span></p>
               <p><span className="text-muted-foreground">Created:</span> {formatDate(campaign.createdAt)}</p>
               <p><span className="text-muted-foreground">Scheduled:</span> {formatDate(campaign.scheduledAt)}</p>

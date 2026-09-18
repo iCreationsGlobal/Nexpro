@@ -9,7 +9,8 @@ export const getPrintStyles = (printConfig) => {
   const isThermal = format === 'thermal_58' || format === 'thermal_80';
   const pageWidth = format === 'thermal_58' ? '58mm' : format === 'thermal_80' ? '80mm' : 'A4';
   const contentWidth = format === 'thermal_58' ? '52mm' : format === 'thermal_80' ? '72mm' : '210mm';
-  const showLogo = printConfig?.showLogo !== false && !isThermal;
+  // Logo shows on every format (A4, 58mm, 80mm) unless the tenant explicitly turned it off.
+  const showLogo = printConfig?.showLogo !== false;
   const fontSize = isThermal ? 'small' : (printConfig?.fontSize || 'normal');
   const titleSize = fontSize === 'small' ? '14px' : '32px';
   const bodySize = fontSize === 'small' ? '10px' : '12px';

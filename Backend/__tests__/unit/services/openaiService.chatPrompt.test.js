@@ -18,7 +18,7 @@ describe('buildChatSystemPrompt identity', () => {
     expect(prompt).toMatch(/I'm Ayebia/);
     expect(prompt).toMatch(/Never call yourself iBIS/);
     expect(prompt).toMatch(/1–2 short sentences as Ayebia/);
-    expect(prompt).toMatch(/Do not write a strategy/);
+    expect(prompt).toMatch(/Do not write a strategy/i);
     expect(prompt).not.toMatch(/I'm iBIS/);
     expect(prompt).not.toMatch(/You are iBIS/);
   });
@@ -28,7 +28,7 @@ describe('buildChatSystemPrompt identity', () => {
     expect(prompt).toMatch(/^You are Ayebia, the business intelligence assistant for Campbell Italia/);
     expect(prompt).toMatch(/I'm Ayebia/);
     expect(prompt).toMatch(/1–2 short sentences as Ayebia/);
-    expect(prompt).toMatch(/Do not write a strategy/);
+    expect(prompt).toMatch(/Do not write a strategy/i);
     expect(prompt).not.toMatch(/I'm iBIS/);
     expect(prompt).not.toMatch(/You are iBIS/);
   });

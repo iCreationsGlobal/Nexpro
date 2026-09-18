@@ -180,7 +180,7 @@ app.use('/api', checkRouteAccess);
 
 // Logging
 if (config.nodeEnv === 'development') {
-  app.use(morgan('dev'));
+  app.use(morgan('dev', { skip: req => req.path === '/api/integrations/google-calendar/callback' }));
 }
 
 // Verbose SSO request logging (development only)
@@ -308,6 +308,7 @@ app.use('/api/mobile-money', mobileMoneyRoutes);
 app.use('/api/variance', varianceRoutes);
 app.use('/api/watch', watchRoutes);
 app.use('/api/user-workspace', userWorkspaceRoutes);
+app.use('/api/integrations/google-calendar', require('./routes/calendarRoutes'));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpecification));
 
 // Health check
@@ -474,6 +475,7 @@ if (!IS_VERCEL_SERVERLESS) {
     }
     try {
       require('./services/autoTaskSchedulerService').start();
+      require('./services/googleCalendarService').start();
       if (config.nodeEnv === 'development') {
         console.log('[Server] ✅ Auto task scheduler service started');
       }

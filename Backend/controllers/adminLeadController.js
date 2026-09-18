@@ -316,6 +316,74 @@ exports.addAdminLeadActivity = async (req, res, next) => {
   }
 };
 
+const ADMIN_BROADCAST_MAX_RECIPIENTS = 500;
+const ADMIN_BROADCAST_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
+/**
+ * Email-broadcast a message to a selected set of admin leads (tenantId IS NULL), personalized with each lead's name.
+ * Sent via ABS platform email (emailService.sendPlatformMessage) — admin leads have no tenant to own SMTP/Resend credentials.
+ * SMS is intentionally not offered here: platform SMS billing/quota is tenant-scoped and not meaningful for tenantId=null.
+ * @route   POST /api/admin/leads/broadcast
+ */
+exports.broadcastAdminLeads = async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const leadIds = Array.isArray(body.leadIds) ? body.leadIds.map((id) => String(id)) : [];
+    if (leadIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'Select at least one lead to message' });
+    }
+    if (leadIds.length > ADMIN_BROADCAST_MAX_RECIPIENTS) {
+      return res.status(400).json({ success: false, message: `At most ${ADMIN_BROADCAST_MAX_RECIPIENTS} recipients per broadcast` });
+    }
+
+    const subject = String(body.subject || '').trim();
+    const emailBody = String(body.emailBody || '');
+    if (!subject || !emailBody.trim()) {
+      return res.status(400).json({ success: false, message: 'Email subject and message are required' });
+    }
+
+    const leads = await Lead.findAll({
+      where: { tenantId: null, id: { [Op.in]: leadIds }, doNotContact: { [Op.not]: true } },
+      attributes: ['id', 'name', 'company', 'email', 'doNotContact'],
+    });
+
+    const emailService = require('../services/emailService');
+    const { applySmsTemplate } = require('../utils/smsTemplateMerge');
+    const businessName = process.env.APP_NAME || 'African Business Suite';
+
+    const result = { sent: 0, skipped: 0, failed: [] };
+    const seenEmails = new Set();
+
+    for (const lead of leads) {
+      const email = (lead.email || '').trim().toLowerCase();
+      if (!email || !ADMIN_BROADCAST_EMAIL_REGEX.test(email) || seenEmails.has(email)) {
+        result.skipped += 1;
+        continue;
+      }
+      seenEmails.add(email);
+
+      const name = (lead.name && lead.name.trim()) || (lead.company && lead.company.trim()) || 'there';
+      const mergeVars = { name, businessName };
+      const personalizedSubject = applySmsTemplate(subject, mergeVars);
+      const personalizedBody = applySmsTemplate(emailBody, mergeVars);
+      const html = `<p>${personalizedBody.replace(/\n/g, '<br/>')}</p>`;
+
+      const sendRes = await emailService.sendPlatformMessage(email, personalizedSubject, html, personalizedBody, [], {
+        context: { source: 'admin_lead_broadcast', userId: req.user?.id, leadId: lead.id },
+      });
+      if (sendRes.success) {
+        result.sent += 1;
+      } else {
+        result.failed.push({ leadId: lead.id, reason: sendRes.error || 'send failed' });
+      }
+    }
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /**
  * Get admin lead statistics
  */

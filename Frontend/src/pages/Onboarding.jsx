@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowRight, ArrowLeft, Loader2, X, Check, Camera, Search, ShoppingBag, Printer, Scissors, Car, UtensilsCrossed, Pill, Briefcase, Package, MessageCircle } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Loader2, X, Check, Camera, Search, ShoppingBag, Printer, Scissors, Car, UtensilsCrossed, Pill, Briefcase, Package, MessageCircle, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { showError, showLoading, showSuccess } from '../utils/toast';
 import FileUpload from '../components/FileUpload';
@@ -11,12 +11,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogBody, DialogFooter, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import api from '../services/api';
 import { useQueryClient } from '@tanstack/react-query';
 import authService from '../services/authService';
 import dashboardService from '../services/dashboardService';
 import ReactCountryFlag from 'react-country-flag';
+import { stripLeadingTrunkZero } from '../utils/phoneUtils';
 import { BUSINESS_OPTIONS, BUSINESS_GROUPS, getCoreTypeForBusinessSubType } from '@/constants/businessTypes';
 import {
   PRIVACY_POLICY_URL,
@@ -26,7 +28,7 @@ import {
 
 const onboardingSchema = z.object({
   businessGroup: z.string().min(1, 'Select your business type'),
-  businessSubType: z.string().min(1, 'Select your business sub-type'),
+  businessSubTypes: z.array(z.string()).min(1, 'Select at least one business type'),
   companyName: z.string().min(1, 'Enter your business name'),
   companyLogo: z.any().optional(),
   companyAddress: z.string().optional().or(z.literal('')),
@@ -103,6 +105,7 @@ const Onboarding = () => {
   const [checkingPhone, setCheckingPhone] = useState(false);
   const [creatingBusiness, setCreatingBusiness] = useState(false);
   const [customBusinessType, setCustomBusinessType] = useState('');
+  const [subTypeModalOpen, setSubTypeModalOpen] = useState(false);
 
   // Check if onboarding is already completed
   useEffect(() => {
@@ -116,7 +119,7 @@ const Onboarding = () => {
     resolver: zodResolver(onboardingSchema),
     defaultValues: {
       businessGroup: '',
-      businessSubType: '',
+      businessSubTypes: [],
       companyName: '',
       companyLogo: undefined,
       companyAddress: '',
@@ -245,9 +248,11 @@ const Onboarding = () => {
       // Prepare form data for file upload
       const formData = new FormData();
 
-      // Derive core business type from selected sub-type.
-      // If tenant already has a non-shop businessType set, keep it to avoid regressions.
-      let selectedSubType = values.businessSubType || null;
+      // Multiple sub-types can be selected now; the first pick stays the "primary" one that
+      // drives businessType/shopType (everything downstream still expects a single value).
+      // The full selection is sent separately so it isn't lost.
+      const selectedSubTypes = Array.isArray(values.businessSubTypes) ? values.businessSubTypes : [];
+      let selectedSubType = selectedSubTypes[0] || null;
       const isOther = selectedSubType === 'other';
       if (isOther && customBusinessType.trim()) {
         selectedSubType = customBusinessType.trim();
@@ -269,6 +274,9 @@ const Onboarding = () => {
       // Store selected business sub-type (everyday label) for metadata
       if (selectedSubType) {
         formData.append('businessSubType', selectedSubType);
+      }
+      if (selectedSubTypes.length > 0) {
+        formData.append('businessSubTypes', JSON.stringify(selectedSubTypes));
       }
       if (values.companyName) formData.append('companyName', values.companyName);
       if (values.companyEmail) formData.append('companyEmail', values.companyEmail);
@@ -391,7 +399,7 @@ const Onboarding = () => {
         id: 'businessInfo',
         title: 'Tell us about your business',
         subtitle: 'This information will appear on your invoices and receipts.',
-        fields: ['businessSubType', 'companyName'] // Sub-type and name required; logo and address optional
+        fields: ['businessSubTypes', 'companyName'] // Sub-type(s) and name required; logo and address optional
       },
       {
         id: 'contactInfo',
@@ -419,8 +427,8 @@ const Onboarding = () => {
   const watchedBusinessGroup = form.watch('businessGroup');
 
   useEffect(() => {
-    // When business group changes, clear any previously selected sub-type
-    form.setValue('businessSubType', '');
+    // When business group changes, clear any previously selected sub-type(s)
+    form.setValue('businessSubTypes', []);
   }, [watchedBusinessGroup, form]);
 
   // Search state for dropdowns
@@ -899,73 +907,137 @@ const Onboarding = () => {
 
                     <FormField
                       control={form.control}
-                      name="businessSubType"
+                      name="businessSubTypes"
                       render={({ field }) => {
                         const groupKey = watchedBusinessGroup;
                         const options = groupKey ? (businessOptionsByGroup[groupKey] || []) : [];
                         const hasGroup = !!groupKey && options.length > 0;
-                        const isOtherSelected = field.value === 'other';
-                        const otherLabel = options.find(opt => opt.id === 'other')?.label || 'Other';
+                        const selected = Array.isArray(field.value) ? field.value : [];
+                        const isOtherSelected = selected.includes('other');
+                        const selectedLabels = options
+                          .filter((opt) => selected.includes(opt.id))
+                          .map((opt) => opt.label);
+
+                        const toggleOption = (id) => {
+                          if (id === 'other') {
+                            if (isOtherSelected) {
+                              setCustomBusinessType('');
+                              field.onChange([]);
+                            } else {
+                              field.onChange(['other']);
+                            }
+                            return;
+                          }
+                          const next = selected.includes(id)
+                            ? selected.filter((v) => v !== id)
+                            : [...selected.filter((v) => v !== 'other'), id];
+                          field.onChange(next);
+                        };
+
+                        let triggerText = 'Select what best matches your business';
+                        if (!hasGroup) {
+                          triggerText = 'Select business type first';
+                        } else if (isOtherSelected) {
+                          triggerText = customBusinessType.trim() || 'Other';
+                        } else if (selectedLabels.length === 1) {
+                          triggerText = selectedLabels[0];
+                        } else if (selectedLabels.length > 1) {
+                          triggerText = `${selectedLabels[0]} +${selectedLabels.length - 1} more`;
+                        }
+                        const hasSelection = isOtherSelected || selectedLabels.length > 0;
+
                         return (
                           <FormItem className="space-y-3">
                             <FormLabel className="text-gray-700">What do you mainly do?</FormLabel>
                             <FormDescription className="text-gray-600">
-                              {isOtherSelected
-                                ? 'Describe your business so we can set up the right workspace.'
-                                : 'Select what best matches your business.'}
+                              Select everything that matches your business.
                             </FormDescription>
                             <FormControl>
-                              {isOtherSelected ? (
-                                <Input
-                                  value={customBusinessType}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setCustomBusinessType(val);
-                                    field.onChange(val || 'other');
-                                  }}
-                                  className="h-11 border-border bg-muted text-foreground placeholder:text-gray-400 focus:border-primary focus:border focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-primary focus-visible:border"
-                                  placeholder="e.g. freight forwarding, consulting, event planning"
-                                />
-                              ) : (
-                                <Select
-                                  value={field.value}
-                                  onValueChange={field.onChange}
-                                  disabled={!hasGroup}
-                                >
-                                  <SelectTrigger className="h-11 border-border bg-muted text-foreground focus:border-primary focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0">
-                                    <SelectValue
-                                      placeholder={
-                                        hasGroup
-                                          ? 'Select what best matches your business'
-                                          : 'Select business type first'
-                                      }
-                                    />
-                                  </SelectTrigger>
-                                  {hasGroup && (
-                                    <SelectContent className="bg-card border-border w-[var(--radix-select-trigger-width)] max-w-full max-h-[60vh]">
-                                      {options.map((opt) => (
-                                        <div key={opt.id} className="px-1 py-0.5">
-                                          <SelectItem
-                                            value={opt.id}
-                                            className="!text-foreground !items-start !py-1.5"
-                                          >
-                                            <span className="font-medium text-sm">
-                                              {opt.label}
-                                            </span>
-                                          </SelectItem>
-                                          {opt.description && (
-                                            <div className="pl-8 pr-2 pt-0.5 text-xs text-muted-foreground leading-snug">
-                                              {opt.description}
-                                            </div>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </SelectContent>
-                                  )}
-                                </Select>
-                              )}
+                              <button
+                                type="button"
+                                disabled={!hasGroup}
+                                onClick={() => setSubTypeModalOpen(true)}
+                                className="flex h-11 w-full items-center justify-between rounded-lg border border-border bg-muted px-3 text-left text-sm disabled:cursor-not-allowed disabled:opacity-60 focus:border-primary focus:outline-none"
+                              >
+                                <span className={hasSelection ? 'text-foreground truncate' : 'text-gray-400 truncate'}>
+                                  {triggerText}
+                                </span>
+                                <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground ml-2" />
+                              </button>
                             </FormControl>
                             <FormMessage />
+
+                            <Dialog open={subTypeModalOpen} onOpenChange={setSubTypeModalOpen}>
+                              <DialogContent className="[--modal-w:min(640px,92vw)] [--modal-min-h:420px] [--modal-max-h:85vh]">
+                                <DialogHeader>
+                                  <DialogTitle>What do you mainly do?</DialogTitle>
+                                  <DialogDescription>
+                                    {isOtherSelected
+                                      ? 'Describe your business so we can set up the right workspace.'
+                                      : 'Select everything that matches your business.'}
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <DialogBody>
+                                  {isOtherSelected ? (
+                                    <div className="space-y-2">
+                                      <Input
+                                        value={customBusinessType}
+                                        onChange={(e) => setCustomBusinessType(e.target.value)}
+                                        className="h-11 border-border bg-muted text-foreground placeholder:text-gray-400 focus:border-primary focus:border focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-primary focus-visible:border"
+                                        placeholder="e.g. freight forwarding, consulting, event planning"
+                                        autoFocus
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleOption('other')}
+                                        className="text-xs font-medium text-primary hover:underline"
+                                      >
+                                        Choose from the list instead
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+                                      {options.map((opt) => {
+                                        const checked = selected.includes(opt.id);
+                                        return (
+                                          <label
+                                            key={opt.id}
+                                            className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                                              checked ? 'bg-primary/5' : 'hover:bg-muted/40'
+                                            }`}
+                                          >
+                                            <Checkbox
+                                              checked={checked}
+                                              onCheckedChange={() => toggleOption(opt.id)}
+                                              className="mt-0.5"
+                                            />
+                                            <span className="flex-1 min-w-0">
+                                              <span className="block text-sm font-semibold text-foreground">
+                                                {opt.label}
+                                              </span>
+                                              {opt.description && (
+                                                <span className="block text-xs text-muted-foreground leading-snug mt-0.5">
+                                                  {opt.description}
+                                                </span>
+                                              )}
+                                            </span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </DialogBody>
+                                <DialogFooter>
+                                  <Button
+                                    type="button"
+                                    onClick={() => setSubTypeModalOpen(false)}
+                                    disabled={!hasSelection}
+                                  >
+                                    Done
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
                           </FormItem>
                         );
                       }}
@@ -1086,6 +1158,7 @@ const Onboarding = () => {
                               />
                               <Input
                                 {...field}
+                                onChange={(e) => field.onChange(stripLeadingTrunkZero(e.target.value))}
                                 type="tel"
                                 className="h-12 text-base border-border rounded-lg bg-muted text-foreground placeholder:text-gray-400 focus:border-primary focus:border focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-primary focus-visible:border flex-1"
                                 placeholder="123 456 7890"

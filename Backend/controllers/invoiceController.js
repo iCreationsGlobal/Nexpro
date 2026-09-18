@@ -638,6 +638,30 @@ const buildInvoiceVisibilityWhere = async (req) => {
 
   if (getEffectiveTenantRole(req) === 'staff') {
     const ownOr = [];
+    const needsMySales = !req.shopScoped;
+    const needsMyRentals = resolved === 'rental';
+
+    // These three lookups are independent of each other — run them concurrently instead of
+    // one after another (each one is a separate DB round trip).
+    const [mySales, myJobs, myRentals] = await Promise.all([
+      needsMySales
+        ? Sale.findAll({
+            where: applyTenantFilter(req.tenantId, { soldBy: req.user.id }),
+            attributes: ['id']
+          })
+        : Promise.resolve(null),
+      Job.findAll({
+        where: applyTenantFilter(req.tenantId, { createdBy: req.user.id }),
+        attributes: ['id']
+      }),
+      needsMyRentals
+        ? Rental.findAll({
+            where: applyTenantFilter(req.tenantId, { createdBy: req.user.id }),
+            attributes: ['id']
+          })
+        : Promise.resolve(null),
+    ]);
+
     if (req.shopScoped) {
       ownOr.push({ saleId: { [Op.ne]: null } });
       if (resolved === 'rental') {
@@ -645,27 +669,15 @@ const buildInvoiceVisibilityWhere = async (req) => {
         ownOr.push({ sourceType: 'quote' });
       }
     } else {
-      const mySales = await Sale.findAll({
-        where: applyTenantFilter(req.tenantId, { soldBy: req.user.id }),
-        attributes: ['id']
-      });
       const saleIds = mySales.map((s) => s.id);
       if (saleIds.length) ownOr.push({ saleId: { [Op.in]: saleIds } });
     }
 
-    const myJobs = await Job.findAll({
-      where: applyTenantFilter(req.tenantId, { createdBy: req.user.id }),
-      attributes: ['id']
-    });
     const jobIds = myJobs.map((j) => j.id);
     if (jobIds.length) ownOr.push({ jobId: { [Op.in]: jobIds } });
     if (resolved === 'pharmacy') ownOr.push({ prescriptionId: { [Op.ne]: null } });
     if (resolved === 'rental') {
-      const myRentals = await Rental.findAll({
-        where: applyTenantFilter(req.tenantId, { createdBy: req.user.id }),
-        attributes: ['id']
-      });
-      const rentalIds = myRentals.map((row) => row.id);
+      const rentalIds = (myRentals || []).map((row) => row.id);
       if (rentalIds.length) {
         ownOr.push(
           sequelize.where(sequelize.literal(`metadata->>'rentalId'`), { [Op.in]: rentalIds })

@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { OnlineStoreSettings } = require('../models');
 
 class SabitoWebhookService {
   constructor() {
@@ -32,6 +33,10 @@ class SabitoWebhookService {
     }
 
     try {
+      const storeSettings = await OnlineStoreSettings.findOne({
+        where: { tenantId },
+        attributes: ['currency'],
+      });
       const payload = {
         event: 'invoice.created',
         app: 'nexpro',
@@ -45,7 +50,7 @@ class SabitoWebhookService {
           customerName: customer.name,
           customerPhone: customer.phone,
           amount: parseFloat(invoice.totalAmount),
-          currency: 'GHS', // TODO: Get from tenant settings
+          currency: storeSettings?.currency || 'GHS',
           status: invoice.status,
           paidAt: invoice.paidDate ? invoice.paidDate.toISOString() : null,
           createdAt: invoice.createdAt.toISOString(),

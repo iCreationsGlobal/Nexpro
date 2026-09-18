@@ -4,16 +4,18 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
-import { Stack, usePathname, useRouter } from 'expo-router';
+import { Stack, usePathname, useSegments, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, AppStateStatus, Pressable, Text, TextInput, View } from 'react-native';
+import { Animated, StyleSheet, AppState, AppStateStatus, Pressable, Text, TextInput, View } from 'react-native';
 import 'react-native-reanimated';
 import { offlineQueueService } from '@/services/offlineQueueService';
 import { refreshAfterSale } from '@/utils/queryInvalidation';
 import { onlineManager, useQueryClient } from '@tanstack/react-query';
 
 import { AppLoadingScreen } from '@/components/AppLoadingScreen';
+import { useStartupData } from '@/hooks/useStartupData';
+import { isStartupDestinationReady } from '@/utils/startupReadiness';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { ConnectivityBanner } from '@/components/ConnectivityBanner';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -170,20 +172,6 @@ function PushRegistrationOnActive() {
 }
 
 export default function RootLayout() {
-  const [minimumLoadingElapsed, setMinimumLoadingElapsed] = useState(false);
-  const loadingStarted = useRef(false);
-  const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => {
-    if (loadingTimer.current) clearTimeout(loadingTimer.current);
-  }, []);
-
-  const onLoadingLayout = () => {
-    void SplashScreen.hideAsync().catch(() => {});
-    if (loadingStarted.current) return;
-    loadingStarted.current = true;
-    loadingTimer.current = setTimeout(() => setMinimumLoadingElapsed(true), 3000);
-  };
   const [loaded, error] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -199,14 +187,10 @@ export default function RootLayout() {
   useEffect(() => {
     if (loaded) {
       applyDefaultTypography();
-      logger.info('RootLayout', 'Fonts loaded, hiding splash screen');
-      SplashScreen.hideAsync()
-        .then(() => logger.info('RootLayout', 'SplashScreen.hideAsync resolved'))
-        .catch((e) => logger.error('RootLayout', 'SplashScreen.hideAsync rejected', e));
+      logger.info('RootLayout', 'Fonts loaded');
     }
   }, [loaded]);
 
-  if (!loaded || !minimumLoadingElapsed) return <AppLoadingScreen onLayout={onLoadingLayout} />;
 
   return (
     <PersistQueryClientProvider
@@ -238,7 +222,8 @@ export default function RootLayout() {
               <CartProvider>
                 <OfflineSyncOnActive />
                 <PushRegistrationOnActive />
-                <RootLayoutNav />
+                {loaded && <RootLayoutNav />}
+                <StartupOverlay fontsReady={loaded} />
               </CartProvider>
             </StudioLocationProvider>
           </ShopProvider>
@@ -246,6 +231,39 @@ export default function RootLayout() {
       </ThemeProvider>
     </PersistQueryClientProvider>
   );
+}
+
+/** One overlay per cold launch; providers restore the session underneath it. */
+function StartupOverlay({ fontsReady }: { fontsReady: boolean }) {
+  const { loading, sessionSyncing } = useAuth();
+  const segments = useSegments();
+  const [visible, setVisible] = useState(true);
+  const opacity = useRef(new Animated.Value(1)).current;
+  const destinationReady = isStartupDestinationReady(fontsReady, loading, sessionSyncing, segments);
+  const dashboard = segments[0] === '(tabs)' && (!segments[1] || String(segments[1]) === 'index');
+  const startupData = useStartupData(destinationReady, dashboard, visible);
+  const ready = destinationReady && startupData.ready;
+  useEffect(() => {
+    if (!ready || !visible) return;
+    const fade = Animated.timing(opacity, { toValue: 0, duration: 180, useNativeDriver: true });
+    fade.start(({ finished }) => { if (finished) setVisible(false); });
+    return () => fade.stop();
+  }, [ready, visible, opacity]);
+  if (!visible) return null;
+  return <Animated.View accessibilityViewIsModal style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 100, opacity }]}>
+    <AppLoadingScreen animate onLayout={() => { void SplashScreen.hideAsync().catch(() => {}); }} />
+    {dashboard && startupData.needsRetry && (
+      <View style={{ position: 'absolute', bottom: 48, left: 24, right: 24, padding: 16, borderRadius: 16, backgroundColor: '#00291f', alignItems: 'center' }}>
+        <Text style={{ color: '#fff', textAlign: 'center', marginBottom: 8 }}>Your dashboard isn’t ready yet. Check your connection and try again.</Text>
+        <Pressable accessibilityRole="button" onPress={startupData.retry} style={{ padding: 12 }}>
+          <Text style={{ color: '#b5ed00', fontWeight: '700' }}>Retry loading</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={startupData.continueWithoutData} style={{ padding: 12 }}>
+          <Text style={{ color: '#fff' }}>Open app anyway</Text>
+        </Pressable>
+      </View>
+    )}
+  </Animated.View>;
 }
 
 function RootLayoutNav() {
@@ -308,6 +326,7 @@ function RootLayoutNav() {
           <Stack.Screen name="data-deletion" options={{ ...innerScreenOptions, title: 'Data Deletion', headerShown: false }} />
           <Stack.Screen name="notifications" options={{ ...innerScreenOptions, title: 'Notifications', headerShown: false }} />
           <Stack.Screen name="notification-settings" options={{ ...innerScreenOptions, title: 'Notification settings', headerShown: false }} />
+          <Stack.Screen name="focus-areas" options={{ ...innerScreenOptions, title: 'What matters most to you', headerShown: false }} />
           <Stack.Screen name="store-order/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="store-setup" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />

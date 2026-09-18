@@ -10,12 +10,19 @@ jest.mock('../../../services/platformSmsSettingsService', () => ({
 
 jest.mock('../../../services/platformSmsUsageService', () => ({
   checkPlatformSmsLimit: jest.fn(),
-  incrementPlatformSmsUsage: jest.fn(),
+  incrementPlatformSmsUsage: jest.fn().mockResolvedValue(undefined),
+}));
+
+// Platform SMS sends are now billed through ABS Credits (free-tier + paid credits), not the
+// older checkPlatformSmsLimit gate — resolvePlatformSmsBilling is the real gate smsService calls.
+jest.mock('../../../services/absCreditsService', () => ({
+  resolvePlatformSmsBilling: jest.fn(),
+  debitForSend: jest.fn().mockResolvedValue({ balance: 0 }),
 }));
 
 const { Setting } = require('../../../models');
 const { getSavedPlatformSmsConfig } = require('../../../services/platformSmsSettingsService');
-const { checkPlatformSmsLimit } = require('../../../services/platformSmsUsageService');
+const { resolvePlatformSmsBilling } = require('../../../services/absCreditsService');
 const smsService = require('../../../services/smsService');
 const axios = require('axios');
 
@@ -25,7 +32,7 @@ describe('smsService provider timeouts', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getSavedPlatformSmsConfig.mockResolvedValue(null);
-    checkPlatformSmsLimit.mockResolvedValue({ allowed: true, summary: {} });
+    resolvePlatformSmsBilling.mockResolvedValue({ allowed: true, billType: 'free' });
   });
 
   it('exports separate send and connection-test timeout values', () => {

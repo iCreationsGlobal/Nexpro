@@ -75,6 +75,19 @@ export default function SettingsScreen() {
     }
   }, [refreshAuth]);
 
+  const personalizeLinks = useMemo<SettingsLink[]>(
+    () => [
+      {
+        id: 'focus-areas',
+        label: 'What matters most to you',
+        subtitle: 'Personalize your menu and dashboard',
+        icon: 'sparkles',
+        route: '/focus-areas',
+      },
+    ],
+    []
+  );
+
   const accountLinks = useMemo<SettingsLink[]>(
     () => [
       {
@@ -90,6 +103,13 @@ export default function SettingsScreen() {
         subtitle: 'View recent alerts',
         icon: 'bell',
         route: '/notifications',
+      },
+      {
+        id: 'google-calendar',
+        label: 'Google Calendar',
+        subtitle: 'Connect task reminders',
+        icon: 'calendar',
+        route: '/calendar-settings',
       },
       {
         id: 'notification-settings',
@@ -182,6 +202,11 @@ export default function SettingsScreen() {
             </Pressable>
           </View>
         ) : null}
+
+        <Text style={[styles.sectionTitle, { color: textColor }]}>Personalize</Text>
+        <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
+          {personalizeLinks.map((item, index) => renderLinkRow(item, index, personalizeLinks.length))}
+        </View>
 
         <Text style={[styles.sectionTitle, { color: textColor }]}>Account</Text>
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>

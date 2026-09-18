@@ -178,7 +178,7 @@ export const smsSchema = z.object({
 
 export const emailSchema = z.object({
   enabled: z.boolean().default(false),
-  provider: z.enum(['smtp', 'sendgrid', 'ses']).default('smtp'),
+  provider: z.enum(['smtp', 'sendgrid', 'ses', 'resend']).default('smtp'),
   smtpHost: z.string().optional(),
   smtpPort: z.union([z.number(), z.literal('')]).optional().transform((v) => (v === '' || v == null ? 587 : v)),
   smtpUser: z.string().optional(),
@@ -191,6 +191,7 @@ export const emailSchema = z.object({
   sesSecretAccessKey: z.string().optional(),
   sesRegion: z.string().optional(),
   sesHost: z.string().optional(),
+  resendApiKey: z.string().optional(),
 });
 
 export const paymentCollectionSchema = z.object({
@@ -241,6 +242,7 @@ export const getEmailFormValues = (ed, org, options = {}) => {
     sesSecretAccessKey: options.clearSecrets ? '' : (ed?.sesSecretAccessKey === '***' ? '' : (ed?.sesSecretAccessKey || '')),
     sesRegion: ed?.sesRegion || 'us-east-1',
     sesHost: ed?.sesHost || '',
+    resendApiKey: options.clearSecrets ? '' : (ed?.resendApiKey === '***' ? '' : (ed?.resendApiKey || '')),
   };
 };
 

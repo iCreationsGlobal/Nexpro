@@ -38,7 +38,7 @@ export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); this.name = "ApiError"; }
 }
 
-async function request<T>(
+async function performRequest<T>(
   path: string,
   options: RequestInit & { auth?: boolean } = {}
 ): Promise<T> {
@@ -62,6 +62,25 @@ async function request<T>(
     throw new ApiError(message, res.status);
   }
   return json as T;
+}
+
+// Share identical concurrent browser reads, without retaining stale responses.
+const pendingReads = new Map<string, Promise<unknown>>();
+function request<T>(path: string, options: RequestInit & { auth?: boolean } = {}): Promise<T> {
+  const method = (options.method || 'GET').toUpperCase();
+  if (method !== 'GET') pendingReads.clear();
+  const simpleRead = typeof window !== 'undefined' && method === 'GET'
+    && Object.keys(options).every(key => key === 'auth' || key === 'method');
+  if (!simpleRead) return performRequest<T>(path, options);
+  const token = options.auth ? localStorage.getItem(TOKEN_KEY) || '' : '';
+  const key = JSON.stringify([getApiBaseUrl(), path, Boolean(options.auth), token]);
+  const existing = pendingReads.get(key);
+  if (existing) return existing as Promise<T>;
+  const promise = performRequest<T>(path, options).finally(() => {
+    if (pendingReads.get(key) === promise) pendingReads.delete(key);
+  });
+  pendingReads.set(key, promise);
+  return promise;
 }
 
 export async function listPartners(params?: {

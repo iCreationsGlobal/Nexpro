@@ -31,9 +31,10 @@ const normalizeFeatureOverrides = (overrides) => {
 const buildBaseFeatureFlags = (tenantPlan, dbPlan) => {
   const normalizedPlan = String(tenantPlan || '').trim().toLowerCase() || 'trial';
   const canonicalFlags = getFeatureFlagsForPlan(normalizedPlan);
-  if (normalizedPlan === 'trial') {
-    return canonicalFlags;
-  }
+  // Admin's per-plan Feature Table matrix (SubscriptionPlan.marketing.featureFlags) overrides the
+  // hardcoded catalog defaults for every plan, trial included — previously trial bypassed this
+  // entirely and always got the "every feature enabled" canonical default, so admin toggles never
+  // took effect for trial tenants (the common case, since new tenants start on trial).
   if (dbPlan?.marketing?.featureFlags && typeof dbPlan.marketing.featureFlags === 'object') {
     return { ...canonicalFlags, ...dbPlan.marketing.featureFlags };
   }

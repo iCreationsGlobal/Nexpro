@@ -268,6 +268,7 @@ const migrate = async () => {
 
     // Workspace tasks (table must exist before column/index migrations)
     await createUserTasksTable();
+    await require('./create-calendar-integration')();
     await addAssigneeToUserTasks();
 
     // Workspace task automation metadata columns
@@ -501,6 +502,19 @@ const migrate = async () => {
     // ABS Watch: cameras, physical-activity events, sale reconciliation incidents
     await createWatchModule();
     await addStreamUrlToVisionCameras.up();
+
+    // Lead broadcast: leads.doNotContact + marketing_campaigns.audienceType
+    const addLeadsMarketingBroadcast = require('./add-leads-marketing-broadcast');
+    await addLeadsMarketingBroadcast({ closeConnection: false });
+
+    // Marketing campaign tags
+    const addMarketingCampaignTags = require('./add-marketing-campaign-tags');
+    await addMarketingCampaignTags({ closeConnection: false });
+
+    // Collapse duplicate paymentToken indexes/constraints on invoices (perf: fewer indexes to
+    // maintain on every invoice write)
+    const fixDuplicateInvoicePaymentTokenIndexes = require('./fix-duplicate-invoice-payment-token-indexes');
+    await fixDuplicateInvoicePaymentTokenIndexes({ closeConnection: false });
 
     console.log('\n✅ Database migration completed successfully!');
     console.log('📊 Incremental schema updates applied.');

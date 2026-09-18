@@ -7,6 +7,17 @@
 const DEFAULT_COUNTRY_CODE = '233';
 
 /**
+ * Drop a leading national trunk "0" from a number that's about to sit next to (or already
+ * carries) a dial code — e.g. a "+233" selector alongside "0244123456" would otherwise display
+ * as if the number started twice ("+233 0244..."). Only ever strips one leading zero.
+ * @param {string} number
+ * @returns {string}
+ */
+export function stripLeadingTrunkZero(number) {
+  return String(number ?? '').replace(/^0+(?=\d)/, '');
+}
+
+/**
  * Normalize phone to E.164-like form for storage/API.
  * - Strips spaces, dashes, parentheses.
  * - Converts leading 0 to +{countryCode} (e.g. 0XX XXX XXXX → +233XXXXXXXXX for Ghana).
@@ -21,8 +32,12 @@ export function normalizePhone(phone, defaultCountryCode = DEFAULT_COUNTRY_CODE)
   const digitsOnly = stripped.replace(/\D/g, '');
   if (digitsOnly.length === 0) return '';
 
-  // Already has + and looks international (e.g. +233...)
+  // Already has + and looks international (e.g. +233...). A trunk "0" sometimes ends up typed
+  // right after the country code too (e.g. "+2330244123456") — drop it, it's redundant.
   if (stripped.startsWith('+')) {
+    if (digitsOnly.startsWith(defaultCountryCode) && digitsOnly[defaultCountryCode.length] === '0') {
+      return '+' + defaultCountryCode + digitsOnly.slice(defaultCountryCode.length + 1);
+    }
     return '+' + digitsOnly;
   }
 

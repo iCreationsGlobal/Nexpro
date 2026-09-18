@@ -7,6 +7,9 @@ import { z } from 'zod';
 const POS = lazy(() => import('./POS'));
 import { useDebounce } from '../hooks/useDebounce';
 import { usePOSConfig } from '../hooks/usePOSConfig';
+import { usePrintFormatOverride } from '../hooks/usePrintFormatOverride';
+import { getContentWidthMm } from '../utils/printStyles';
+import PrintFormatSwitcher from '../components/PrintFormatSwitcher';
 import { useResponsive } from '../hooks/useResponsive';
 import { ShoppingCart, Filter, RefreshCw, Printer, Receipt, FileText, Loader2, X, CheckCircle, Clock, XCircle, Download, Plus, Trash2, Undo2 } from 'lucide-react';
 import { generatePDF, openPrintDialog } from '../utils/pdfUtils';
@@ -408,7 +411,11 @@ const Sales = () => {
     return mergeBranchOrganization(receiptData.shop, organization);
   }, [receiptData, organization]);
   const { posConfig } = usePOSConfig();
-  const printConfig = posConfig.print || { format: 'a4' };
+  const {
+    printConfig,
+    format: receiptPrintFormat,
+    setFormat: setReceiptPrintFormat,
+  } = usePrintFormatOverride(posConfig.print, receiptData?.id || receiptData?.invoice?.id);
 
   useEffect(() => {
     if (viewingSale?.id) {
@@ -1634,7 +1641,8 @@ const Sales = () => {
                   Review the receipt before downloading
                 </DialogDescription>
               </div>
-              <div className="flex gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <PrintFormatSwitcher value={receiptPrintFormat} onChange={setReceiptPrintFormat} />
                 <Button
                   variant="outline"
                   className="flex-1 sm:flex-initial"
@@ -1650,7 +1658,7 @@ const Sales = () => {
                   <Printer className="h-4 w-4 mr-2" />
                   Print
                 </Button>
-                <Button 
+                <Button
                   className="flex-1 sm:flex-initial"
                   onClick={async () => {
                     const element = document.querySelector(
@@ -1658,10 +1666,14 @@ const Sales = () => {
                     );
                     if (element && receiptData) {
                       try {
+                        const isThermal = printConfig.format === 'thermal_58' || printConfig.format === 'thermal_80';
                         await generatePDF(element, {
                           filename: `Receipt-${receiptData.saleNumber || 'receipt'}.pdf`,
                           format: 'a4',
                           orientation: 'portrait',
+                          margin: isThermal ? [0, 0, 0, 0] : [10, 10, 10, 10],
+                          contentWidthMm: isThermal ? getContentWidthMm(printConfig) : null,
+                          dynamicHeight: isThermal,
                         });
                         showSuccess('Receipt downloaded successfully');
                       } catch (error) {

@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
@@ -401,26 +402,20 @@ const MarketerBusinesses: React.FC<MarketerBusinessesScreenProps> = ({ navigatio
         </View>
       )}
 
-      {/* Businesses List */}
-      <ScrollView
+      {/* Render only the visible business cards; filters remain above the list. */}
+      <FlatList
+        data={filteredBusinesses}
+        keyExtractor={business => String(business.id)}
+        renderItem={({item}) => renderBusinessCard(item)}
+        ListEmptyComponent={renderEmptyState}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={7}
         style={[styles.scrollView, themedStyles.scrollView]}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={COLORS.APP_GREEN}
-            colors={[COLORS.APP_GREEN]}
-          />
-        }
-      >
-        {filteredBusinesses.length === 0 ? (
-          renderEmptyState()
-        ) : (
-          filteredBusinesses.map((business) => renderBusinessCard(business))
-        )}
-      </ScrollView>
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.APP_GREEN} colors={[COLORS.APP_GREEN]} />}
+      />
     </SafeAreaView>
   );
 };

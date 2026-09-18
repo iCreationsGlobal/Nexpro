@@ -47,7 +47,8 @@ const {
   deleteAdminLead,
   addAdminLeadActivity,
   getAdminLeadStats,
-  convertAdminLeadToJob
+  convertAdminLeadToJob,
+  broadcastAdminLeads
 } = require('../controllers/adminLeadController');
 const {
   getAdminJobs,
@@ -668,6 +669,7 @@ router.get('/reports/top-customers', requirePlatformAdminPermission('reports.vie
  */
 router.get('/leads', getAdminLeads);
 router.get('/leads/stats', getAdminLeadStats);
+router.post('/leads/broadcast', broadcastAdminLeads);
 router.get('/leads/:id', getAdminLead);
 router.post('/leads', createAdminLead);
 router.put('/leads/:id', updateAdminLead);

@@ -24,6 +24,10 @@ import {
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import { useDebounce } from '../hooks/useDebounce';
+import { usePOSConfig } from '../hooks/usePOSConfig';
+import { usePrintFormatOverride } from '../hooks/usePrintFormatOverride';
+import { getContentWidthMm } from '../utils/printStyles';
+import PrintFormatSwitcher from '../components/PrintFormatSwitcher';
 import { useResponsive } from '../hooks/useResponsive';
 import DetailsDrawer from '../components/DetailsDrawer';
 import DrawerSectionCard from '../components/DrawerSectionCard';
@@ -348,6 +352,12 @@ const Rentals = () => {
   const [pdfDocumentType, setPdfDocumentType] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [invoiceForPrint, setInvoiceForPrint] = useState(null);
+  const { posConfig } = usePOSConfig();
+  const {
+    printConfig: rentalInvoicePrintConfig,
+    format: rentalInvoicePrintFormat,
+    setFormat: setRentalInvoicePrintFormat,
+  } = usePrintFormatOverride(posConfig?.print, invoiceForPrint?.id || pdfDocument?.id);
   const printPreviewRef = useRef(null);
 
   useEffect(() => {
@@ -808,18 +818,25 @@ const Rentals = () => {
         ? `Return_Inspection_${pdfDocument?.documentNumber || 'document'}.pdf`
         : `Invoice_${invoiceForPrint?.invoiceNumber || 'document'}.pdf`;
 
+    // Only the invoice document respects the A4/thermal switcher — agreements and return
+    // inspections are always full-page legal-style documents.
+    const isThermal = pdfDocumentType === 'invoice'
+      && (rentalInvoicePrintConfig.format === 'thermal_58' || rentalInvoicePrintConfig.format === 'thermal_80');
+
     try {
       await generatePDF(element, {
-        margin: isMobile ? [4, 4, 4, 4] : [0, 0, 0, 0],
+        margin: isThermal ? [0, 0, 0, 0] : (isMobile ? [4, 4, 4, 4] : [0, 0, 0, 0]),
         filename,
         format: 'a4',
         orientation: 'portrait',
+        contentWidthMm: isThermal ? getContentWidthMm(rentalInvoicePrintConfig) : null,
+        dynamicHeight: isThermal,
       });
       showSuccess('PDF downloaded successfully');
     } catch (error) {
       showError(error, 'Failed to generate PDF');
     }
-  }, [pdfDocumentType, pdfDocument, invoiceForPrint, isMobile]);
+  }, [pdfDocumentType, pdfDocument, invoiceForPrint, isMobile, rentalInvoicePrintConfig]);
 
   const handlePrintRentalPdf = useCallback(() => {
     const wrapper = printPreviewRef.current;
@@ -4433,7 +4450,10 @@ const Rentals = () => {
                   Preview, download, or print this document
                 </DialogDescription>
               </div>
-              <div className="flex gap-2 w-full sm:w-auto no-print">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto no-print">
+                {pdfDocumentType === 'invoice' && (
+                  <PrintFormatSwitcher value={rentalInvoicePrintFormat} onChange={setRentalInvoicePrintFormat} />
+                )}
                 <Button
                   variant="outline"
                   className="flex-1 sm:flex-initial"
@@ -4470,6 +4490,7 @@ const Rentals = () => {
                   invoice={invoiceForPrint}
                   organization={invoiceForPrint.organization || {}}
                   screenLayout={isMobile ? 'mobile' : 'auto'}
+                  printConfig={rentalInvoicePrintConfig}
                 />
               ) : null}
             </div>

@@ -1,3 +1,4 @@
+import GoogleCalendarSettings from '../../tasks/GoogleCalendarSettings';
 import { Bell, Loader2, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -25,6 +26,8 @@ const SettingsNotificationsSection = () => {
   } = useSettingsNotifications();
 
   return (
+    <>
+    <GoogleCalendarSettings />
     <Card className="border border-gray-200">
       <CardHeader>
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
@@ -139,6 +142,7 @@ const SettingsNotificationsSection = () => {
         )}
       </CardContent>
     </Card>
+    </>
   );
 };
 

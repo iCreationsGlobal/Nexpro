@@ -1608,7 +1608,8 @@ exports.getEmailSettings = async (req, res, next) => {
       sesAccessKeyId: '',
       sesSecretAccessKey: '',
       sesRegion: 'us-east-1',
-      sesHost: ''
+      sesHost: '',
+      resendApiKey: ''
     });
 
     // Don't expose sensitive passwords/keys in response
@@ -1616,7 +1617,8 @@ exports.getEmailSettings = async (req, res, next) => {
       ...emailSettings,
       smtpPassword: emailSettings.smtpPassword ? '***' : '',
       sendgridApiKey: emailSettings.sendgridApiKey ? '***' : '',
-      sesSecretAccessKey: emailSettings.sesSecretAccessKey ? '***' : ''
+      sesSecretAccessKey: emailSettings.sesSecretAccessKey ? '***' : '',
+      resendApiKey: emailSettings.resendApiKey ? '***' : ''
     };
 
     const emailService = require('../services/emailService');
@@ -1693,7 +1695,7 @@ exports.getNotificationChannels = async (req, res, next) => {
     const smsResolved = await smsService.getResolvedConfig(req.tenantId);
     const whatsappConfig = settings.whatsapp || {};
     const ev = settings.email || {};
-    const emailConfigured = !!(ev.enabled && (ev.smtpHost || ev.sendgridApiKey || ev.sesAccessKeyId));
+    const emailConfigured = !!(ev.enabled && (ev.smtpHost || ev.sendgridApiKey || ev.sesAccessKeyId || ev.resendApiKey));
     const prefs = settings['customer-notification-preferences'] || {};
     const data = {
       email: emailConfigured,
@@ -2020,6 +2022,54 @@ exports.updateSidebarPreferences = async (req, res, next) => {
   }
 };
 
+// @desc    Get the current user's "what matters most to you" focus-area picks for this workspace
+// @route   GET /api/settings/focus-areas
+// @access  Private
+exports.getFocusAreaPreferences = async (req, res, next) => {
+  try {
+    const { getFocusAreaPreferences: buildFocusAreaPreferences } = require('../services/focusAreaHelper');
+    const membership = req.tenantMembership;
+    if (!membership) {
+      return res.status(400).json({ success: false, message: 'Tenant membership required' });
+    }
+    const tenant = req.tenant || (await membership.getTenant?.());
+    const preferences = buildFocusAreaPreferences(membership, tenant?.businessType || req.tenant?.businessType);
+    res.status(200).json({ success: true, data: preferences });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update the current user's focus-area picks (max 3) for this workspace
+// @route   PATCH /api/settings/focus-areas
+// @access  Private
+exports.updateFocusAreaPreferences = async (req, res, next) => {
+  try {
+    const { sanitizeFocusAreas } = require('../services/focusAreaHelper');
+    const membership = req.tenantMembership;
+    if (!membership) {
+      return res.status(400).json({ success: false, message: 'Tenant membership required' });
+    }
+    const { focusAreas } = sanitizePayload(req.body || {});
+    const tenant = req.tenant || (await Tenant.findByPk(req.tenantId, { attributes: ['businessType'] }));
+    const sanitized = sanitizeFocusAreas(focusAreas, tenant?.businessType || null);
+
+    const metadata =
+      membership.metadata && typeof membership.metadata === 'object' ? { ...membership.metadata } : {};
+    metadata.focusAreas = sanitized;
+
+    await UserTenant.update(
+      { metadata },
+      { where: { id: membership.id, userId: req.user.id, tenantId: req.tenantId } }
+    );
+    invalidateTenantMembershipCache(req.user.id, req.tenantId);
+
+    res.status(200).json({ success: true, data: { focusAreas: sanitized, source: 'user' } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const QUOTE_WORKFLOW_DEFAULTS = { onAccept: 'record_only' };
 const QUOTE_WORKFLOW_ON_ACCEPT_VALUES = [
   'record_only',
@@ -2158,7 +2208,8 @@ exports.updateEmailSettings = async (req, res, next) => {
       sesAccessKeyId,
       sesSecretAccessKey,
       sesRegion,
-      sesHost
+      sesHost,
+      resendApiKey
     } = sanitizePayload(req.body);
 
     // Get existing settings to preserve sensitive data if not provided
@@ -2277,6 +2328,39 @@ exports.updateEmailSettings = async (req, res, next) => {
             error: testResult.error
           });
         }
+      } else if (finalProvider === 'resend') {
+        const finalResendApiKey = resendApiKey || existing.resendApiKey;
+
+        if (!finalResendApiKey) {
+          return res.status(400).json({
+            success: false,
+            message: 'Resend API Key is required'
+          });
+        }
+
+        // Test connection
+        const emailService = require('../services/emailService');
+        const testResult = await emailService.testConnection({
+          provider: 'resend',
+          resendApiKey: finalResendApiKey,
+          fromEmail: fromEmail || existing.fromEmail || ''
+        }, {
+          context: {
+            requestId: req.id || req.headers?.['x-request-id'],
+            tenantId: req.tenantId,
+            userId: req.user?.id,
+            source: 'settings_email_save_validation',
+            mode: 'verify',
+          },
+        });
+
+        if (!testResult.success) {
+          return res.status(400).json({
+            success: false,
+            message: 'Failed to connect to email service',
+            error: testResult.error
+          });
+        }
       }
     }
 
@@ -2296,7 +2380,8 @@ exports.updateEmailSettings = async (req, res, next) => {
       sesAccessKeyId: sesAccessKeyId || existing.sesAccessKeyId || '',
       sesSecretAccessKey: isRealSecret(sesSecretAccessKey) ? sesSecretAccessKey : (existing.sesSecretAccessKey || ''),
       sesRegion: sesRegion || existing.sesRegion || 'us-east-1',
-      sesHost: sesHost || existing.sesHost || ''
+      sesHost: sesHost || existing.sesHost || '',
+      resendApiKey: isRealSecret(resendApiKey) ? resendApiKey : (existing.resendApiKey || '')
     };
 
     const updated = await upsertSettingValue(
@@ -2311,7 +2396,8 @@ exports.updateEmailSettings = async (req, res, next) => {
       ...updated,
       smtpPassword: updated.smtpPassword ? '***' : '',
       sendgridApiKey: updated.sendgridApiKey ? '***' : '',
-      sesSecretAccessKey: updated.sesSecretAccessKey ? '***' : ''
+      sesSecretAccessKey: updated.sesSecretAccessKey ? '***' : '',
+      resendApiKey: updated.resendApiKey ? '***' : ''
     };
 
     const emailService = require('../services/emailService');
@@ -2412,7 +2498,6 @@ exports.updatePOSConfig = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid font size' });
     }
     if (['thermal_58', 'thermal_80'].includes(print.format)) {
-      print.showLogo = false;
       print.color = false;
       print.fontSize = 'small';
     }
@@ -2465,6 +2550,7 @@ exports.testEmailConnection = async (req, res, next) => {
       hasPassword: !!config.smtpPassword,
       hasSendgridApiKey: !!config.sendgridApiKey,
       hasSesSecret: !!config.sesSecretAccessKey,
+      hasResendApiKey: !!config.resendApiKey,
     });
 
     if (!config.provider) {

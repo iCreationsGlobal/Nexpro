@@ -17,6 +17,8 @@ export const STORAGE_KEYS = {
   PUSH_REGISTRATION_STATE: 'pushRegistrationState',
   /** Set after user finishes or skips the 3-screen marketing intro carousel */
   INTRO_ONBOARDING_COMPLETED: 'introOnboardingCompleted',
+  /** Set once the dashboard's "what matters most to you" nudge has been shown or dismissed on this device */
+  FOCUS_AREA_PROMPT_SEEN: 'focusAreaPromptSeen',
 } as const;
 
 export const STUDIO_TYPES = ['printing_press', 'mechanic', 'barber', 'salon'];

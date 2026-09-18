@@ -61,7 +61,7 @@ router.post('/campaigns/:id/schedule', authorize('admin', 'manager'), scheduleCa
  * @openapi
  * /api/marketing/broadcast:
  *   post:
- *     summary: Send bulk message to customers
+ *     summary: Send bulk message to customers or leads
  *     tags: [Marketing]
  *     security: [{ BearerAuth: [] }]
  *     requestBody:
@@ -71,10 +71,12 @@ router.post('/campaigns/:id/schedule', authorize('admin', 'manager'), scheduleCa
  *           schema:
  *             type: object
  *             properties:
+ *               audienceType: { type: string, enum: [customer, lead], description: 'Defaults to customer.' }
  *               channels: { type: array, items: { type: string } }
  *               dryRun: { type: boolean }
  *               activeOnly: { type: boolean }
- *               customerIds: { type: array, items: { type: string, format: uuid }, description: 'Optional; omit to use full batch. If set, only these customer IDs (must be in the preview list).' }
+ *               customerIds: { type: array, items: { type: string, format: uuid }, description: 'audienceType=customer only. Optional; omit to use full batch.' }
+ *               leadIds: { type: array, items: { type: string, format: uuid }, description: 'audienceType=lead only. Optional; omit to use full batch.' }
  *     responses:
  *       200:
  *         description: Send results per channel

@@ -89,6 +89,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import ResponsiveSheet from '../components/ResponsiveSheet';
 import { SEARCH_PLACEHOLDERS, DEBOUNCE_DELAYS } from '../constants';
 import { generatePDF, openPrintDialog } from '../utils/pdfUtils';
+import { getContentWidthMm } from '../utils/printStyles';
+import { usePrintFormatOverride } from '../hooks/usePrintFormatOverride';
+import PrintFormatSwitcher from '../components/PrintFormatSwitcher';
 import { QUERY_STALE, refreshAfterCustomerChange } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
 import {
@@ -205,7 +208,12 @@ const Customers = () => {
   const [receiptData, setReceiptData] = useState(null);
   const [loadingReceiptPreview, setLoadingReceiptPreview] = useState(false);
   const [organization, setOrganization] = useState(null);
-  const [printConfig, setPrintConfig] = useState({});
+  const [savedPrintConfig, setSavedPrintConfig] = useState({});
+  const {
+    printConfig,
+    format: receiptPrintFormat,
+    setFormat: setReceiptPrintFormat,
+  } = usePrintFormatOverride(savedPrintConfig, receiptData?.id || receiptData?.invoice?.id);
   const [loadingCustomerDetails, setLoadingCustomerDetails] = useState(false);
   const [customCustomerSources, setCustomCustomerSources] = useState([]);
   const [showCustomerSourceOtherInput, setShowCustomerSourceOtherInput] = useState(false);
@@ -570,7 +578,7 @@ const Customers = () => {
     settingsService.getPrintConfig()
       .then((response) => {
         const config = response?.data || response || {};
-        setPrintConfig(config);
+        setSavedPrintConfig(config);
       })
       .catch((error) => console.error('Failed to load print config:', error));
   };
@@ -1662,7 +1670,8 @@ const Customers = () => {
                   Review the receipt before downloading
                 </DialogDescription>
               </div>
-              <div className="flex gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <PrintFormatSwitcher value={receiptPrintFormat} onChange={setReceiptPrintFormat} />
                 <Button
                   variant="outline"
                   className="flex-1 sm:flex-initial"
@@ -1678,7 +1687,7 @@ const Customers = () => {
                   <Printer className="h-4 w-4 mr-2" />
                   Print
                 </Button>
-                <Button 
+                <Button
                   className="flex-1 sm:flex-initial"
                   onClick={async () => {
                     const element = document.querySelector(
@@ -1686,10 +1695,14 @@ const Customers = () => {
                     );
                     if (element && receiptData) {
                       try {
+                        const isThermal = printConfig.format === 'thermal_58' || printConfig.format === 'thermal_80';
                         await generatePDF(element, {
                           filename: `Receipt-${receiptData.saleNumber || 'receipt'}.pdf`,
                           format: 'a4',
                           orientation: 'portrait',
+                          margin: isThermal ? [0, 0, 0, 0] : [10, 10, 10, 10],
+                          contentWidthMm: isThermal ? getContentWidthMm(printConfig) : null,
+                          dynamicHeight: isThermal,
                         });
                         showSuccess('Receipt downloaded successfully');
                       } catch (error) {

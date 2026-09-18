@@ -66,6 +66,7 @@ type ScanProduct = {
   price?: number;
   barcode?: string;
   sku?: string;
+  description?: string;
   quantityOnHand?: number;
   trackStock?: boolean;
   imageUrl?: string;
@@ -98,7 +99,7 @@ export default function ScanScreen() {
   const queryClient = useQueryClient();
   const { activeTenant, activeTenantId, hasFeature } = useAuth();
   const { activeShopId, activeStudioLocationId, scopeReady } = useWorkspaceScope();
-  const { items: cartItems, getItemCount, addItem, updateQuantity } = useCart();
+  const { items: cartItems, getItemCount, getTotal, addItem, updateQuantity } = useCart();
   const { colors, bg, cardBg, borderColor, textColor, mutedColor, inputBg } = useScreenColors();
   const { scanningEnabled } = useScanningEnabled();
   const { scanToSell } = useScanToSell();
@@ -922,17 +923,26 @@ export default function ScanScreen() {
         <Pressable
           onPress={() => router.push('/(tabs)/cart')}
           style={[styles.cartFAB, { backgroundColor: colors.tint }]}
+          accessibilityRole="button"
+          accessibilityLabel={`View cart, ${cartItemCount} items`}
         >
-          <AppIcon name="shopping-cart" size={20} color="#fff" />
+          <View style={styles.cartIconWrap}>
+          <AppIcon name="shopping-cart" size={28} color="#fff" />
           {cartItemCount > 0 && (
             <View style={styles.cartBadge}>
               <Text style={styles.cartBadgeText}>{cartItemCount > 99 ? '99+' : cartItemCount}</Text>
             </View>
           )}
+          </View>
+          <View style={styles.cartSummary}>
+            <Text style={styles.cartLabel}>View Cart</Text>
+            <Text style={styles.cartTotal}>{CURRENCY.SYMBOL} {getTotal().toLocaleString(undefined, { minimumFractionDigits: CURRENCY.DECIMAL_PLACES, maximumFractionDigits: CURRENCY.DECIMAL_PLACES })}</Text>
+          </View>
+          <AppIcon name="chevron-right" size={20} color="#fff" />
         </Pressable>
       )}
 
-      <ScreenShell scrollable style={styles.container} contentContainerStyle={styles.content}>
+      <ScreenShell scrollable style={styles.container} contentContainerStyle={[styles.content, styles.retailContent]}>
         <Text style={[styles.title, { color: textColor }]}>Select Product</Text>
         <Text style={[styles.subtitle, { color: mutedColor }]}>
           Search, scan, or browse products to add them to cart
@@ -944,7 +954,7 @@ export default function ScanScreen() {
             <AppIcon name="search" size={18} color={mutedColor} style={styles.searchIcon} />
             <TextInput
               style={[styles.searchInput, { color: textColor }]}
-              placeholder="Search by name or barcode..."
+              placeholder="Search product, barcode or SKU…"
               placeholderTextColor={mutedColor}
               value={searchQuery}
               onChangeText={(text) => {
@@ -976,9 +986,9 @@ export default function ScanScreen() {
               <IconButton
                 icon="camera"
                 onPress={() => setScannerVisible(true)}
-                variant="filled"
-                color={colors.tint}
-                iconSize={18}
+                variant="ghost"
+                color={textColor}
+                iconSize={24}
                 style={styles.scanBtn}
                 accessibilityLabel="Scan barcode"
               />
@@ -1046,11 +1056,19 @@ export default function ScanScreen() {
           !scannedProduct &&
           productsToShow.length > 0 && (
             <View style={styles.productListContainer}>
+              <View style={styles.productSectionHeader}>
               <Text style={[styles.sectionTitle, { color: textColor }]}>
                 {debouncedSearch
                   ? `Found ${productsToShow.length} product${productsToShow.length !== 1 ? 's' : ''}`
-                  : 'Frequently used products'}
+                  : 'Suggested products'}
               </Text>
+              {!debouncedSearch && (
+                <Pressable onPress={handleOpenProducts} style={styles.browseLink} accessibilityRole="button" accessibilityLabel="See all products">
+                  <Text style={{ color: colors.tint, fontWeight: '600' }}>See all</Text>
+                  <AppIcon name="chevron-right" size={16} color={colors.tint} />
+                </Pressable>
+              )}
+              </View>
               <FlatList
                 data={productsToShow}
                 numColumns={2}
@@ -1075,23 +1093,19 @@ export default function ScanScreen() {
                       style={[
                         styles.productCard,
                         { backgroundColor: cardBg, borderColor },
-                        isSelected && { borderColor: colors.tint, borderWidth: 2 },
+
                         isOutOfStock && !isSelected && styles.productCardDisabled,
                       ]}
                     >
-                      {isSelected ? (
-                        <View style={[styles.quantityBadge, { backgroundColor: colors.tint }]}>
-                          <Text style={styles.quantityBadgeText}>{quantityInCart}</Text>
-                        </View>
-                      ) : null}
                       {/* Product Image */}
                       <View style={styles.productImageContainer}>
                         {p.imageUrl ? (
                           <Image
                             source={{ uri: resolveImageUrl(p.imageUrl) }}
                             style={styles.productImage}
-                            contentFit="cover"
-                            transition={200}
+                            contentFit="contain"
+                            transition={150}
+                            recyclingKey={p.id}
                             placeholder={require('@/assets/images/icon.png')}
                           />
                         ) : (
@@ -1104,9 +1118,10 @@ export default function ScanScreen() {
                         <Text style={[styles.productName, { color: textColor }]} numberOfLines={2}>
                           {p.name}
                         </Text>
+                        {!!p.description && <Text style={[styles.productDescription, { color: mutedColor }]} numberOfLines={1}>{p.description}</Text>}
                         <Text style={[styles.productPrice, { color: colors.tint }]}>
                           {CURRENCY.SYMBOL}{' '}
-                          {Number(p.sellingPrice ?? p.price ?? p.costPrice ?? 0).toFixed(CURRENCY.DECIMAL_PLACES)}
+                          {Number(p.sellingPrice ?? p.price ?? 0).toLocaleString(undefined, { minimumFractionDigits: CURRENCY.DECIMAL_PLACES, maximumFractionDigits: CURRENCY.DECIMAL_PLACES })}
                         </Text>
                         {p.trackStock === false ? (
                           <Text style={[styles.productStock, { color: mutedColor }]}>
@@ -1122,16 +1137,16 @@ export default function ScanScreen() {
                       </View>
                       {/* Add to cart / quantity controls */}
                       {isSelected ? (
-                        <View style={styles.cartQuantityControls}>
+                        <View style={[styles.cartQuantityControls, { backgroundColor: inputBg }]}>
                           <Pressable
                             onPress={(e) => {
                               e.stopPropagation();
                               handleAdjustProductQuantity(p, -1);
                             }}
-                            style={[styles.cartQuantityBtn, { borderColor, backgroundColor: '#14532d' }]}
+                            style={[styles.cartQuantityBtn, { borderColor: 'transparent', backgroundColor: colors.tint + '18' }]}
                             accessibilityLabel="Decrease quantity"
                           >
-                            <AppIcon name="minus" size={16} color="#fff" />
+                            <AppIcon name="minus" size={18} color={colors.tint} />
                           </Pressable>
                           <Pressable
                             onPress={(e) => {
@@ -1316,7 +1331,8 @@ export default function ScanScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 16, paddingBottom: 32 },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 8 },
+  retailContent: { paddingBottom: 120 },
+  title: { fontSize: 28, fontWeight: '700', marginBottom: 8 },
   subtitle: { fontSize: 15, marginBottom: 20 },
   card: {
     padding: 20,
@@ -1324,8 +1340,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   searchCard: {
-    padding: 12,
-    borderRadius: 12,
+    padding: 6,
+    borderRadius: 18,
     borderWidth: 1,
   },
   label: { fontSize: 14, fontWeight: '500', marginBottom: 8, marginTop: 16 },
@@ -1411,7 +1427,9 @@ const styles = StyleSheet.create({
   loading: { padding: 24, alignItems: 'center' },
   loadingText: { marginTop: 12, fontSize: 14 },
   productListContainer: { marginTop: 20 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 12 },
+  sectionTitle: { flex: 1, fontSize: 18, fontWeight: '700' },
+  productSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  browseLink: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44 },
   productRow: {
     justifyContent: 'space-between',
     gap: 12,
@@ -1423,8 +1441,13 @@ const styles = StyleSheet.create({
   productCard: {
     flex: 1,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 20,
     borderWidth: 1,
+    shadowColor: '#12372a',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
     minWidth: 0, // Important for flex items to shrink properly
     maxWidth: '48%', // Ensure two items fit per row
     position: 'relative', // For absolute positioned button
@@ -1463,10 +1486,10 @@ const styles = StyleSheet.create({
   },
   productImageContainer: {
     width: '100%',
-    aspectRatio: 1,
+    aspectRatio: 1.2,
     borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: '#f3f4f6',
+    backgroundColor: 'transparent',
     marginBottom: 8,
   },
   productImage: {
@@ -1479,16 +1502,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  productInfo: { alignItems: 'flex-start' },
-  productName: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
+  productInfo: { alignItems: 'flex-start', flex: 1 },
+  productDescription: { fontSize: 12, marginBottom: 2 },
+  productName: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
   productSku: { fontSize: 11, marginTop: 2 },
   productBarcode: { fontSize: 11, marginTop: 2 },
-  productPrice: { fontSize: 16, fontWeight: '700', marginTop: 4 },
-  productStock: { fontSize: 11, marginTop: 2 },
+  productPrice: { fontSize: 20, fontWeight: '700', marginTop: 4 },
+  productStock: { fontSize: 12, marginTop: 2 },
   addToCartBtn: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
+    alignSelf: 'flex-end',
+    marginTop: 10,
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -1498,14 +1521,11 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   cartQuantityControls: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    left: 8,
+    marginTop: 10,
+    borderRadius: 24,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
   },
   cartQuantityBtn: {
     width: 44,
@@ -1516,9 +1536,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cartQuantityValueBtn: {
-    minWidth: 44,
+    flex: 1,
     minHeight: 44,
-    paddingHorizontal: 8,
+    paddingHorizontal: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1569,15 +1589,28 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 24,
     right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    minHeight: 72,
+    maxWidth: '90%',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    gap: 14,
+    borderRadius: 40,
+    elevation: 8,
+    shadowColor: '#00291f',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
     borderWidth: 2,
     borderColor: '#fff',
   },
+  cartIconWrap: { padding: 4 },
+  cartSummary: { borderLeftWidth: 1, borderLeftColor: '#ffffff66', paddingLeft: 14 },
+  cartLabel: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  cartTotal: { color: '#fff', fontSize: 13, marginTop: 3 },
   cartBadge: {
     position: 'absolute',
     top: -4,

@@ -267,7 +267,7 @@ export const isConfigurableSidebarKeyForTenant = (key, ctx = {}) => {
     case '/deliveries':
       return hasFeature('deliveries');
     case '/tasks':
-      return !isPlatformAdmin && hasFeature('jobAutomation');
+      return !isPlatformAdmin && hasFeature('tasks');
     case '/automations':
       return hasFeature('automations');
     case '/leads':

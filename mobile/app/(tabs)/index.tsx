@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -40,6 +40,9 @@ import { FontFamily, FontSize } from '@/constants/typography';
 import { useIsStoreSetupRoute } from '@/hooks/useIsStoreSetupRoute';
 import { useOnlineStoreOrderAttention } from '@/hooks/useOnlineStoreOrderAttention';
 import { getCustomerName, getOrderNumber } from '@/utils/marketplaceOrderStatus';
+import { useFocusAreas } from '@/hooks/useFocusAreas';
+import { getFocusAreaDefinition } from '@/constants/focusAreas';
+import { hasSeenFocusAreaPrompt, markFocusAreaPromptSeen } from '@/utils/focusAreaPrompt';
 
 type FilterType = 'today' | 'week' | 'month' | 'year';
 type ComparisonMetric = {
@@ -118,6 +121,8 @@ function formatShortDate(dateStr: string): string {
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+const MAX_QUICK_ACTIONS = 3;
 
 type QuickAction = {
   label: string;
@@ -281,6 +286,29 @@ export default function DashboardScreen() {
   );
   const showVerifyEmailBanner = useMemo(() => Boolean(user && !user.emailVerifiedAt), [user, user?.emailVerifiedAt]);
 
+  const { focusAreas, hasChosen: hasChosenFocusAreas, isLoading: focusAreasLoading } = useFocusAreas();
+  const [focusPromptDismissedThisSession, setFocusPromptDismissedThisSession] = useState(false);
+  const [seenFocusPromptOnDevice, setSeenFocusPromptOnDevice] = useState<boolean | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    hasSeenFocusAreaPrompt().then((seen) => {
+      if (mounted) setSeenFocusPromptOnDevice(seen);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  const showFocusAreaPrompt =
+    onboardingCompleted
+    && !focusAreasLoading
+    && !hasChosenFocusAreas
+    && seenFocusPromptOnDevice === false
+    && !focusPromptDismissedThisSession;
+  const dismissFocusAreaPrompt = useCallback(() => {
+    setFocusPromptDismissedThisSession(true);
+    void markFocusAreaPromptSeen();
+  }, []);
+
   const handleResendVerification = useCallback(async () => {
     setResendLoading(true);
     try {
@@ -397,8 +425,31 @@ export default function DashboardScreen() {
     if (showOnlineStore && hasStoreSettings) {
       actions.push({ label: 'Store orders', icon: 'shopping-cart', route: '/(tabs)/store?section=orders', color: '#7c3aed' });
     }
-    return actions;
-  }, [isShop, isPharmacy, isStudio, isRestaurant, canCreateQuote, hasFeature, colors.tint, showOnlineStore, hasStoreSettings]);
+    if (hasFeature('leadPipeline')) {
+      actions.push({ label: 'Add lead', icon: 'user-plus', route: '/(tabs)/leads', color: '#0891b2' });
+    }
+    if (hasFeature('deliveries')) {
+      actions.push({ label: 'Assign delivery', icon: 'truck', route: '/(tabs)/deliveries', color: '#0d9488' });
+    }
+    if (isShop && hasFeature('dealersAccount')) {
+      actions.push({ label: 'Dealer order', icon: 'briefcase', route: '/(tabs)/dealers?add=1', color: '#7c3aed' });
+    }
+
+    // Promote whichever of these match the user's "what matters most to you" picks, in pick order.
+    if (focusAreas.length === 0) return actions.slice(0, MAX_QUICK_ACTIONS);
+    const routeBase = (route: string) => route.split('?')[0];
+    const rank = new Map<string, number>();
+    focusAreas.forEach((id, index) => {
+      const def = getFocusAreaDefinition(id);
+      if (def && !rank.has(routeBase(def.route))) rank.set(routeBase(def.route), index);
+    });
+    const ranked = [...actions].sort((a, b) => {
+      const ra = rank.get(routeBase(a.route)) ?? Number.MAX_SAFE_INTEGER;
+      const rb = rank.get(routeBase(b.route)) ?? Number.MAX_SAFE_INTEGER;
+      return ra - rb;
+    });
+    return ranked.slice(0, MAX_QUICK_ACTIONS);
+  }, [isShop, isPharmacy, isStudio, isRestaurant, canCreateQuote, hasFeature, colors.tint, showOnlineStore, hasStoreSettings, focusAreas]);
 
   const recentSales = useMemo(
     () => (shopData.recentSales ?? []) as RecentSale[],
@@ -586,6 +637,33 @@ export default function DashboardScreen() {
             </Text>
           </View>
           <AppIcon name="chevron-forward" size={18} color={mutedColor} />
+        </Pressable>
+      )}
+
+      {/* One-time nudge toward the focus-areas picker — never blocks, always dismissible */}
+      {showFocusAreaPrompt && (
+        <Pressable
+          style={[styles.setupBanner, { backgroundColor: cardBg, borderColor }]}
+          onPress={() => router.push('/focus-areas' as never)}
+        >
+          <View style={styles.setupBannerIcon}>
+            <AppIcon name="sparkles" size={22} color={colors.tint} />
+          </View>
+          <View style={styles.setupBannerText}>
+            <Text style={styles.setupBannerTitle}>What matters most to you?</Text>
+            <Text style={styles.setupBannerSubtitle}>
+              Pick your focus and we'll tailor your menu and dashboard to it.
+            </Text>
+          </View>
+          <Pressable
+            hitSlop={8}
+            onPress={(event) => {
+              event.stopPropagation();
+              dismissFocusAreaPrompt();
+            }}
+          >
+            <AppIcon name="x" size={18} color={mutedColor} />
+          </Pressable>
         </Pressable>
       )}
 

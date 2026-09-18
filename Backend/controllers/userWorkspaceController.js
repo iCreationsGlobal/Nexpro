@@ -1,3 +1,4 @@
+const { normalizeCalendar } = require('../utils/calendarTask');
 const { UserTodo, UserWeekFocus, UserTask, UserChecklist, UserChecklistItem, UserTenant, User, Tenant } = require('../models');
 const { getTenantLogoUrl } = require('../utils/tenantLogo');
 const { Op } = require('sequelize');
@@ -413,6 +414,7 @@ exports.createTask = async (req, res, next) => {
       finalAssigneeId = assigneeId;
     }
 
+    const calendar = req.body.calendar === undefined ? { enabled: false } : normalizeCalendar(req.body.calendar);
     const task = await UserTask.create(attachScopedToPayload(req, {
       tenantId: req.tenantId,
       userId: req.user.id,
@@ -425,6 +427,7 @@ exports.createTask = async (req, res, next) => {
       assigneeId: finalAssigneeId,
       isPrivate: Boolean(isPrivate),
       metadata: {
+        calendar,
         activityLog: [
           buildActivityEntry('created', {
             userId: req.user.id,
@@ -550,6 +553,11 @@ exports.updateTask = async (req, res, next) => {
 
     const metadata = normalizeTaskMetadata(task.metadata);
     let metadataChanged = false;
+    if (req.body.calendar !== undefined) {
+      metadata.calendar = normalizeCalendar(req.body.calendar);
+      metadataChanged = true;
+      changes.push('calendar reminder');
+    }
 
     if (checklists !== undefined) {
       const normalized = normalizeTaskChecklistsInput(checklists);

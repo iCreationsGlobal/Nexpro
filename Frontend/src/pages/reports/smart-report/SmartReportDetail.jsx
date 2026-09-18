@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import html2pdf from 'html2pdf.js';
+import { loadHtml2Pdf } from '../../../utils/chunkLoadError';
 import { showSuccess, showError } from '../../../utils/toast';
 import SmartReportHeader from './SmartReportHeader';
 import SmartReportTabBar from './SmartReportTabBar';
@@ -106,6 +106,7 @@ export default function SmartReportDetail({
     setDownloading(true);
     try {
       const filename = `${(report?.title || 'smart-report').replace(/[^a-z0-9-_]/gi, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      const html2pdf = await loadHtml2Pdf();
       await html2pdf()
         .set({
           margin: 10,

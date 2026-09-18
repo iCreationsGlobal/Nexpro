@@ -407,6 +407,13 @@ const PrintableInvoice = ({
           font-size: 10px;
           color: #000;
         }
+        .thermal-logo {
+          display: block;
+          max-width: 120px;
+          max-height: 50px;
+          margin: 0 auto 6px;
+          object-fit: contain;
+        }
         .thermal-title {
           font-size: 14px;
           font-weight: bold;
@@ -694,6 +701,9 @@ const PrintableInvoice = ({
         {printStyles.isThermal ? (
           /* Thermal receipt layout - simplified CASH RECEIPT style */
           <div className="thermal-receipt">
+            {printStyles.showLogo && logoSource && (
+              <img src={logoSource} alt={companyInfo.name} className="thermal-logo" />
+            )}
             <div className="thermal-title">CASH RECEIPT</div>
             <div className="thermal-business">
               <div style={{ fontWeight: 600 }}>{companyInfo.name}</div>

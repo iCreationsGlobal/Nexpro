@@ -30,9 +30,9 @@ export type CustomerActivityPayload = {
 };
 
 export const customerService = {
-  getCustomers: async (params: CustomerParams = {}) => {
+  getCustomers: async (params: CustomerParams = {}, options: { signal?: AbortSignal; timeout?: number } = {}) => {
     const query = await buildScopedQueryString(params);
-    const res = await api.get(query ? `/customers?${query}` : '/customers');
+    const res = await api.get(query ? `/customers?${query}` : '/customers', options);
     // Backend returns: { success: true, count: N, pagination: {...}, data: [...] }
     // Mobile api returns full axios response, so res.data = { success: true, count: N, pagination: {...}, data: [...] }
     return res.data;

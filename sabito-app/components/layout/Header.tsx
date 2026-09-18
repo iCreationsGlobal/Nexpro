@@ -11,8 +11,9 @@ import { cn } from "@/lib/utils";
 const MARKETING_NAV = [
   { href: "/", label: "Home" },
   { href: "/how-it-works", label: "How it works" },
+  { href: "/businesses", label: "Businesses" },
+  { href: "/how-it-works#for-marketers", label: "Marketers" },
   { href: "/ai-match", label: "Partner search" },
-  { href: "/pricing", label: "Pricing" },
 ];
 
 export function Header() {
@@ -106,9 +107,6 @@ export function Header() {
                 {item.label}
               </Link>
             ))}
-            <Link href="/businesses" className="rounded-lg px-3 py-2.5 text-sm text-brand-700">
-              Browse businesses
-            </Link>
             <Link href="/commission-guide" className="rounded-lg px-3 py-2.5 text-sm text-brand-700">
               Commission guide
             </Link>

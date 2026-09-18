@@ -29,6 +29,14 @@ const SHOP_TYPE_PRODUCT_CATEGORIES = {
     { name: 'Beverages', description: 'Soft drinks, juices, and non-alcoholic drinks' },
     { name: 'Hot Drinks', description: 'Coffee, tea, and hot beverages' },
     { name: 'Alcoholic Drinks', description: 'Beer, wine, and spirits' }
+  ],
+  bakery: [
+    { name: 'Breads', description: 'Loaves, rolls, and daily bread' },
+    { name: 'Pastries', description: 'Croissants, pies, and pastries' },
+    { name: 'Cakes', description: 'Cakes and celebration cakes' },
+    { name: 'Cookies & Biscuits', description: 'Cookies, biscuits, and small bakes' },
+    { name: 'Beverages', description: 'Soft drinks, juices, and hot beverages' },
+    { name: 'Other Baked Goods', description: 'Miscellaneous baked items' }
   ]
 };
 

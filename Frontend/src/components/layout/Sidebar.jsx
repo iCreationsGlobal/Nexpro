@@ -288,7 +288,7 @@ const getMenuItems = (
       : []),
     ...(!isPlatformAdmin && hasFeature('crm') ? [{ key: '/reviews', label: 'Reviews', tooltip: MENU_HINTS['/reviews'] }] : []),
     ...(hasFeature('deliveries') ? [{ key: '/deliveries', label: 'Deliveries', tooltip: MENU_HINTS['/deliveries'] }] : []),
-    ...(!isPlatformAdmin && hasFeature('jobAutomation') ? [{ key: '/tasks', label: 'Tasks', tooltip: MENU_HINTS['/tasks'] }] : []),
+    ...(!isPlatformAdmin && hasFeature('tasks') ? [{ key: '/tasks', label: 'Tasks', tooltip: MENU_HINTS['/tasks'] }] : []),
     ...(hasFeature('automations') ? [{ key: '/automations', label: 'Automations', tooltip: MENU_HINTS['/automations'], managerOnly: true }] : []),
     ...(!isPlatformAdmin && hasFeature('leadPipeline') ? [{ key: '/leads', label: 'Leads', tooltip: MENU_HINTS['/leads'] }] : []),
     ...(hasFeature('marketing') ? [{ key: '/messages', label: 'Messages', tooltip: MENU_HINTS['/messages'], managerOnly: true }] : []),

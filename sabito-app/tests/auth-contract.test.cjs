@@ -6,15 +6,16 @@ const path = require('node:path');
 const vm = require('node:vm');
 function api(response) {
   const requests = [];
+  let token = 'test-session';
   const context = {
     exports: {}, URLSearchParams, AbortSignal, window: {},
-    localStorage: { getItem: () => 'test-session' },
+    localStorage: { getItem: () => token },
     require: () => ({ getApiBaseUrl: () => 'https://api.example.test/api', TOKEN_KEY: 'test-token' }),
     fetch: async (url, options) => { requests.push({ url, options }); return { ok: true, status: 200, json: async () => response }; },
   };
   const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../lib/api.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   vm.runInNewContext(code, context);
-  return { client: context.exports, requests };
+  return { client: context.exports, requests, setToken: value => { token = value; } };
 }
 test('password recovery uses the same code endpoints as mobile', async () => {
   const { client, requests } = api({ success: true, data: { message: 'Accepted' } });
@@ -40,4 +41,25 @@ test('password change and closure send authenticated requests with confirmation 
   assert.equal(requests[1].options.method, 'DELETE');
   assert.equal(JSON.parse(requests[1].options.body).password, 'confirmation-password');
   for (const request of requests) assert.equal(request.options.headers.Authorization, 'Bearer test-session');
+});
+test('concurrent reads share a request but later reads refresh', async () => {
+  const { client, requests } = api({ success: true, data: {} });
+  await Promise.all([client.getMarketerSession(), client.getMarketerSession()]);
+  assert.equal(requests.length, 1);
+  await client.getMarketerSession();
+  assert.equal(requests.length, 2);
+});
+test('concurrent reads are isolated by authentication session', async () => {
+  const { client, requests, setToken } = api({ success: true, data: {} });
+  const first = client.getMarketerSession();
+  setToken('another-session');
+  const second = client.getMarketerSession();
+  await Promise.all([first, second]);
+  assert.equal(requests.length, 2);
+  assert.notEqual(requests[0].options.headers.Authorization, requests[1].options.headers.Authorization);
+});
+test('a mutation prevents new reads from joining an older in-flight read', async () => {
+  const { client, requests } = api({ success: true, data: {} });
+  await Promise.all([client.getMarketerSession(), client.updateMarketerProfile({name:'Updated'}), client.getMarketerSession()]);
+  assert.equal(requests.length, 3);
 });

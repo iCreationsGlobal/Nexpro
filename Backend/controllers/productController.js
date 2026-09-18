@@ -547,12 +547,14 @@ exports.getProducts = async (req, res, next) => {
         {
           model: Barcode,
           as: 'barcodes',
+          separate: true, // Batch child rows without multiplying the paginated product join.
           required: false,
           attributes: PRODUCT_LIST_BARCODE_ATTRIBUTES,
         },
         ...(includeVariants ? [{
           model: ProductVariant,
           as: 'variants',
+          separate: true,
           required: false,
           where: { isActive: true },
           attributes: ['id', 'productId', 'name', 'sku', 'barcode', 'sellingPrice', 'wholesalePrice', 'quantityOnHand', 'attributes', 'isActive', 'trackStock']

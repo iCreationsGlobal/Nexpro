@@ -108,6 +108,12 @@ export const useSettingsEmail = () => {
         sesRegion: values.sesRegion || 'us-east-1',
         sesHost: values.sesHost?.trim(),
       };
+    } else if (provider === 'resend') {
+      if (!values?.resendApiKey?.trim()) {
+        showError(null, 'Please provide a Resend API Key to test connection');
+        return null;
+      }
+      config = { ...config, resendApiKey: values.resendApiKey.trim(), fromEmail: values.fromEmail?.trim() };
     }
     return config;
   }, []);
@@ -141,7 +147,7 @@ export const useSettingsEmail = () => {
   const emailDataLoaded = emailData?.data;
   const emailPlatformInfo = emailData?.data?.platformEmail;
   const emailMode = emailData?.data?.emailMode;
-  const hasOwnEmailConfigured = !!(emailDataLoaded?.enabled && (emailDataLoaded?.fromEmail || emailDataLoaded?.smtpHost || emailDataLoaded?.sendgridApiKey || emailDataLoaded?.sesAccessKeyId));
+  const hasOwnEmailConfigured = !!(emailDataLoaded?.enabled && (emailDataLoaded?.fromEmail || emailDataLoaded?.smtpHost || emailDataLoaded?.sendgridApiKey || emailDataLoaded?.sesAccessKeyId || emailDataLoaded?.resendApiKey));
   const ownEmailToggleOn = emailForm.watch('enabled');
   const ownEmailActive = emailMode === 'own' || (emailMode == null && hasOwnEmailConfigured);
   const switchingToOwnEmail = ownEmailToggleOn && !ownEmailActive;

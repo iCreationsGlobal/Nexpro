@@ -1,3 +1,4 @@
+import { TaskCalendarFields, calendarPayload, type TaskCalendar } from '@/components/TaskCalendarFields';
 import React, { useMemo, useState } from 'react';
 import {
   View,
@@ -45,6 +46,7 @@ export default function TaskDetailScreen() {
   const queryClient = useQueryClient();
   const [statusOpen, setStatusOpen] = useState(false);
   const [comment, setComment] = useState('');
+  const [calendarDraft, setCalendarDraft] = useState<TaskCalendar | null>(null);
   const { isAnyActionActive, isActionActive, runExclusiveAction } = useExclusiveAction<TaskAction>();
 
   const { data, isLoading } = useQuery({
@@ -145,6 +147,13 @@ export default function TaskDetailScreen() {
           {task.assignee?.name ? <DetailInfoRow icon="user" label="Assignee" value={task.assignee.name} /> : null}
         </DetailSectionCard>
 
+        <DetailSectionCard title="Calendar reminder" icon="calendar">
+          <TaskCalendarFields value={calendarDraft || task.metadata?.calendar || { enabled: false, reminderMinutes: 10 }} onChange={setCalendarDraft} />
+          <Pressable accessibilityRole="button" disabled={updateMutation.isPending || !calendarDraft} onPress={() => {
+            try { const calendar = calendarPayload(calendarDraft!); updateMutation.mutate({ calendar }, { onSuccess: () => { setCalendarDraft(null); void queryClient.invalidateQueries({ queryKey: ['user-workspace', 'task-detail', id] }); } }); }
+            catch (error) { Alert.alert('Calendar reminder', (error as Error).message); }
+          }} style={{ padding: 12 }}><Text style={{ color: colors.tint }}>{updateMutation.isPending ? 'Saving…' : 'Save calendar reminder'}</Text></Pressable>
+        </DetailSectionCard>
         <DetailSectionCard title="Comments" icon="comments">
           {comments.length === 0 ? (
             <Text style={{ color: mutedColor }}>No comments yet.</Text>

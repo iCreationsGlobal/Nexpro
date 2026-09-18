@@ -1269,6 +1269,9 @@ const marketingPlainMessageDisclaimer = (companyName, audience = 'customer') => 
   if (isInternal) {
     return `You are receiving this because you are a team member of ${companyName}.`;
   }
+  if (audience === 'lead') {
+    return `You are receiving this because you inquired about ${companyName}.`;
+  }
   return `You are receiving this because you are a customer of ${companyName}.`;
 };
 
@@ -1276,7 +1279,7 @@ const marketingPlainMessageDisclaimer = (companyName, audience = 'customer') => 
  * Marketing broadcast / automation plain-text body, tenant-branded card.
  * @param {string} plainBody
  * @param {Object} [company] - { name, primaryColor, logoUrl, audience }
- *   audience: 'customer' (default) | 'internal' | 'staff' — controls footer disclaimer
+ *   audience: 'customer' (default) | 'lead' | 'internal' | 'staff' — controls footer disclaimer
  * @returns {string} HTML
  */
 const marketingPlainMessageEmail = (plainBody, company = {}) => {

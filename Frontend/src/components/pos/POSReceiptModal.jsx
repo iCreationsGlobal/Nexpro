@@ -215,27 +215,53 @@ const POSReceiptModal = ({
 
   // Handle print
   const handlePrint = useCallback(() => {
-    if (printRef.current) {
-      const printContent = printRef.current.innerHTML;
-      const printWindow = window.open('', '_blank');
-      const docType = sale?.paymentMethod === 'credit' ? 'Invoice' : 'Receipt';
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>${docType} - ${sale?.saleNumber || ''}</title>
-            <style>
-              body { font-family: 'Courier New', monospace; padding: 20px; }
-              @media print {
-                body { padding: 0; }
-              }
-            </style>
-          </head>
-          <body>${printContent}</body>
-        </html>
-      `);
-      printWindow.document.close();
+    if (!printRef.current) return;
+    const printContent = printRef.current.innerHTML;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    const docType = sale?.paymentMethod === 'credit' ? 'Invoice' : 'Receipt';
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${docType} - ${sale?.saleNumber || ''}</title>
+          <style>
+            body { font-family: 'Courier New', monospace; padding: 20px; }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>${printContent}</body>
+      </html>
+    `);
+    printWindow.document.close();
+
+    let printed = false;
+    const triggerPrint = () => {
+      if (printed) return;
+      printed = true;
       printWindow.print();
+    };
+
+    // A logo embedded as a large data-URI can still be mid-decode when the popup first paints
+    // (fresh document, no cache warm-up) — wait for every image to settle before printing,
+    // otherwise the logo is silently skipped from the printed receipt.
+    const images = Array.from(printWindow.document.images || []);
+    const pending = images.filter((img) => !img.complete);
+    if (pending.length === 0) {
+      triggerPrint();
+    } else {
+      let remaining = pending.length;
+      const onImageSettled = () => {
+        remaining -= 1;
+        if (remaining <= 0) triggerPrint();
+      };
+      pending.forEach((img) => {
+        img.addEventListener('load', onImageSettled, { once: true });
+        img.addEventListener('error', onImageSettled, { once: true });
+      });
+      setTimeout(triggerPrint, 1500);
     }
   }, [sale?.paymentMethod, sale?.saleNumber]);
 

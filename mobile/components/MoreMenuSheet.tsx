@@ -11,6 +11,7 @@ import {
   SheetSectionLabel,
 } from '@/components/AppBottomSheet';
 import { useAuth } from '@/context/AuthContext';
+import { useFocusAreas } from '@/hooks/useFocusAreas';
 import { useIsStoreSetupRoute } from '@/hooks/useIsStoreSetupRoute';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { storeService } from '@/services/storeService';
@@ -34,6 +35,7 @@ export function MoreMenuSheet({ visible, onClose }: MoreMenuSheetProps) {
   const { activeTenant, activeTenantId, hasFeature, user, isDriver } = useAuth();
   const { mutedColor } = useScreenColors();
   const inStoreSetup = useIsStoreSetupRoute();
+  const { focusAreas } = useFocusAreas();
 
   const { data: statusResponse } = useQuery({
     queryKey: ['store', 'setup-status'],
@@ -59,6 +61,7 @@ export function MoreMenuSheet({ visible, onClose }: MoreMenuSheetProps) {
         hasFeature,
         hasStoreSettings,
         isPlatformAdmin: user?.isPlatformAdmin === true,
+        focusAreas,
       }),
     [
       isDriver,
@@ -67,6 +70,7 @@ export function MoreMenuSheet({ visible, onClose }: MoreMenuSheetProps) {
       hasFeature,
       hasStoreSettings,
       user?.isPlatformAdmin,
+      focusAreas,
     ]
   );
 

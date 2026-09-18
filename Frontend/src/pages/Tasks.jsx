@@ -1,3 +1,5 @@
+import GoogleCalendarSettings from '../components/tasks/GoogleCalendarSettings';
+import TaskCalendarFields from '../components/tasks/TaskCalendarFields';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useUnsavedChangesGuard } from '../hooks/useUnsavedChangesGuard';
@@ -129,7 +131,8 @@ const initialForm = {
   startDate: '',
   dueDate: '',
   isPrivate: false,
-  assigneeId: ''
+  assigneeId: '',
+  calendar: { enabled: false, reminderMinutes: 10 }
 };
 
 const Tasks = () => {
@@ -395,6 +398,7 @@ const Tasks = () => {
     dueDate: task.dueDate ? String(task.dueDate).slice(0, 10) : '',
     isPrivate: task.isPrivate === true,
     assigneeId: task.assigneeId || '',
+    calendar: task.metadata?.calendar || { enabled: false, reminderMinutes: 10 },
   }), []);
 
   const openCreate = useCallback(() => {
@@ -591,6 +595,7 @@ const Tasks = () => {
       priority: form.priority || 'medium',
       startDate: form.startDate || null,
       dueDate: form.dueDate || null,
+      calendar: form.calendar,
       isPrivate: form.isPrivate === true,
       assigneeId: form.assigneeId || null
     });
@@ -609,12 +614,20 @@ const Tasks = () => {
       priority: createForm.priority || 'medium',
       startDate: createForm.startDate || new Date().toISOString().slice(0, 10),
       dueDate: createForm.dueDate || null,
+      calendar: createForm.calendar,
       isPrivate: createForm.isPrivate === true,
       assigneeId: createForm.assigneeId || null
     });
   }, [createForm, createTaskMutation]);
 
   const taskDetail = taskDetailResponse?.data || null;
+  useEffect(() => {
+    if (taskDetail?.id === selectedTaskId && !isDetailsEditing) {
+      const snapshot = buildTaskFormState(taskDetail);
+      setForm(snapshot);
+      setDetailsFormBaseline(snapshot);
+    }
+  }, [taskDetail, selectedTaskId, isDetailsEditing, buildTaskFormState]);
   const taskActivity = Array.isArray(taskActivityResponse?.data) ? taskActivityResponse.data : [];
   const taskComments = Array.isArray(taskCommentsResponse?.data) ? taskCommentsResponse.data : [];
   const selectedAssignee = membersData.find((m) => m.id === form.assigneeId) || taskDetail?.assignee || null;
@@ -771,6 +784,15 @@ const Tasks = () => {
   }, [taskActivity, taskComments, taskDetail]);
   const hasActivity = activityItems.length > 0;
 
+  const calendarDeepLinkOpened = useRef(false);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('taskId');
+    if (id && scopeReady && !calendarDeepLinkOpened.current) {
+      calendarDeepLinkOpened.current = true;
+      openTaskDetails(id);
+    }
+  }, [scopeReady, openTaskDetails]);
+
   const jumpToTask = useCallback((taskId) => {
     const el = taskCardRefs.current?.[taskId];
     if (el && typeof el.scrollIntoView === 'function') {
@@ -796,6 +818,7 @@ const Tasks = () => {
 
   return (
     <div className="space-y-4 md:space-y-6">
+      <details className="rounded-lg border p-3"><summary className="cursor-pointer font-medium">Google Calendar integration</summary><div className="mt-3"><GoogleCalendarSettings /></div></details>
       <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
         <WelcomeSection
           welcomeMessage="Tasks"
@@ -1207,6 +1230,7 @@ const Tasks = () => {
                   placeholder="Call customer after meeting"
                 />
               </div>
+              <TaskCalendarFields value={createForm.calendar} onChange={calendar => setCreateForm(p => ({ ...p, calendar }))} />
               <div className="md:col-span-2">
                 <Label htmlFor="task-description-create">Description (optional)</Label>
                 <Textarea
@@ -1413,6 +1437,7 @@ const Tasks = () => {
                             </SelectContent>
                           </Select>
                         </div>
+                        <TaskCalendarFields value={form.calendar} onChange={calendar => setForm(p => ({ ...p, calendar }))} />
                         <div className="md:col-span-2 grid grid-cols-1 gap-4 md:grid-cols-2">
                           <div>
                             <Label>Start date</Label>
@@ -1768,7 +1793,7 @@ const Tasks = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this task?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. The task and its comments will be permanently removed.
+              This action cannot be undone. The task and its comments will be permanently removed. Its linked calendar event will be removed on the next successful sync.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

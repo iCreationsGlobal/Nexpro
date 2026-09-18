@@ -107,6 +107,10 @@ const Lead = sequelize.define('Lead', {
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
+  },
+  doNotContact: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   }
 }, {
   tableName: 'leads',

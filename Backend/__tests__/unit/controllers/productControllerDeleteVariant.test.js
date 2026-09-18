@@ -46,6 +46,18 @@ jest.mock('../../../utils/paginationUtils', () => ({
   getPagination: jest.fn(),
 }));
 
+jest.mock('../../../utils/productStockUtils', () => ({
+  applyEffectiveProductQuantity: jest.fn((product) => product),
+  syncParentQuantityFromVariants: jest.fn().mockResolvedValue(undefined),
+  parseQuantity: (value) => {
+    const qty = Number.parseFloat(value);
+    return Number.isFinite(qty) ? qty : 0;
+  },
+  recordProductStockMovement: jest.fn().mockResolvedValue(undefined),
+  resolveStockMovementType: jest.fn(() => 'adjustment'),
+  applyStockChange: jest.fn().mockResolvedValue({ skipped: false, previousQuantity: 0, newQuantity: 0, quantityDelta: 0 }),
+}));
+
 jest.mock('../../../middleware/cache', () => ({
   invalidateProductListCache: jest.fn(),
   invalidateAfterMutation: jest.fn(),

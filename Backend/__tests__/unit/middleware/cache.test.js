@@ -198,3 +198,24 @@ describe('cache middleware hot-path behavior', () => {
     expect(getCacheValue(key)).toBeUndefined();
   });
 });
+
+describe('cache index cleanup', () => {
+  const cacheModule = require('../../../middleware/cache');
+  afterEach(() => { cacheModule.clearAllCache(); jest.useRealTimers(); });
+  it('does not revisit expired keys during tenant invalidation', () => {
+    jest.useFakeTimers();
+    cacheModule.setCacheValue('products:list:t:expired', { ok: true }, 1, 't');
+    cacheModule.setCacheValue('products:list:t:live', { ok: true }, 60, 't');
+    jest.advanceTimersByTime(2000);
+    expect(cacheModule.getCacheValue('products:list:t:expired')).toBeUndefined();
+    expect(cacheModule.invalidateProductListCache('t')).toBe(1);
+  });
+  it('removes deleted entries without affecting another tenant', () => {
+    cacheModule.setCacheValue('products:list:t:old', {}, 60, 't');
+    cacheModule.setCacheValue('products:list:t:live', {}, 60, 't');
+    cacheModule.setCacheValue('products:list:other:live', { name: 'other' }, 60, 'other');
+    cacheModule.deleteCacheValue('products:list:t:old');
+    expect(cacheModule.invalidateProductListCache('t')).toBe(1);
+    expect(cacheModule.getCacheValue('products:list:other:live')).toEqual({name:'other'});
+  });
+});

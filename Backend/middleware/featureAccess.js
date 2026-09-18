@@ -2,6 +2,44 @@ const { canAccessFeature, canAccessRoute, getFeatureByKey } = require('../config
 const { Tenant } = require('../models');
 const { getTenantEffectiveEntitlements, resolveTenantAccessState } = require('../utils/tenantEntitlements');
 const { normalizeTenantInstanceForRequest } = require('../utils/tenantClassification');
+const {
+  getCacheValue,
+  setCacheValue,
+  getTenantRowCacheKey,
+  getEntitlementsCacheKey,
+  TENANT_ENTITLEMENTS_TTL,
+} = require('./cache');
+
+/**
+ * Fetch + normalize the tenant row, cached briefly — this runs on every /api request
+ * (checkRouteAccess, requireFeature, requireAnyFeature) so an uncached DB round trip here
+ * is paid by every single call in the app, not just the ones that actually need it.
+ * @param {string} tenantId
+ * @returns {Promise<object|null>}
+ */
+const getCachedTenant = async (tenantId) => {
+  const cacheKey = getTenantRowCacheKey(tenantId);
+  const cached = getCacheValue(cacheKey);
+  if (cached !== undefined) return cached;
+  const tenant = normalizeTenantInstanceForRequest(await Tenant.findByPk(tenantId));
+  setCacheValue(cacheKey, tenant || null, TENANT_ENTITLEMENTS_TTL, tenantId);
+  return tenant;
+};
+
+/**
+ * Resolve effective entitlements, cached briefly per tenant — avoids an uncached
+ * SubscriptionPlan lookup on every request (entitlements rarely change second-to-second).
+ * @param {object} tenant
+ * @returns {Promise<object>}
+ */
+const getCachedEntitlements = async (tenant) => {
+  const cacheKey = getEntitlementsCacheKey(tenant.id);
+  const cached = getCacheValue(cacheKey);
+  if (cached !== undefined) return cached;
+  const entitlements = await getTenantEffectiveEntitlements(tenant);
+  setCacheValue(cacheKey, entitlements, TENANT_ENTITLEMENTS_TTL, tenant.id);
+  return entitlements;
+};
 
 /**
  * Middleware to check if tenant's plan includes a specific feature
@@ -34,8 +72,8 @@ const requireFeature = (featureKey) => {
       }
 
       // Get tenant and their plan
-      const tenant = normalizeTenantInstanceForRequest(await Tenant.findByPk(tenantId));
-      
+      const tenant = await getCachedTenant(tenantId);
+
       if (!tenant) {
         return res.status(404).json({
           success: false,
@@ -43,7 +81,7 @@ const requireFeature = (featureKey) => {
         });
       }
 
-      const entitlements = await getTenantEffectiveEntitlements(tenant);
+      const entitlements = await getCachedEntitlements(tenant);
       const planFeatures = entitlements.enabledFeatures;
 
       // Check if feature is available
@@ -86,7 +124,7 @@ const requireAnyFeature = (featureKeys) => {
         });
       }
 
-      const tenant = normalizeTenantInstanceForRequest(await Tenant.findByPk(tenantId));
+      const tenant = await getCachedTenant(tenantId);
 
       if (!tenant) {
         return res.status(404).json({
@@ -95,7 +133,7 @@ const requireAnyFeature = (featureKeys) => {
         });
       }
 
-      const entitlements = await getTenantEffectiveEntitlements(tenant);
+      const entitlements = await getCachedEntitlements(tenant);
       const planFeatures = entitlements.enabledFeatures;
 
       const allowed = Array.isArray(featureKeys) && featureKeys.some((k) => canAccessFeature(planFeatures, k));
@@ -137,7 +175,7 @@ const checkRouteAccess = async (req, res, next) => {
       return next();
     }
 
-    const tenant = normalizeTenantInstanceForRequest(await Tenant.findByPk(tenantId));
+    const tenant = await getCachedTenant(tenantId);
     if (!tenant) {
       return next();
     }
@@ -157,7 +195,7 @@ const checkRouteAccess = async (req, res, next) => {
       });
     }
 
-    const entitlements = await getTenantEffectiveEntitlements(tenant);
+    const entitlements = await getCachedEntitlements(tenant);
     const planFeatures = entitlements.enabledFeatures;
 
     // Check if route is accessible
@@ -186,9 +224,9 @@ const checkRouteAccess = async (req, res, next) => {
  * Helper to get tenant features for response
  */
 const getTenantFeatures = async (tenantId) => {
-  const tenant = normalizeTenantInstanceForRequest(await Tenant.findByPk(tenantId));
+  const tenant = await getCachedTenant(tenantId);
   if (!tenant) return [];
-  const entitlements = await getTenantEffectiveEntitlements(tenant);
+  const entitlements = await getCachedEntitlements(tenant);
   return entitlements.enabledFeatures;
 };
 

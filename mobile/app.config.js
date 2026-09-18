@@ -9,9 +9,9 @@ export default {
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
     splash: {
-      image: './assets/images/splash-icon.png',
+      image: './assets/images/boot-symbol.png',
       resizeMode: 'contain',
-      backgroundColor: '#166534',
+      backgroundColor: '#00291f',
     },
     ios: {
       bundleIdentifier: 'com.absghana.app',
@@ -47,7 +47,7 @@ export default {
       'expo-font',
       'expo-image',
       'expo-sharing',
-      'expo-splash-screen',
+      ['expo-splash-screen', { backgroundColor: '#00291f', image: './assets/images/boot-symbol.png', imageWidth: 160, resizeMode: 'contain' }],
       'expo-status-bar',
       'expo-web-browser',
       'expo-audio',

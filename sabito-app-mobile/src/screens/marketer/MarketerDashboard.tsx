@@ -10,6 +10,7 @@ import {
   Animated,
   Easing,
   ActivityIndicator,
+  AppState,
   Platform,
   TextInput,
   Keyboard,
@@ -159,7 +160,7 @@ const MarketerDashboard: React.FC<MarketerDashboardScreenProps> = ({ navigation 
           ...marketer,
           id: marketer.id,
         }));
-        await Promise.all([fetchDashboardStats(), fetchRecentActivities()]);
+        // The focus effect loads dashboard data when the user becomes available.
       } catch (error: any) {
         navigation.replace('Login');
       } finally {
@@ -169,56 +170,47 @@ const MarketerDashboard: React.FC<MarketerDashboardScreenProps> = ({ navigation 
     loadData();
     
     // Start rotation animations
-    Animated.loop(
+    const topAnimation = Animated.loop(
       Animated.timing(spinTopLeft, {
         toValue: 1,
         duration: 20000, // 20 seconds per rotation (slow)
         easing: Easing.linear,
         useNativeDriver: true,
       })
-    ).start();
+    );
 
-    Animated.loop(
+    const bottomAnimation = Animated.loop(
       Animated.timing(spinBottomRight, {
         toValue: 1,
         duration: 25000, // 25 seconds per rotation (slower, different speed)
         easing: Easing.linear,
         useNativeDriver: true,
       })
-    ).start();
+    );
+    topAnimation.start();
+    bottomAnimation.start();
+    return () => { topAnimation.stop(); bottomAnimation.stop(); };
   }, []);
 
   // Refresh data when screen comes into focus + Smart polling
   useFocusEffect(
     useCallback(() => {
+      let fetching = false;
       const refreshOnFocus = async (): Promise<void> => {
-        if (user?.id) {
-          // Fetch in parallel for better performance
-          await Promise.all([
-            fetchDashboardStats(),
-            fetchRecentActivities()
-          ]);
-        }
+        if (!user?.id || fetching || AppState.currentState !== 'active') return;
+        fetching = true;
+        try { await Promise.all([fetchDashboardStats(), fetchRecentActivities()]); }
+        finally { fetching = false; }
       };
-      
-      // Initial refresh on focus
-      refreshOnFocus();
+      void refreshOnFocus();
       loadBannerDismissedState();
-      
-      // Smart polling - only when screen is focused (every 45 seconds)
-      const pollingInterval = setInterval(() => {
-        if (user?.id) {
-          // Fetch in parallel for better performance
-          Promise.all([
-            fetchDashboardStats(),
-            fetchRecentActivities()
-          ]);
-        }
-      }, 45000); // 45 seconds
-      
-      // Cleanup: Stop polling when screen is unfocused
+      const pollingInterval = setInterval(() => { void refreshOnFocus(); }, 45000);
+      const appStateSubscription = AppState.addEventListener('change', state => {
+        if (state === 'active') void refreshOnFocus();
+      });
       return () => {
         clearInterval(pollingInterval);
+        appStateSubscription.remove();
       };
     }, [user?.id])
   );

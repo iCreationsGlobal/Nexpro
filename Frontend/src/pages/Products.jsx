@@ -6,7 +6,7 @@
  * shop type-specific fields, and quick-add templates.
  */
 
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -85,7 +85,8 @@ import { EMPTY_STATES, FEATURE_NOT_AVAILABLE } from '../constants/microcopy';
 import { getEmptyStateProps } from '../components/ui/empty-state';
 import ReceiveStockModal from '../components/ReceiveStockModal';
 import StockTransferModal from '../components/StockTransferModal';
-import ProductQRGenerateModal from '../components/ProductQRGenerateModal';
+const ProductQRGenerateModal = lazy(() => import('../components/ProductQRGenerateModal'));
+const BulkProductLabels = lazy(() => import('../components/BulkProductLabels'));
 import ViewToggle from '../components/ViewToggle';
 import ResponsiveSheet from '../components/ResponsiveSheet';
 import { Button } from '@/components/ui/button';
@@ -731,6 +732,8 @@ const Products = () => {
   const [addingVendor, setAddingVendor] = useState(false);
   const [storeListingOpen, setStoreListingOpen] = useState(false);
   const [storeListingProduct, setStoreListingProduct] = useState(null);
+
+  const [bulkLabelsOpen, setBulkLabelsOpen] = useState(false);
 
   // Bulk import state
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -2698,57 +2701,44 @@ const Products = () => {
             </TooltipTrigger>
             <TooltipContent>Refresh products list</TooltipContent>
           </Tooltip>
+          <div className="flex w-full items-center justify-between gap-2 sm:w-auto">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <MoreVertical className="mr-2 h-4 w-4" />
+                  Options
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem disabled={!scopeReady || !isOnline} onSelect={() => setBulkLabelsOpen(true)}>
+                  <Package className="mr-2 h-4 w-4" />
+                  Generate labels
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => { setImportModalOpen(true); setImportResult(null); setImportFile(null); }}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import products
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => handleOpenReceiveStock()}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Receive stock
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handleOpenStockTransfer()}>
+                  <ArrowRightLeft className="mr-2 h-4 w-4" />
+                  Transfer stock
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size={isMobile ? 'icon' : 'default'}
-                onClick={() => handleOpenReceiveStock()}
-                aria-label="Receive stock"
-              >
-                <Download className="h-4 w-4" />
-                {!isMobile && <span className="ml-2">Receive stock</span>}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Record new stock received (scan QR or search product)</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size={isMobile ? 'icon' : 'default'}
-                onClick={() => handleOpenStockTransfer()}
-                aria-label="Transfer stock"
-              >
-                <ArrowRightLeft className="h-4 w-4" />
-                {!isMobile && <span className="ml-2">Transfer stock</span>}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Move stock between shops in this workspace</TooltipContent>
-          </Tooltip>
-          {!isMobile && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                onClick={() => { setImportModalOpen(true); setImportResult(null); setImportFile(null); }}
-              >
-                <Upload className="h-4 w-4" />
-                <span className="ml-2">Import</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Bulk import products from CSV (download template, fill, then upload)</TooltipContent>
-          </Tooltip>
-          )}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button onClick={handleCreateProduct} className="flex-1 min-w-0 md:flex-none">
+              <Button onClick={handleCreateProduct} className="min-w-0">
                 <Plus className="h-4 w-4" />
                 <span className="ml-2">Add Product</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent>Add a new product to your catalog</TooltipContent>
           </Tooltip>
+          </div>
         </div>
       </div>
 
@@ -3726,14 +3716,17 @@ const Products = () => {
         }}
       />
 
-      <ProductQRGenerateModal
+      <Suspense fallback={<p role="status">Loading label tools…</p>}>
+      {bulkLabelsOpen && <BulkProductLabels key={`${activeTenantId}:${activeShopId}`} shopId={activeShopId} profileKey={`abs-label-printer:${activeTenantId}:${activeShopId}`} onClose={() => setBulkLabelsOpen(false)} onSaved={refetchProducts} />}
+      {qrGenerateOpen && <ProductQRGenerateModal
         open={qrGenerateOpen}
         onClose={() => {
           setQrGenerateOpen(false);
           setProductForQR(null);
         }}
         product={productForQR}
-      />
+      />}
+      </Suspense>
 
       {/* Stock Adjustment Dialog */}
       <MobileFormDialog

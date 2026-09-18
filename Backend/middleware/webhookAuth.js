@@ -9,8 +9,9 @@ exports.verifySabitoWebhook = (req) => {
   const apiKey = req.headers['x-api-key'];
   const signature = req.headers['x-sabito-signature'];
   
-  // Get API key from environment
-  // TODO: In production, fetch from tenant settings or database
+  // This is a single platform-to-platform secret shared by the whole Nexpro<->Sabito
+  // integration (same key used by sabitoSyncService and the SSO flows in authController),
+  // not a per-tenant credential — there is no per-tenant Sabito key anywhere else in the app.
   const expectedApiKey = process.env.SABITO_API_KEY;
   
   if (!expectedApiKey) {

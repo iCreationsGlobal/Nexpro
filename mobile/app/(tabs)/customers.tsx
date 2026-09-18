@@ -104,15 +104,20 @@ export default function CustomersScreen() {
   const debouncedSearch = useDebounce(searchValue, 400);
   const customersEnabled = !!activeTenantId && hasFeature('crm') && scopeReady && !inStoreSetup;
 
-  const { data: response, isLoading, refetch, isRefetching, error, isError } = useQuery({
+  const { data: response, isLoading, refetch, isRefetching, error, isError, isPlaceholderData } = useQuery({
     queryKey: ['customers', activeTenantId, activeShopId, activeStudioLocationId, debouncedSearch],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       customerService.getCustomers({
         page: 1,
         limit: 20,
         search: debouncedSearch || undefined,
-      }),
+      }, { signal, timeout: 15000 }),
     enabled: customersEnabled,
+    retry: false,
+    placeholderData: (previous, previousQuery) => {
+      const key = previousQuery?.queryKey;
+      return key?.[1] === activeTenantId && key?.[2] === activeShopId && key?.[3] === activeStudioLocationId ? previous : undefined;
+    },
     staleTime: QUERY_STALE.LIST,
     gcTime: 2 * 60 * 60 * 1000,
   });
@@ -128,14 +133,14 @@ export default function CustomersScreen() {
   const { data: customerSourceOptions = [] } = useQuery({
     queryKey: ['settings', 'customer-sources', activeTenantId],
     queryFn: () => settingsService.getCustomerSources(),
-    enabled: customersEnabled,
+    enabled: customersEnabled && addModalVisible,
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: customSourceOptions = [] } = useQuery({
     queryKey: ['custom-dropdowns', 'customer_source', activeTenantId],
     queryFn: () => customDropdownService.getCustomOptions('customer_source'),
-    enabled: customersEnabled,
+    enabled: customersEnabled && addModalVisible,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -324,7 +329,7 @@ export default function CustomersScreen() {
         </View>
       )}
 
-      {!isLoading && !isError && customers.length > 0 && (
+      {!isLoading && customers.length > 0 && (
         <CustomerCreateActions
           borderColor={borderColor}
           textColor={textColor}
@@ -334,9 +339,11 @@ export default function CustomersScreen() {
         />
       )}
 
+      {isPlaceholderData && <Text accessibilityRole="text" style={{ color: mutedColor, padding: 12 }}>Updating search results…</Text>}
+      {isError && customers.length > 0 && <Pressable onPress={() => refetch()}><Text style={{ color: mutedColor, padding: 12 }}>Could not refresh customers. Tap to retry.</Text></Pressable>}
       {isLoading && !response ? (
         <ListLoadingState message="Loading customers..." />
-      ) : isError ? (
+      ) : isError && customers.length === 0 ? (
         <ListErrorState title="Failed to load customers" message={loadErrorMessage} onRetry={refetch} />
       ) : customers.length === 0 ? (
         <ListEmptyState

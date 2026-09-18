@@ -1639,6 +1639,9 @@ exports.updateTenantAccess = async (req, res, next) => {
     }
 
     await tenant.save();
+    // Plan/accessState/featureOverrides feed the cached entitlements checked on every /api
+    // request — drop the cache now so this takes effect immediately, not after the TTL.
+    require('../middleware/cache').invalidateEntitlementsCache(tenant.id);
 
     if (plan != null) {
       const [subSetting] = await Setting.findOrCreate({

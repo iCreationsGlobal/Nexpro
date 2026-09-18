@@ -7,6 +7,7 @@ const {
 
 /** Index: tenantId -> Set of cache keys (for O(1) invalidation by tenant) */
 const tenantKeysByTenant = new Map();
+const tenantByCacheKey = new Map();
 
 /**
  * Register a cache key under a tenant for targeted invalidation
@@ -21,6 +22,7 @@ const registerTenantKey = (tenantId, key) => {
     tenantKeysByTenant.set(tenantId, set);
   }
   set.add(key);
+  tenantByCacheKey.set(key, tenantId);
 };
 
 const getCacheValue = (key) => cache.get(key);
@@ -38,6 +40,20 @@ const cache = new NodeCache({
   stdTTL: 120, // 2 minutes default TTL
   checkperiod: 60, // Check for expired keys every 60 seconds
   useClones: false // Don't clone objects for better performance
+});
+
+// Expiration and explicit deletion must also release tenant-index entries.
+cache.on('del', (key) => {
+  const tenantId = tenantByCacheKey.get(key);
+  if (!tenantId) return;
+  const keys = tenantKeysByTenant.get(tenantId);
+  keys?.delete(key);
+  if (!keys?.size) tenantKeysByTenant.delete(tenantId);
+  tenantByCacheKey.delete(key);
+});
+cache.on('flush', () => {
+  tenantKeysByTenant.clear();
+  tenantByCacheKey.clear();
 });
 
 /**
@@ -428,6 +444,39 @@ const invalidateExpenseStatsCache = (tenantId) => {
   return invalidateCache(tenantId, 'expenses:stats:.*');
 };
 
+/** TTL for cached tenant row + resolved plan entitlements (checked on every /api request). */
+const TENANT_ENTITLEMENTS_TTL = 60;
+
+const getTenantRowCacheKey = (tenantId) => `tenant:row:${tenantId}`;
+const getEntitlementsCacheKey = (tenantId) => `entitlements:${tenantId}`;
+
+/**
+ * Invalidate cached tenant row + entitlements for one tenant (call after plan/status changes).
+ * @param {string} tenantId - Tenant ID
+ */
+const invalidateEntitlementsCache = (tenantId) => {
+  if (!tenantId) return 0;
+  let count = 0;
+  if (cache.del(getTenantRowCacheKey(tenantId))) count++;
+  if (cache.del(getEntitlementsCacheKey(tenantId))) count++;
+  return count;
+};
+
+/**
+ * Invalidate cached entitlements for every tenant (call after an admin-wide change that isn't
+ * scoped to one tenant, e.g. editing the Feature Table matrix shared by a subscription plan).
+ */
+const invalidateAllEntitlementsCache = () => {
+  let count = 0;
+  cache.keys().forEach((key) => {
+    if (key.startsWith('entitlements:')) {
+      cache.del(key);
+      count++;
+    }
+  });
+  return count;
+};
+
 /**
  * Invalidate all cache for a tenant
  * @param {string} tenantId - Tenant ID
@@ -605,6 +654,11 @@ module.exports = {
   getAuthBootstrapCacheKey,
   getOrganizationSettingsCacheKey,
   getNotificationChannelsCacheKey,
+  TENANT_ENTITLEMENTS_TTL,
+  getTenantRowCacheKey,
+  getEntitlementsCacheKey,
+  invalidateEntitlementsCache,
+  invalidateAllEntitlementsCache,
   invalidateUserCache,
   invalidateAuthBootstrapCache,
   invalidateTenantMembershipCache,

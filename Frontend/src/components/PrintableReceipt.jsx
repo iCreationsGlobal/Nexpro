@@ -4,6 +4,7 @@ import { MapPin, Phone, Globe, Mail } from 'lucide-react';
 import { APP_LOGO_SRC } from '../config/appBrand';
 import { API_BASE_URL } from '../services/api';
 import { getSalePartyDetails } from '../utils/saleParty';
+import { formatLineItemQuantity } from '../utils/documentLineItems';
 import { getPrintStyles } from '../utils/printStyles';
 import GraEvatStampBlock from './GraEvatStampBlock';
 
@@ -82,7 +83,8 @@ const PrintableReceipt = ({
     location: formatAddress(organization.address),
     vatNumber: organization.tax?.vatNumber || '',
     tin: organization.tax?.tin || '',
-    ghanaCardPin: organization.tax?.ghanaCardPin || ''
+    ghanaCardPin: organization.tax?.ghanaCardPin || '',
+    invoiceFooter: organization.invoiceFooter || ''
   };
   const graStamp = sale?.metadata?.graStamp || null;
 
@@ -410,6 +412,13 @@ const PrintableReceipt = ({
           font-size: 10px;
           color: var(--receipt-fg);
         }
+        .thermal-logo {
+          display: block;
+          max-width: 120px;
+          max-height: 50px;
+          margin: 0 auto 6px;
+          object-fit: contain;
+        }
         .thermal-title {
           font-size: 14px;
           font-weight: bold;
@@ -482,6 +491,9 @@ const PrintableReceipt = ({
         {printStyles.isThermal ? (
           /* Thermal receipt layout - simplified CASH RECEIPT style */
           <div className="thermal-receipt">
+            {printStyles.showLogo && logoSource && (
+              <img src={logoSource} alt={companyInfo.name} className="thermal-logo" />
+            )}
             <div className="thermal-title">CASH RECEIPT</div>
             <div className="thermal-business">
               <div style={{ fontWeight: 600 }}>{companyInfo.name}</div>
@@ -513,7 +525,7 @@ const PrintableReceipt = ({
                       {variantLabel && <span className="thermal-item-name">Variant: {variantLabel}</span>}
                       {productCode && <span className="thermal-item-name">Product Code: {productCode}</span>}
                       {priceOverridden && <span className="thermal-item-name">Catalog: ₵ {catalogUnitPrice.toFixed(2)}</span>}
-                      <span className="thermal-item-amount">₵ {total}</span>
+                      <span className="thermal-item-amount">{formatLineItemQuantity(item, qty)} × ₵ {unitPrice} = ₵ {total}</span>
                     </div>
                   );
                 })
@@ -546,7 +558,11 @@ const PrintableReceipt = ({
               </>
             )}
             <hr className="thermal-separator" />
-            <div className="thermal-thanks text-center">THANK YOU</div>
+            {(companyInfo.invoiceFooter || companyInfo.name) && (
+              <div className="thermal-thanks text-center" style={{ whiteSpace: 'pre-line' }}>
+                {companyInfo.invoiceFooter || companyInfo.name}
+              </div>
+            )}
             <div className="thermal-business-footer" style={{ fontSize: '9px', marginTop: '8px', lineHeight: 1.4 }}>
               {companyInfo.name}
               {companyInfo.phone && ` | ${companyInfo.phone}`}
@@ -561,25 +577,25 @@ const PrintableReceipt = ({
             <div className="company-details">
               {companyInfo.location && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <MapPin className="h-3.5 w-3.5" style={{ fontSize: '14px' }} />
+                  <MapPin size={14} style={{ flexShrink: 0 }} />
                   <span style={{ whiteSpace: 'pre-line' }}>{companyInfo.location}</span>
                 </div>
               )}
               {companyInfo.phone && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <Phone className="h-3.5 w-3.5" style={{ fontSize: '14px' }} />
+                  <Phone size={14} style={{ flexShrink: 0 }} />
                   <span>{companyInfo.phone}</span>
                 </div>
               )}
               {companyInfo.website && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <Globe className="h-3.5 w-3.5" style={{ fontSize: '14px' }} />
+                  <Globe size={14} style={{ flexShrink: 0 }} />
                   <span>{companyInfo.website}</span>
                 </div>
               )}
               {companyInfo.email && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <Mail className="h-3.5 w-3.5" style={{ fontSize: '14px' }} />
+                  <Mail size={14} style={{ flexShrink: 0 }} />
                   <span>{companyInfo.email}</span>
                 </div>
               )}

@@ -20,6 +20,48 @@ const rethrowPdfError = (error) => {
 
 const MM_PER_PX = 25.4 / 96;
 
+/** Data-URI images larger than this are downscaled before html2canvas capture (see rasterizeOversizedImages). */
+const OVERSIZED_IMAGE_SRC_LENGTH = 150000;
+
+/**
+ * html2canvas is far less robust than a normal browser <img> render — a multi-megabyte data-URI
+ * logo (common when an image carries embedded metadata, e.g. C2PA content credentials) can
+ * silently fail to draw, leaving a blank spot in the exported PDF even though it displays fine
+ * on screen. Downscale any oversized image within `element` to its actual on-screen size right
+ * before capture, then restore the original `src` afterward so the live page is unaffected.
+ * @param {HTMLElement} element
+ * @returns {() => void} restore function — always call this in a finally block
+ */
+const rasterizeOversizedImages = (element) => {
+  const images = Array.from(element.querySelectorAll('img')).filter((img) => {
+    const src = img.getAttribute('src') || '';
+    return src.startsWith('data:') && src.length > OVERSIZED_IMAGE_SRC_LENGTH;
+  });
+  if (images.length === 0) return () => {};
+
+  const restores = [];
+  for (const img of images) {
+    const originalSrc = img.getAttribute('src');
+    try {
+      const rect = img.getBoundingClientRect();
+      const scale = 2; // keep it crisp without re-embedding the full original resolution
+      const width = Math.max(1, Math.round((rect.width || img.naturalWidth || 140) * scale));
+      const height = Math.max(1, Math.round((rect.height || img.naturalHeight || 72) * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      img.setAttribute('src', canvas.toDataURL('image/png'));
+      restores.push(() => img.setAttribute('src', originalSrc));
+    } catch (err) {
+      // Same-origin data: URIs never taint the canvas, but never let a logo issue block export.
+      console.warn('[pdfUtils] Could not downscale oversized image for PDF export:', err?.message || err);
+    }
+  }
+  return () => restores.forEach((restore) => restore());
+};
+
 /**
  * Generate a PDF from an HTML element
  * @param {HTMLElement} element - The HTML element to convert to PDF
@@ -93,6 +135,8 @@ export const generatePDF = async (element, options = {}) => {
     },
   };
 
+  const restoreImages = rasterizeOversizedImages(element);
+
   try {
     if (download) {
       await html2pdf().set(opt).from(element).save();
@@ -106,6 +150,7 @@ export const generatePDF = async (element, options = {}) => {
     element.style.width = originalWidth;
     element.style.maxWidth = originalMaxWidth;
     element.style.padding = originalPadding;
+    restoreImages();
   }
 };
 
@@ -146,11 +191,14 @@ export const printPDF = async (element, options = {}) => {
     },
   };
 
+  const restoreImages = rasterizeOversizedImages(element);
   let pdf;
   try {
     pdf = await html2pdf().set(opt).from(element).outputPdf('blob');
   } catch (error) {
     rethrowPdfError(error);
+  } finally {
+    restoreImages();
   }
 
   const pdfUrl = URL.createObjectURL(pdf);
@@ -191,9 +239,35 @@ export const openPrintDialog = (element, title = 'Print') => {
     </html>
   `);
   printWindow.document.close();
-  printWindow.focus();
-  printWindow.print();
-  printWindow.onafterprint = () => printWindow.close();
+
+  let printed = false;
+  const triggerPrint = () => {
+    if (printed) return;
+    printed = true;
+    printWindow.focus();
+    printWindow.print();
+    printWindow.onafterprint = () => printWindow.close();
+  };
+
+  // A logo embedded as a large data-URI can still be mid-decode when the popup first paints
+  // (fresh document, no cache warm-up) — wait for every image to settle before printing,
+  // otherwise the logo is silently skipped from the printed/PDF output.
+  const images = Array.from(printWindow.document.images || []);
+  const pending = images.filter((img) => !img.complete);
+  if (pending.length === 0) {
+    triggerPrint();
+  } else {
+    let remaining = pending.length;
+    const onImageSettled = () => {
+      remaining -= 1;
+      if (remaining <= 0) triggerPrint();
+    };
+    pending.forEach((img) => {
+      img.addEventListener('load', onImageSettled, { once: true });
+      img.addEventListener('error', onImageSettled, { once: true });
+    });
+    setTimeout(triggerPrint, 1500);
+  }
 };
 
 export default {

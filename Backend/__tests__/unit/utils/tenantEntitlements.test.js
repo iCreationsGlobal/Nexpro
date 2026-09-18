@@ -35,7 +35,7 @@ describe('tenantEntitlements', () => {
     expect(flags.automations).toBe(true);
   });
 
-  it('ignores stale db trial matrix and keeps all trial features enabled', () => {
+  it('applies the admin Feature Table matrix to trial plans too, not just paid plans', () => {
     const flags = buildBaseFeatureFlags('trial', {
       marketing: {
         featureFlags: {
@@ -44,6 +44,14 @@ describe('tenantEntitlements', () => {
         },
       },
     });
+    expect(flags.crm).toBe(false);
+    expect(flags.automations).toBe(false);
+    // Canonical trial features the matrix didn't touch stay enabled.
+    expect(flags.expenses).toBe(true);
+  });
+
+  it('falls back to canonical (all-enabled) trial flags when no db plan row exists', () => {
+    const flags = buildBaseFeatureFlags('trial', null);
     const canonicalTrial = getFeatureFlagsForPlan('trial');
     expect(flags).toEqual(canonicalTrial);
     expect(Object.values(flags).every(Boolean)).toBe(true);
@@ -79,7 +87,11 @@ describe('tenantEntitlements', () => {
       },
     });
 
-    expect(entitlements.baseFeatureFlags).toEqual(getFeatureFlagsForPlan('trial'));
+    expect(entitlements.baseFeatureFlags).toEqual({
+      ...getFeatureFlagsForPlan('trial'),
+      automations: true,
+      apiAccess: false,
+    });
     expect(entitlements.featureOverrides).toEqual({
       automations: false,
       apiAccess: true,

@@ -20,7 +20,7 @@ const SHOP_TYPES = {
       { name: 'Miscellaneous Supplies', description: 'Other materials used to operate the store' }
     ]
   },
-  hardware: {
+  hardware_store: {
     name: 'Hardware Store',
     defaultCategories: [
       { name: 'Tools', description: 'Hand tools, power tools, and equipment' },
@@ -33,7 +33,7 @@ const SHOP_TYPES = {
       { name: 'Safety Equipment', description: 'Safety gear and protective equipment' }
     ]
   },
-  electronics: {
+  electronics_shop: {
     name: 'Electronics Store',
     defaultCategories: [
       { name: 'Mobile Phones', description: 'Smartphones and mobile devices' },
@@ -46,7 +46,7 @@ const SHOP_TYPES = {
       { name: 'Smart Home Devices', description: 'Smart home automation products' }
     ]
   },
-  clothing: {
+  fashion_boutique: {
     name: 'Clothing/Fashion Store',
     defaultCategories: [
       { name: 'Men\'s Clothing', description: 'Men\'s apparel and fashion items' },
@@ -57,7 +57,7 @@ const SHOP_TYPES = {
       { name: 'Sportswear', description: 'Athletic and sports clothing' }
     ]
   },
-  furniture: {
+  furniture_shop: {
     name: 'Furniture Store',
     defaultCategories: [
       { name: 'Living Room Furniture', description: 'Sofas, chairs, and living room sets' },
@@ -69,14 +69,19 @@ const SHOP_TYPES = {
       { name: 'Decorative Items', description: 'Lamps, mirrors, and home decor' }
     ]
   },
-  bookstore: {
-    name: 'Bookstore',
+  stationery_bookshop: {
+    name: 'Bookshop & Stationery',
     defaultCategories: [
       { name: 'Fiction', description: 'Fiction books and novels' },
       { name: 'Non-Fiction', description: 'Non-fiction and educational books' },
       { name: 'Children\'s Books', description: 'Books for children and young adults' },
       { name: 'Academic Textbooks', description: 'Educational and academic textbooks' },
-      { name: 'Stationery', description: 'Pens, notebooks, and stationery items' },
+      { name: 'Writing Instruments', description: 'Pens, pencils, and writing tools' },
+      { name: 'Paper Products', description: 'Notebooks, paper, and stationery paper' },
+      { name: 'Office Supplies', description: 'Folders, binders, and office organization' },
+      { name: 'Art Supplies', description: 'Paints, brushes, and art materials' },
+      { name: 'School Supplies', description: 'Backpacks, lunch boxes, and school items' },
+      { name: 'Gift Items', description: 'Greeting cards, gift wrap, and gift items' },
       { name: 'Magazines & Periodicals', description: 'Magazines and periodical publications' }
     ]
   },
@@ -93,8 +98,8 @@ const SHOP_TYPES = {
       { name: 'Accessories', description: 'Car accessories and aftermarket parts' }
     ]
   },
-  convenience: {
-    name: 'General Store/Convenience Store',
+  provision_store: {
+    name: 'Provision Store / Kiosk',
     defaultCategories: [
       { name: 'Snacks & Beverages', description: 'Chips, drinks, and convenience snacks' },
       { name: 'Tobacco Products', description: 'Cigarettes and tobacco items' },
@@ -104,7 +109,7 @@ const SHOP_TYPES = {
       { name: 'Confectionery', description: 'Candies, chocolates, and sweets' }
     ]
   },
-  beauty: {
+  cosmetics_shop: {
     name: 'Beauty/Cosmetics Store',
     defaultCategories: [
       { name: 'Skincare', description: 'Face creams, cleansers, and skincare products' },
@@ -150,17 +155,6 @@ const SHOP_TYPES = {
       { name: 'Small Animal Supplies', description: 'Supplies for small pets and rodents' }
     ]
   },
-  stationery: {
-    name: 'Stationery Store',
-    defaultCategories: [
-      { name: 'Writing Instruments', description: 'Pens, pencils, and writing tools' },
-      { name: 'Paper Products', description: 'Notebooks, paper, and stationery paper' },
-      { name: 'Office Supplies', description: 'Folders, binders, and office organization' },
-      { name: 'Art Supplies', description: 'Paints, brushes, and art materials' },
-      { name: 'School Supplies', description: 'Backpacks, lunch boxes, and school items' },
-      { name: 'Gift Items', description: 'Greeting cards, gift wrap, and gift items' }
-    ]
-  },
   restaurant: {
     name: 'Restaurant',
     // Material/ingredient categories for inventory (used to prepare food)
@@ -174,6 +168,19 @@ const SHOP_TYPES = {
       { name: 'Beverages', description: 'Soft drinks, juices, and non-alcoholic drinks' },
       { name: 'Hot Drinks', description: 'Coffee, tea, and hot beverage supplies' },
       { name: 'Oils & Condiments', description: 'Cooking oils, spices, and condiments' },
+      { name: 'Cleaning & Supplies', description: 'Cleaning supplies and kitchen consumables' }
+    ]
+  },
+  bakery: {
+    name: 'Bakery / Pastry Shop',
+    // Material/ingredient categories for inventory (used to bake products)
+    defaultCategories: [
+      { name: 'Flour & Baking Mixes', description: 'Flour, baking mixes, and dry baking staples' },
+      { name: 'Sugars & Sweeteners', description: 'Sugar, honey, and sweetening ingredients' },
+      { name: 'Dairy & Eggs', description: 'Milk, butter, cream, and eggs' },
+      { name: 'Fillings & Flavorings', description: 'Fruit fillings, chocolate, essences, and flavorings' },
+      { name: 'Decorating Supplies', description: 'Icing, fondant, and cake decorating supplies' },
+      { name: 'Packaging & Boxes', description: 'Cake boxes, wrapping, and bakery packaging' },
       { name: 'Cleaning & Supplies', description: 'Cleaning supplies and kitchen consumables' }
     ]
   },

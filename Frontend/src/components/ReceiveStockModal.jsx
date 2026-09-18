@@ -1,807 +1,138 @@
-/**
- * ReceiveStockModal – Receive stock into products via QR code, barcode scan, search, or catalog pick.
- * Flow: Scan/search/select product → if variants, select variant → enter qty → add to stock.
- */
-
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { SecondaryButton } from '@/components/ui/secondary-button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Barcode, ChevronDown, Loader2, Package, Search } from 'lucide-react';
 import productService from '../services/productService';
+import { useHardwareBarcodeScanner } from '../hooks/useHardwareBarcodeScanner';
 import { parseProductQRPayload } from '../utils/productQR';
-import { showSuccess, showError } from '../utils/toast';
-import { numberInputValue } from '../utils/formUtils';
-import { formatInteger } from '../utils/formatNumber';
-import { useScanningEnabled } from '../hooks/usePOSConfig';
-import { cn } from '@/lib/utils';
+import { showSuccess } from '../utils/toast';
 
-const SCANNER_ID = 'receive-stock-scanner';
+const unwrap = r => r?.data?.product ?? r?.data?.data ?? r?.data ?? r;
+const listOf = r => { const data=unwrap(r); return Array.isArray(data)?data:r?.products??[]; };
+export default function ReceiveStockModal({open,onClose,onSuccess,initialProduct=null}) {
+  const [query,setQuery]=useState(''),[results,setResults]=useState([]),[items,setItems]=useState([]);
+  const [variantChoices,setVariantChoices]=useState([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[searching,setSearching]=useState(false),[pending,setPending]=useState(0);
+  const variantChoice=variantChoices[0];
+  function setVariantChoice(choice){setVariantChoices(old=>choice?[...old,choice]:old.slice(1));}
+  const inputRef=useRef(null), queue=useRef(Promise.resolve()), generation=useRef(0), saving=useRef(false);
+  useEffect(()=>{
+    generation.current+=1;
+    setQuery('');setResults([]);setItems([]);setVariantChoices([]);setError('');setPending(0);
+    if(open&&initialProduct)enqueue(async()=>addProduct(initialProduct));
+    return()=>{generation.current+=1;};
+  },[open,initialProduct]);
 
-/**
- * Normalize product + variants from various API shapes.
- * @param {Object} product
- * @returns {Object}
- */
-const normalizeProduct = (product) => {
-  if (!product || typeof product !== 'object') return product;
-  const variants = Array.isArray(product.variants)
-    ? product.variants.filter((v) => v && v.isActive !== false)
-    : [];
-  return { ...product, variants };
-};
-
-/**
- * @param {Object} product
- * @returns {boolean}
- */
-const productHasVariants = (product) => {
-  if (!product) return false;
-  if (Array.isArray(product.variants) && product.variants.length > 0) return true;
-  return Boolean(product.hasVariants);
-};
-
-/**
- * Sort products by name A–Z (case-insensitive).
- * @param {Object[]} list
- * @returns {Object[]}
- */
-const sortProductsByName = (list) =>
-  [...(list || [])].sort((a, b) =>
-    String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { sensitivity: 'base' })
-  );
-
-/**
- * @param {boolean} open
- * @param {() => void} onClose
- * @param {Object} [initialProduct] – When provided, starts on the confirm step for this product.
- * @param {() => void} [onSuccess] – Called after adding stock (refresh list, etc.)
- */
-export default function ReceiveStockModal({ open, onClose, onSuccess, initialProduct = null }) {
-  const { scanningEnabled } = useScanningEnabled();
-  const html5QrcodeRef = useRef(null);
-  const [step, setStep] = useState('scan');
-  const [product, setProduct] = useState(null);
-  const [selectedVariantId, setSelectedVariantId] = useState(null);
-  const [variantsLoading, setVariantsLoading] = useState(false);
-  const [qtyReceived, setQtyReceived] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [scanError, setScanError] = useState(null);
-  const [cameraError, setCameraError] = useState(null);
-  const [isStarting, setIsStarting] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [barcodeInput, setBarcodeInput] = useState('');
-  const [barcodeLookupLoading, setBarcodeLookupLoading] = useState(false);
-  const [productOptions, setProductOptions] = useState([]);
-  const [loadingProducts, setLoadingProducts] = useState(false);
-  const [productPickerOpen, setProductPickerOpen] = useState(false);
-  const [catalogFilter, setCatalogFilter] = useState('');
-
-  const resetToScan = useCallback(() => {
-    setStep('scan');
-    setProduct(null);
-    setSelectedVariantId(null);
-    setVariantsLoading(false);
-    setQtyReceived(1);
-    setScanError(null);
-    setSearchQuery('');
-    setSearchResults([]);
-    setBarcodeInput('');
-    setProductPickerOpen(false);
-    setCatalogFilter('');
-  }, []);
-
-  /**
-   * Load full product (with variants) and open confirm step.
-   * @param {Object} rawProduct
-   * @param {Object} [preferredVariant] - Preselected variant (e.g. from barcode match)
-   */
-  const openProductConfirm = useCallback(async (rawProduct, preferredVariant = null) => {
-    if (!rawProduct?.id) return;
-
-    let nextProduct = normalizeProduct(rawProduct);
-    const preferredId = preferredVariant?.id || rawProduct.selectedVariant?.id || null;
-
-    setProduct(nextProduct);
-    setSelectedVariantId(preferredId);
-    setQtyReceived(1);
-    setStep('confirm');
-    setScanError(null);
-
-    const needsVariants =
-      nextProduct.hasVariants ||
-      preferredId ||
-      !Array.isArray(nextProduct.variants) ||
-      nextProduct.variants.length === 0;
-
-    if (!needsVariants && Array.isArray(nextProduct.variants) && nextProduct.variants.length > 0) {
-      if (!preferredId && nextProduct.variants.length === 1) {
-        setSelectedVariantId(nextProduct.variants[0].id);
-      }
+  function addRow(product,variant=null){
+    if(product.trackStock===false||variant?.trackStock===false)throw new Error('Stock is not tracked for this item.');
+    const key=`${product.id}:${variant?.id||''}`;
+    setItems(old=>old.some(row=>row.key===key)?old.map(row=>row.key===key?{...row,quantity:Number(row.quantity||0)+1}:row):[...old,{key,productId:product.id,variantId:variant?.id,name:variant?`${product.name} — ${variant.name}`:product.name,quantity:1}]);
+    setQuery('');setResults([]);inputRef.current?.focus();
+  }
+  async function addProduct(product,token=generation.current){
+    if(!product?.id)throw new Error('No matching product found.');
+    if(product.selectedVariant?.id){addRow(product,product.selectedVariant);return;}
+    if(product.hasVariants||product.variants?.length){
+      const variants=product.variants?.length?product.variants:listOf(await productService.getProductVariants(product.id));
+      if(token!==generation.current)return;
+      const active=variants.filter(v=>v.isActive!==false);
+      if(active.length===1)addRow(product,active[0]);
+      else if(active.length)setVariantChoice({product,variants:active});
+      else throw new Error('This product has no active variants.');
       return;
     }
-
-    // Always refresh variants when product claims to have them or list is missing.
-    if (nextProduct.hasVariants || preferredId || !nextProduct.variants?.length) {
-      setVariantsLoading(true);
-      try {
-        const [detailRes, variantsRes] = await Promise.all([
-          productService.getProductById(nextProduct.id).catch(() => null),
-          productService.getProductVariants(nextProduct.id).catch(() => null),
-        ]);
-
-        const detail =
-          detailRes?.data?.data ?? detailRes?.data?.product ?? detailRes?.data ?? detailRes;
-        const fromDetail = Array.isArray(detail?.variants) ? detail.variants : null;
-        const fromListRaw = variantsRes?.data?.data ?? variantsRes?.data ?? variantsRes;
-        const fromList = Array.isArray(fromListRaw)
-          ? fromListRaw
-          : Array.isArray(fromListRaw?.variants)
-            ? fromListRaw.variants
-            : null;
-
-        const variants = (fromList || fromDetail || nextProduct.variants || []).filter(
-          (v) => v && v.isActive !== false
-        );
-
-        nextProduct = normalizeProduct({
-          ...(detail?.id ? detail : nextProduct),
-          variants,
-          hasVariants: variants.length > 0 || Boolean(detail?.hasVariants || nextProduct.hasVariants),
-          selectedVariant: preferredVariant || rawProduct.selectedVariant || null,
-        });
-
-        setProduct(nextProduct);
-
-        if (preferredId && variants.some((v) => v.id === preferredId)) {
-          setSelectedVariantId(preferredId);
-        } else if (variants.length === 1) {
-          setSelectedVariantId(variants[0].id);
-        } else if (preferredId) {
-          setSelectedVariantId(preferredId);
-        }
-      } catch (e) {
-        showError(e, 'Failed to load product variants');
-      } finally {
-        setVariantsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!open) {
-      resetToScan();
-      return;
-    }
-
-    if (initialProduct?.id) {
-      openProductConfirm(initialProduct);
-      setSearchQuery('');
-      setSearchResults([]);
-      setBarcodeInput('');
-      return;
-    }
-
-    resetToScan();
-  }, [open, initialProduct, resetToScan, openProductConfirm]);
-
-  /**
-   * Load all active products A–Z for the catalog dropdown (paginated).
-   */
-  const loadProductCatalog = useCallback(async () => {
-    setLoadingProducts(true);
-    try {
-      const pageSize = 100;
-      const allProducts = [];
-      let page = 1;
-      let totalPages = 1;
-
-      do {
-        const response = await productService.getProducts({
-          isActive: true,
-          page,
-          limit: pageSize,
-          sort: 'name_asc',
-        });
-        const list = Array.isArray(response?.data)
-          ? response.data
-          : Array.isArray(response?.products)
-            ? response.products
-            : [];
-        allProducts.push(...list);
-        totalPages = Number(response?.pagination?.totalPages || totalPages);
-        if (list.length < pageSize && !response?.pagination?.totalPages) break;
-        page += 1;
-      } while (page <= totalPages);
-
-      setProductOptions(sortProductsByName(allProducts));
-    } catch (error) {
-      showError(error, 'Failed to load products');
-      setProductOptions([]);
-    } finally {
-      setLoadingProducts(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!open || step !== 'scan' || initialProduct?.id) return;
-    loadProductCatalog();
-  }, [open, step, initialProduct?.id, loadProductCatalog]);
-
-  const filteredCatalogProducts = useMemo(() => {
-    const query = catalogFilter.trim().toLowerCase();
-    const stockTracked = productOptions.filter((p) => p?.trackStock !== false);
-    if (!query) return stockTracked;
-    return stockTracked.filter((p) => {
-      const haystack = [p.name, p.sku, p.barcode, p.category?.name]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(query);
+    addRow(product);
+  }
+  function enqueue(work){
+    if(saving.current)return;
+    const token=generation.current;
+    setPending(n=>n+1);
+    queue.current=queue.current.then(async()=>{
+      if(token!==generation.current)return;
+      try{await work(token);}catch(e){if(token===generation.current)setError(e.message||'Could not find product.');}
+      finally{if(token===generation.current)setPending(n=>Math.max(0,n-1));}
     });
-  }, [productOptions, catalogFilter]);
-
-  useEffect(() => {
-    if (!open || step !== 'scan' || !scanningEnabled) return;
-
-    let mounted = true;
-    setCameraError(null);
-    setIsStarting(true);
-
-    const startScanner = async () => {
-      try {
-        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
-        if (!mounted) return;
-
-        const el = document.getElementById(SCANNER_ID);
-        if (!el) {
-          setCameraError('Scanner element not found');
-          setIsStarting(false);
-          return;
-        }
-
-        const html5Qrcode = new Html5Qrcode(SCANNER_ID, {
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.QR_CODE,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-          ],
-        });
-        html5QrcodeRef.current = html5Qrcode;
-
-        await html5Qrcode.start(
-          { facingMode: 'environment' },
-          {
-            fps: 10,
-            qrbox: { width: 260, height: 260 },
-            aspectRatio: 1.0,
-          },
-          async (decodedText) => {
-            setScanError(null);
-            const result = parseProductQRPayload(decodedText);
-            let productResolved = null;
-            if (result.success && result.data) {
-              try {
-                productResolved = await productService.resolveProductFromQRPayload(result.data);
-              } catch (_) {}
-            }
-            if (!productResolved?.id) {
-              try {
-                const res = await productService.getProductByBarcode(decodedText.trim());
-                productResolved = res?.data?.product ?? res?.product ?? res?.data ?? null;
-              } catch (_) {}
-            }
-            if (!productResolved?.id) {
-              setScanError(result.success ? 'Product not found for this QR code' : 'Product not found for this barcode');
-              return;
-            }
-            if (navigator.vibrate) navigator.vibrate(100);
-            const preferred = productResolved.selectedVariant || null;
-            await openProductConfirm(productResolved, preferred);
-            if (html5QrcodeRef.current) {
-              html5QrcodeRef.current.stop().catch(() => {});
-              html5QrcodeRef.current = null;
-            }
-          },
-          () => {}
-        );
-
-        setIsStarting(false);
-      } catch (err) {
-        if (!mounted) return;
-        setCameraError(err?.message || 'Failed to access camera');
-        setIsStarting(false);
+  }
+  const scanProducts=useRef(new Map());
+  useEffect(()=>{scanProducts.current.clear();},[open,initialProduct]);
+  const itemsRef=useRef(items);
+  itemsRef.current=items;
+  const scanEdit=useRef(null), lastKey=useRef(0);
+  useEffect(()=>{
+    if(!open)return;
+    const capture=event=>{
+      if(event.key.length!==1)return;
+      const now=Date.now();
+      if(now-lastKey.current>50){
+        const key=event.target?.dataset?.receivingKey;
+        const row=itemsRef.current.find(item=>item.key===key);
+        scanEdit.current=row?{key,quantity:row.quantity}:null;
       }
+      lastKey.current=now;
     };
-
-    startScanner();
-
-    return () => {
-      mounted = false;
-      if (html5QrcodeRef.current) {
-        html5QrcodeRef.current.stop().catch(() => {});
-        html5QrcodeRef.current = null;
+    document.addEventListener('keydown',capture,true);
+    return()=>document.removeEventListener('keydown',capture,true);
+  },[open]);
+  function scan(code, hardware=false){
+    if(hardware&&scanEdit.current){
+      const original=scanEdit.current;
+      setItems(old=>old.map(row=>row.key===original.key?{...row,quantity:original.quantity}:row));
+      scanEdit.current=null;
+    }
+    enqueue(async token=>{
+      let product=scanProducts.current.get(code);
+      if(product){
+        if(token===generation.current)await addProduct(product,token);
+        return;
       }
-    };
-  }, [open, step, scanningEnabled, openProductConfirm]);
-
-  const handleSearch = useCallback(async () => {
-    const q = (searchQuery || '').trim();
-    if (!q) {
-      setSearchResults([]);
-      return;
-    }
-    setSearching(true);
-    setScanError(null);
-    try {
-      const res = await productService.getProducts({ search: q, limit: 20 });
-      const body = res && typeof res === 'object' ? res : {};
-      const list = Array.isArray(body.data) ? body.data : Array.isArray(body.products) ? body.products : [];
-      setSearchResults(list);
-    } catch (e) {
-      showError(e, 'Search failed');
-      setSearchResults([]);
-    } finally {
-      setSearching(false);
-    }
-  }, [searchQuery]);
-
-  const handleBarcodeLookup = useCallback(async () => {
-    const code = (barcodeInput || '').trim();
-    if (!code) return;
-    setBarcodeLookupLoading(true);
-    setScanError(null);
-    try {
-      const res = await productService.getProductByBarcode(code);
-      const p = res?.data?.product ?? res?.product ?? res?.data;
-      if (p?.id) {
-        if (navigator.vibrate) navigator.vibrate(100);
-        await openProductConfirm(p, p.selectedVariant || null);
-        setBarcodeInput('');
-      } else {
-        setScanError('No product found for this barcode');
+      if(code.startsWith('{')){
+        const parsed=parseProductQRPayload(code);
+        if(!parsed.success)throw new Error(parsed.error);
+        product=await productService.resolveProductFromQRPayload(parsed.data);
+      }else product=unwrap(await productService.getProductByBarcode(code));
+      if(token===generation.current){
+        if(product?.id)scanProducts.current.set(code,product);
+        await addProduct(product,token);
       }
-    } catch (e) {
-      setScanError('No product found for this barcode');
-    } finally {
-      setBarcodeLookupLoading(false);
-    }
-  }, [barcodeInput, openProductConfirm]);
-
-  const selectProduct = useCallback((p) => {
-    openProductConfirm(p);
-    setSearchQuery('');
-    setSearchResults([]);
-    setProductPickerOpen(false);
-    setCatalogFilter('');
-  }, [openProductConfirm]);
-
-  const variants = useMemo(
-    () => (Array.isArray(product?.variants) ? product.variants.filter((v) => v?.isActive !== false) : []),
-    [product]
-  );
-  const requiresVariant = productHasVariants(product) || variants.length > 0;
-  const selectedVariant = useMemo(
-    () => variants.find((v) => v.id === selectedVariantId) || null,
-    [variants, selectedVariantId]
-  );
-
-  const displayQty = useMemo(() => {
-    if (requiresVariant) {
-      const n = parseFloat(selectedVariant?.quantityOnHand);
-      return Number.isFinite(n) ? n : 0;
-    }
-    const n = parseFloat(product?.quantityOnHand);
-    return Number.isFinite(n) ? n : 0;
-  }, [requiresVariant, selectedVariant, product?.quantityOnHand]);
-
-  const canAddStock =
-    product?.trackStock !== false &&
-    (!requiresVariant || Boolean(selectedVariantId)) &&
-    !variantsLoading;
-
-  const handleAddToStock = useCallback(async () => {
-    const qty = qtyReceived === '' ? 1 : Number(qtyReceived);
-    if (!product?.id || !Number.isFinite(qty) || qty < 1) return;
-
-    if (requiresVariant && !selectedVariantId) {
-      showError('Select a variant before adding stock');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      if (requiresVariant) {
-        const variant =
-          selectedVariant ||
-          variants.find((v) => v.id === selectedVariantId) ||
-          { id: selectedVariantId, quantityOnHand: 0 };
-        await productService.adjustVariantStock(
-          selectedVariantId,
-          qty,
-          'delta',
-          { ...variant, productId: product.id },
-          { productId: product.id, reason: 'Receive stock', type: 'receive' }
-        );
-        const updated = parseFloat(variant.quantityOnHand || 0) + qty;
-        const label = variant.name ? `${product.name} — ${variant.name}` : product.name;
-        showSuccess(
-          `Added ${qty} to ${label}. Stock now ${updated} ${product.unit || 'units'}.`
-        );
-
-        // Keep product open so user can receive another variant quickly.
-        setProduct((prev) => {
-          if (!prev) return prev;
-          const nextVariants = (prev.variants || []).map((v) =>
-            v.id === selectedVariantId
-              ? { ...v, quantityOnHand: Math.max(0, parseFloat(v.quantityOnHand || 0) + qty) }
-              : v
-          );
-          return { ...prev, variants: nextVariants };
-        });
-        setQtyReceived(1);
-      } else {
-        await productService.adjustStock(product.id, qty, 'delta', 'Receive stock');
-        const updated = parseFloat(product.quantityOnHand || 0) + qty;
-        showSuccess(`Added ${qty} to ${product.name}. Stock now ${updated} ${product.unit || 'units'}.`);
-        resetToScan();
-        setStep('scan');
+    });
+  }
+  useHardwareBarcodeScanner(code=>scan(code,true),{enabled:open&&!busy});
+  useEffect(()=>{
+    if(!open||!query.trim()){setResults([]);setSearching(false);return;}
+    let active=true;
+    const timer=setTimeout(async()=>{
+      setSearching(true);
+      try{const response=await productService.getProducts({search:query.trim(),limit:20,isActive:true});if(active)setResults(listOf(response));}
+      catch(e){if(active)setError(e.message||'Search failed.');}
+      finally{if(active)setSearching(false);}
+    },250);
+    return()=>{active=false;clearTimeout(timer);};
+  },[query,open]);
+  async function receiveAll(){
+    if(saving.current||pending||!items.length)return;
+    if(items.some(row=>!Number.isFinite(Number(row.quantity))||Number(row.quantity)<=0)){setError('Enter a quantity greater than zero for every item.');return;}
+    saving.current=true;setBusy(true);setError('');scanProducts.current.clear();
+    let completed=0;
+    try{
+      for(const row of items){
+        await productService.adjustStock(row.productId,Number(row.quantity),'delta','Receive stock',{type:'receive',...(row.variantId?{variantId:row.variantId}:{})});
+        completed++;
+        setItems(old=>old.filter(item=>item.key!==row.key));
       }
-      onSuccess?.();
-    } catch (e) {
-      showError(e, 'Failed to add stock');
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    product,
-    qtyReceived,
-    onSuccess,
-    resetToScan,
-    requiresVariant,
-    selectedVariantId,
-    selectedVariant,
-    variants,
-  ]);
-
-  const handleAddAnother = useCallback(() => {
-    resetToScan();
-    setStep('scan');
-  }, [resetToScan]);
-
-  const handleDone = useCallback(() => {
-    onClose();
-  }, [onClose]);
-
-  const variantLabel = (variant) => {
-    const stock = formatInteger(parseFloat(variant.quantityOnHand) || 0);
-    const bits = [variant.name || 'Variant'];
-    if (variant.sku) bits.push(`SKU ${variant.sku}`);
-    bits.push(`Stock ${stock}`);
-    return bits.join(' · ');
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:w-[var(--modal-w-sm)] sm:min-h-[var(--modal-min-h)] sm:max-h-[var(--modal-max-h)]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            {step === 'scan' ? 'Receive stock' : 'Confirm & add'}
-          </DialogTitle>
-        </DialogHeader>
-        <DialogBody>
-        {step === 'scan' && (
-          <div className="space-y-4">
-            {scanningEnabled && (
-              cameraError ? (
-                <div className="p-4 bg-red-50 rounded-lg text-center border border-red-200">
-                  <p className="text-red-700 font-medium">Camera error</p>
-                  <p className="text-sm text-red-600 mt-1">{cameraError}</p>
-                </div>
-              ) : (
-                <>
-                  <div className="relative w-full rounded-lg overflow-hidden min-h-[200px] bg-muted border border-border">
-                    {isStarting && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-background/90 z-10">
-                        <div className="text-center">
-                          <Loader2 className="h-8 w-8 animate-spin text-brand mx-auto" />
-                          <p className="text-sm text-gray-600 mt-2">Starting camera...</p>
-                        </div>
-                      </div>
-                    )}
-                    <div id={SCANNER_ID} className="w-full min-h-[200px]" />
-                  </div>
-                  {scanError && (
-                    <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-center">
-                      <p className="text-sm text-amber-800">{scanError}</p>
-                    </div>
-                  )}
-                  <p className="text-sm text-gray-500 text-center">
-                    Scan product or variant QR/barcode, or select / search below.
-                  </p>
-                </>
-              )
-            )}
-
-            {!scanningEnabled && (
-              <p className="text-sm text-gray-500 text-center">
-                Camera scanning is disabled for this workspace. Select a product from the list, enter a barcode, or search below.
-              </p>
-            )}
-
-            <div className={`border-t border-gray-200 pt-4 space-y-3${scanningEnabled ? '' : ' border-t-0 pt-0'}`}>
-                  <div className="space-y-2">
-                    <Label>Select product</Label>
-                    <Popover open={productPickerOpen} onOpenChange={setProductPickerOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="w-full justify-between font-normal"
-                        >
-                          <span className="truncate text-muted-foreground">
-                            {loadingProducts
-                              ? 'Loading products…'
-                              : 'Choose from product list (A–Z)'}
-                          </span>
-                          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-60" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-3rem)] p-0"
-                        align="start"
-                      >
-                        <div className="border-b border-border p-3">
-                          <div className="relative">
-                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                              value={catalogFilter}
-                              onChange={(e) => setCatalogFilter(e.target.value)}
-                              placeholder="Filter list…"
-                              className="pl-9"
-                              autoFocus
-                            />
-                          </div>
-                          <p className="mt-2 text-xs text-muted-foreground">
-                            {loadingProducts
-                              ? 'Loading products…'
-                              : `${filteredCatalogProducts.length} product${filteredCatalogProducts.length === 1 ? '' : 's'} (A–Z)`}
-                          </p>
-                        </div>
-                        <div className="max-h-72 overflow-y-auto p-1">
-                          {loadingProducts ? (
-                            <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Loading products
-                            </div>
-                          ) : filteredCatalogProducts.length > 0 ? (
-                            filteredCatalogProducts.map((p) => (
-                              <button
-                                key={p.id}
-                                type="button"
-                                className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
-                                onClick={() => selectProduct(p)}
-                              >
-                                <span className="block truncate font-medium">{p.name}</span>
-                                <span className="block truncate text-xs text-muted-foreground">
-                                  {p.sku ? `SKU: ${p.sku}` : null}
-                                  {p.sku && (p.barcode || p.quantityOnHand != null) ? ' · ' : null}
-                                  {p.barcode ? p.barcode : null}
-                                  {p.barcode && p.quantityOnHand != null ? ' · ' : null}
-                                  {p.quantityOnHand != null
-                                    ? `Stock ${formatInteger(p.quantityOnHand)} ${p.unit || 'pcs'}`
-                                    : null}
-                                  {(p.hasVariants || (Array.isArray(p.variants) && p.variants.length > 0))
-                                    ? ' · Has variants'
-                                    : null}
-                                </span>
-                              </button>
-                            ))
-                          ) : (
-                            <p className="py-8 text-center text-sm text-muted-foreground">
-                              No products found.
-                            </p>
-                          )}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-1.5">
-                      <Barcode className="h-4 w-4" />
-                      Enter barcode
-                    </Label>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Type or paste barcode number..."
-                        value={barcodeInput}
-                        onChange={(e) => setBarcodeInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleBarcodeLookup())}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleBarcodeLookup}
-                        loading={barcodeLookupLoading}
-                        disabled={!barcodeInput.trim()}
-                      >
-                        Look up
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Search by name or SKU</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Search product..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSearch())}
-                      />
-                      <SecondaryButton type="button" size="icon" onClick={handleSearch} loading={searching}>
-                        <Search className="h-4 w-4" />
-                      </SecondaryButton>
-                    </div>
-                    {searchResults.length > 0 && (
-                      <ul className="border border-gray-200 rounded-lg divide-y max-h-40 overflow-y-auto">
-                        {searchResults.map((p) => (
-                          <li key={p.id}>
-                            <button
-                              type="button"
-                              className="w-full text-left px-3 py-2 hover:bg-muted text-sm"
-                              onClick={() => selectProduct(p)}
-                            >
-                              <span className="font-medium">{p.name}</span>
-                              {p.sku && <span className="text-gray-500 ml-2">({p.sku})</span>}
-                              {p.barcode && <span className="text-gray-400 ml-2">· {p.barcode}</span>}
-                              {(p.hasVariants || (Array.isArray(p.variants) && p.variants.length > 0)) && (
-                                <span className="text-[#166534] ml-2 text-xs">Has variants</span>
-                              )}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-            <div className="flex justify-end">
-              <SecondaryButton onClick={onClose}>
-                Cancel
-              </SecondaryButton>
-            </div>
-          </div>
-        )}
-
-        {step === 'confirm' && product && (
-          <div className="space-y-4">
-            <div className="p-3 rounded-lg border border-border bg-muted">
-              <p className="font-medium">{product.name}</p>
-              {product.sku && <p className="text-sm text-gray-500">SKU: {product.sku}</p>}
-              {product.barcode && <p className="text-sm text-gray-500">Barcode: {product.barcode}</p>}
-              {product.trackStock === false ? (
-                <p className="text-sm mt-1 text-amber-700">
-                  Made to order – stock is not tracked. Cannot receive stock.
-                </p>
-              ) : (
-                <p className="text-sm mt-1">
-                  {requiresVariant
-                    ? selectedVariant
-                      ? `Current stock (${selectedVariant.name}): ${formatInteger(displayQty)} ${product.unit || 'units'}`
-                      : 'Select a variant to see current stock'
-                    : `Current stock: ${formatInteger(displayQty)} ${product.unit || 'units'}`}
-                </p>
-              )}
-            </div>
-
-            {product.trackStock !== false && requiresVariant && (
-              <div className="space-y-2">
-                <Label htmlFor="receive-variant">Variant</Label>
-                {variantsLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading variants…
-                  </div>
-                ) : variants.length === 0 ? (
-                  <p className="text-sm text-amber-700">
-                    This product is marked as having variants, but none were found. Add variants on the product first.
-                  </p>
-                ) : (
-                  <>
-                    <Select
-                      value={selectedVariantId || undefined}
-                      onValueChange={setSelectedVariantId}
-                    >
-                      <SelectTrigger id="receive-variant" className="w-full">
-                        <SelectValue placeholder="Select variant to receive" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {variants.map((variant) => (
-                          <SelectItem key={variant.id} value={variant.id}>
-                            {variantLabel(variant)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {variants.length > 1 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {variants.map((variant) => (
-                          <button
-                            key={`chip-${variant.id}`}
-                            type="button"
-                            onClick={() => setSelectedVariantId(variant.id)}
-                            className={cn(
-                              'rounded-full border px-2.5 py-1 text-xs transition-colors',
-                              selectedVariantId === variant.id
-                                ? 'border-[#166534] bg-[#f0fdf4] text-[#166534]'
-                                : 'border-border bg-white text-foreground hover:bg-muted'
-                            )}
-                          >
-                            {variant.name || 'Variant'}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {product.trackStock !== false && (
-            <div className="space-y-2">
-              <Label htmlFor="receive-qty">Quantity received</Label>
-              <Input
-                id="receive-qty"
-                type="number"
-                min={1}
-                value={numberInputValue(qtyReceived)}
-                disabled={requiresVariant && !selectedVariantId}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === '' || v === null) {
-                    setQtyReceived('');
-                    return;
-                  }
-                  const n = parseFloat(String(v).replace(/[^0-9.]/g, ''), 10);
-                  setQtyReceived(Number.isFinite(n) && n >= 1 ? n : '');
-                }}
-              />
-            </div>
-            )}
-            <div className="flex flex-wrap gap-2 justify-end">
-              <SecondaryButton onClick={handleAddAnother} disabled={loading}>
-                Add another product
-              </SecondaryButton>
-              <SecondaryButton onClick={handleDone} disabled={loading}>
-                Done
-              </SecondaryButton>
-              {product.trackStock !== false && (
-              <Button onClick={handleAddToStock} loading={loading} disabled={!canAddStock}>
-                Add to stock
-              </Button>
-              )}
-            </div>
-          </div>
-        )}
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
-  );
+      showSuccess(`Stock received for ${completed} items.`);
+    }catch(e){setError(`${completed} items saved. Remaining items are still listed. Check stock before retrying if the connection was interrupted. ${e.message||''}`);}
+    finally{saving.current=false;setBusy(false);if(completed)onSuccess?.();inputRef.current?.focus();}
+  }
+  return <Dialog open={open} onOpenChange={value=>{if(!value&&!busy)onClose();}}><DialogContent className="sm:max-w-3xl"><DialogHeader><DialogTitle>Receive stock</DialogTitle></DialogHeader><DialogBody>
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">Scan or search to add items. Set quantities beside each product, then receive the batch.</p>
+      <div className="flex gap-2"><Input ref={inputRef} autoFocus aria-label="Scan or search products" placeholder="Scan barcode or search name / SKU…" value={query} disabled={busy} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();if(query.trim())scan(query.trim());}}}/><Button variant="outline" disabled={busy||!query.trim()} onClick={()=>scan(query.trim())}>Look up barcode</Button></div>
+      {error&&<p role="alert" className="rounded bg-red-50 p-3 text-red-800">{error}</p>}
+      {(pending>0||searching)&&<p role="status" className="text-sm">Finding products…</p>}
+      {results.length>0&&<div className="max-h-40 overflow-auto rounded border">{results.map(product=><button type="button" key={product.id} className="block w-full p-2 text-left hover:bg-muted" disabled={busy} onClick={()=>enqueue(token=>addProduct(product,token))}>{product.name}{product.barcode?` · ${product.barcode}`:''}</button>)}</div>}
+      {query&&!searching&&!pending&&!results.length&&<p className="text-sm text-muted-foreground">No search results. Enter the full barcode to look it up.</p>}
+      {variantChoice&&<div className="rounded border p-3"><p>Choose a variant for {variantChoice.product.name}</p><div className="flex flex-wrap gap-2 mt-2">{variantChoice.variants.map(variant=><Button variant="outline" key={variant.id} disabled={busy} onClick={()=>{try{addRow(variantChoice.product,variant);setVariantChoice(null);}catch(e){setError(e.message);}}}>{variant.name}</Button>)}<Button variant="ghost" onClick={()=>setVariantChoice(null)}>Cancel variant</Button></div></div>}
+      <div className="max-h-80 overflow-auto rounded border"><table className="w-full text-sm"><thead><tr><th className="p-3 text-left">Product</th><th className="p-3 text-left">Quantity received</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{items.map(row=><tr key={row.key} className="border-t"><td className="p-3">{row.name}</td><td className="p-3"><Input data-receiving-key={row.key} type="number" min="0.001" step="any" aria-label={`Quantity received for ${row.name}`} value={row.quantity} disabled={busy} onChange={e=>{const value=e.target.value;setItems(old=>old.map(item=>item.key===row.key?{...item,quantity:value}:item));}}/></td><td className="p-2"><Button variant="ghost" disabled={busy} onClick={()=>setItems(old=>old.filter(item=>item.key!==row.key))}>Remove</Button></td></tr>)}</tbody></table>{!items.length&&<p className="p-5 text-center text-muted-foreground">Scan or select your first product.</p>}</div>
+      <div className="flex items-center justify-between gap-2"><p className="text-sm">{items.length} items · Repeated scans add 1.</p><Button disabled={busy||pending>0||!!variantChoice||!items.length} onClick={receiveAll}>{busy?'Receiving…':'Receive all stock'}</Button></div>
+    </div>
+  </DialogBody></DialogContent></Dialog>;
 }

@@ -712,6 +712,10 @@ exports.updateFeaturePlanMatrix = async (req, res, next) => {
     }
 
     await tx.commit();
+    // The Feature Table matrix isn't scoped to one tenant, so drop every tenant's cached
+    // entitlements rather than waiting out the TTL — otherwise a flag flip here can look
+    // like it "isn't working" for up to a minute after saving.
+    require('../middleware/cache').invalidateAllEntitlementsCache();
     res.status(200).json({
       success: true,
       message: unknownPlanIds.length > 0

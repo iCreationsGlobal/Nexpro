@@ -80,7 +80,7 @@ class EmailService {
     const effectiveFrom = fromEmail || smtpUser || config.sesAccessKeyId || '';
     return {
       provider,
-      host: config.smtpHost || config.sesHost || (provider === 'sendgrid' ? 'smtp.sendgrid.net' : 'n/a'),
+      host: config.smtpHost || config.sesHost || (provider === 'sendgrid' ? 'smtp.sendgrid.net' : provider === 'resend' ? 'smtp.resend.com' : 'n/a'),
       port: config.smtpPort || (provider === 'smtp' || provider === 'mailjet' ? 587 : 'n/a'),
       smtpUserSet: !!String(smtpUser || '').trim(),
       smtpPasswordSet: !!String(config.smtpPassword || '').trim(),
@@ -375,6 +375,7 @@ class EmailService {
     const hasSg = !!(v.sendgridApiKey && String(v.sendgridApiKey).trim());
     const hasSes = !!(v.sesAccessKeyId && String(v.sesAccessKeyId).trim());
     const hasSesSecret = !!(v.sesSecretAccessKey && String(v.sesSecretAccessKey).trim());
+    const hasResend = !!(v.resendApiKey && String(v.resendApiKey).trim());
     const smtpUserSet = !!(v.smtpUser && String(v.smtpUser).trim());
     const smtpPasswordSet = !!(v.smtpPassword && String(v.smtpPassword).trim());
     const fromEmail = (v.fromEmail && String(v.fromEmail).trim()) || '';
@@ -382,7 +383,8 @@ class EmailService {
       (provider === 'smtp' && hasHost && smtpUserSet && smtpPasswordSet) ||
       (provider === 'sendgrid' && hasSg && !!fromEmail) ||
       (provider === 'ses' && hasSes && hasSesSecret && !!fromEmail) ||
-      (provider === 'mailjet' && smtpUserSet && smtpPasswordSet && !!fromEmail)
+      (provider === 'mailjet' && smtpUserSet && smtpPasswordSet && !!fromEmail) ||
+      (provider === 'resend' && hasResend && !!fromEmail)
     );
     const fromNameSet = !!(v.fromName && String(v.fromName).trim());
     const fromMatchesSmtpUser = fromEmail && v.smtpUser
@@ -391,7 +393,7 @@ class EmailService {
     return (
       `tenantId=${tenantId} enabled=${enabled} provider=${provider} ` +
       `outboundReady=${outboundReady} smtpHostSet=${hasHost} smtpUserSet=${smtpUserSet} ` +
-      `smtpPasswordSet=${smtpPasswordSet} sendgridSet=${hasSg} sesSet=${hasSes} ` +
+      `smtpPasswordSet=${smtpPasswordSet} sendgridSet=${hasSg} sesSet=${hasSes} resendSet=${hasResend} ` +
       `fromEmail=${this.maskEmail(fromEmail)} fromNameSet=${fromNameSet} fromMatchesSmtpUser=${fromMatchesSmtpUser}`
     );
   }
@@ -432,6 +434,10 @@ class EmailService {
       case 'mailjet':
         requireField('smtpUser');
         requireField('smtpPassword');
+        requireField('fromEmail');
+        break;
+      case 'resend':
+        requireField('resendApiKey');
         requireField('fromEmail');
         break;
       default:
@@ -654,6 +660,21 @@ class EmailService {
           auth: {
             user: config.smtpUser,
             pass: config.smtpPassword
+          },
+          connectionTimeout: socketTimeout,
+          greetingTimeout
+        });
+
+      case 'resend':
+        // Resend SMTP relay: smtp.resend.com, port 465 SSL; username is literally "resend", password = API key
+        return nodemailer.createTransport({
+          ...poolOpts,
+          host: 'smtp.resend.com',
+          port: 465,
+          secure: true,
+          auth: {
+            user: 'resend',
+            pass: config.resendApiKey
           },
           connectionTimeout: socketTimeout,
           greetingTimeout
@@ -1047,6 +1068,16 @@ class EmailService {
             return {
               success: false,
               error: 'Mailjet API Key and Secret Key are required'
+            };
+          }
+          break;
+
+        case 'resend':
+          if (!config.resendApiKey) {
+            console.log(`${logPrefix}[connection_verify_skip]${contextText} provider=${provider} reason=missing_resend_api_key`);
+            return {
+              success: false,
+              error: 'Resend API Key is required'
             };
           }
           break;

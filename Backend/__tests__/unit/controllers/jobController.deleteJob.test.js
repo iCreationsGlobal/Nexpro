@@ -136,7 +136,7 @@ describe('deleteJob cascade', () => {
       })
     );
     expect(MaterialItem.findOne).toHaveBeenCalled();
-    expect(updateCustomerBalance).toHaveBeenCalledWith('cust-1');
+    expect(updateCustomerBalance).toHaveBeenCalledWith('cust-1', null, 'tenant-1');
     expect(response.body.message).toBeUndefined();
   });
 });

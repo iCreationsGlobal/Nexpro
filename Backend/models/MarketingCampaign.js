@@ -27,6 +27,16 @@ const MarketingCampaign = sequelize.define('MarketingCampaign', {
     allowNull: false,
     defaultValue: 'draft'
   },
+  audienceType: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    defaultValue: 'customer'
+  },
+  tags: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: []
+  },
   channels: {
     type: DataTypes.JSONB,
     allowNull: false,

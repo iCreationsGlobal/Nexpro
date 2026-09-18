@@ -11,6 +11,8 @@ import Colors from '@/constants/Colors';
 import { FontFamily, FontSize } from '@/constants/typography';
 import { useTheme } from '@/context/ThemeContext';
 import { useScanningEnabled } from '@/hooks/useScanningEnabled';
+import { useFocusAreas } from '@/hooks/useFocusAreas';
+import { getFocusAreaDefinition } from '@/constants/focusAreas';
 import { isRentalBusinessType, resolveBusinessType } from '@/constants';
 import { OPEN_SCAN_CAMERA_EVENT } from '@/utils/scanTabEvents';
 
@@ -51,6 +53,11 @@ export default function TabLayout() {
   const colors = Colors[resolvedTheme ?? 'light'];
   const { scanningEnabled } = useScanningEnabled();
   const { activeTenant, hasFeature, isDriver } = useAuth();
+  const { focusAreas } = useFocusAreas();
+  const selectedFocus = getFocusAreaDefinition(focusAreas[0]);
+  const primaryFocus = selectedFocus?.id === 'online_store' && hasFeature('products')
+    ? { ...selectedFocus, label: 'Products', icon: 'package' as const, route: '/(tabs)/products' }
+    : selectedFocus;
   const resolvedType = resolveBusinessType(activeTenant?.businessType);
   const isShop = resolvedType === 'shop';
   const isPharmacy = resolvedType === 'pharmacy';
@@ -106,14 +113,35 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="customers"
-        options={
-          !isDriver && hasFeature('crm')
+        options={(() => {
+          if (isDriver) return { href: null, title: 'Customers' };
+          // Flexible slot: promote the user's #1 focus-area pick here instead of Customers.
+          // Customers remains one tap away in More. Falls back to today's behavior when unset.
+          if (primaryFocus) {
+            return {
+              title: primaryFocus.label,
+              tabBarIcon: ({ color }: { color: string }) => (
+                <TabBarIcon name={primaryFocus.icon} color={color} />
+              ),
+              tabBarButton: (props: any) => (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={primaryFocus.label}
+                  onPress={() => router.push(primaryFocus.route as never)}
+                  style={props.style}
+                >
+                  {props.children}
+                </Pressable>
+              ),
+            };
+          }
+          return hasFeature('crm')
             ? {
                 title: 'Customers',
                 tabBarIcon: ({ color }: { color: string }) => <TabBarIcon name="users" color={color} />,
               }
-            : { href: null, title: 'Customers' }
-        }
+            : { href: null, title: 'Customers' };
+        })()}
       />
       <Tabs.Screen
         name="scan"
@@ -162,14 +190,33 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="invoices"
-        options={
-          !isDriver && showInvoicesInTab
+        options={(() => {
+          if (isDriver) return { href: null, title: 'Invoice' };
+          // "Sell online" focus: Orders matters more here than Invoices — swap this slot.
+          // Invoices stays reachable via More (see moreMenuItems.ts).
+          if (focusAreas.includes('online_store')) {
+            return {
+              title: 'Orders',
+              tabBarIcon: ({ color }: { color: string }) => <TabBarIcon name="shopping-cart" color={color} />,
+              tabBarButton: (props: any) => (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Orders"
+                  onPress={() => router.push('/(tabs)/store?section=orders' as never)}
+                  style={props.style}
+                >
+                  {props.children}
+                </Pressable>
+              ),
+            };
+          }
+          return showInvoicesInTab
             ? {
                 title: 'Invoice',
                 tabBarIcon: ({ color }: { color: string }) => <TabBarIcon name="file-text" color={color} />,
               }
-            : { href: null, title: 'Invoice' }
-        }
+            : { href: null, title: 'Invoice' };
+        })()}
       />
       <Tabs.Screen
         name="more"

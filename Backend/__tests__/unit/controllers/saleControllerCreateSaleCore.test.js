@@ -147,8 +147,10 @@ describe('saleController createSaleCore', () => {
   });
 
   it('records the paid portion with the sale transaction', async () => {
+    // A partial payment leaves an outstanding balance, which requires a customer to bill
+    // the remainder to (createSaleCore auto-creates a linked invoice for this after commit).
     await saleController.createSaleCore(transaction, tenantId, userId, {
-      items: [{ name: 'Custom item', quantity: 1, unitPrice: 50 }], amountPaid: 20,
+      items: [{ name: 'Custom item', quantity: 1, unitPrice: 50 }], amountPaid: 20, customerId: 'customer-1',
     });
     expect(Payment.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 20, tenantId, description: 'sale:sale-1' }), { transaction });
   });

@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
 import DashboardStatsCard from '../../components/DashboardStatsCard';
 import DashboardTable from '../../components/DashboardTable';
 import ViewToggle from '../../components/ViewToggle';
@@ -39,7 +40,9 @@ import {
   Briefcase,
   TrendingUp,
   Clock,
-  Eye
+  Eye,
+  Megaphone,
+  Send
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import {
@@ -131,6 +134,7 @@ const AdminLeads = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [tableViewMode, setTableViewMode] = useState('table');
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const [broadcastModalVisible, setBroadcastModalVisible] = useState(false);
 
   const leadForm = useForm({
     resolver: zodResolver(leadSchema),
@@ -503,6 +507,12 @@ const AdminLeads = () => {
               <RefreshCw className="h-4 w-4" />
             )}
           </Button>
+          {hasPermission('leads.manage') && (
+            <Button variant="outline" onClick={() => setBroadcastModalVisible(true)} size={isMobile ? 'icon' : 'default'}>
+              <Megaphone className="h-4 w-4" />
+              {!isMobile && <span className="ml-2">Broadcast</span>}
+            </Button>
+          )}
           {hasPermission('leads.manage') && (
             <Button onClick={handleAdd} className="flex-1 min-w-0 md:flex-none">
               <Plus className="h-4 w-4" />
@@ -1230,8 +1240,169 @@ const AdminLeads = () => {
           </div>
         </SheetContent>
       </Sheet>
+
+      <AdminLeadBroadcastDialog
+        open={broadcastModalVisible}
+        onOpenChange={setBroadcastModalVisible}
+      />
     </div>
   );
 };
+
+const BROADCAST_FETCH_LIMIT = 100; // server caps page size at MAX_PAGE_SIZE (default 100)
+
+function AdminLeadBroadcastDialog({ open, onOpenChange }) {
+  const [search, setSearch] = useState('');
+  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [leadOptions, setLeadOptions] = useState([]);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [subject, setSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
+  const debouncedSearch = useDebounce(search, DEBOUNCE_DELAYS.SEARCH);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoadingLeads(true);
+    adminService.getAdminLeads({ search: debouncedSearch || undefined, isActive: 'true', limit: BROADCAST_FETCH_LIMIT })
+      .then((res) => {
+        if (cancelled) return;
+        setLeadOptions(res?.data || []);
+      })
+      .catch(() => {
+        if (!cancelled) setLeadOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingLeads(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, debouncedSearch]);
+
+  useEffect(() => {
+    if (!open) {
+      setSearch('');
+      setLeadOptions([]);
+      setSelectedIds(new Set());
+      setSubject('');
+      setEmailBody('');
+      setResult(null);
+    }
+  }, [open]);
+
+  const contactableLeads = useMemo(
+    () => leadOptions.filter((lead) => lead.email && !lead.doNotContact),
+    [leadOptions]
+  );
+
+  const toggleLead = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelectedIds(new Set(contactableLeads.map((lead) => lead.id)));
+  };
+
+  const handleSend = async () => {
+    if (selectedIds.size === 0) {
+      showError(null, 'Select at least one lead to message');
+      return;
+    }
+    if (!subject.trim() || !emailBody.trim()) {
+      showError(null, 'Email subject and message are required');
+      return;
+    }
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await adminService.broadcastAdminLeads({
+        leadIds: Array.from(selectedIds),
+        subject: subject.trim(),
+        emailBody,
+      });
+      setResult(res?.data || null);
+      showSuccess(`Sent ${res?.data?.sent || 0} email${res?.data?.sent === 1 ? '' : 's'}`);
+    } catch (err) {
+      showError(err, err?.response?.data?.message || 'Failed to send broadcast');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <MobileFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Broadcast to leads"
+      description="Email a personalized message to selected admin leads. Use {{name}} in the subject or message to insert each lead's name."
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+          <Button type="button" onClick={handleSend} disabled={sending}>
+            {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+            Send
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>Subject</Label>
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Hi {{name}}, quick update from ABS" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Search leads</Label>
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, company, email..." />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Message</Label>
+          <Textarea rows={5} value={emailBody} onChange={(e) => setEmailBody(e.target.value)} placeholder="Hi {{name}}, ..." />
+        </div>
+
+        <div className="rounded-md border border-border">
+          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <span className="text-sm font-medium">
+              {loadingLeads ? 'Loading leads…' : `${contactableLeads.length} contactable, ${selectedIds.size} selected`}
+            </span>
+            <Button type="button" variant="outline" size="sm" onClick={selectAllVisible} disabled={contactableLeads.length === 0}>
+              Select all
+            </Button>
+          </div>
+          <div className="max-h-64 overflow-y-auto divide-y divide-border">
+            {contactableLeads.length === 0 && !loadingLeads ? (
+              <p className="p-4 text-center text-sm text-muted-foreground">No leads with an email address match this search.</p>
+            ) : (
+              contactableLeads.map((lead) => (
+                <label key={lead.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                  <Checkbox checked={selectedIds.has(lead.id)} onCheckedChange={() => toggleLead(lead.id)} />
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-medium truncate">{lead.name || lead.company || 'Lead'}</span>
+                    <span className="block text-xs text-muted-foreground truncate">{lead.email}</span>
+                  </span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+
+        {result ? (
+          <div className="rounded-md border border-border p-3 text-sm">
+            <p><span className="text-muted-foreground">Sent:</span> {result.sent} · <span className="text-muted-foreground">Skipped:</span> {result.skipped} · <span className="text-muted-foreground">Failed:</span> {result.failed?.length || 0}</p>
+          </div>
+        ) : null}
+      </div>
+    </MobileFormDialog>
+  );
+}
 
 export default AdminLeads;

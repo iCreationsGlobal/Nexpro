@@ -483,6 +483,7 @@ exports.completeOnboarding = async (req, res, next) => {
     shopType,
     studioType,
     businessSubType,
+    businessSubTypes,
     industry,
     companyName,
     companyEmail,
@@ -608,7 +609,20 @@ exports.completeOnboarding = async (req, res, next) => {
       metadata.businessSubType = businessSubType;
       console.log('[tenant] completeOnboarding tenantId=%s businessSubType=%s', tenantId, businessSubType);
     }
-    
+
+    // Full multi-select from onboarding (the business type step is now checkbox multiselect).
+    // Additive only — businessSubType/shopType above (first pick) still drive all existing gating.
+    if (businessSubTypes) {
+      try {
+        const parsed = typeof businessSubTypes === 'string' ? JSON.parse(businessSubTypes) : businessSubTypes;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          metadata.businessSubTypes = parsed.filter((v) => typeof v === 'string' && v.trim()).slice(0, 20);
+        }
+      } catch (parseError) {
+        console.warn('[tenant] completeOnboarding: could not parse businessSubTypes', parseError?.message);
+      }
+    }
+
     // Store shop type in metadata (for shop business type)
     if (resolvedBusinessType === 'shop' && shopType) {
       metadata.shopType = shopType;
@@ -750,6 +764,25 @@ exports.completeOnboarding = async (req, res, next) => {
           true
         );
         console.log(`✅ Seeded default categories for ${resolvedBusinessType}${shopType ? ` (${shopType})` : ''}${selectedStudioType ? ` (${selectedStudioType})` : ''}${rentalSubType ? ` (${rentalSubType})` : ''}`);
+
+        // Onboarding's business-type step is now checkbox multiselect — a shop can pick more
+        // than one everyday label (e.g. Hardware + Electronics). Seed categories for every
+        // additional pick too, so the Products page category list covers everything the tenant
+        // sells, not just the primary pick. seedDefaultCategories only inserts names that don't
+        // already exist for the tenant, so calling it again per extra pick is additive/safe.
+        if (resolvedBusinessType === 'shop' && Array.isArray(metadata.businessSubTypes)) {
+          const extraSubTypes = metadata.businessSubTypes.filter(
+            (id) => id && id !== shopType && id !== 'other'
+          );
+          for (const extraSubType of extraSubTypes) {
+            try {
+              await seedDefaultCategories(tenantId, resolvedBusinessType, extraSubType, null, null, true);
+              console.log(`✅ Seeded additional default categories for shop (${extraSubType})`);
+            } catch (extraError) {
+              console.error(`Failed to seed categories for additional business type ${extraSubType}:`, extraError);
+            }
+          }
+        }
       } catch (error) {
         console.error('Failed to seed categories during onboarding:', error);
         // Don't fail onboarding if category seeding fails

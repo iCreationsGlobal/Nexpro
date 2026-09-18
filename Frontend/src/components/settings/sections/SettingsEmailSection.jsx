@@ -189,6 +189,7 @@ const SettingsEmailSection = () => {
                             <SelectItem value="smtp">SMTP</SelectItem>
                             <SelectItem value="sendgrid">SendGrid</SelectItem>
                             <SelectItem value="ses">AWS SES</SelectItem>
+                            <SelectItem value="resend">Resend</SelectItem>
                           </SelectContent>
                         </Select>
                       </FormControl>
@@ -258,6 +259,16 @@ const SettingsEmailSection = () => {
                     <FormItem>
                       <FormLabel>SendGrid API Key <span className="text-xs text-muted-foreground ml-2">(Required)</span></FormLabel>
                       <FormControl><Input type="password" placeholder="SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
+
+                {emailForm.watch('provider') === 'resend' && (
+                  <FormField control={emailForm.control} name="resendApiKey" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Resend API Key <span className="text-xs text-muted-foreground ml-2">(Required)</span></FormLabel>
+                      <FormControl><Input type="password" placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />

@@ -614,13 +614,28 @@ const logActivity = async ({
       }
     }
 
-    // TODO: Implement PUSH channel
     if (channels.includes(CHANNELS.PUSH)) {
-      console.log(`${logPrefix} PUSH notification for ${activityType} (not yet implemented)`, {
-        recipients: recipients.length,
-        title
-      });
-      // await sendPushNotification({ recipients, title, message, context });
+      try {
+        const { dispatchExpoPushToUsers } = require('./pushNotificationService');
+        const result = await dispatchExpoPushToUsers({
+          tenantId,
+          userIds: recipients,
+          title,
+          message,
+          type: preferenceCategory,
+          priority: priority === 'high' ? 'high' : 'normal',
+          metadata: context
+        });
+        if (result.attempted > 0) {
+          console.log(`${logPrefix} PUSH notification sent for ${activityType}`, {
+            attempted: result.attempted,
+            sent: result.sent,
+            invalidTokens: result.invalidTokens
+          });
+        }
+      } catch (error) {
+        console.error(`${logPrefix} PUSH notification error:`, error.message);
+      }
     }
 
     console.log(`${logPrefix} Activity ${activityType} processed successfully`, {

@@ -17,7 +17,7 @@ const formatAddress = (address) => {
 const getPrintStyles = (printConfig) => {
   const format = printConfig?.format || 'a4';
   const isThermal = format === 'thermal_58' || format === 'thermal_80';
-  const showLogo = printConfig?.showLogo !== false && !isThermal;
+  const showLogo = printConfig?.showLogo !== false;
   const fontSize = isThermal ? 'small' : (printConfig?.fontSize || 'normal');
   const titleSize = fontSize === 'small' ? '14px' : '28px';
   const bodySize = fontSize === 'small' ? '10px' : '12px';

@@ -36,6 +36,8 @@ const {
   updateCustomerNotificationPreferences,
   getSidebarPreferences,
   updateSidebarPreferences,
+  getFocusAreaPreferences,
+  updateFocusAreaPreferences,
   getQuoteWorkflow,
   updateQuoteWorkflow,
   getJobInvoiceSettings,
@@ -113,6 +115,11 @@ router
   .route('/sidebar-preferences')
   .get(timeCrudAction('settings.sidebar_preferences.read'), getSidebarPreferences)
   .patch(timeCrudAction('settings.sidebar_preferences.update'), updateSidebarPreferences);
+
+router
+  .route('/focus-areas')
+  .get(timeCrudAction('settings.focus_areas.read'), getFocusAreaPreferences)
+  .patch(timeCrudAction('settings.focus_areas.update'), updateFocusAreaPreferences);
 
 router
   .route('/profile')

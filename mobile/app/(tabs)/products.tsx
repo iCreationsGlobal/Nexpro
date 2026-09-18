@@ -12,7 +12,7 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -21,6 +21,7 @@ import { FormSheetModal } from '@/components/FormSheetModal';
 import { FORM_LABELS } from '@/constants/formLabels';
 import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
 import { productService } from '@/services/productService';
+import { nextProductPage } from '@/utils/productPagination';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/context/AuthContext';
 import { useShopOptional } from '@/context/ShopContext';
@@ -112,11 +113,13 @@ export default function ProductsScreen() {
 
   const debouncedSearch = useDebounce(searchValue, 400);
 
-  const { data: response, isPending, refetch, isRefetching, error, isError } = useQuery({
-    queryKey: ['products', activeTenantId, activeShopId, activeStudioLocationId, debouncedSearch],
-    queryFn: () =>
+  const { data: response, isPending, refetch, isRefetching, error, isError, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = useInfiniteQuery({
+    queryKey: ['products', activeTenantId, activeShopId, activeStudioLocationId, 'infinite', debouncedSearch],
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, _pages, lastPageParam) => nextProductPage(lastPage, lastPageParam, parseApiListResponse<Product>(lastPage).length),
+    queryFn: ({ pageParam }) =>
       productService.getProducts({
-        page: 1,
+        page: pageParam,
         limit: 20,
         search: debouncedSearch || undefined,
         isActive: true,
@@ -194,9 +197,9 @@ export default function ProductsScreen() {
   });
 
   const products = useMemo(() => {
-    const list = parseApiListResponse<Product>(response);
+    const list = response?.pages.flatMap(page => parseApiListResponse<Product>(page)) ?? [];
     // Drop malformed rows so FlatList keyExtractor / render never throw.
-    return list.filter((item): item is Product => Boolean(item && typeof item === 'object' && item.id));
+    return [...new Map(list.filter((item): item is Product => Boolean(item && typeof item === 'object' && item.id)).map(item => [item.id, item])).values()];
   }, [response]);
   const loadErrorMessage = useMemo(
     () => getApiErrorMessage(error, 'Could not load products. Pull to refresh.'),
@@ -443,7 +446,7 @@ export default function ProductsScreen() {
   return (
     <ScreenShell style={styles.container}>
       {/* Add product — hide when empty (empty state has its own CTA) */}
-      {!showProductsLoading && !isError && products.length > 0 && (
+      {!showProductsLoading && products.length > 0 && (
         <ListActionButton
           label="Add Product"
           onPress={() => setAddModalVisible(true)}
@@ -455,7 +458,7 @@ export default function ProductsScreen() {
         <ListLoadingState message="Loading shop..." />
       ) : showProductsLoading ? (
         <ListLoadingState message="Loading products..." />
-      ) : isError ? (
+      ) : isError && products.length === 0 ? (
         <ListErrorState title="Failed to load products" message={loadErrorMessage} onRetry={refetch} />
       ) : products.length === 0 ? (
         <ListEmptyState
@@ -477,11 +480,17 @@ export default function ProductsScreen() {
           data={products}
           keyExtractor={(item) => item.id}
           renderItem={renderProductItem}
+          onEndReached={() => { if (hasNextPage && !isFetchingNextPage && !isRefetching && !isFetchNextPageError) void fetchNextPage(); }}
+          onEndReachedThreshold={0.4}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          ListFooterComponent={isFetchingNextPage ? <ActivityIndicator color={colors.tint} style={{ padding: 16 }} /> : isFetchNextPageError ? <Pressable onPress={() => fetchNextPage()}><Text style={{ color: colors.tint, padding: 16 }}>Could not load more. Tap to retry.</Text></Pressable> : null}
           numColumns={2}
           columnWrapperStyle={styles.row}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={colors.tint} />
+            <RefreshControl refreshing={isRefetching && !isFetchingNextPage} onRefresh={onRefresh} tintColor={colors.tint} />
           }
         />
       )}
@@ -765,7 +774,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalSheetWrap: {
@@ -841,7 +850,7 @@ const styles = StyleSheet.create({
   imagePickerPlaceholder: { alignItems: 'center', gap: 8 },
   imagePickerText: { fontSize: 14, fontWeight: '500' },
   imagePickerOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',

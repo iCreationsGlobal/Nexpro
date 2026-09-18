@@ -302,6 +302,7 @@ const deleteAdminLead = async (id) => api.delete(`/admin/leads/${id}`);
 const addAdminLeadActivity = async (id, data) => api.post(`/admin/leads/${id}/activities`, data);
 const getAdminLeadStats = async () => api.get('/admin/leads/stats');
 const convertAdminLeadToJob = async (id, jobData) => api.post(`/admin/leads/${id}/convert-to-job`, jobData);
+const broadcastAdminLeads = async (data) => api.post('/admin/leads/broadcast', data);
 
 // Admin Jobs
 const getAdminJobs = async (params = {}) => api.get('/admin/jobs', { params });
@@ -484,6 +485,7 @@ export default {
   addAdminLeadActivity,
   getAdminLeadStats,
   convertAdminLeadToJob,
+  broadcastAdminLeads,
   // Admin Jobs
   getAdminJobs,
   getAdminJob,

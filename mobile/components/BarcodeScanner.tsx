@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, ActivityIndicator } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useAudioPlayer } from 'expo-audio';
 import Colors from '@/constants/Colors';
+import { createScanSessionGate } from '@/utils/scanSessionGate';
 import { useColorScheme } from '@/components/useColorScheme';
 
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
@@ -18,18 +19,28 @@ const SCAN_BEEP_SOURCE = require('@/assets/sounds/scan-beep.wav');
 export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+  const scanGate = useRef(createScanSessionGate()).current;
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const beepPlayer = useAudioPlayer(SCAN_BEEP_SOURCE, { keepAudioSessionActive: true });
 
   useEffect(() => {
     if (visible) {
+      scanGate.open();
       setScanned(false);
+    } else {
+      scanGate.close();
     }
-  }, [visible]);
+    return () => scanGate.close();
+  }, [visible, scanGate]);
+
+  const closeScanner = () => {
+    scanGate.close();
+    onClose();
+  };
 
   const handleBarCodeScanned = ({ data }: { data: string }) => {
-    if (scanned) return;
+    if (!visible || !scanGate.accept(data)) return;
     setScanned(true);
     // Haptic feedback on successful scan
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -39,15 +50,14 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
       .catch(() => {
         beepPlayer.play();
       });
-    onScan(data);
-    onClose();
+    try { onScan(data); } finally { closeScanner(); }
   };
 
   if (!visible) return null;
 
   if (!permission) {
     return (
-      <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <Modal visible={visible} animationType="slide" onRequestClose={closeScanner}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.centerContent}>
             <ActivityIndicator size="large" color={colors.tint} />
@@ -60,7 +70,7 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
 
   if (!permission.granted) {
     return (
-      <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <Modal visible={visible} animationType="slide" onRequestClose={closeScanner}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.centerContent}>
             <AppIcon name="camera" size={64} color={colors.tint} style={styles.icon} />
@@ -76,7 +86,7 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
             </Pressable>
             <Pressable
               style={[styles.button, styles.secondaryButton, { borderColor: colors.tint }]}
-              onPress={onClose}
+              onPress={closeScanner}
             >
               <Text style={[styles.buttonText, { color: colors.tint }]}>Cancel</Text>
             </Pressable>
@@ -87,7 +97,7 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
   }
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={closeScanner}>
       <View style={styles.container}>
         <CameraView
           style={styles.camera}
@@ -111,7 +121,7 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
         {/* Overlay elements positioned absolutely over camera */}
         <View style={styles.overlay}>
           <View style={styles.header}>
-            <Pressable onPress={onClose} style={styles.closeButton}>
+            <Pressable onPress={closeScanner} style={styles.closeButton}>
               <AppIcon name="times" size={24} color="#fff" />
             </Pressable>
           </View>

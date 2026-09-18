@@ -263,6 +263,9 @@ const buildModelMocks = (getStore) => ({
   OnlineStoreSettings: createModelApi(getStore, 'OnlineStoreSettings', 'store'),
   OnlineProductListing: createModelApi(getStore, 'OnlineProductListing', 'listing'),
   Payment: { create: jest.fn() },
+  // getRentalSettings() looks this up and falls back to defaults when no row exists —
+  // no rental-settings Setting row is seeded by this harness, so null is the correct mock.
+  Setting: { findOne: jest.fn().mockResolvedValue(null) },
 });
 
 const buildDatabaseMock = () => ({

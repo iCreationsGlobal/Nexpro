@@ -1,3 +1,4 @@
+import { TaskCalendarFields, calendarPayload, type TaskCalendar } from '@/components/TaskCalendarFields';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
@@ -66,6 +67,7 @@ export default function TasksScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [calendar, setCalendar] = useState<TaskCalendar>({ enabled: false, reminderMinutes: 10 });
 
   const { searchValue } = useSmartSearch();
   useRegisterPageSearch({ scope: 'tasks', placeholder: SEARCH_PLACEHOLDERS.TASKS });
@@ -74,13 +76,13 @@ export default function TasksScreen() {
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ['user-workspace', 'tasks', activeTenantId],
     queryFn: async () => userWorkspaceService.getTasks(),
-    enabled: !!activeTenantId && hasFeature('jobAutomation') && user?.isPlatformAdmin !== true,
+    enabled: !!activeTenantId && hasFeature('tasks') && user?.isPlatformAdmin !== true,
   });
 
   const { data: membersResponse } = useQuery({
     queryKey: ['task-members', activeTenantId],
     queryFn: () => userWorkspaceService.getTaskMembers(),
-    enabled: !!activeTenantId && hasFeature('jobAutomation') && user?.isPlatformAdmin !== true,
+    enabled: !!activeTenantId && hasFeature('tasks') && user?.isPlatformAdmin !== true,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -123,7 +125,7 @@ export default function TasksScreen() {
     status !== 'all' || assigneeFilter !== 'all' || !!debouncedSearch.trim();
 
   const createMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: async () =>
       userWorkspaceService.createTask({
         title: title.trim(),
         description: description.trim() || '',
@@ -131,6 +133,7 @@ export default function TasksScreen() {
         priority: 'medium',
         startDate: new Date().toISOString().slice(0, 10),
         dueDate: dueDate.trim() || null,
+        calendar: calendarPayload(calendar),
         isPrivate: false,
         assigneeId: user?.id || null,
       }),
@@ -140,6 +143,7 @@ export default function TasksScreen() {
       setTitle('');
       setDescription('');
       setDueDate('');
+      setCalendar({ enabled: false, reminderMinutes: 10 });
     },
     onError: (err: unknown) => {
       Alert.alert('Could not create task', getApiErrorMessage(err, 'Try again'));
@@ -173,7 +177,7 @@ export default function TasksScreen() {
   if (user?.isPlatformAdmin === true) {
     return <FeatureAccessDenied message="Tasks are not available for platform admin accounts." />;
   }
-  if (!hasFeature('jobAutomation')) {
+  if (!hasFeature('tasks')) {
     return <FeatureAccessDenied message="Tasks are not enabled for this workspace." />;
   }
 
@@ -311,6 +315,7 @@ export default function TasksScreen() {
           onChangeText={setDueDate}
           style={[styles.input, { borderColor, color: textColor, backgroundColor: inputBg }]}
         />
+        <TaskCalendarFields value={calendar} onChange={setCalendar} />
       </FormSheetModal>
     </ScreenShell>
   );

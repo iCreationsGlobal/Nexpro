@@ -21,6 +21,8 @@ type BuildMoreMenuArgs = {
   hasFeature: (feature: string) => boolean;
   hasStoreSettings: boolean;
   isPlatformAdmin?: boolean;
+  /** Ranked "what matters most to you" picks — see constants/focusAreas.ts */
+  focusAreas?: string[];
 };
 
 /**
@@ -33,6 +35,7 @@ export function buildMoreMenuSections({
   hasFeature,
   hasStoreSettings,
   isPlatformAdmin,
+  focusAreas,
 }: BuildMoreMenuArgs): MoreMenuSection[] {
   if (isDriver) {
     return [
@@ -54,11 +57,22 @@ export function buildMoreMenuSections({
   const quotesOk =
     hasFeature('quoteAutomation') && isQuotesEnabledForTenant(businessType, shopType);
 
+  const primaryFocusId = focusAreas?.[0];
+  const wantsOnlineOrdersTab = focusAreas?.includes('online_store') === true;
+
   const main: MoreMenuItem[] = [
     { id: 'home', label: 'Home', icon: 'home', route: '/(tabs)/' },
   ];
   if (hasFeature('crm')) {
-    // Customers live on the tab bar; keep in menu for discoverability like the design.
+    // Customers live on the tab bar by default. Once a focus-area pick displaces that tab
+    // slot, Customers would otherwise be unreachable — surface it here instead.
+    if (primaryFocusId) {
+      main.push({ id: 'customers', label: 'Customers', icon: 'users', route: '/(tabs)/customers' });
+    }
+  }
+  if ((isShop || isPharmacy || isStudio) && hasFeature('invoices') && wantsOnlineOrdersTab) {
+    // The "Sell online" focus swaps the Invoices tab slot for Orders — keep Invoices reachable here.
+    main.push({ id: 'invoices', label: 'Invoices', icon: 'file-text', route: '/(tabs)/invoices' });
   }
 
   const store: MoreMenuItem[] = [];
@@ -100,7 +114,7 @@ export function buildMoreMenuSections({
   if (hasFeature('leadPipeline')) {
     work.push({ id: 'leads', label: 'Leads', icon: 'user-plus', route: '/(tabs)/leads' });
   }
-  if (hasFeature('jobAutomation') && isPlatformAdmin !== true) {
+  if (hasFeature('tasks') && isPlatformAdmin !== true) {
     work.push({ id: 'tasks', label: 'Tasks', icon: 'list', route: '/(tabs)/tasks' });
   }
   if (hasFeature('deliveries')) {

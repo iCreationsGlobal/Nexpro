@@ -7,21 +7,25 @@
 export const mergeBranchOrganization = (branch, tenantOrganization = {}) => {
   if (!branch) return tenantOrganization;
 
-  const hasAddress =
+  // Shop.country defaults to 'Ghana' even when no other address field was ever filled in for
+  // that branch, so checking `branch.country` alone would treat every branch as having a full
+  // address and clobber the tenant's real address with just "Ghana". Only line1/city/state/
+  // postalCode indicate the branch actually has its own address on file.
+  const hasBranchAddress =
     branch.address ||
     branch.city ||
     branch.state ||
-    branch.postalCode ||
-    branch.country;
+    branch.postalCode;
 
-  const address = hasAddress
+  const tenantAddress = tenantOrganization.address || {};
+  const address = hasBranchAddress
     ? {
-        line1: branch.address || '',
-        line2: '',
-        city: branch.city || '',
-        state: branch.state || '',
-        postalCode: branch.postalCode || '',
-        country: branch.country || '',
+        line1: branch.address || tenantAddress.line1 || '',
+        line2: tenantAddress.line2 || '',
+        city: branch.city || tenantAddress.city || '',
+        state: branch.state || tenantAddress.state || '',
+        postalCode: branch.postalCode || tenantAddress.postalCode || '',
+        country: branch.country || tenantAddress.country || '',
       }
     : tenantOrganization.address;
 

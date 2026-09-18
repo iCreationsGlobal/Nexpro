@@ -15,7 +15,8 @@ export function ConnectivityBanner() {
   const isOnline = useAppOnline();
   const inStoreSetup = useIsStoreSetupRoute();
   const isFetching = useIsFetching({
-    predicate: (query) => !(inStoreSetup && isStoreSetupBackgroundNoiseQuery(query.queryKey)),
+    // Prefetches and refreshes with usable data do not block the visible screen.
+    predicate: (query) => query.getObserversCount() > 0 && query.state.data === undefined && !(inStoreSetup && isStoreSetupBackgroundNoiseQuery(query.queryKey)),
   });
   const isMutating = useIsMutating();
   const { resolvedTheme } = useTheme();

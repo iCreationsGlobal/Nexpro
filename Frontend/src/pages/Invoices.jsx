@@ -18,6 +18,8 @@ import { useShopOptional } from '../context/ShopContext';
 import { useSmartSearch } from '../context/SmartSearchContext';
 import { useWorkspaceScope } from '../hooks/useWorkspaceScope';
 import { usePOSConfig } from '../hooks/usePOSConfig';
+import { usePrintFormatOverride } from '../hooks/usePrintFormatOverride';
+import PrintFormatSwitcher from '../components/PrintFormatSwitcher';
 import { getContentWidthMm } from '../utils/printStyles';
 import ActionColumn from '../components/ActionColumn';
 import DashboardTable from '../components/DashboardTable';
@@ -262,7 +264,11 @@ const Invoices = () => {
   }, [viewingInvoice, organization]);
 
   const { posConfig } = usePOSConfig();
-  const invoicePrintConfig = posConfig?.print || { format: 'a4' };
+  const {
+    printConfig: invoicePrintConfig,
+    format: invoicePrintFormat,
+    setFormat: setInvoicePrintFormat,
+  } = usePrintFormatOverride(posConfig?.print, viewingInvoice?.id);
 
   const paymentForm = useForm({
     resolver: zodResolver(paymentSchema),
@@ -1509,7 +1515,8 @@ const Invoices = () => {
                   Preview, download, or print this invoice
                 </DialogDescription>
               </div>
-              <div className="flex gap-2 w-full sm:w-auto no-print">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto no-print">
+                <PrintFormatSwitcher value={invoicePrintFormat} onChange={setInvoicePrintFormat} />
                 <Button
                   variant="outline"
                   className="flex-1 sm:flex-initial"

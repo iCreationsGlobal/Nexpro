@@ -38,11 +38,6 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/pricing" className="hover:text-[var(--sabito-lemon-green)]">
-                  Pricing
-                </Link>
-              </li>
-              <li>
                 <Link href="/commission-guide" className="hover:text-[var(--sabito-lemon-green)]">
                   Commission guide
                 </Link>

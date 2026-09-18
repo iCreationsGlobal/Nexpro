@@ -8,6 +8,7 @@ import {
   SelectTrigger,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { stripLeadingTrunkZero as stripLeadingZero } from '../utils/phoneUtils';
 
 // Complete list of all countries with dial codes (sorted alphabetically by name)
 const COUNTRIES = [
@@ -289,11 +290,11 @@ const PhoneNumberInput = forwardRef(({
     );
     
     if (matchedCountry) {
-      const number = asString.replace(matchedCountry.dialCode, '').trim();
+      const number = stripLeadingZero(asString.replace(matchedCountry.dialCode, '').trim());
       return { countryCode: matchedCountry.code, number };
     }
-    
-    return { countryCode: defaultCountry, number: asString };
+
+    return { countryCode: defaultCountry, number: stripLeadingZero(asString) };
   };
 
   // Parse the current value to get country and number
@@ -319,7 +320,9 @@ const PhoneNumberInput = forwardRef(({
   };
 
   const handleNumberChange = (e) => {
-    const number = e.target.value.replace(/[^\d\s\-()]/g, ''); // Only allow digits, spaces, hyphens, parentheses
+    // Only allow digits, spaces, hyphens, parentheses, then drop a leading trunk "0" — the
+    // dial code selector already marks where the number starts, so "+233 0244..." is invalid.
+    const number = stripLeadingZero(e.target.value.replace(/[^\d\s\-()]/g, ''));
     setPhoneNumber(number);
     const country = COUNTRIES.find(c => c.code === selectedCountry);
     if (country) {

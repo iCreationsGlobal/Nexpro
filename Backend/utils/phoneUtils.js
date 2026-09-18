@@ -43,6 +43,21 @@ const COUNTRY_CODES = {
 };
 
 /**
+ * A national trunk "0" sometimes ends up saved right after the country code
+ * (e.g. "2330244123456") — that duplicates what the code already marks, so drop it.
+ * @param {string} digits - Digits only, no leading +
+ * @returns {string}
+ */
+function stripTrunkZeroAfterCountryCode(digits) {
+  const knownCode = Object.values(COUNTRY_CODES)
+    .filter((code) => code.startsWith('+'))
+    .map((code) => code.slice(1))
+    .sort((a, b) => b.length - a.length)
+    .find((code) => digits.startsWith(code) && digits[code.length] === '0');
+  return knownCode ? knownCode + digits.slice(knownCode.length + 1) : digits;
+}
+
+/**
  * Format phone number to E.164 format (e.g., +233241234567)
  * @param {string} phone - Phone number in various formats
  * @param {string} defaultCountryCode - Default country code if not provided (default: +233 for Ghana)
@@ -56,8 +71,7 @@ function formatToE164(phone, defaultCountryCode = '+233') {
 
   // If already starts with +, validate format
   if (cleaned.startsWith('+')) {
-    // Remove + and validate
-    const digits = cleaned.substring(1);
+    const digits = stripTrunkZeroAfterCountryCode(cleaned.substring(1));
     if (digits.length >= 9 && digits.length <= 15) {
       return `+${digits}`;
     }
@@ -66,13 +80,13 @@ function formatToE164(phone, defaultCountryCode = '+233') {
 
   // Handle numbers starting with country code without +
   if (cleaned.startsWith('233') && cleaned.length >= 12) {
-    return `+${cleaned}`;
+    return `+${stripTrunkZeroAfterCountryCode(cleaned)}`;
   }
   if (cleaned.startsWith('234') && cleaned.length >= 13) {
-    return `+${cleaned}`;
+    return `+${stripTrunkZeroAfterCountryCode(cleaned)}`;
   }
   if (cleaned.startsWith('254') && cleaned.length >= 12) {
-    return `+${cleaned}`;
+    return `+${stripTrunkZeroAfterCountryCode(cleaned)}`;
   }
 
   // Handle local numbers (without country code)

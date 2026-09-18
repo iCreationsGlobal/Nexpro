@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { Customer, MarketingCampaign, Sale, Setting, Tenant } = require('../models');
+const { Customer, Lead, MarketingCampaign, Sale, Setting, Tenant } = require('../models');
 const emailTemplates = require('../services/emailTemplates');
 const { applyTenantFilter } = require('../utils/tenantUtils');
 const emailService = require('../services/emailService');
@@ -43,7 +43,7 @@ async function resolveCapabilities(tenantId) {
   const ev = emailCfg || {};
   const emailAvailable = !!(
     emailCfg &&
-    (ev.smtpHost || ev.sendgridApiKey || ev.sesAccessKeyId)
+    (ev.smtpHost || ev.sendgridApiKey || ev.sesAccessKeyId || ev.resendApiKey)
   );
   const orgEmail = (orgSetting?.value?.email || '').trim();
   const businessProfileEmailSet = EMAIL_REGEX.test(orgEmail);
@@ -63,6 +63,49 @@ function customerDisplayName(c) {
   return (c.name && String(c.name).trim()) || (c.company && String(c.company).trim()) || 'Customer';
 }
 
+function leadDisplayName(l) {
+  return (l.name && String(l.name).trim()) || (l.company && String(l.company).trim()) || 'Lead';
+}
+
+function normalizeAudienceType(value) {
+  return value === 'lead' ? 'lead' : 'customer';
+}
+
+/**
+ * Unified per-row view over Customer/Lead rows so preview/broadcast logic can stay audience-agnostic.
+ * Leads have no per-channel consent columns like Customer does — `doNotContact` is the single suppression flag.
+ */
+function getRowMeta(row, audienceType) {
+  if (audienceType === 'lead') {
+    const allowed = row.doNotContact !== true;
+    return {
+      id: row.id,
+      name: leadDisplayName(row),
+      company: row.company,
+      email: row.email,
+      phone: row.phone,
+      balance: null,
+      marketingAllowed: allowed,
+      smsAllowed: allowed,
+      whatsappAllowed: allowed,
+      consent: { marketing: allowed, sms: allowed, whatsapp: allowed },
+    };
+  }
+  const marketingAllowed = row.marketingConsent === true;
+  return {
+    id: row.id,
+    name: customerDisplayName(row),
+    company: row.company,
+    email: row.email,
+    phone: row.phone,
+    balance: row.balance,
+    marketingAllowed,
+    smsAllowed: marketingAllowed && row.smsConsent !== false,
+    whatsappAllowed: marketingAllowed && row.whatsappConsent !== false,
+    consent: { marketing: row.marketingConsent, sms: row.smsConsent, whatsapp: row.whatsappConsent },
+  };
+}
+
 /**
  * Load customers for broadcast (newest first), capped.
  * @returns {Promise<{ rows: object[], total: number, truncated: boolean }>}
@@ -74,6 +117,8 @@ async function loadCustomersForBroadcast(tenantId, activeOnly, options = {}) {
     lastPurchaseWindowDays,
     inactiveDays,
     owingOnly = false,
+    hasEmail = false,
+    hasPhone = false,
   } = options;
   const where = applyTenantFilter(tenantId, activeOnly ? { isActive: true } : {});
   if (Array.isArray(customerIds) && customerIds.length > 0) {
@@ -84,6 +129,12 @@ async function loadCustomersForBroadcast(tenantId, activeOnly, options = {}) {
   }
   if (owingOnly) {
     where.balance = { [Op.gt]: 0 };
+  }
+  if (hasEmail) {
+    where.email = nonEmptyClause();
+  }
+  if (hasPhone) {
+    where.phone = nonEmptyClause();
   }
   const total = await Customer.count({ where });
   let rows = await Customer.findAll({
@@ -138,6 +189,69 @@ async function loadCustomersForBroadcast(tenantId, activeOnly, options = {}) {
   return { rows, total, truncated: total > MAX_BROADCAST_RECIPIENTS };
 }
 
+/**
+ * Load leads for broadcast (newest first), capped. Leads have no purchase/consent columns —
+ * eligibility is just isActive + not doNotContact, optionally narrowed by pipeline fields.
+ * @returns {Promise<{ rows: object[], total: number, truncated: boolean }>}
+ */
+async function loadLeadsForBroadcast(tenantId, options = {}) {
+  const {
+    leadIds,
+    activeOnly = true,
+    status,
+    source,
+    priority,
+    assignedTo,
+    hasEmail = false,
+    hasPhone = false,
+  } = options;
+  const where = { tenantId };
+  if (activeOnly) where.isActive = true;
+  if (Array.isArray(leadIds) && leadIds.length > 0) {
+    where.id = { [Op.in]: leadIds };
+  }
+  if (status) where.status = status;
+  if (source) where.source = source;
+  if (priority) where.priority = priority;
+  if (assignedTo) where.assignedTo = assignedTo;
+  if (hasEmail) where.email = nonEmptyClause();
+  if (hasPhone) where.phone = nonEmptyClause();
+
+  const total = await Lead.count({ where });
+  const rows = await Lead.findAll({
+    where,
+    attributes: [
+      'id',
+      'name',
+      'company',
+      'email',
+      'phone',
+      'status',
+      'source',
+      'priority',
+      'doNotContact',
+      'isActive',
+      'createdAt',
+      'updatedAt',
+    ],
+    order: [['createdAt', 'DESC']],
+    limit: MAX_BROADCAST_RECIPIENTS,
+  });
+  return { rows, total, truncated: total > MAX_BROADCAST_RECIPIENTS };
+}
+
+async function loadRecipientsForBroadcast(tenantId, audienceType, filters) {
+  if (audienceType === 'lead') {
+    return loadLeadsForBroadcast(tenantId, filters);
+  }
+  return loadCustomersForBroadcast(tenantId, filters.activeOnly, filters);
+}
+
+/** Sequelize where-clause fragment matching a non-null, non-empty column. */
+function nonEmptyClause() {
+  return { [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: '' }] };
+}
+
 function normalizeEmail(email) {
   if (!email || typeof email !== 'string') return '';
   return email.trim().toLowerCase();
@@ -161,8 +275,42 @@ function normalizeAudienceFilter(input = {}) {
     lastPurchaseWindowDays: Number(input.lastPurchaseWindowDays) > 0 ? Number(input.lastPurchaseWindowDays) : null,
     owingOnly: Boolean(input.owingOnly),
     inactiveDays: Number(input.inactiveDays) > 0 ? Number(input.inactiveDays) : null,
+    hasEmail: input.hasEmail === true || input.hasEmail === 'true',
+    hasPhone: input.hasPhone === true || input.hasPhone === 'true',
     customerIds: Array.isArray(input.customerIds) ? input.customerIds.map((id) => String(id)) : undefined,
   };
+}
+
+const LEAD_STATUSES = new Set(['new', 'contacted', 'qualified', 'lost', 'converted']);
+const LEAD_PRIORITIES = new Set(['low', 'medium', 'high']);
+
+function normalizeLeadAudienceFilter(input = {}) {
+  return {
+    activeOnly: input.activeOnly !== false,
+    hasEmail: input.hasEmail === true || input.hasEmail === 'true',
+    hasPhone: input.hasPhone === true || input.hasPhone === 'true',
+    status: LEAD_STATUSES.has(input.status) ? input.status : null,
+    source: input.source ? String(input.source).trim() : null,
+    priority: LEAD_PRIORITIES.has(input.priority) ? input.priority : null,
+    assignedTo: input.assignedTo ? String(input.assignedTo) : null,
+    leadIds: Array.isArray(input.leadIds) ? input.leadIds.map((id) => String(id)) : undefined,
+  };
+}
+
+const MAX_CAMPAIGN_TAGS = 10;
+
+function normalizeTags(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of input) {
+    const tag = String(raw ?? '').trim().slice(0, 40);
+    if (!tag || seen.has(tag.toLowerCase())) continue;
+    seen.add(tag.toLowerCase());
+    out.push(tag);
+    if (out.length >= MAX_CAMPAIGN_TAGS) break;
+  }
+  return out;
 }
 
 function normalizeMessageContent(input = {}) {
@@ -182,11 +330,14 @@ function normalizeMessageContent(input = {}) {
 function getCampaignSendPayload(campaign) {
   const messageContent = campaign.messageContent || {};
   const audienceFilter = campaign.audienceFilter || {};
+  const audienceType = normalizeAudienceType(campaign.audienceType);
   return {
+    audienceType,
     channels: campaign.channels || [],
     ...audienceFilter,
     ...messageContent,
-    customerIds: audienceFilter.customerIds,
+    customerIds: audienceType === 'lead' ? undefined : audienceFilter.customerIds,
+    leadIds: audienceType === 'lead' ? audienceFilter.leadIds : undefined,
   };
 }
 
@@ -230,16 +381,30 @@ function summarizeStats(result) {
 }
 
 async function buildPreviewData(tenantId, query = {}) {
-  const audienceFilter = normalizeAudienceFilter({
-    activeOnly: query.activeOnly !== 'false' && query.activeOnly !== false,
-    marketingConsentOnly: query.marketingConsentOnly === 'true' || query.marketingConsentOnly === true,
-    lastPurchaseWindowDays: query.lastPurchaseWindowDays,
-    owingOnly: query.owingOnly === 'true' || query.owingOnly === true,
-    inactiveDays: query.inactiveDays,
-    customerIds: query.customerIds,
-  });
+  const audienceType = normalizeAudienceType(query.audienceType);
+  const audienceFilter = audienceType === 'lead'
+    ? normalizeLeadAudienceFilter({
+        activeOnly: query.activeOnly !== 'false' && query.activeOnly !== false,
+        hasEmail: query.hasEmail,
+        hasPhone: query.hasPhone,
+        status: query.status,
+        source: query.source,
+        priority: query.priority,
+        assignedTo: query.assignedTo,
+        leadIds: query.leadIds,
+      })
+    : normalizeAudienceFilter({
+        activeOnly: query.activeOnly !== 'false' && query.activeOnly !== false,
+        marketingConsentOnly: query.marketingConsentOnly === 'true' || query.marketingConsentOnly === true,
+        lastPurchaseWindowDays: query.lastPurchaseWindowDays,
+        owingOnly: query.owingOnly === 'true' || query.owingOnly === true,
+        inactiveDays: query.inactiveDays,
+        hasEmail: query.hasEmail,
+        hasPhone: query.hasPhone,
+        customerIds: query.customerIds,
+      });
   const channels = normalizeChannels(query.channels);
-  const { rows, total, truncated } = await loadCustomersForBroadcast(tenantId, audienceFilter.activeOnly, audienceFilter);
+  const { rows, total, truncated } = await loadRecipientsForBroadcast(tenantId, audienceType, audienceFilter);
 
   const seenEmails = new Set();
   const seenSmsPhones = new Set();
@@ -258,17 +423,17 @@ async function buildPreviewData(tenantId, query = {}) {
     },
   };
 
-  const contacts = rows.map((c) => {
-    const em = normalizeEmail(c.email);
-    const smsPhone = smsService.validatePhoneNumber(c.phone);
-    const waPhone = whatsappService.validatePhoneNumber(c.phone);
+  const contacts = rows.map((row) => {
+    const meta = getRowMeta(row, audienceType);
+    const em = normalizeEmail(meta.email);
+    const smsPhone = smsService.validatePhoneNumber(meta.phone);
+    const waPhone = whatsappService.validatePhoneNumber(meta.phone);
     const hasEmail = Boolean(em && EMAIL_REGEX.test(em));
     const hasSmsPhone = Boolean(smsPhone);
     const hasWaPhone = Boolean(waPhone);
-    const marketingAllowed = c.marketingConsent === true;
-    const emailEligible = hasEmail && marketingAllowed && !seenEmails.has(em);
-    const smsEligible = hasSmsPhone && marketingAllowed && c.smsConsent !== false && !seenSmsPhones.has(smsPhone);
-    const whatsappEligible = hasWaPhone && marketingAllowed && c.whatsappConsent !== false && !seenWaPhones.has(waPhone);
+    const emailEligible = hasEmail && meta.marketingAllowed && !seenEmails.has(em);
+    const smsEligible = hasSmsPhone && meta.smsAllowed && !seenSmsPhones.has(smsPhone);
+    const whatsappEligible = hasWaPhone && meta.whatsappAllowed && !seenWaPhones.has(waPhone);
 
     if (hasEmail && !seenEmails.has(em)) counts.withEmail += 1;
     if (hasSmsPhone && !seenSmsPhones.has(smsPhone)) counts.withSmsPhone += 1;
@@ -285,24 +450,20 @@ async function buildPreviewData(tenantId, query = {}) {
       counts.eligible.whatsapp += 1;
       seenWaPhones.add(waPhone);
     }
-    if (!marketingAllowed) counts.consentWarnings.marketingConsentRequired += 1;
-    if (c.smsConsent === false) counts.consentWarnings.smsOptedOut += 1;
-    if (c.whatsappConsent === false) counts.consentWarnings.whatsappOptedOut += 1;
+    if (!meta.marketingAllowed) counts.consentWarnings.marketingConsentRequired += 1;
+    if (meta.consent.sms === false) counts.consentWarnings.smsOptedOut += 1;
+    if (meta.consent.whatsapp === false) counts.consentWarnings.whatsappOptedOut += 1;
     if (!hasEmail) counts.consentWarnings.missingEmail += 1;
     if (!hasSmsPhone && !hasWaPhone) counts.consentWarnings.missingPhone += 1;
 
     return {
-      id: c.id,
-      name: c.name,
-      company: c.company,
-      email: c.email,
-      phone: c.phone,
-      balance: c.balance,
-      consent: {
-        marketing: c.marketingConsent,
-        sms: c.smsConsent,
-        whatsapp: c.whatsappConsent,
-      },
+      id: meta.id,
+      name: meta.name,
+      company: meta.company,
+      email: meta.email,
+      phone: meta.phone,
+      balance: meta.balance,
+      consent: meta.consent,
       eligibleChannels: {
         email: emailEligible,
         sms: smsEligible,
@@ -315,6 +476,7 @@ async function buildPreviewData(tenantId, query = {}) {
   const capabilities = await enrichCapabilitiesWithVerification(tenantId, baseCaps);
 
   return {
+    audienceType,
     totalInWorkspace: total,
     batchSize: rows.length,
     truncated,
@@ -363,32 +525,36 @@ async function executeBroadcast(req, payload, options = {}) {
     campaign = null,
     updateCampaign = false,
   } = options;
+  const audienceType = normalizeAudienceType(payload?.audienceType ?? campaign?.audienceType);
   const {
     channels = [],
     activeOnly = true,
     dryRun = false,
     customerIds: rawCustomerIds,
+    leadIds: rawLeadIds,
   } = payload || {};
   const message = normalizeMessageContent(payload || {});
 
-  let customerIdFilter = null;
-  if (rawCustomerIds !== undefined && rawCustomerIds !== null) {
-    if (!Array.isArray(rawCustomerIds)) {
-      const error = new Error('customerIds must be an array of customer IDs');
+  const rawRecipientIds = audienceType === 'lead' ? rawLeadIds : rawCustomerIds;
+  const recipientLabel = audienceType === 'lead' ? 'leadIds' : 'customerIds';
+  let recipientIdFilter = null;
+  if (rawRecipientIds !== undefined && rawRecipientIds !== null) {
+    if (!Array.isArray(rawRecipientIds)) {
+      const error = new Error(`${recipientLabel} must be an array of IDs`);
       error.statusCode = 400;
       throw error;
     }
-    if (rawCustomerIds.length === 0) {
+    if (rawRecipientIds.length === 0) {
       const error = new Error('Select at least one contact to message');
       error.statusCode = 400;
       throw error;
     }
-    if (rawCustomerIds.length > MAX_BROADCAST_RECIPIENTS) {
+    if (rawRecipientIds.length > MAX_BROADCAST_RECIPIENTS) {
       const error = new Error(`At most ${MAX_BROADCAST_RECIPIENTS} recipients per broadcast`);
       error.statusCode = 400;
       throw error;
     }
-    customerIdFilter = rawCustomerIds.map((id) => String(id));
+    recipientIdFilter = rawRecipientIds.map((id) => String(id));
   }
 
   const normalizedChannels = normalizeChannels(channels);
@@ -432,15 +598,28 @@ async function executeBroadcast(req, payload, options = {}) {
     throw error;
   }
 
-  const audienceFilter = normalizeAudienceFilter({
-    activeOnly: Boolean(activeOnly),
-    marketingConsentOnly: payload.marketingConsentOnly,
-    lastPurchaseWindowDays: payload.lastPurchaseWindowDays,
-    owingOnly: payload.owingOnly,
-    inactiveDays: payload.inactiveDays,
-    customerIds: customerIdFilter,
-  });
-  const { rows, total, truncated } = await loadCustomersForBroadcast(req.tenantId, audienceFilter.activeOnly, audienceFilter);
+  const audienceFilter = audienceType === 'lead'
+    ? normalizeLeadAudienceFilter({
+        activeOnly: Boolean(activeOnly),
+        hasEmail: payload.hasEmail,
+        hasPhone: payload.hasPhone,
+        status: payload.status,
+        source: payload.source,
+        priority: payload.priority,
+        assignedTo: payload.assignedTo,
+        leadIds: recipientIdFilter,
+      })
+    : normalizeAudienceFilter({
+        activeOnly: Boolean(activeOnly),
+        marketingConsentOnly: payload.marketingConsentOnly,
+        lastPurchaseWindowDays: payload.lastPurchaseWindowDays,
+        owingOnly: payload.owingOnly,
+        inactiveDays: payload.inactiveDays,
+        hasEmail: payload.hasEmail,
+        hasPhone: payload.hasPhone,
+        customerIds: recipientIdFilter,
+      });
+  const { rows, total, truncated } = await loadRecipientsForBroadcast(req.tenantId, audienceType, audienceFilter);
 
   if (rows.length === 0) {
     const error = new Error('No matching contacts in the current audience. Refresh the list or adjust your filters.');
@@ -467,60 +646,67 @@ async function executeBroadcast(req, payload, options = {}) {
     name: tenantRow?.name || 'Your business',
     primaryColor: tenantRow?.metadata?.primaryColor || '#166534',
     logoUrl: getTenantLogoUrl(tenantRow),
+    audience: audienceType === 'lead' ? 'lead' : 'customer',
   };
-  const html = message.emailBody ? emailTemplates.marketingPlainMessageEmail(message.emailBody, company) : '';
   const seenEmails = new Set();
   const seenSmsPhones = new Set();
   const seenWaPhones = new Set();
   const pendingEmailSends = [];
 
-  for (const c of rows) {
-    const hasMarketingConsent = c.marketingConsent === true;
+  for (const row of rows) {
+    const meta = getRowMeta(row, audienceType);
+    const mergeVars = { name: meta.name, businessName: company?.name || req.tenant?.name || '' };
+
     if (normalizedChannels.includes('email')) {
-      const em = normalizeEmail(c.email);
-      if (!em || !EMAIL_REGEX.test(em) || seenEmails.has(em) || !hasMarketingConsent) {
+      const em = normalizeEmail(meta.email);
+      if (!em || !EMAIL_REGEX.test(em) || seenEmails.has(em) || !meta.marketingAllowed) {
         result.email.skipped += 1;
       } else if (dryRun) {
         seenEmails.add(em);
         result.email.sent += 1;
       } else {
         seenEmails.add(em);
-        pendingEmailSends.push({ customerId: c.id, to: em });
+        const personalizedSubject = applySmsTemplate(message.subject, mergeVars);
+        const personalizedBody = applySmsTemplate(message.emailBody, mergeVars);
+        pendingEmailSends.push({
+          recipientId: meta.id,
+          to: em,
+          subject: personalizedSubject,
+          html: emailTemplates.marketingPlainMessageEmail(personalizedBody, company),
+          text: personalizedBody.trim(),
+        });
       }
     }
 
     if (normalizedChannels.includes('sms')) {
-      const ph = smsService.validatePhoneNumber(c.phone);
-      if (!ph || seenSmsPhones.has(ph) || !hasMarketingConsent || c.smsConsent === false) {
+      const ph = smsService.validatePhoneNumber(meta.phone);
+      if (!ph || seenSmsPhones.has(ph) || !meta.smsAllowed) {
         result.sms.skipped += 1;
       } else if (dryRun) {
         seenSmsPhones.add(ph);
         result.sms.sent += 1;
       } else {
-        const smsBody = applySmsTemplate(message.smsBody, {
-          name: customerDisplayName(c),
-          businessName: company?.name || req.tenant?.name || '',
-        });
+        const smsBody = applySmsTemplate(message.smsBody, mergeVars);
         const sendRes = await smsService.sendMessage(req.tenantId, ph, smsBody, null, {
           source: 'marketing_campaign',
-          context: { campaignId: campaign?.id || null, customerId: c.id },
+          context: { campaignId: campaign?.id || null, customerId: meta.id },
         });
         seenSmsPhones.add(ph);
         if (sendRes.success) {
           result.sms.sent += 1;
         } else {
-          pushFailure(result.sms.failed, c.id, sendRes.error || 'send failed');
+          pushFailure(result.sms.failed, meta.id, sendRes.error || 'send failed');
         }
       }
     }
 
     if (normalizedChannels.includes('whatsapp')) {
-      const ph = whatsappService.validatePhoneNumber(c.phone);
-      if (!ph || seenWaPhones.has(ph) || !hasMarketingConsent || c.whatsappConsent === false) {
+      const ph = whatsappService.validatePhoneNumber(meta.phone);
+      if (!ph || seenWaPhones.has(ph) || !meta.whatsappAllowed) {
         result.whatsapp.skipped += 1;
       } else {
         const params = message.whatsappPrependCustomerName
-          ? [customerDisplayName(c), ...message.whatsappParameters]
+          ? [meta.name, ...message.whatsappParameters]
           : [...message.whatsappParameters];
         if (dryRun) {
           seenWaPhones.add(ph);
@@ -542,7 +728,7 @@ async function executeBroadcast(req, payload, options = {}) {
           if (sendRes.success) {
             result.whatsapp.sent += 1;
           } else {
-            pushFailure(result.whatsapp.failed, c.id, sendRes.error || 'send failed');
+            pushFailure(result.whatsapp.failed, meta.id, sendRes.error || 'send failed');
           }
         }
       }
@@ -552,13 +738,13 @@ async function executeBroadcast(req, payload, options = {}) {
   if (!dryRun && pendingEmailSends.length > 0) {
     const mailJobs = pendingEmailSends.map((p) => ({
       to: p.to,
-      subject: message.subject,
-      html,
-      text: message.emailBody.trim(),
+      subject: p.subject,
+      html: p.html,
+      text: p.text,
     }));
     const bulkResults = await emailService.sendBulkTenantEmails(req.tenantId, mailJobs);
     bulkResults.forEach((r, i) => {
-      const cid = pendingEmailSends[i].customerId;
+      const cid = pendingEmailSends[i].recipientId;
       if (r.success) {
         result.email.sent += 1;
       } else {
@@ -576,12 +762,14 @@ async function executeBroadcast(req, payload, options = {}) {
   if (campaign && updateCampaign) {
     const preview = await buildPreviewData(req.tenantId, {
       ...audienceFilter,
+      audienceType,
       channels: normalizedChannels,
     });
     const stats = summarizeStats(result);
     const nextStatus = dryRun ? campaign.status : stats.totalSent > 0 || stats.totalSkipped > 0 ? 'sent' : 'failed';
     await campaign.update({
       status: nextStatus,
+      audienceType,
       channels: normalizedChannels,
       audienceFilter,
       audienceSnapshot: buildCampaignSnapshot(preview, normalizedChannels),
@@ -619,13 +807,16 @@ function handleControllerError(error, res, next) {
 exports.postBroadcast = async (req, res, next) => {
   try {
     const body = req.body || {};
+    const audienceType = normalizeAudienceType(body.audienceType);
     const campaign = await MarketingCampaign.create({
       tenantId: req.tenantId,
       name: body.name?.trim() || `Broadcast ${new Date().toLocaleDateString('en-US')}`,
       goal: body.goal?.trim() || null,
       status: 'draft',
+      audienceType,
+      tags: normalizeTags(body.tags),
       channels: normalizeChannels(body.channels),
-      audienceFilter: normalizeAudienceFilter(body),
+      audienceFilter: audienceType === 'lead' ? normalizeLeadAudienceFilter(body) : normalizeAudienceFilter(body),
       messageContent: normalizeMessageContent(body),
       createdBy: req.user?.id || null,
       updatedBy: req.user?.id || null,
@@ -719,11 +910,15 @@ exports.createCampaign = async (req, res, next) => {
     if (!body.name?.trim()) {
       return res.status(400).json({ success: false, message: 'Campaign name is required' });
     }
+    const audienceType = normalizeAudienceType(body.audienceType);
     const channels = normalizeChannels(body.channels);
-    const audienceFilter = normalizeAudienceFilter(body.audienceFilter || body);
+    const audienceFilter = audienceType === 'lead'
+      ? normalizeLeadAudienceFilter(body.audienceFilter || body)
+      : normalizeAudienceFilter(body.audienceFilter || body);
     const messageContent = normalizeMessageContent(body.messageContent || body);
     const preview = await buildPreviewData(req.tenantId, {
       ...audienceFilter,
+      audienceType,
       channels,
     });
     const campaign = await MarketingCampaign.create({
@@ -731,6 +926,8 @@ exports.createCampaign = async (req, res, next) => {
       name: body.name.trim(),
       goal: body.goal?.trim() || null,
       status: body.scheduledAt ? 'scheduled' : 'draft',
+      audienceType,
+      tags: normalizeTags(body.tags),
       channels,
       audienceFilter,
       audienceSnapshot: buildCampaignSnapshot(preview, channels),
@@ -758,17 +955,23 @@ exports.updateCampaign = async (req, res, next) => {
     }
 
     const body = req.body || {};
+    const audienceType = normalizeAudienceType(body.audienceType ?? campaign.audienceType);
     const channels = body.channels !== undefined ? normalizeChannels(body.channels) : campaign.channels;
-    const audienceFilter = normalizeAudienceFilter(body.audienceFilter || campaign.audienceFilter || {});
+    const audienceFilter = audienceType === 'lead'
+      ? normalizeLeadAudienceFilter(body.audienceFilter || campaign.audienceFilter || {})
+      : normalizeAudienceFilter(body.audienceFilter || campaign.audienceFilter || {});
     const messageContent = normalizeMessageContent(body.messageContent || campaign.messageContent || {});
     const preview = await buildPreviewData(req.tenantId, {
       ...audienceFilter,
+      audienceType,
       channels,
     });
     await campaign.update({
       name: body.name?.trim() || campaign.name,
       goal: body.goal !== undefined ? body.goal?.trim() || null : campaign.goal,
       status: body.scheduledAt ? 'scheduled' : body.status && CAMPAIGN_STATUSES.has(body.status) ? body.status : 'draft',
+      audienceType,
+      tags: body.tags !== undefined ? normalizeTags(body.tags) : campaign.tags,
       channels,
       audienceFilter,
       audienceSnapshot: buildCampaignSnapshot(preview, channels),

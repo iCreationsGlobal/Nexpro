@@ -92,10 +92,20 @@ export function RestockProductSheet({
         return [];
       }
 
-      const [detailRes, variantsRes] = await Promise.all([
-        productService.getProductById(productId).catch(() => null),
-        productService.getProductVariants(productId).catch(() => null),
-      ]);
+      // The variants endpoint normally contains everything this sheet needs.
+      // Fetch the full product only when a legacy/empty response needs a fallback.
+      const variantsRes = await productService.getProductVariants(productId).catch(() => null);
+      const variantBody = variantsRes as { data?: RestockVariant[] | { variants?: RestockVariant[] } } | null;
+      const variantData = variantBody?.data;
+      const directList = Array.isArray(variantsRes) ? variantsRes
+        : Array.isArray(variantData) ? variantData
+        : variantData?.variants;
+      if (Array.isArray(directList) && directList.length > 0) {
+        const loaded = activeVariants(directList);
+        setVariants(loaded);
+        return loaded;
+      }
+      const detailRes = await productService.getProductById(productId);
 
       const detailBody = detailRes && typeof detailRes === 'object'
         ? (detailRes as Record<string, unknown>)

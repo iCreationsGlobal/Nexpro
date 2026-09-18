@@ -12,7 +12,11 @@ jest.mock('../../../controllers/expenseController', () => ({
 }));
 
 jest.mock('../../../models', () => ({
-  Product: {},
+  Product: {
+    sequelize: {
+      transaction: jest.fn(),
+    },
+  },
   ProductVariant: {
     findByPk: jest.fn(),
   },
@@ -42,6 +46,13 @@ jest.mock('../../../utils/shopUtils', () => ({
 jest.mock('../../../utils/productStockUtils', () => ({
   applyEffectiveProductQuantity: jest.fn((product) => product),
   syncParentQuantityFromVariants: jest.fn().mockResolvedValue(undefined),
+  parseQuantity: (value) => {
+    const qty = Number.parseFloat(value);
+    return Number.isFinite(qty) ? qty : 0;
+  },
+  recordProductStockMovement: jest.fn().mockResolvedValue(undefined),
+  resolveStockMovementType: jest.fn(() => 'adjustment'),
+  applyStockChange: jest.fn().mockResolvedValue({ skipped: false, previousQuantity: 0, newQuantity: 0, quantityDelta: 0 }),
 }));
 
 jest.mock('../../../middleware/cache', () => ({
@@ -49,11 +60,16 @@ jest.mock('../../../middleware/cache', () => ({
   invalidateAfterMutation: jest.fn(),
 }));
 
-const { ProductVariant } = require('../../../models');
+const { Product, ProductVariant } = require('../../../models');
 const { assertShopRecordAccess } = require('../../../utils/shopUtils');
 const { syncParentQuantityFromVariants } = require('../../../utils/productStockUtils');
 const { invalidateProductListCache } = require('../../../middleware/cache');
 const productController = require('../../../controllers/productController');
+
+const mockTransaction = () => ({
+  commit: jest.fn().mockResolvedValue(undefined),
+  rollback: jest.fn().mockResolvedValue(undefined),
+});
 
 describe('productController updateProductVariant', () => {
   const mockRes = () => {
@@ -78,6 +94,7 @@ describe('productController updateProductVariant', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    Product.sequelize.transaction.mockImplementation(async () => mockTransaction());
     ProductVariant.findByPk.mockResolvedValue(variantRecord);
   });
 
@@ -94,11 +111,11 @@ describe('productController updateProductVariant', () => {
     await productController.updateProductVariant(req, res, next);
 
     expect(assertShopRecordAccess).toHaveBeenCalledWith(req, variantRecord.product);
-    expect(variantRecord.update).toHaveBeenCalledWith({
-      sellingPrice: 25.5,
-      costPrice: 12.25,
-    });
-    expect(syncParentQuantityFromVariants).toHaveBeenCalledWith('product-1');
+    expect(variantRecord.update).toHaveBeenCalledWith(
+      { sellingPrice: 25.5, costPrice: 12.25 },
+      { transaction: expect.any(Object) }
+    );
+    expect(syncParentQuantityFromVariants).toHaveBeenCalledWith('product-1', expect.any(Object));
     expect(invalidateProductListCache).toHaveBeenCalledWith('tenant-1');
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(

@@ -96,6 +96,14 @@ export const BUSINESS_OPTIONS = [
     coreType: CORE_BUSINESS_TYPES.SHOP,
     services: ['retail', 'stationery'],
   },
+  {
+    id: 'furniture_shop',
+    label: 'Furniture shop',
+    description: 'Home, office, and outdoor furniture.',
+    group: BUSINESS_GROUPS.RETAIL,
+    coreType: CORE_BUSINESS_TYPES.SHOP,
+    services: ['retail', 'furniture'],
+  },
 
   // Professional services – Print, Photo & Branding (studio-like)
   {

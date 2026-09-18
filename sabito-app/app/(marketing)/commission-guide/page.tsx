@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ABS_BUSINESS_SIGNUP_URL } from "@/lib/constants";
 import type { Metadata } from "next";
@@ -199,9 +198,6 @@ export default function CommissionGuidePage() {
             Sign up on ABS, enable Sabito Partners, and start attracting marketers.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <Link href="/pricing">
-              <Button variant="outline">View pricing</Button>
-            </Link>
             <a href={ABS_BUSINESS_SIGNUP_URL} target="_blank" rel="noopener noreferrer">
               <Button>Get started on ABS</Button>
             </a>

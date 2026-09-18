@@ -158,4 +158,15 @@ export const settingsService = {
     const res = await api.get('/settings/pos-config');
     return res?.data?.data ?? res?.data ?? res;
   },
+
+  /** Per-user "what matters most to you" focus-area picks for the active workspace. */
+  getFocusAreas: async (): Promise<{ focusAreas: string[]; source: 'user' | 'none' }> => {
+    const res = await api.get('/settings/focus-areas');
+    return res?.data?.data ?? res?.data ?? { focusAreas: [], source: 'none' };
+  },
+
+  updateFocusAreas: async (focusAreas: string[]) => {
+    const res = await api.patch('/settings/focus-areas', { focusAreas });
+    return res?.data?.data ?? res?.data ?? { focusAreas, source: 'user' };
+  },
 };
