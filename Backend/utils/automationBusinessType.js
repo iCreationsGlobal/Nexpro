@@ -25,6 +25,7 @@ const TRIGGER_ELIGIBILITY = Object.freeze({
   sale_completed_staff: { allowedBusinessTypes: ['shop'] },
   low_profit_margin: { allowedBusinessTypes: ['shop'] },
   daily_sales_summary: { allowedBusinessTypes: ['shop'] },
+  product_expiring: { allowedBusinessTypes: ['shop', 'pharmacy'] },
 
   // Shop + restaurant orders
   order_created: { allowedBusinessTypes: ['shop'], requiresOrders: true },
