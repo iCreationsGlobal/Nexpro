@@ -33,6 +33,12 @@ import confetti from 'canvas-confetti';
 /** Minimum time (ms) the loading animation runs before transitioning to success. Both lines: 0–2.6s first, 2.6–5.2s second. */
 const MIN_LOADING_DISPLAY_MS = 5200;
 
+/** Safety-net ceiling (ms): if the welcome overlay is still 'loading' this long after submit — a hung
+ * request, a dropped connection, anything that never resolved welcomeStatus — force an error state so
+ * the user always has a way forward instead of being stuck on the branded loading animation forever.
+ * Comfortably past the API client's own 30s request timeout. */
+const OVERLAY_LOADING_SAFETY_MS = 35000;
+
 /**
  * Name shown in invite copy: shop(s) or studio(s) when assigned, else workspace name.
  * @param {object|null} invite
@@ -169,6 +175,20 @@ const Signup = () => {
       setOverlayPhase('error');
     }
   }, [welcomeStatus]);
+
+  // Safety net: never let the branded loading overlay hang forever. If something stalls the request
+  // (a hung connection, a promise that never settles) without ever reaching the success/error setState,
+  // force an error after a generous ceiling so the user always gets a retry path.
+  useEffect(() => {
+    if (!showWelcomeScreen || welcomeStatus !== 'loading') return;
+    const t = setTimeout(() => {
+      setWelcomeStatus('error');
+      setWelcomeErrorMessage('This is taking longer than expected. Please check your connection and try again.');
+      setLoading(false);
+      setIsSubmitting(false);
+    }, OVERLAY_LOADING_SAFETY_MS);
+    return () => clearTimeout(t);
+  }, [showWelcomeScreen, welcomeStatus]);
 
   // Redirect authenticated users only if they're not in the signup process.
   // When showWelcomeScreen is true (post-signup overlay), do NOT auto-redirect so the user must click the CTA.

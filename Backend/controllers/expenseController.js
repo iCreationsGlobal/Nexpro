@@ -417,6 +417,8 @@ exports.getExpenses = async (req, res, next) => {
     const approvalStatus = req.query.approvalStatus;
     const viewType = req.query.viewType;
     const includeArchived = req.query.includeArchived === 'true';
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
 
     // Filter by tenant only - returns expenses from all users in the tenant
     const where = expenseScopeWhere(req, {});
@@ -429,6 +431,15 @@ exports.getExpenses = async (req, res, next) => {
     // Exclude archived expenses by default
     if (!includeArchived) {
       where.isArchived = false;
+    }
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      where.expenseDate = {
+        [Op.between]: [start, end]
+      };
     }
 
     const { count, rows } = await Expense.findAndCountAll({

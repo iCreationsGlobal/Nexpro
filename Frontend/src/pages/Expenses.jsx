@@ -194,7 +194,9 @@ const Expenses = () => {
     category: 'all',
     status: 'all',
     jobId: 'all',
-    viewType: 'all'
+    viewType: 'all',
+    startDate: null,
+    endDate: null
   });
   const [tableViewMode, setTableViewMode] = useState('table');
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
@@ -360,6 +362,8 @@ const Expenses = () => {
     if (filters.viewType === 'approved') params.approvalStatus = 'approved';
     if (filters.viewType === 'requests') params.approvalStatus = 'pending_approval';
     if (filters.viewType === 'general' || filters.viewType === 'job-specific') params.viewType = filters.viewType;
+    if (filters.startDate) params.startDate = dayjs(filters.startDate).format('YYYY-MM-DD');
+    if (filters.endDate) params.endDate = dayjs(filters.endDate).format('YYYY-MM-DD');
     return params;
   }, [filters, pagination.current, pagination.pageSize]);
 
@@ -1177,12 +1181,14 @@ const Expenses = () => {
       category: 'all',
       status: 'all',
       jobId: 'all',
-      viewType: 'all'
+      viewType: 'all',
+      startDate: null,
+      endDate: null
     });
     setPagination({ ...pagination, current: 1 });
   };
 
-  const hasActiveFilters = filters.category !== 'all' || filters.status !== 'all' || filters.jobId !== 'all' || filters.viewType !== 'all';
+  const hasActiveFilters = filters.category !== 'all' || filters.status !== 'all' || filters.jobId !== 'all' || filters.viewType !== 'all' || !!filters.startDate || !!filters.endDate;
 
   const expensesEmptyState = useMemo(() => {
     if (hasActiveFilters) {
@@ -1415,6 +1421,28 @@ const Expenses = () => {
                 </Select>
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label>Start Date</Label>
+              <DatePicker
+                date={filters.startDate}
+                onDateChange={(date) => {
+                  setFilters({ ...filters, startDate: date });
+                  setPagination({ ...pagination, current: 1 });
+                }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>End Date</Label>
+              <DatePicker
+                date={filters.endDate}
+                onDateChange={(date) => {
+                  setFilters({ ...filters, endDate: date });
+                  setPagination({ ...pagination, current: 1 });
+                }}
+              />
+            </div>
 
             {hasActiveFilters && (
               <Button variant="outline" onClick={handleClearFilters} className="w-full">

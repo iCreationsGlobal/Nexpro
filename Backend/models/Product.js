@@ -116,6 +116,17 @@ const Product = sequelize.define('Product', {
     type: DataTypes.BOOLEAN,
     defaultValue: true
   },
+  // Optional — only products that actually expire (food, cosmetics, pharma-like goods) set this.
+  // Mirrors Drug.expiryDate/batchNumber so expiry tracking works the same way for any shop, not
+  // just pharmacies.
+  expiryDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: true
+  },
+  batchNumber: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   metadata: {
     type: DataTypes.JSONB,
     defaultValue: {}

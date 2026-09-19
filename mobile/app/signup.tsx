@@ -64,11 +64,16 @@ export default function SignupScreen() {
   const signupMutation = useMutation({
     mutationKey: SIGNUP_MUTATION_KEY,
     mutationFn: tenantSignup,
+    // Account creation is not idempotent — an auto-retry after a slow-but-successful first
+    // attempt re-submits the same email and comes back "already exists", even though the
+    // account was created fine. Never retry signup automatically; let the user retry explicitly.
+    retry: false,
   });
   const googleSignupMutation = useMutation({
     mutationKey: SIGNUP_MUTATION_KEY,
     mutationFn: ({ idToken, options }: { idToken: string; options: Parameters<typeof googleAuth>[1] }) =>
       googleAuth(idToken, options),
+    retry: false,
   });
   const loading = signupMutation.isPending || googleSignupMutation.isPending || checkingEmail;
 

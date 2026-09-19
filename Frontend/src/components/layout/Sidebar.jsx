@@ -360,7 +360,7 @@ const getMenuItems = (
     });
   }
 
-  const complianceChildren = hasFeature('reports')
+  const complianceChildren = hasFeature('graEvat')
     ? [
         { key: '/compliance/statements', label: 'Statements', tooltip: 'Financial statements for authorities and lenders' },
         { key: '/compliance/vat', label: 'VAT', tooltip: 'Period VAT and filing pack' },

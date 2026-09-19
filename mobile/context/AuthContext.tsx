@@ -165,7 +165,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setActiveTenantIdState(tenantId);
       activeTenantIdRef.current = tenantId;
       if (prevId !== tenantId) {
-        queryClient.clear();
+        // Clear cached QUERY data only — not queryClient.clear(), which also wipes the mutation
+        // cache. This can run while a mutation that changed the active tenant (e.g. signup) is
+        // still in flight; clearing mutations too would erase its own tracked status mid-run, so
+        // any screen watching it via useMutationState (e.g. the post-signup welcome screen) would
+        // never see it settle even though the mutation itself completes successfully.
+        queryClient.getQueryCache().clear();
         logger.info('AuthContext', 'Tenant switched, cleared query cache');
       }
     },

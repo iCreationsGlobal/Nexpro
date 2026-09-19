@@ -11,6 +11,10 @@ import { SIGNUP_MUTATION_KEY } from '@/constants/signupFlow';
 const WELCOME_BG = '#0E1801';
 /** Minimum time (ms) the loading animation runs before transitioning to success (matches web). */
 const MIN_LOADING_DISPLAY_MS = 5200;
+/** Safety-net ceiling (ms): if the mutation never settles (hung request, a promise that never
+ * resolves/rejects after the network call) force an error so the screen never hangs forever on
+ * the branded loading animation. Comfortably past the API client's own 30s request timeout. Matches web. */
+const OVERLAY_LOADING_SAFETY_MS = 35000;
 const DEFAULT_ERROR_MESSAGE = 'Sign up failed. Please try again.';
 
 type OverlayPhase = 'loading' | 'success' | 'error';
@@ -26,6 +30,8 @@ export default function SignupWelcomeScreen() {
   const latest = mutationState[mutationState.length - 1];
   const status = latest?.status ?? 'pending';
 
+  const [timedOut, setTimedOut] = useState(false);
+
   useEffect(() => {
     if (status === 'pending' || status === 'idle') {
       setOverlayPhase('loading');
@@ -39,7 +45,21 @@ export default function SignupWelcomeScreen() {
     }
   }, [status]);
 
-  const errorMessage = status === 'error' ? getErrorMessage(latest?.error, DEFAULT_ERROR_MESSAGE) : '';
+  // Safety net: never let the branded loading screen hang forever if the mutation never settles.
+  useEffect(() => {
+    if (status !== 'pending' && status !== 'idle') return;
+    const t = setTimeout(() => {
+      setTimedOut(true);
+      setOverlayPhase('error');
+    }, OVERLAY_LOADING_SAFETY_MS);
+    return () => clearTimeout(t);
+  }, [status]);
+
+  const errorMessage = timedOut
+    ? 'This is taking longer than expected. Please check your connection and try again.'
+    : status === 'error'
+      ? getErrorMessage(latest?.error, DEFAULT_ERROR_MESSAGE)
+      : '';
   const isAlreadyExists = /already exists|sign in instead/i.test(errorMessage);
 
   const handleContinue = () => {

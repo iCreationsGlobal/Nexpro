@@ -18,6 +18,7 @@ const addNotificationsPerformanceIndexes = require('./add-notifications-performa
 const addImageUrlToProducts = require('./add-imageUrl-to-products');
 const alterProductsImageUrlToText = require('./alter-products-imageUrl-to-text');
 const addTrackStockToProducts = require('./add-trackStock-to-products');
+const addExpiryToProducts = require('./add-expiry-to-products');
 const addOrderStatusToSales = require('./add-orderStatus-to-sales');
 const allowNullProductIdOnSaleItems = require('./allow-null-productId-on-sale-items');
 const addDeliveryFeeFieldsToSales = require('./add-delivery-fee-fields-to-sales');
@@ -171,6 +172,9 @@ const migrate = async () => {
 
     // Add trackStock column for made-to-order products
     await addTrackStockToProducts();
+
+    // Add optional expiry tracking (expiryDate/batchNumber) to products, for any shop
+    await addExpiryToProducts();
 
     // Add orderStatus column for restaurant order tracking
     await addOrderStatusToSales();

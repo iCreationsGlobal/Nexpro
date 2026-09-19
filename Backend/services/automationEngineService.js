@@ -56,6 +56,7 @@ const STICKY_TRIGGER_TYPES = new Set([
   'low_stock_detected',
   'out_of_stock_detected',
   'low_stock_on_change',
+  'product_expiring',
   'job_due_in_hours',
   'rental_due_in_days',
   'rental_overdue',
@@ -157,6 +158,41 @@ function getTemplates() {
           recipient: { type: 'role', roles: ['owner', 'manager'] },
           subject: 'Low stock: {{productName}}',
           body: 'Stock alert for {{productName}} (SKU: {{sku}}).\n\nQuantity on hand: {{quantityOnHand}}\nReorder level: {{reorderLevel}}\n\n— {{businessName}}',
+        }]
+      }
+    },
+    {
+      key: 'product_expiry_alert',
+      name: 'Product expiry alert',
+      description: 'Notify staff when a product is approaching (or has passed) its expiry date.',
+      triggerType: 'product_expiring',
+      audience: 'internal',
+      allowedBusinessTypes: ['shop', 'pharmacy'],
+      triggerConfig: { daysBeforeExpiry: 30 },
+      actionConfig: {
+        audience: 'internal',
+        defaultRecipient: { type: 'role', roles: ['owner', 'manager'] },
+        actions: [{
+          type: 'create_task',
+          title: 'Product expiring soon',
+          priority: 'high',
+          link: '/products'
+        }, {
+          type: 'send_sms',
+          audience: 'internal',
+          recipient: { type: 'role', roles: ['owner', 'manager'] },
+          body: '{{message}} — {{businessName}}',
+        }, {
+          type: 'send_whatsapp',
+          audience: 'internal',
+          recipient: { type: 'role', roles: ['owner', 'manager'] },
+          body: '{{message}} — {{businessName}}',
+        }, {
+          type: 'send_email_platform',
+          audience: 'internal',
+          recipient: { type: 'role', roles: ['owner', 'manager'] },
+          subject: 'Expiry alert: {{productName}}',
+          body: '{{message}}\n\n— {{businessName}}',
         }]
       }
     },
@@ -2682,6 +2718,54 @@ async function getTriggerContextsForRule(rule, now = new Date()) {
       shopId: product.shopId || null,
       message: `${product.name} is low on stock. Current stock: ${product.quantityOnHand}.`
     })));
+  }
+
+  if (triggerType === 'product_expiring') {
+    // daysBeforeExpiry: alert this many days before expiryDate — also naturally catches
+    // already-expired stock (expiryDate in the past still satisfies <= cutoff).
+    const daysBeforeExpiry = toNumber(triggerConfig.daysBeforeExpiry, 30);
+    const cutoff = endOfDay(addDays(now, daysBeforeExpiry));
+    const products = await Product.findAll({
+      where: {
+        tenantId,
+        isActive: true,
+        expiryDate: { [Op.ne]: null, [Op.lte]: cutoff },
+        ...shopBranchWhere(rule)
+      },
+      limit: MAX_SUBJECTS_PER_RULE,
+      order: [['expiryDate', 'ASC']]
+    });
+    return finalizeTriggerContexts(tenantId, products.map((product) => {
+      const expiryDay = startOfDay(product.expiryDate);
+      const todayStart = startOfDay(now);
+      const daysUntilExpiry = Math.round((expiryDay.getTime() - todayStart.getTime()) / (24 * 60 * 60 * 1000));
+      const status = daysUntilExpiry < 0 ? 'expired' : 'expiring';
+      const expiryLabel = formatAutomationDate(product.expiryDate);
+      return {
+        subjectKey: `product_expiring:${product.id}`,
+        productId: product.id,
+        productName: product.name,
+        sku: product.sku || null,
+        batchNumber: product.batchNumber || null,
+        expiryDate: product.expiryDate,
+        daysUntilExpiry,
+        quantityOnHand: toNumber(product.quantityOnHand, 0),
+        product: {
+          id: product.id,
+          name: product.name,
+          sku: product.sku || null,
+          batchNumber: product.batchNumber || null,
+          expiryDate: product.expiryDate,
+          quantityOnHand: toNumber(product.quantityOnHand, 0),
+          isActive: product.isActive !== false,
+          shopId: product.shopId || null
+        },
+        shopId: product.shopId || null,
+        message: status === 'expired'
+          ? `${product.name}${product.batchNumber ? ` (batch ${product.batchNumber})` : ''} expired on ${expiryLabel}. Stock on hand: ${toNumber(product.quantityOnHand, 0)}.`
+          : `${product.name}${product.batchNumber ? ` (batch ${product.batchNumber})` : ''} expires on ${expiryLabel} (${daysUntilExpiry} day${daysUntilExpiry === 1 ? '' : 's'}). Stock on hand: ${toNumber(product.quantityOnHand, 0)}.`
+      };
+    }));
   }
 
   if (triggerType === 'quote_no_response') {
