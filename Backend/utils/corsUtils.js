@@ -223,6 +223,8 @@ const ALLOWED_CORS_HEADERS = [
   'x-support-session-id',
   'x-studio-location-id',
   'x-shop-id',
+  'x-storefront-channel',
+  'x-commerce-channel',
   'Accept',
   'Accept-Language',
   'Accept-Encoding',
