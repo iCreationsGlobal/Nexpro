@@ -269,7 +269,7 @@ function StartupOverlay({ fontsReady }: { fontsReady: boolean }) {
 function RootLayoutNav() {
   const router = useRouter();
   const pathname = usePathname();
-  const { isDriver, user } = useAuth();
+  const { isDriver, user, interfaceMode } = useAuth();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
   const headerTint = Colors[resolvedTheme ?? 'light'].tint;
@@ -305,6 +305,14 @@ function RootLayoutNav() {
     }
   }, [isDriver, pathname, router, user]);
 
+  // Simple Mode users only ever see /simple — the PIN-gated escape hatch is the only way out,
+  // so any other route (deep link, back button, stale nav state) bounces back there.
+  useEffect(() => {
+    if (!user || isDriver || interfaceMode !== 'simple') return;
+    if (pathname.startsWith('/simple')) return;
+    router.replace('/simple');
+  }, [interfaceMode, isDriver, pathname, router, user]);
+
   useEffect(() => observeSellerNotificationResponses((route) => router.push(route as never)), [router]);
 
   return (
@@ -318,6 +326,7 @@ function RootLayoutNav() {
           <Stack.Screen name="signup" />
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="simple" />
           <Stack.Screen name="account" options={{ ...innerScreenOptions, title: 'Account', headerShown: false }} />
           <Stack.Screen name="profile" options={{ ...innerScreenOptions, title: 'Profile', headerShown: false }} />
           <Stack.Screen name="settings" options={{ ...innerScreenOptions, title: 'Settings', headerShown: false }} />

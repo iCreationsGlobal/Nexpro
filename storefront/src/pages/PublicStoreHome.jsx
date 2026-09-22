@@ -425,6 +425,12 @@ const ServiceSection = ({
   </section>
 );
 
+// Brand-colored promo banner, darkened slightly so white text stays readable on light brands.
+const promoBannerStyle = {
+  backgroundColor: 'color-mix(in srgb, var(--store-accent, #166534) 85%, black)',
+  borderColor: 'color-mix(in srgb, var(--store-accent, #166534) 40%, white)',
+};
+
 const PublicStoreHome = ({
   previewStore = null,
   previewProducts = null,
@@ -652,7 +658,7 @@ const PublicStoreHome = ({
               <AlertDescription>This store is not available right now.</AlertDescription>
             </Alert>
             {!isSingleStoreMode ? (
-              <Button className="mt-4 bg-green-700 hover:bg-green-800" asChild>
+              <Button className="mt-4 bg-[var(--store-accent,#166534)] text-white hover:bg-[var(--store-accent-hover,#14532d)]" asChild>
                 <Link to="/stores">Back to stores</Link>
               </Button>
             ) : null}
@@ -679,8 +685,8 @@ const PublicStoreHome = ({
   const navLinkClass = (key) => (
     `whitespace-nowrap border-b-2 px-1 py-2 transition-colors ${
       activePage === key
-        ? 'border-green-700 text-green-800'
-        : 'border-transparent text-slate-700 hover:border-green-200 hover:text-green-800'
+        ? 'border-[color:var(--store-accent,#166534)] text-[color:var(--store-accent,#166534)]'
+        : 'border-transparent text-slate-700 hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:text-[color:var(--store-accent,#166534)]'
     }`
   );
   const categoryLinkFor = (category) => (
@@ -706,10 +712,10 @@ const PublicStoreHome = ({
               <Link
                 key={category.id || category.name}
                 to={categoryLinkFor(category)}
-                className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-2 text-sm transition-colors hover:border-green-200 hover:bg-green-50"
+                className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-2 text-sm transition-colors hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:bg-[var(--store-accent-soft,#f0fdf4)]"
               >
                 <span className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-green-100 bg-gradient-to-br from-green-50 to-amber-50 text-green-800">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[color:color-mix(in_srgb,var(--store-accent,#166534)_20%,white)] bg-[var(--store-accent-soft,#f0fdf4)] text-[color:var(--store-accent,#166534)]">
                     {imageUrl ? (
                       <img src={imageUrl} alt="" className="h-full w-full object-cover" />
                     ) : (
@@ -752,40 +758,40 @@ const PublicStoreHome = ({
         </p>
         <div className="mt-4 grid gap-2 text-sm">
           {!isOwnedShop ? (
-            <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-700" /> Published store</span>
+            <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-[color:var(--store-accent,#166534)]" /> Published store</span>
           ) : null}
           {isServiceStore ? (
             <span className="inline-flex items-center gap-2">
-              <Scissors className="h-4 w-4 text-green-700" />
+              <Scissors className="h-4 w-4 text-[color:var(--store-accent,#166534)]" />
               {formatInteger(stats.serviceCount || 0)} services
             </span>
           ) : (
             <span className="inline-flex items-center gap-2">
-              <Package className="h-4 w-4 text-green-700" />
+              <Package className="h-4 w-4 text-[color:var(--store-accent,#166534)]" />
               {formatInteger(stats.productCount || 0)} products
             </span>
           )}
           {publicContactDetails.phone ? (
-            <a className="inline-flex min-w-0 items-center gap-2 text-green-800 hover:text-green-900" href={publicContactDetails.phone.href || undefined}>
-              <Phone className="h-4 w-4 text-green-700" />
+            <a className="inline-flex min-w-0 items-center gap-2 text-[color:var(--store-accent,#166534)] hover:text-[color:var(--store-accent-hover,#14532d)]" href={publicContactDetails.phone.href || undefined}>
+              <Phone className="h-4 w-4 text-[color:var(--store-accent,#166534)]" />
               <span className="truncate">{publicContactDetails.phone.label}</span>
             </a>
           ) : null}
           {publicContactDetails.whatsapp ? (
-            <a className="inline-flex min-w-0 items-center gap-2 text-green-800 hover:text-green-900" href={publicContactDetails.whatsapp.href} target="_blank" rel="noreferrer">
-              <MessageCircle className="h-4 w-4 text-green-700" />
+            <a className="inline-flex min-w-0 items-center gap-2 text-[color:var(--store-accent,#166534)] hover:text-[color:var(--store-accent-hover,#14532d)]" href={publicContactDetails.whatsapp.href} target="_blank" rel="noreferrer">
+              <MessageCircle className="h-4 w-4 text-[color:var(--store-accent,#166534)]" />
               <span className="truncate">WhatsApp: {publicContactDetails.whatsapp.label}</span>
             </a>
           ) : null}
           {publicContactDetails.email ? (
-            <a className="inline-flex min-w-0 items-center gap-2 text-green-800 hover:text-green-900" href={publicContactDetails.email.href}>
-              <Mail className="h-4 w-4 text-green-700" />
+            <a className="inline-flex min-w-0 items-center gap-2 text-[color:var(--store-accent,#166534)] hover:text-[color:var(--store-accent-hover,#14532d)]" href={publicContactDetails.email.href}>
+              <Mail className="h-4 w-4 text-[color:var(--store-accent,#166534)]" />
               <span className="truncate">{publicContactDetails.email.label}</span>
             </a>
           ) : null}
           {!hasPublicContactDetails ? (
             <span className="inline-flex items-center gap-2 text-muted-foreground">
-              <Phone className="h-4 w-4 text-green-700" />
+              <Phone className="h-4 w-4 text-[color:var(--store-accent,#166534)]" />
               Contact details not published
             </span>
           ) : null}
@@ -834,7 +840,7 @@ const PublicStoreHome = ({
           const Icon = item.icon;
           return (
             <div key={item.title} className="rounded-2xl border border-border bg-background p-4">
-              <Icon className="h-6 w-6 text-green-800" />
+              <Icon className="h-6 w-6 text-[color:var(--store-accent,#166534)]" />
               <p className="mt-3 font-semibold">{item.title}</p>
               <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
             </div>
@@ -962,7 +968,7 @@ const PublicStoreHome = ({
         <Link
           key={category.id || category.name}
           to={categoryLinkFor(category)}
-          className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm transition-colors hover:border-green-200 hover:bg-green-50"
+          className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm transition-colors hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:bg-[var(--store-accent-soft,#f0fdf4)]"
         >
           <span className="truncate max-w-[10rem]">{category.name}</span>
           <Badge variant="outline" className="shrink-0">{formatInteger(category.count || 0)}</Badge>
@@ -971,7 +977,7 @@ const PublicStoreHome = ({
       {categories.length > 8 ? (
         <Link
           to={storeBasePath === '/' ? '/categories' : `${storeBasePath}/categories`}
-          className="inline-flex items-center rounded-full border border-border px-3 py-1.5 text-sm font-medium hover:border-green-200 hover:bg-green-50"
+          className="inline-flex items-center rounded-full border border-border px-3 py-1.5 text-sm font-medium hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:bg-[var(--store-accent-soft,#f0fdf4)]"
           style={{ color: accent }}
         >
           All categories
@@ -1044,17 +1050,17 @@ const PublicStoreHome = ({
     <>
       <section className="w-full space-y-10 px-3 py-8 sm:px-4 sm:py-10">
         {promo ? (
-          <section className="rounded-2xl border border-green-200 bg-green-950 p-6 text-white sm:rounded-3xl md:p-8">
+          <section className="rounded-2xl border p-6 text-white sm:rounded-3xl md:p-8" style={promoBannerStyle}>
             <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-wide text-green-100">Featured Promo</p>
+                <p className="text-sm font-semibold uppercase tracking-wide text-white/80">Featured Promo</p>
                 <h2 className="mt-2 text-3xl font-semibold">{promo.title || 'Featured offer'}</h2>
                 {promo.description ? (
-                  <p className="mt-3 max-w-2xl text-green-50/80">{promo.description}</p>
+                  <p className="mt-3 max-w-2xl text-white/80">{promo.description}</p>
                 ) : null}
               </div>
               {promo.product ? (
-                <Button className="w-full bg-white text-green-950 hover:bg-green-50 md:w-auto" asChild>
+                <Button className="w-full bg-white text-[color:var(--store-accent,#166534)] hover:bg-white/90 md:w-auto" asChild>
                   <Link to={getProductUrl(storeSlug, promo.product, location.pathname, isCustomDomain)}>
                     Shop offer
                   </Link>
@@ -1090,17 +1096,17 @@ const PublicStoreHome = ({
 
         <div className="space-y-10">
           {promo ? (
-            <section className="rounded-2xl border border-green-200 bg-green-950 p-6 text-white sm:rounded-3xl md:p-8">
+            <section className="rounded-2xl border p-6 text-white sm:rounded-3xl md:p-8" style={promoBannerStyle}>
               <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                 <div>
-                  <p className="text-sm font-semibold uppercase tracking-wide text-green-100">Featured Promo</p>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-white/80">Featured Promo</p>
                   <h2 className="mt-2 text-3xl font-semibold">{promo.title || 'Featured offer'}</h2>
-                  <p className="mt-3 max-w-2xl text-green-50/80">
+                  <p className="mt-3 max-w-2xl text-white/80">
                     {promo.description || 'Explore current featured products from this store.'}
                   </p>
                 </div>
                 {promo.product ? (
-                  <Button className="w-full bg-white text-green-950 hover:bg-green-50 md:w-auto" asChild>
+                  <Button className="w-full bg-white text-[color:var(--store-accent,#166534)] hover:bg-white/90 md:w-auto" asChild>
                     <Link to={getProductUrl(storeSlug, promo.product, location.pathname, isCustomDomain)}>
                       View deal
                     </Link>
@@ -1257,7 +1263,7 @@ const PublicStoreHome = ({
   const categoriesPage = (
     <section className="w-full px-3 py-8 sm:px-4 sm:py-10">
       <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:rounded-3xl md:p-8">
-        <p className="text-sm font-semibold uppercase tracking-wide text-green-800">{store.displayName}</p>
+        <p className="text-sm font-semibold uppercase tracking-wide text-[color:var(--store-accent,#166534)]">{store.displayName}</p>
         <h2 className="mt-1 text-2xl font-semibold">Categories</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {isOwnedShop
@@ -1271,10 +1277,10 @@ const PublicStoreHome = ({
               <Link
                 key={category.id || category.name}
                 to={categoryLinkFor(category)}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition-colors hover:border-green-200 hover:bg-green-50"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition-colors hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:bg-[var(--store-accent-soft,#f0fdf4)]"
               >
                 <span className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-green-100 bg-white text-green-800">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--store-accent,#166534)_20%,white)] bg-white text-[color:var(--store-accent,#166534)]">
                     {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" /> : (
                       isServiceStore ? <Scissors className="h-5 w-5" /> : <Package className="h-5 w-5" />
                     )}

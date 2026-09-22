@@ -38,6 +38,8 @@ const {
   updateSidebarPreferences,
   getFocusAreaPreferences,
   updateFocusAreaPreferences,
+  getInterfaceMode,
+  updateInterfaceMode,
   getQuoteWorkflow,
   updateQuoteWorkflow,
   getJobInvoiceSettings,
@@ -120,6 +122,11 @@ router
   .route('/focus-areas')
   .get(timeCrudAction('settings.focus_areas.read'), getFocusAreaPreferences)
   .patch(timeCrudAction('settings.focus_areas.update'), updateFocusAreaPreferences);
+
+router
+  .route('/interface-mode')
+  .get(timeCrudAction('settings.interface_mode.read'), getInterfaceMode)
+  .patch(timeCrudAction('settings.interface_mode.update'), updateInterfaceMode);
 
 router
   .route('/profile')

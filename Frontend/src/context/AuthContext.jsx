@@ -9,6 +9,7 @@ import {
   isTeamMemberWorkspaceInvite,
   shouldRequireTenantOnboarding,
 } from '../utils/tenantOnboarding';
+import { getInterfaceMode } from '../utils/interfaceMode';
 
 const AuthContext = createContext(null);
 
@@ -786,6 +787,11 @@ export const AuthProvider = ({ children }) => {
     [activeMembership]
   );
 
+  const interfaceMode = useMemo(
+    () => getInterfaceMode(activeMembership),
+    [activeMembership]
+  );
+
   const effectiveRole = tenantRole || user?.role || null;
   const isPlatformAdmin = user?.isPlatformAdmin === true;
   const isFirstLogin = user?.isFirstLogin === true;
@@ -897,6 +903,7 @@ export const AuthProvider = ({ children }) => {
       hasFeature,
       activeMembership,
       tenantRole,
+      interfaceMode,
       setActiveTenant,
       refreshAuthState,
       login,
@@ -941,6 +948,7 @@ export const AuthProvider = ({ children }) => {
       hasFeature,
       activeMembership,
       tenantRole,
+      interfaceMode,
       setActiveTenant,
       refreshAuthState,
       login,

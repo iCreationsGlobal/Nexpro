@@ -169,4 +169,15 @@ export const settingsService = {
     const res = await api.patch('/settings/focus-areas', { focusAreas });
     return res?.data?.data ?? res?.data ?? { focusAreas, source: 'user' };
   },
+
+  /** Per-membership Simple/Full interface preference for the active workspace. */
+  getInterfaceMode: async (): Promise<{ interfaceMode: 'full' | 'simple'; source: 'user' | 'none' }> => {
+    const res = await api.get('/settings/interface-mode');
+    return res?.data?.data ?? res?.data ?? { interfaceMode: 'full', source: 'none' };
+  },
+
+  updateInterfaceMode: async (interfaceMode: 'full' | 'simple') => {
+    const res = await api.patch('/settings/interface-mode', { interfaceMode });
+    return res?.data?.data ?? res?.data ?? { interfaceMode, source: 'user' };
+  },
 };

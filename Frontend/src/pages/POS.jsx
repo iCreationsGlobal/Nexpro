@@ -52,6 +52,7 @@ import POSPaymentModal from '../components/pos/POSPaymentModal';
 import POSReceiptModal from '../components/pos/POSReceiptModal';
 import POSConnectionStatus from '../components/pos/POSConnectionStatus';
 import POSScanMode from '../components/pos/POSScanMode';
+import POSNumpad from '../components/pos/POSNumpad';
 import FeatureNotAvailable from '../components/FeatureNotAvailable';
 
 // Hooks and Services
@@ -460,6 +461,8 @@ const POS = () => {
     quantity: '1',
     saveAsProduct: false,
   });
+  const [quickSaleDialogOpen, setQuickSaleDialogOpen] = useState(false);
+  const [quickSaleAmount, setQuickSaleAmount] = useState('');
 
   useEffect(() => {
     if (!isOnline) {
@@ -831,6 +834,42 @@ const POS = () => {
     setCustomItemDialogOpen(false);
     resetCustomItemForm();
   }, [customItemForm, resetCustomItemForm]);
+
+  // Quick sale — amount-only version of "Add custom item" for ringing up something not in the
+  // catalog with no typing beyond the number pad (airtime, one-off items). Never saved as a
+  // product: it's the throwaway case, unlike "Add custom item" which offers that on purpose.
+  const handleOpenQuickSale = useCallback(() => {
+    setQuickSaleAmount('');
+    setQuickSaleDialogOpen(true);
+  }, []);
+
+  const handleConfirmQuickSale = useCallback(() => {
+    const unitPrice = Number(quickSaleAmount);
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) return;
+
+    setCart((prevCart) => [
+      ...prevCart,
+      {
+        id: generateCartItemId(),
+        type: 'custom',
+        productId: null,
+        productVariantId: null,
+        name: 'Quick Sale',
+        sku: null,
+        productCode: null,
+        baseUnitPrice: unitPrice,
+        catalogUnitPrice: null,
+        unitPrice,
+        priceOverridden: false,
+        quantity: 1,
+        discount: 0,
+        tax: 0,
+        saveAsProduct: false,
+      },
+    ]);
+    setQuickSaleDialogOpen(false);
+    setQuickSaleAmount('');
+  }, [quickSaleAmount]);
 
   const handleSelectVariant = useCallback((variant) => {
     if (!variantPickerProduct) return;
@@ -1887,6 +1926,7 @@ const POS = () => {
             fillHeight
             onAdjustProductQuantity={adjustProductQuantity}
             onAddCustomItem={handleOpenCustomItemDialog}
+            onQuickSale={handleOpenQuickSale}
             dealerPriceByProductId={isDealerMode ? dealerPriceByProductId : {}}
             scanningEnabled={scanningEnabled}
           />
@@ -1982,6 +2022,37 @@ const POS = () => {
             </Button>
             <Button type="button" className="bg-[#166534] hover:bg-[#14532d]" onClick={handleAddCustomItem}>
               Add item
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={quickSaleDialogOpen}
+        onOpenChange={(open) => {
+          setQuickSaleDialogOpen(open);
+          if (!open) setQuickSaleAmount('');
+        }}
+      >
+        <DialogContent className="sm:w-[var(--modal-w-sm)]">
+          <DialogHeader>
+            <DialogTitle>Quick sale</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <div className="space-y-4">
+              <div className="text-center text-4xl font-bold text-green-700 py-2">
+                {formatAmount(Number(quickSaleAmount) || 0)}
+              </div>
+              <POSNumpad
+                value={quickSaleAmount}
+                onChange={setQuickSaleAmount}
+                onConfirm={handleConfirmQuickSale}
+              />
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setQuickSaleDialogOpen(false)}>
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>

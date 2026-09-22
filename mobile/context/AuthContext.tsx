@@ -8,6 +8,7 @@ import { logger } from '@/utils/logger';
 import { shouldSuppressAppGuidance } from '@/utils/appGuidanceEligibility';
 import { isOnboardingComplete } from '@/utils/onboardingStatus';
 import { membershipTenantId, normalizeMemberships } from '@/utils/membership';
+import { getInterfaceMode, type InterfaceMode } from '@/utils/interfaceMode';
 import { getCurrentNetworkOnline } from '@/utils/connectivity';
 import { sanitizeAuthUserForMobile } from '@/utils/stripOversizedInlineDataUrls';
 
@@ -42,6 +43,7 @@ type Membership = {
   invitedBy?: string | null;
   createdAt?: string;
   joinedAt?: string;
+  metadata?: { interfaceMode?: string } | null;
 };
 
 type BootstrapUser = NonNullable<User> & {
@@ -104,6 +106,8 @@ type AuthContextType = {
   isDriver: boolean;
   isAdmin: boolean;
   isManager: boolean;
+  /** Simple/Full interface preference for the active membership — independent of role. */
+  interfaceMode: InterfaceMode;
   /** Plan/feature gating — same semantics as web: flag must be exactly true */
   hasFeature: (featureKey: string) => boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -132,6 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isDriver = tenantRole === 'driver';
   const isAdmin = ['owner', 'admin'].includes(tenantRole || '');
   const isManager = ['owner', 'admin', 'manager'].includes(tenantRole || '');
+  const interfaceMode = getInterfaceMode(activeMembership);
 
   const activeFeatureFlags = useMemo(() => {
     const eff = activeTenant?.effectiveFeatureFlags;
@@ -543,6 +548,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isDriver,
     isAdmin,
     isManager,
+    interfaceMode,
     hasFeature,
     login,
     logout,

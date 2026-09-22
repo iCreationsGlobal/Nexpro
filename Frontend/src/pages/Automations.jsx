@@ -312,6 +312,13 @@ const triggerMetaByType = {
     color: 'text-orange-700',
     bg: 'bg-orange-50',
   },
+  product_expiring: {
+    title: 'Product expiring',
+    description: (config = {}) => `${Number(config.daysBeforeExpiry ?? 30)} days before expiry`,
+    Icon: AlertTriangle,
+    color: 'text-red-700',
+    bg: 'bg-red-50',
+  },
   quote_no_response: {
     title: 'Quote no response',
     description: (config = {}) => `${Number(config.silentDays ?? 7)} days after sent`,
@@ -418,6 +425,14 @@ const TRIGGER_CARD_DETAILS = {
     Icon: Package,
     bg: 'bg-orange-50',
     color: 'text-orange-700',
+  },
+  product_expiring: {
+    category: 'Inventory',
+    title: 'Product expiry',
+    description: 'When a product is approaching or past its expiry date',
+    Icon: AlertTriangle,
+    bg: 'bg-red-50',
+    color: 'text-red-700',
   },
   quote_no_response: {
     category: 'Sales & CRM',

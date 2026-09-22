@@ -65,6 +65,7 @@ export type AddCartProductInput = {
 type CartContextType = {
   items: CartItem[];
   addItem: (product: AddCartProductInput) => boolean;
+  addCustomAmountItem: (product: { id: string; name: string; unitPrice: number }) => void;
   removeItem: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   updateDiscount: (itemId: string, discount: number) => void;
@@ -222,6 +223,27 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   }, []);
 
+  /**
+   * Quick Sale — rings up a custom amount against a real product id (required by sale creation)
+   * without merging into an existing line the way addItem does. Two $5 and $2 quick sales are two
+   * distinct lines, not one line at quantity 2, since they don't share a real price.
+   */
+  const addCustomAmountItem = useCallback((product: { id: string; name: string; unitPrice: number }) => {
+    setItems((prev) => [
+      ...prev,
+      {
+        id: `cart_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        productId: product.id,
+        productVariantId: null,
+        name: product.name,
+        unitPrice: Math.max(0, Number(product.unitPrice) || 0),
+        quantity: 1,
+        discount: 0,
+        trackStock: false,
+      },
+    ]);
+  }, []);
+
   const removeItem = useCallback((itemId: string) => {
     setItems((prev) => prev.filter((item) => item.id !== itemId));
   }, []);
@@ -280,6 +302,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     () => ({
       items,
       addItem,
+      addCustomAmountItem,
       removeItem,
       updateQuantity,
       updateDiscount,
@@ -293,6 +316,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [
       items,
       addItem,
+      addCustomAmountItem,
       removeItem,
       updateQuantity,
       updateDiscount,

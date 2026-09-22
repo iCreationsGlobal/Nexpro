@@ -36,8 +36,17 @@ type SettingsLink = {
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, memberships, activeTenantId, setActiveTenantId, refreshAuth, activeTenant, hasFeature } =
-    useAuth();
+  const {
+    user,
+    memberships,
+    activeTenantId,
+    setActiveTenantId,
+    refreshAuth,
+    activeTenant,
+    hasFeature,
+    interfaceMode,
+  } = useAuth();
+  const [switchingInterfaceMode, setSwitchingInterfaceMode] = useState(false);
   const { theme, setTheme } = useTheme();
   const { scanToSell, setScanToSell, isLoading: loadingScanToSell } = useScanToSell();
   const { colors, cardBg, borderColor, textColor, mutedColor, resolvedTheme } = useScreenColors();
@@ -60,6 +69,25 @@ export default function SettingsScreen() {
       }
     },
     [activeTenantId, setActiveTenantId]
+  );
+
+  const handleToggleInterfaceMode = useCallback(
+    async (enabled: boolean) => {
+      const next = enabled ? 'simple' : 'full';
+      setSwitchingInterfaceMode(true);
+      try {
+        await settingsService.updateInterfaceMode(next);
+        await refreshAuth();
+        if (enabled) {
+          router.replace('/simple');
+        }
+      } catch (err) {
+        Alert.alert('Error', getErrorMessage(err, 'Could not update your interface preference.'));
+      } finally {
+        setSwitchingInterfaceMode(false);
+      }
+    },
+    [refreshAuth, router]
   );
 
   const handleResendVerification = useCallback(async () => {
@@ -274,6 +302,30 @@ export default function SettingsScreen() {
             </View>
           </>
         ) : null}
+
+        <Text style={[styles.sectionTitle, { color: textColor }]}>Simple Mode</Text>
+        <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleTextWrap}>
+              <Text style={[styles.linkLabel, { color: textColor }]}>Use Simple Mode</Text>
+              <Text style={[styles.linkSubtitle, { color: mutedColor }]}>
+                A photo-and-number screen for Sell and Stock — no reading required. Unlocks daily
+                with a 4-digit PIN; long-press the logo and enter it again to come back here.
+              </Text>
+            </View>
+            {switchingInterfaceMode ? (
+              <ActivityIndicator color={brand} size="small" />
+            ) : (
+              <Switch
+                value={interfaceMode === 'simple'}
+                onValueChange={handleToggleInterfaceMode}
+                trackColor={{ false: borderColor, true: `${brand}88` }}
+                thumbColor={interfaceMode === 'simple' ? brand : '#f4f4f5'}
+                accessibilityLabel="Use Simple Mode"
+              />
+            )}
+          </View>
+        </View>
 
         <Text style={[styles.sectionTitle, { color: textColor }]}>Appearance</Text>
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>

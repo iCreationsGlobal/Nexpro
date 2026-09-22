@@ -11,7 +11,9 @@ import {
 } from '@/utils/introOnboarding';
 
 export default function Index() {
-  const { user, loading, sessionSyncing, activeTenant, wasInvited, suppressAppGuidance, isDriver } = useAuth();
+  const { user, loading, sessionSyncing, activeTenant, wasInvited, suppressAppGuidance, isDriver, interfaceMode } =
+    useAuth();
+  const homeRoute = interfaceMode === 'simple' ? '/simple' : '/(tabs)';
 
   useEffect(() => {
     if (loading || sessionSyncing) {
@@ -35,14 +37,14 @@ export default function Index() {
       }
 
       if (wasInvited || suppressAppGuidance) {
-        logger.info('Index', 'Onboarding skipped (invited or tenured), redirecting to tabs');
-        router.replace('/(tabs)');
+        logger.info('Index', 'Onboarding skipped (invited or tenured), redirecting home');
+        router.replace(homeRoute as never);
         return;
       }
 
       if (isOnboardingComplete(activeTenant)) {
-        logger.info('Index', 'Onboarding complete (tenant), redirecting to tabs');
-        router.replace('/(tabs)');
+        logger.info('Index', 'Onboarding complete (tenant), redirecting home');
+        router.replace(homeRoute as never);
         return;
       }
 
@@ -53,8 +55,8 @@ export default function Index() {
         if (isOnboardingComplete(tenantWithOrg)) {
           await markIntroOnboardingComplete();
           if (cancelled) return;
-          logger.info('Index', 'Onboarding complete (organization settings), redirecting to tabs');
-          router.replace('/(tabs)');
+          logger.info('Index', 'Onboarding complete (organization settings), redirecting home');
+          router.replace(homeRoute as never);
           return;
         }
       } catch (err) {
@@ -69,7 +71,7 @@ export default function Index() {
     return () => {
       cancelled = true;
     };
-  }, [user, loading, sessionSyncing, activeTenant, wasInvited, suppressAppGuidance, isDriver]);
+  }, [user, loading, sessionSyncing, activeTenant, wasInvited, suppressAppGuidance, isDriver, homeRoute]);
 
   return <AppLoadingScreen />;
 }

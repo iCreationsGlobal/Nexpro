@@ -2070,6 +2070,52 @@ exports.updateFocusAreaPreferences = async (req, res, next) => {
   }
 };
 
+// @desc    Get the current user's interface mode (Simple vs Full) for this workspace
+// @route   GET /api/settings/interface-mode
+// @access  Private
+exports.getInterfaceMode = async (req, res, next) => {
+  try {
+    const { getInterfaceMode: buildInterfaceMode } = require('../services/interfaceModeHelper');
+    const membership = req.tenantMembership;
+    if (!membership) {
+      return res.status(400).json({ success: false, message: 'Tenant membership required' });
+    }
+    res.status(200).json({ success: true, data: buildInterfaceMode(membership) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update the current user's interface mode (Simple vs Full) for this workspace.
+//          Per-membership, independent of role — set during onboarding or later from this screen.
+// @route   PATCH /api/settings/interface-mode
+// @access  Private
+exports.updateInterfaceMode = async (req, res, next) => {
+  try {
+    const { sanitizeInterfaceMode } = require('../services/interfaceModeHelper');
+    const membership = req.tenantMembership;
+    if (!membership) {
+      return res.status(400).json({ success: false, message: 'Tenant membership required' });
+    }
+    const { interfaceMode } = sanitizePayload(req.body || {});
+    const sanitized = sanitizeInterfaceMode(interfaceMode);
+
+    const metadata =
+      membership.metadata && typeof membership.metadata === 'object' ? { ...membership.metadata } : {};
+    metadata.interfaceMode = sanitized;
+
+    await UserTenant.update(
+      { metadata },
+      { where: { id: membership.id, userId: req.user.id, tenantId: req.tenantId } }
+    );
+    invalidateTenantMembershipCache(req.user.id, req.tenantId);
+
+    res.status(200).json({ success: true, data: { interfaceMode: sanitized, source: 'user' } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const QUOTE_WORKFLOW_DEFAULTS = { onAccept: 'record_only' };
 const QUOTE_WORKFLOW_ON_ACCEPT_VALUES = [
   'record_only',

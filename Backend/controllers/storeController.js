@@ -4552,6 +4552,11 @@ exports.getMarketplaceStoreHome = async (req, res, next) => {
     const { variantsByProductId, listings: availableListings } = availableListingResult;
 
     const slimStore = toSlimStoreRef(store);
+    const storeMetadata = store.metadata && typeof store.metadata === 'object'
+      ? store.metadata
+      : {};
+    const storeRentalTerms = storeMetadata.rentalTerms || null;
+
     const products = await attachProductReviewSummaries(availableListings.map((listing) => {
       const plain = typeof listing.get === 'function' ? listing.get({ plain: true }) : listing;
       const listingMeta = plain.metadata && typeof plain.metadata === 'object' ? plain.metadata : {};
@@ -4591,10 +4596,6 @@ exports.getMarketplaceStoreHome = async (req, res, next) => {
       storePlain.primaryColor
     );
     const storeBusinessType = storePlain.tenant?.businessType || null;
-    const storeMetadata = storePlain.metadata && typeof storePlain.metadata === 'object'
-      ? storePlain.metadata
-      : {};
-    const storeRentalTerms = storeMetadata.rentalTerms || null;
     let rentalPolicySummary = [];
     if (storeBusinessType === 'rental') {
       const rentalSettings = await getRentalSettings(storePlain.tenantId);

@@ -2,7 +2,7 @@ const { User, UserTenant, UserShop, UserStudioLocation, InviteToken } = require(
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { getPagination } = require('../utils/paginationUtils');
-const { invalidateUserCache } = require('../middleware/cache');
+const { invalidateUserCache, invalidateTenantMembershipCache } = require('../middleware/cache');
 const { validateSeatLimit } = require('../utils/seatLimitHelper');
 
 const ALLOWED_USER_ROLES = ['admin', 'manager', 'staff', 'driver'];
@@ -230,7 +230,7 @@ exports.updateUser = async (req, res, next) => {
     }
 
     // Don't allow updating password through this route
-    const { password, ...updateData } = req.body;
+    const { password, interfaceMode, ...updateData } = req.body;
     if (Object.prototype.hasOwnProperty.call(updateData, 'role')) {
       const requestedRole = updateData.role || 'staff';
       if (!ALLOWED_USER_ROLES.includes(requestedRole)) {
@@ -241,6 +241,18 @@ exports.updateUser = async (req, res, next) => {
       }
       updateData.role = requestedRole;
       await membership.update({ role: requestedRole });
+    }
+
+    // Simple/Full interface preference is per-membership, independent of role — an admin can set
+    // it for a teammate (e.g. an illiterate owner) without changing what that person can access.
+    if (interfaceMode !== undefined) {
+      const { sanitizeInterfaceMode } = require('../services/interfaceModeHelper');
+      const sanitized = sanitizeInterfaceMode(interfaceMode);
+      const metadata =
+        membership.metadata && typeof membership.metadata === 'object' ? { ...membership.metadata } : {};
+      metadata.interfaceMode = sanitized;
+      await membership.update({ metadata });
+      invalidateTenantMembershipCache(req.params.id, req.tenantId);
     }
 
     await user.update(updateData);

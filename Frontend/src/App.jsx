@@ -25,6 +25,7 @@ import { useIOSKeyboardFix } from './hooks/useKeyboardHandling';
 import { isBootstrapPlatformSuperAdmin } from './utils/platformAdminBootstrap';
 import { getStorefrontBaseUrl } from './utils/storefrontUrl';
 import { isPricingUiEnabled } from './utils/showPricing';
+import { hasEscapedSimpleMode } from './utils/simpleModeEscape';
 // Lazy load heavy pages for code splitting
 const Products = lazy(() => import('./pages/Products'));
 const TourProvider = lazy(() => import('./components/tour/TourProvider'));
@@ -130,9 +131,14 @@ const StoreServiceEditor = lazy(() => import('./pages/StoreServiceEditor'));
 const OnlineOrders = lazy(() => import('./pages/OnlineOrders'));
 const StoreSettings = lazy(() => import('./pages/StoreSettings'));
 const OnlineStore = lazy(() => import('./pages/OnlineStore'));
+const SimpleLayout = lazy(() => import('./pages/simple/SimpleLayout'));
+const SimpleSell = lazy(() => import('./pages/simple/SimpleSell'));
+const SimpleStock = lazy(() => import('./pages/simple/SimpleStock'));
+const SimpleCharge = lazy(() => import('./pages/simple/SimpleCharge'));
+const SimpleReceipt = lazy(() => import('./pages/simple/SimpleReceipt'));
 
 const WorkspaceRoot = () => {
-  const { user, isSupportAccessActive, isDriver } = useAuth();
+  const { user, isSupportAccessActive, isDriver, interfaceMode } = useAuth();
   const location = useLocation();
 
   if (user?.isPlatformAdmin && !isSupportAccessActive) {
@@ -141,6 +147,12 @@ const WorkspaceRoot = () => {
 
   if (isDriver && location.pathname !== '/deliveries' && location.pathname !== '/profile') {
     return <Navigate to="/deliveries" replace />;
+  }
+
+  // Simple Mode users only ever see /simple, unless they've used the PIN-gated escape hatch
+  // (SimpleHeader long-press) for this browser tab — see utils/simpleModeEscape.js.
+  if (interfaceMode === 'simple' && !isDriver && !hasEscapedSimpleMode()) {
+    return <Navigate to="/simple" replace />;
   }
 
   return <MainLayout />;
@@ -409,6 +421,20 @@ function AppContent() {
             </Route>
             <Route path="plans" element={<RequireWorkspaceManager>{isPricingUiEnabled() ? <Plans /> : <Navigate to="/dashboard" replace />}</RequireWorkspaceManager>} />
             <Route path="checkout" element={<RequireWorkspaceManager>{isPricingUiEnabled() ? <Checkout /> : <Navigate to="/dashboard" replace />}</RequireWorkspaceManager>} />
+          </Route>
+
+          <Route
+            path="/simple"
+            element={
+              <PrivateRoute>
+                <SimpleLayout />
+              </PrivateRoute>
+            }
+          >
+            <Route index element={<SimpleSell />} />
+            <Route path="stock" element={<SimpleStock />} />
+            <Route path="charge" element={<SimpleCharge />} />
+            <Route path="receipt" element={<SimpleReceipt />} />
           </Route>
 
           <Route

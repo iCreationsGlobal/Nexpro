@@ -182,7 +182,7 @@ const StoreLogo = ({ store: storeItem }) => {
 const ProductImage = ({ product }) => {
   const imageUrl = resolveImageUrl(product?.images?.[0]);
   if (imageUrl) {
-    return <img src={imageUrl} alt={product.title} className="h-full w-full object-contain p-2 transition-transform duration-500 group-hover:scale-105" />;
+    return <img src={imageUrl} alt={product.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />;
   }
   return (
     <div className="flex h-full flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-green-50 to-amber-50 text-slate-500">

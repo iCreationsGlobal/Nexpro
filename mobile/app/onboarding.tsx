@@ -99,6 +99,15 @@ const COUNTRY_CODES = [
   { code: '+44', country: 'GB', name: 'United Kingdom' },
 ];
 
+/**
+ * Drop a leading national trunk "0" from a number that's about to sit next to a country-code
+ * selector — e.g. "+233" alongside "0244123456" would otherwise display/send as if the number
+ * started twice. Matches Frontend/src/utils/phoneUtils.js. Only strips zeros at the very start.
+ */
+function stripLeadingTrunkZero(value: string): string {
+  return value.replace(/^0+(?=\d)/, '');
+}
+
 type StepId = 'businessType' | 'businessInfo' | 'contactInfo';
 
 const STEPS: { id: StepId; title: string; subtitle: string }[] = [
@@ -112,7 +121,8 @@ export default function OnboardingScreen() {
   const { user, refreshAuth } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [businessGroup, setBusinessGroup] = useState('');
-  const [businessSubType, setBusinessSubType] = useState('');
+  /** User can pick more than one sub-type; the first pick stays "primary" and drives businessType/shopType/studioType. */
+  const [businessSubTypes, setBusinessSubTypes] = useState<string[]>([]);
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
@@ -144,7 +154,7 @@ export default function OnboardingScreen() {
 
   const canProceed = () => {
     if (stepId === 'businessType') return !!businessGroup;
-    if (stepId === 'businessInfo') return !!businessSubType && !!companyName.trim();
+    if (stepId === 'businessInfo') return businessSubTypes.length > 0 && !!companyName.trim();
     if (stepId === 'contactInfo') return !!companyPhone.trim();
     return false;
   };
@@ -153,7 +163,7 @@ export default function OnboardingScreen() {
     if (currentStep < STEPS.length - 1) {
       setError('');
       if (stepId === 'businessType') {
-        setBusinessSubType('');
+        setBusinessSubTypes([]);
       }
       setCurrentStep((s) => s + 1);
     } else {
@@ -187,15 +197,17 @@ export default function OnboardingScreen() {
   };
 
   const handleSubmit = async () => {
-    const option = findBusinessOptionById(businessSubType);
+    const primarySubType = businessSubTypes[0] ?? '';
+    const option = findBusinessOptionById(primarySubType);
     const businessType = option?.coreType ?? 'shop';
     const formData = new FormData();
     formData.append('businessType', businessType);
-    formData.append('businessSubType', businessSubType);
-    if (businessType === 'shop') {
-      formData.append('shopType', businessSubType);
-    } else if (businessType === 'studio') {
-      formData.append('studioType', businessSubType);
+    if (primarySubType) formData.append('businessSubType', primarySubType);
+    if (businessSubTypes.length > 0) formData.append('businessSubTypes', JSON.stringify(businessSubTypes));
+    if (businessType === 'shop' && primarySubType) {
+      formData.append('shopType', primarySubType);
+    } else if (businessType === 'studio' && primarySubType) {
+      formData.append('studioType', primarySubType);
     }
     formData.append('companyName', companyName.trim());
     if (companyLogo) {
@@ -310,14 +322,21 @@ export default function OnboardingScreen() {
             />
 
             <Text style={styles.label}>What do you mainly do?</Text>
-            <Text style={styles.dropdownDescription}>Select what best matches your business.</Text>
+            <Text style={styles.dropdownDescription}>Select everything that matches your business.</Text>
             <Pressable
               style={styles.dropdownTrigger}
               onPress={() => optionsForSelectedGroup.length > 0 && setSubTypeDropdownVisible(true)}
               disabled={optionsForSelectedGroup.length === 0}
             >
-              <Text style={[styles.dropdownTriggerText, !businessSubType && styles.dropdownTriggerPlaceholder]}>
-                {businessSubType ? findBusinessOptionById(businessSubType)?.label ?? businessSubType : (optionsForSelectedGroup.length > 0 ? 'Select what best matches your business' : 'Select business type first')}
+              <Text
+                style={[styles.dropdownTriggerText, businessSubTypes.length === 0 && styles.dropdownTriggerPlaceholder]}
+                numberOfLines={1}
+              >
+                {businessSubTypes.length > 0
+                  ? businessSubTypes.length === 1
+                    ? findBusinessOptionById(businessSubTypes[0])?.label ?? businessSubTypes[0]
+                    : `${findBusinessOptionById(businessSubTypes[0])?.label ?? businessSubTypes[0]} +${businessSubTypes.length - 1} more`
+                  : (optionsForSelectedGroup.length > 0 ? 'Select what best matches your business' : 'Select business type first')}
               </Text>
               <AppIcon name="chevron-down" size={20} color="#6b7280" />
             </Pressable>
@@ -327,26 +346,42 @@ export default function OnboardingScreen() {
               title="What do you mainly do?"
               onClose={() => setSubTypeDropdownVisible(false)}
               height={APP_SHEET_HEIGHT_MEDIUM}
+              footer={
+                <Pressable
+                  style={[styles.sheetDoneButton, businessSubTypes.length === 0 && styles.nextButtonDisabled]}
+                  onPress={() => setSubTypeDropdownVisible(false)}
+                  disabled={businessSubTypes.length === 0}
+                >
+                  <Text style={styles.sheetDoneButtonText}>
+                    Done{businessSubTypes.length > 0 ? ` (${businessSubTypes.length})` : ''}
+                  </Text>
+                </Pressable>
+              }
             >
               {optionsForSelectedGroup.map((opt) => {
-                const selected = businessSubType === opt.id;
+                const selected = businessSubTypes.includes(opt.id);
                 return (
-                  <View key={opt.id}>
-                    <SheetMenuRow
-                      label={opt.label}
-                      active={selected}
-                      onPress={() => {
-                        setBusinessSubType(opt.id);
-                        setSubTypeDropdownVisible(false);
-                      }}
-                      trailing={selected ? <AppIcon name="check" size={18} color="#fff" /> : <View />}
-                    />
-                    {opt.description ? (
-                      <Text style={[styles.dropdownItemDesc, selected && { opacity: 0.85 }]}>
-                        {opt.description}
-                      </Text>
-                    ) : null}
-                  </View>
+                  <Pressable
+                    key={opt.id}
+                    style={[styles.subTypeRow, selected && styles.subTypeRowSelected]}
+                    onPress={() => {
+                      setBusinessSubTypes((prev) =>
+                        prev.includes(opt.id) ? prev.filter((id) => id !== opt.id) : [...prev, opt.id]
+                      );
+                    }}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected }}
+                  >
+                    <View style={[styles.circleCheckbox, selected && styles.circleCheckboxSelected]}>
+                      {selected ? <AppIcon name="check" size={13} color="#fff" /> : null}
+                    </View>
+                    <View style={styles.subTypeRowText}>
+                      <Text style={styles.subTypeRowLabel}>{opt.label}</Text>
+                      {opt.description ? (
+                        <Text style={styles.dropdownItemDesc}>{opt.description}</Text>
+                      ) : null}
+                    </View>
+                  </Pressable>
                 );
               })}
             </AppBottomSheet>
@@ -370,7 +405,7 @@ export default function OnboardingScreen() {
                 placeholder="Phone number"
                 placeholderTextColor="#9ca3af"
                 value={companyPhone}
-                onChangeText={setCompanyPhone}
+                onChangeText={(text) => setCompanyPhone(stripLeadingTrunkZero(text))}
                 keyboardType="phone-pad"
                 editable={!loading}
               />
@@ -532,7 +567,33 @@ const styles = StyleSheet.create({
   dropdownItemSelected: { backgroundColor: 'rgba(22, 101, 52, 0.08)' },
   dropdownItemLabel: { fontSize: 16, fontWeight: '600', color: '#111' },
   dropdownItemLabelSelected: { color: BRAND_GREEN },
-  dropdownItemDesc: { fontFamily: FontFamily.regular, fontSize: FontSize.sm, color: '#6b7280', marginTop: 2, paddingHorizontal: 14, paddingBottom: 8 },
+  dropdownItemDesc: { fontFamily: FontFamily.regular, fontSize: FontSize.sm, color: '#6b7280', marginTop: 2 },
+  subTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#f3f4f6',
+    marginBottom: 8,
+  },
+  subTypeRowSelected: { backgroundColor: 'rgba(22, 101, 52, 0.06)', borderColor: 'rgba(22, 101, 52, 0.25)' },
+  subTypeRowText: { flex: 1, marginLeft: 12 },
+  subTypeRowLabel: { fontFamily: FontFamily.semiBold, fontSize: FontSize.body, fontWeight: '600', color: '#111' },
+  circleCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    marginTop: 1,
+  },
+  circleCheckboxSelected: { backgroundColor: BRAND_GREEN, borderColor: BRAND_GREEN },
   input: {
     height: 48,
     borderWidth: 1,
@@ -600,4 +661,12 @@ const styles = StyleSheet.create({
   },
   nextButtonDisabled: { opacity: 0.6 },
   nextButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  sheetDoneButton: {
+    height: TOUCH_TARGET.standard,
+    backgroundColor: BRAND_GREEN,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetDoneButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

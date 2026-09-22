@@ -114,6 +114,16 @@ const getPOSConfig = async () => api.get('/settings/pos-config');
 
 const updatePOSConfig = async (payload) => api.put('/settings/pos-config', payload);
 
+const getInterfaceMode = async () => {
+  const res = await api.get('/settings/interface-mode');
+  return res?.data?.data ?? res?.data ?? { interfaceMode: 'full', source: 'none' };
+};
+
+const updateInterfaceMode = async (interfaceMode) => {
+  const res = await api.patch('/settings/interface-mode', { interfaceMode });
+  return res?.data?.data ?? res?.data ?? { interfaceMode, source: 'user' };
+};
+
 const getDeliverySettings = async () => {
   const res = await api.get('/settings/delivery');
   return res?.data?.data ?? res?.data ?? res;
@@ -286,6 +296,8 @@ export default {
   getSubscriptionPayments,
   getPOSConfig,
   updatePOSConfig,
+  getInterfaceMode,
+  updateInterfaceMode,
   getDeliverySettings,
   updateDeliverySettings,
   getRentalSettings,

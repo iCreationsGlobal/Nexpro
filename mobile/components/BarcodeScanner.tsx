@@ -57,7 +57,7 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
 
   if (!permission) {
     return (
-      <Modal visible={visible} animationType="slide" onRequestClose={closeScanner}>
+      <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={closeScanner}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.centerContent}>
             <ActivityIndicator size="large" color={colors.tint} />
@@ -70,7 +70,7 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
 
   if (!permission.granted) {
     return (
-      <Modal visible={visible} animationType="slide" onRequestClose={closeScanner}>
+      <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={closeScanner}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.centerContent}>
             <AppIcon name="camera" size={64} color={colors.tint} style={styles.icon} />
@@ -97,7 +97,13 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
   }
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={closeScanner}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onRequestClose={closeScanner}
+    >
       <View style={styles.container}>
         <CameraView
           style={styles.camera}
@@ -118,19 +124,11 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
             ],
           }}
         />
-        {/* Overlay elements positioned absolutely over camera */}
-        <View style={styles.overlay}>
-          <View style={styles.header}>
-            <Pressable onPress={closeScanner} style={styles.closeButton}>
-              <AppIcon name="times" size={24} color="#fff" />
-            </Pressable>
-          </View>
-          <View style={styles.scanArea}>
-            <View style={styles.scanFrame} />
-          </View>
-          <View style={styles.footer}>
-            <Text style={styles.instructionText}>Point camera at barcode</Text>
-          </View>
+        <Pressable onPress={closeScanner} style={styles.closeButton} hitSlop={12}>
+          <AppIcon name="times" size={26} color="#fff" />
+        </Pressable>
+        <View style={styles.footer} pointerEvents="none">
+          <Text style={styles.instructionText}>Point camera at barcode</Text>
         </View>
       </View>
     </Modal>
@@ -145,16 +143,10 @@ const styles = StyleSheet.create({
   camera: {
     flex: 1,
   },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
-  },
-  header: {
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    alignItems: 'flex-end',
-  },
   closeButton: {
+    position: 'absolute',
+    top: 56,
+    right: 20,
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -162,20 +154,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scanArea: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scanFrame: {
-    width: 250,
-    height: 250,
-    borderWidth: 2,
-    borderColor: '#fff',
-    borderRadius: 12,
-    backgroundColor: 'transparent',
-  },
   footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     paddingBottom: 50,
     alignItems: 'center',
   },

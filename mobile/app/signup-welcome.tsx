@@ -1,19 +1,18 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useMutationState } from '@tanstack/react-query';
 
 import { ConfettiBurst } from '@/components/ConfettiBurst';
+import { LoadingDots } from '@/components/LoadingDots';
 import { getErrorMessage } from '@/utils/errorMessages';
 import { BRAND_GREEN } from '@/constants/brand';
 import { SIGNUP_MUTATION_KEY } from '@/constants/signupFlow';
 
 const WELCOME_BG = '#0E1801';
-/** Minimum time (ms) the loading animation runs before transitioning to success (matches web). */
-const MIN_LOADING_DISPLAY_MS = 5200;
 /** Safety-net ceiling (ms): if the mutation never settles (hung request, a promise that never
  * resolves/rejects after the network call) force an error so the screen never hangs forever on
- * the branded loading animation. Comfortably past the API client's own 30s request timeout. Matches web. */
+ * the loading state. Comfortably past the API client's own 30s request timeout. */
 const OVERLAY_LOADING_SAFETY_MS = 35000;
 const DEFAULT_ERROR_MESSAGE = 'Sign up failed. Please try again.';
 
@@ -21,7 +20,6 @@ type OverlayPhase = 'loading' | 'success' | 'error';
 
 export default function SignupWelcomeScreen() {
   const [overlayPhase, setOverlayPhase] = useState<OverlayPhase>('loading');
-  const startTimeRef = useRef(Date.now());
 
   const mutationState = useMutationState({
     filters: { mutationKey: SIGNUP_MUTATION_KEY, exact: true },
@@ -32,14 +30,12 @@ export default function SignupWelcomeScreen() {
 
   const [timedOut, setTimedOut] = useState(false);
 
+  // Advance as soon as the account is actually created — no artificial minimum display time.
   useEffect(() => {
     if (status === 'pending' || status === 'idle') {
       setOverlayPhase('loading');
     } else if (status === 'success') {
-      const elapsed = Date.now() - startTimeRef.current;
-      const delay = Math.max(0, MIN_LOADING_DISPLAY_MS - elapsed);
-      const t = setTimeout(() => setOverlayPhase('success'), delay);
-      return () => clearTimeout(t);
+      setOverlayPhase('success');
     } else if (status === 'error') {
       setOverlayPhase('error');
     }
@@ -78,10 +74,8 @@ export default function SignupWelcomeScreen() {
     <View style={styles.container}>
       {overlayPhase === 'loading' && (
         <View style={styles.loadingContent}>
-          <Text style={styles.line1}>Welcome to African Business Suite</Text>
-          <Text style={styles.line2}>
-            All-in-one business software for growing African businesses.
-          </Text>
+          <Text style={styles.line1}>Creating your account</Text>
+          <LoadingDots color="#fff" />
         </View>
       )}
       {overlayPhase === 'success' && (
@@ -129,18 +123,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   line1: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: '600',
     color: '#fff',
     textAlign: 'center',
-    marginBottom: 16,
-  },
-  line2: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#fff',
-    textAlign: 'center',
-    lineHeight: 26,
+    marginBottom: 20,
   },
   resultContent: {
     maxWidth: 400,

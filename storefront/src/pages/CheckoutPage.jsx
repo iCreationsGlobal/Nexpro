@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, Loader2, MapPin, MessageCircle, ShieldCheck, ShoppingBag, Truck } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useCart } from '../context/CartContext';
 import { useStorefrontMode } from '../context/StorefrontModeContext';
@@ -203,17 +203,27 @@ const CheckoutPage = () => {
     return payload;
   }, [deliveryAddress, fulfillmentMethod, isSingleStoreMode, items, notes, store]);
 
+  // Totals don't depend on the address, so keep it out of the preview; otherwise every
+  // keystroke refetches and a half-filled address fails validation and blocks Pay Now.
+  const previewPayload = useMemo(() => {
+    if (!checkoutPayload) return null;
+    const { deliveryAddress: _deliveryAddress, notes: _notes, ...rest } = checkoutPayload;
+    return rest;
+  }, [checkoutPayload]);
+
   const previewQuery = useQuery({
-    queryKey: ['checkout', 'preview', checkoutPayload],
-    queryFn: () => storeService.previewStorefrontCheckout(checkoutPayload),
-    enabled: Boolean(checkoutPayload && items.length > 0),
+    queryKey: ['checkout', 'preview', previewPayload],
+    queryFn: () => storeService.previewStorefrontCheckout(previewPayload),
+    enabled: Boolean(previewPayload && items.length > 0),
     staleTime: QUERY_STALE.CHECKOUT,
     refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 
   const checkoutPreview = previewQuery.data?.data || previewQuery.data || null;
   const checkoutPreviewError = previewQuery.error?.message || '';
   const isLoadingPreview = previewQuery.isFetching;
+  const isPreviewPending = previewQuery.isPending || previewQuery.isPlaceholderData;
   const isLoadingAddresses = addressesQuery.isLoading;
   const deliveryFee = checkoutPreview
     ? Number(checkoutPreview.deliveryFee || 0)
@@ -224,7 +234,7 @@ const CheckoutPage = () => {
     ? 'Retry saved addresses before paying for delivery.'
     : checkoutPreviewError
       ? 'Fix the checkout issue shown above before paying.'
-      : isLoadingPreview
+      : isPreviewPending
         ? 'Wait for checkout totals to finish calculating.'
         : '';
 
@@ -562,7 +572,7 @@ const CheckoutPage = () => {
           <Button
             type="submit"
             className={`${whatsappHref ? 'mt-3' : 'mt-5'} w-full rounded-full bg-[var(--store-accent,#166534)] text-white hover:bg-[color-mix(in_srgb,var(--store-accent,#166534)_85%,black)]`}
-            disabled={isPlacingOrder || isLoadingAddresses || isLoadingPreview || Boolean(checkoutPreviewError) || (addressesQuery.isError && fulfillmentMethod === 'delivery')}
+            disabled={isPlacingOrder || isLoadingAddresses || isPreviewPending || Boolean(checkoutPreviewError) || (addressesQuery.isError && fulfillmentMethod === 'delivery')}
             aria-describedby={checkoutPreviewError ? 'checkout-preview-error' : submitBlockedReason ? 'checkout-submit-helper' : undefined}
           >
             {isPlacingOrder || isLoadingPreview ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useNavigate } from 'react-router-dom';
-import { Search, Camera, X, Package, AlertCircle, Loader2, List, LayoutGrid, Plus, Minus, Circle } from 'lucide-react';
+import { Search, Camera, X, Package, AlertCircle, Loader2, List, LayoutGrid, Plus, Minus, Circle, Calculator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -1361,6 +1361,7 @@ function POSVirtualProductGrid({
  * @param {boolean} [props.fillHeight] - If true, the results area uses flex-1 to fill available height (e.g. in POS layout)
  * @param {function} [props.onAdjustProductQuantity] - Optional: (productId, delta) => void, for mobile +/- quantity controls
  * @param {function} [props.onAddCustomItem] - Optional: open custom item flow
+ * @param {function} [props.onQuickSale] - Optional: open quick-sale (amount-only) flow
  * @param {Object} [props.dealerPriceByProductId] - Map of productId -> { unitPrice, source, retailPrice } when selling to a dealer
  * @param {boolean} [props.scanningEnabled] - When false, barcode camera scanner is not available
  */
@@ -1376,6 +1377,7 @@ const POSProductSearch = ({
   fillHeight = false,
   onAdjustProductQuantity,
   onAddCustomItem,
+  onQuickSale,
   dealerPriceByProductId = {},
   scanningEnabled = false,
 }) => {
@@ -1573,6 +1575,23 @@ const POSProductSearch = ({
               ))}
             </SelectContent>
           </Select>
+          {onQuickSale && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 flex-shrink-0 border border-[#166534] text-[#166534] hover:bg-green-50 hover:text-[#166534]"
+                  onClick={onQuickSale}
+                >
+                  <Calculator className="h-4 w-4 mr-2" />
+                  <span className="hidden sm:inline">Quick sale</span>
+                  <span className="sm:hidden">Quick</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Ring up an amount for anything not in the catalog</TooltipContent>
+            </Tooltip>
+          )}
           {onAddCustomItem && (
             <Tooltip>
               <TooltipTrigger asChild>

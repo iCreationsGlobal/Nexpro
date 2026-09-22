@@ -1,15 +1,19 @@
 import React, { useEffect, useRef } from 'react';
-import { AccessibilityInfo, Animated, Easing, StyleSheet, StatusBar, Text, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Image, StyleSheet, StatusBar, Text, useWindowDimensions, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
-import { BOOT_GREEN, bootSymbol } from '@/utils/bootArtwork';
+import { BOOT_GREEN } from '@/utils/bootArtwork';
 import { bootPatternLayers } from '@/utils/bootPattern';
+
+const logoSource = require('@/assets/images/abs-boot-logo.png');
+/** Intrinsic size of assets/images/abs-boot-logo.png — used to keep the logo's aspect ratio at any scale. */
+const LOGO_ASPECT = 455 / 194;
 
 /** Local artwork and native-driven motion keep startup independent of network requests. */
 export function AppLoadingScreen({ onLayout, animate = false }: { onLayout?: () => void; animate?: boolean }) {
   const { width, height } = useWindowDimensions();
   const scale = Math.min(width / 420, height / 700, 1.35);
   const motion = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
-  const pulse = useRef(new Animated.Value(0)).current;
+  const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     let mounted = true;
@@ -19,7 +23,7 @@ export function AppLoadingScreen({ onLayout, animate = false }: { onLayout?: () 
       animations.forEach(animation => animation.stop());
       animations = [];
       motion.forEach(value => value.setValue(0));
-      pulse.setValue(0);
+      progress.setValue(0);
     };
     const configure = (reduced: boolean) => {
       if (!mounted) return;
@@ -29,9 +33,12 @@ export function AppLoadingScreen({ onLayout, animate = false }: { onLayout?: () 
         Animated.timing(value, { toValue: 1, duration: 3000 + index * 850, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
         Animated.timing(value, { toValue: 0, duration: 3000 + index * 850, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ])));
+      // Indeterminate progress sweep: fill grows from a small stub to the full track width, then
+      // resets and grows again — width can't run on the native driver, but this is a single tiny view.
       animations.push(Animated.loop(Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1000, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 1000, useNativeDriver: true }),
+        Animated.timing(progress, { toValue: 1, duration: 1100, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+        Animated.delay(200),
+        Animated.timing(progress, { toValue: 0, duration: 0, useNativeDriver: false }),
       ])));
       animations.forEach(animation => animation.start());
     };
@@ -43,7 +50,7 @@ export function AppLoadingScreen({ onLayout, animate = false }: { onLayout?: () 
       if (!preferenceChanged) configure(reduced);
     }).catch(() => configure(true));
     return () => { mounted = false; subscription.remove(); stop(); };
-  }, [animate, motion, pulse]);
+  }, [animate, motion, progress]);
 
   return (
     <View onLayout={onLayout} style={styles.container} accessible accessibilityLabel="African Business Suite is loading" accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
@@ -59,13 +66,22 @@ export function AppLoadingScreen({ onLayout, animate = false }: { onLayout?: () 
         ))}
       </View>
       <View style={[styles.brand, { top: height * 0.405, width: 280 * scale }]}>
-        <View style={{ height: 90 * scale, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-          <SvgXml xml={bootSymbol} width={100 * scale} height={94 * scale} />
-          <Text allowFontScaling={false} style={[styles.letters, { fontSize: 108 * scale, lineHeight: 116 * scale }]}>BS</Text>
-        </View>
+        <Image
+          source={logoSource}
+          resizeMode="contain"
+          accessibilityLabel="African Business Suite"
+          style={{ width: 260 * scale, height: (260 * scale) / LOGO_ASPECT, alignSelf: 'center' }}
+        />
         <Text allowFontScaling={false} adjustsFontSizeToFit numberOfLines={1} style={[styles.subtitle, { fontSize: 22 * scale, marginTop: 12 * scale }]}>African Business Suite</Text>
       </View>
-      <Animated.View style={[styles.indicator, { bottom: height * 0.155, width: 76 * scale, opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }), transform: [{ scaleX: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]} />
+      <View style={[styles.track, { bottom: height * 0.155, width: 76 * scale }]}>
+        <Animated.View
+          style={[
+            styles.fill,
+            { width: progress.interpolate({ inputRange: [0, 1], outputRange: [10 * scale, 76 * scale] }) },
+          ]}
+        />
+      </View>
     </View>
   );
 }
@@ -74,7 +90,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BOOT_GREEN, alignItems: 'center', overflow: 'hidden' },
   pattern: { position: 'absolute', bottom: -20 },
   brand: { position: 'absolute' },
-  letters: { color: '#fff', fontWeight: '900', letterSpacing: -4, includeFontPadding: false },
   subtitle: { color: '#fff', textAlign: 'center', fontWeight: '400' },
-  indicator: { position: 'absolute', height: 3, borderRadius: 3, backgroundColor: '#b5ed00' },
+  track: { position: 'absolute', height: 3, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.25)', overflow: 'hidden' },
+  fill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 3, backgroundColor: '#b5ed00' },
 });

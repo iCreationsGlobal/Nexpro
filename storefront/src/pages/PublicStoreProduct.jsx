@@ -157,7 +157,7 @@ const StoreScopedHeader = ({
             <span className="min-w-0">
               <span className="block truncate text-lg font-black text-slate-950 sm:text-xl">{store.displayName}</span>
               {subtitle ? (
-                <span className="block truncate text-xs font-semibold uppercase tracking-[0.16em] text-green-700">{subtitle}</span>
+                <span className="block truncate text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--store-accent,#166534)]">{subtitle}</span>
               ) : null}
             </span>
           </Link>
@@ -182,7 +182,7 @@ const StoreScopedHeader = ({
             placeholder={`Search ${store.displayName}`}
             className="h-11 min-h-11 border-0 bg-transparent px-4 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
           />
-          <Button type="submit" size="icon" className="h-11 min-h-11 w-11 shrink-0 rounded-full bg-green-700 hover:bg-green-800" aria-label={`Search ${store.displayName}`}>
+          <Button type="submit" size="icon" className="h-11 min-h-11 w-11 shrink-0 rounded-full bg-[var(--store-accent,#166534)] hover:bg-[var(--store-accent-hover,#14532d)]" aria-label={`Search ${store.displayName}`}>
             <Search className="h-5 w-5" />
           </Button>
         </form>
@@ -194,7 +194,7 @@ const StoreScopedHeader = ({
                 key={item.key}
                 to={item.to}
                 className={`whitespace-nowrap text-sm font-semibold transition-colors ${
-                  activePage === item.key ? 'text-green-800' : 'text-slate-600 hover:text-green-800'
+                  activePage === item.key ? 'text-[color:var(--store-accent,#166534)]' : 'text-slate-600 hover:text-[color:var(--store-accent,#166534)]'
                 }`}
               >
                 {item.label}
@@ -206,20 +206,20 @@ const StoreScopedHeader = ({
         <div className="flex shrink-0 gap-2">
           <ActionLink to="/cart" icon={ShoppingCart} label="Cart" badge={cartCount} />
           {isAuthenticated ? (
-            <Button className="rounded-full bg-green-700 hover:bg-green-800" asChild>
+            <Button className="rounded-full bg-[var(--store-accent,#166534)] hover:bg-[var(--store-accent-hover,#14532d)]" asChild>
               <Link to="/account">
                 <User className="mr-2 h-4 w-4" />
                 Account
               </Link>
             </Button>
           ) : (
-            <Button type="button" className="rounded-full bg-green-700 hover:bg-green-800" onClick={handleSignIn}>
+            <Button type="button" className="rounded-full bg-[var(--store-accent,#166534)] hover:bg-[var(--store-accent-hover,#14532d)]" onClick={handleSignIn}>
               <User className="mr-2 h-4 w-4" />
               Sign in
             </Button>
           )}
           {!showPageNav ? (
-            <Button variant="outline" className="hidden rounded-full border-green-200 text-green-800 hover:bg-green-50 sm:inline-flex" asChild>
+            <Button variant="outline" className="hidden rounded-full border-[color:color-mix(in_srgb,var(--store-accent,#166534)_30%,white)] text-[color:var(--store-accent,#166534)] hover:bg-[var(--store-accent-soft,#f0fdf4)] sm:inline-flex" asChild>
               <Link to={storeHome}>{ownedShop ? 'Home' : 'Store Home'}</Link>
             </Button>
           ) : null}
@@ -236,7 +236,7 @@ const StoreScopedHeader = ({
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-lg font-black text-slate-950">{store.displayName}</span>
-                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-green-700">Menu</span>
+                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--store-accent,#166534)]">Menu</span>
                 </span>
               </Link>
               <button
@@ -257,8 +257,8 @@ const StoreScopedHeader = ({
                 onClick={closeMobileMenu}
                 className={`flex min-h-11 items-center rounded-2xl border px-4 py-2.5 text-sm font-bold transition-colors ${
                   activePage === item.key
-                    ? 'border-green-700 bg-green-700 text-white'
-                    : 'border-slate-200 bg-white text-slate-700 hover:border-green-200 hover:bg-green-50 hover:text-green-800'
+                    ? 'border-[color:var(--store-accent,#166534)] bg-[var(--store-accent,#166534)] text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_30%,white)] hover:bg-[var(--store-accent-soft,#f0fdf4)] hover:text-[color:var(--store-accent,#166534)]'
                 }`}
               >
                 {item.label}
@@ -763,7 +763,7 @@ const PublicStoreProduct = () => {
               <Package className="h-4 w-4" />
               <AlertDescription>This product is not available right now.</AlertDescription>
             </Alert>
-            <Button className="mt-4 rounded-full bg-green-700 hover:bg-green-800" asChild>
+            <Button className="mt-4 rounded-full bg-[var(--store-accent,#166534)] hover:bg-[var(--store-accent-hover,#14532d)]" asChild>
               <Link to={storeSlug ? storeBasePath : (isMarketplaceMode ? '/stores' : '/')}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to store
@@ -810,18 +810,18 @@ const PublicStoreProduct = () => {
 
       <main className="mx-auto w-full max-w-[1440px] px-3 py-6 sm:px-4 sm:py-8">
         <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-          <Link to={storeBasePath} className="hover:text-green-800">{store.displayName}</Link>
+          <Link to={storeBasePath} className="hover:text-[color:var(--store-accent,#166534)]">{store.displayName}</Link>
           <ChevronRight className="h-3.5 w-3.5" />
           <span className="font-semibold text-slate-800">{product.title}</span>
         </div>
 
         <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:rounded-[2rem]">
           <Link to={storeBasePath} className="flex min-w-0 items-center gap-3 text-slate-900">
-            <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-green-50">
+            <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-[var(--store-accent-soft,#f0fdf4)]">
               {resolveImageUrl(store.logoUrl) ? (
                 <img src={resolveImageUrl(store.logoUrl)} alt={store.displayName} className="h-full w-full object-contain" />
               ) : (
-                <Store className="h-5 w-5 text-green-700" />
+                <Store className="h-5 w-5 text-[color:var(--store-accent,#166534)]" />
               )}
             </div>
             <div className="min-w-0">
@@ -832,7 +832,7 @@ const PublicStoreProduct = () => {
             </div>
           </Link>
           {!isOwnedShop ? (
-            <Badge variant="outline" className="border-green-200 bg-green-50 text-green-800">Published product</Badge>
+            <Badge variant="outline" className="border-[color:color-mix(in_srgb,var(--store-accent,#166534)_30%,white)] bg-[var(--store-accent-soft,#f0fdf4)] text-[color:var(--store-accent,#166534)]">Published product</Badge>
           ) : null}
         </div>
 
@@ -844,7 +844,7 @@ const PublicStoreProduct = () => {
                   <img
                     src={activeImage}
                     alt={product.title}
-                    className="h-full w-full object-contain p-2 transition-transform duration-500 group-hover:scale-105"
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                 ) : (
                   <ProductImage product={product} />
@@ -856,7 +856,7 @@ const PublicStoreProduct = () => {
                   <>
                     <button
                       type="button"
-                      className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/80 bg-white/90 text-slate-800 backdrop-blur transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-green-700 focus:ring-offset-2 focus:ring-offset-white sm:h-11 sm:w-11"
+                      className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/80 bg-white/90 text-slate-800 backdrop-blur transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[color:var(--store-accent,#166534)] focus:ring-offset-2 focus:ring-offset-white sm:h-11 sm:w-11"
                       onClick={() => handleGalleryStep(-1)}
                       aria-label="View previous product image"
                     >
@@ -864,7 +864,7 @@ const PublicStoreProduct = () => {
                     </button>
                     <button
                       type="button"
-                      className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/80 bg-white/90 text-slate-800 backdrop-blur transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-green-700 focus:ring-offset-2 focus:ring-offset-white sm:h-11 sm:w-11"
+                      className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/80 bg-white/90 text-slate-800 backdrop-blur transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[color:var(--store-accent,#166534)] focus:ring-offset-2 focus:ring-offset-white sm:h-11 sm:w-11"
                       onClick={() => handleGalleryStep(1)}
                       aria-label="View next product image"
                     >
@@ -883,7 +883,7 @@ const PublicStoreProduct = () => {
                         key={imageUrl}
                         type="button"
                         className={`h-20 min-w-20 flex-none overflow-hidden rounded-2xl border bg-slate-50 transition sm:h-32 sm:min-w-32 ${
-                          isSelected ? 'border-green-700 ring-2 ring-green-100' : 'border-slate-200 hover:border-green-300'
+                          isSelected ? 'border-[color:var(--store-accent,#166534)] ring-2 ring-[color:color-mix(in_srgb,var(--store-accent,#166534)_20%,white)]' : 'border-slate-200 hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_45%,white)]'
                         }`}
                         onClick={() => setSelectedImage(imageUrl)}
                         aria-current={isSelected ? 'true' : undefined}
@@ -906,7 +906,7 @@ const PublicStoreProduct = () => {
                 <div className="mb-3 flex flex-wrap gap-2">
                   <Badge
                     className={availability.available
-                      ? 'border-0 bg-green-700 text-white hover:bg-green-700'
+                      ? 'border-0 bg-[var(--store-accent,#166534)] text-white hover:bg-[var(--store-accent,#166534)]'
                       : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-50'}
                     variant={availability.available ? 'default' : 'outline'}
                   >
@@ -921,7 +921,7 @@ const PublicStoreProduct = () => {
                     <Badge
                       key={badge}
                       variant="outline"
-                      className="border-green-200 bg-green-50 text-green-800"
+                      className="border-[color:color-mix(in_srgb,var(--store-accent,#166534)_30%,white)] bg-[var(--store-accent-soft,#f0fdf4)] text-[color:var(--store-accent,#166534)]"
                     >
                       {badge}
                     </Badge>
@@ -944,7 +944,7 @@ const PublicStoreProduct = () => {
                   <span className="text-2xl font-black text-slate-700 sm:text-3xl">Contact for price</span>
                 ) : priceDisplay.amount != null ? (
                   <>
-                    <span className="text-2xl font-black text-green-800 sm:text-3xl">
+                    <span className="text-2xl font-black text-[color:var(--store-accent,#166534)] sm:text-3xl">
                       {formatAmount(priceDisplay.amount, currency)}
                       {priceDisplay.suffix ? (
                         <span className="ml-1 text-lg font-bold text-slate-500">{priceDisplay.suffix}</span>
@@ -965,18 +965,18 @@ const PublicStoreProduct = () => {
               </div>
 
               {showRentalBooking ? (
-                <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-green-800">Request a rental</p>
+                <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--store-accent,#166534)_30%,white)] bg-[var(--store-accent-soft,#f0fdf4)] px-4 py-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[color:var(--store-accent,#166534)]">Request a rental</p>
                   {bookingSubmitted ? (
-                    <Alert className="mt-3 border-green-200 bg-white">
-                      <AlertDescription className="text-sm leading-6 text-green-950">
+                    <Alert className="mt-3 border-[color:color-mix(in_srgb,var(--store-accent,#166534)_30%,white)] bg-white">
+                      <AlertDescription className="text-sm leading-6 text-slate-900">
                         Your booking request has been sent. {store.displayName} will review availability and contact you to confirm — no payment is taken online yet.
                       </AlertDescription>
                     </Alert>
                   ) : (
                     <form onSubmit={handleSubmitRentalBooking} className="mt-3 space-y-3">
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="block text-sm font-medium text-green-950">
+                        <label className="block text-sm font-medium text-slate-900">
                           Start date
                           <Input
                             type="date"
@@ -989,7 +989,7 @@ const PublicStoreProduct = () => {
                             <p className="mt-1 text-sm text-red-600">{bookingFormErrors.startDate}</p>
                           ) : null}
                         </label>
-                        <label className="block text-sm font-medium text-green-950">
+                        <label className="block text-sm font-medium text-slate-900">
                           End date
                           <Input
                             type="date"
@@ -1003,7 +1003,7 @@ const PublicStoreProduct = () => {
                           ) : null}
                         </label>
                       </div>
-                      <label className="block text-sm font-medium text-green-950">
+                      <label className="block text-sm font-medium text-slate-900">
                         Quantity
                         <Input
                           type="number"
@@ -1017,7 +1017,7 @@ const PublicStoreProduct = () => {
                         ) : null}
                       </label>
                       {rentalAvailabilityLoading ? (
-                        <p className="flex items-center gap-2 text-sm text-green-900">
+                        <p className="flex items-center gap-2 text-sm text-[color:var(--store-accent-hover,#14532d)]">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Checking availability…
                         </p>
@@ -1028,19 +1028,19 @@ const PublicStoreProduct = () => {
                         </Alert>
                       ) : null}
                       {!rentalAvailabilityLoading && rentalAvailability && !rentalAvailabilityError ? (
-                        <p className={`text-sm font-semibold ${rentalCanFulfill === false ? 'text-red-700' : 'text-green-900'}`}>
+                        <p className={`text-sm font-semibold ${rentalCanFulfill === false ? 'text-red-700' : 'text-[color:var(--store-accent-hover,#14532d)]'}`}>
                           {rentalCanFulfill === false
                             ? `Only ${rentalAvailability.availableQty} available for these dates — reduce quantity or change dates`
                             : `${rentalAvailability.availableQty} available for these dates`}
                         </p>
                       ) : null}
                       {rentalEstimatedTotal != null ? (
-                        <p className="text-sm font-semibold text-green-900">
+                        <p className="text-sm font-semibold text-[color:var(--store-accent-hover,#14532d)]">
                           Estimated total: {formatAmount(rentalEstimatedTotal, currency)}
                           {rentalDayCount ? ` (${rentalDayCount} day${rentalDayCount === 1 ? '' : 's'})` : ''}
                         </p>
                       ) : null}
-                      <label className="block text-sm font-medium text-green-950">
+                      <label className="block text-sm font-medium text-slate-900">
                         Your name
                         <Input
                           value={bookingForm.name}
@@ -1051,7 +1051,7 @@ const PublicStoreProduct = () => {
                           <p className="mt-1 text-sm text-red-600">{bookingFormErrors.name}</p>
                         ) : null}
                       </label>
-                      <label className="block text-sm font-medium text-green-950">
+                      <label className="block text-sm font-medium text-slate-900">
                         Phone
                         <Input
                           value={bookingForm.phone}
@@ -1062,7 +1062,7 @@ const PublicStoreProduct = () => {
                           <p className="mt-1 text-sm text-red-600">{bookingFormErrors.phone}</p>
                         ) : null}
                       </label>
-                      <label className="block text-sm font-medium text-green-950">
+                      <label className="block text-sm font-medium text-slate-900">
                         Email (optional)
                         <Input
                           type="email"
@@ -1071,7 +1071,7 @@ const PublicStoreProduct = () => {
                           className="mt-1 bg-white"
                         />
                       </label>
-                      <label className="block text-sm font-medium text-green-950">
+                      <label className="block text-sm font-medium text-slate-900">
                         Notes (optional)
                         <textarea
                           rows={3}
@@ -1082,7 +1082,7 @@ const PublicStoreProduct = () => {
                       </label>
                       <Button
                         type="submit"
-                        className="w-full rounded-full bg-green-700 hover:bg-green-800 sm:w-auto"
+                        className="w-full rounded-full bg-[var(--store-accent,#166534)] hover:bg-[var(--store-accent-hover,#14532d)] sm:w-auto"
                         disabled={
                           bookingSubmitting
                           || !availability.available

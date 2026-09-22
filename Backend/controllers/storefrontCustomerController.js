@@ -2000,7 +2000,7 @@ exports.toggleStorefrontWishlistItem = async (req, res, next) => {
   }
 };
 
-const buildStorefrontCheckoutDraft = async ({ shopper, body, transaction = null }) => {
+const buildStorefrontCheckoutDraft = async ({ shopper, body, transaction = null, validateDeliveryAddress = true }) => {
   assertShopperAuthenticated(shopper);
 
   const storeSlug = compact(body?.storeSlug, 80).toLowerCase();
@@ -2099,7 +2099,7 @@ const buildStorefrontCheckoutDraft = async ({ shopper, body, transaction = null 
     ? body.deliveryAddress
     : {};
   const deliveryAddress = deliveryRequired ? normalizeAddress(rawDeliveryAddress) : {};
-  if (deliveryRequired) {
+  if (deliveryRequired && validateDeliveryAddress) {
     const validationError = validateAddress(deliveryAddress);
     if (validationError) {
       buildCheckoutHttpError(400, validationError);
@@ -2345,6 +2345,18 @@ exports.initializeStorefrontOrderPaystack = async (req, res, next) => {
     }
     await sale.update({ metadata: saleMetadata }, { transaction });
 
+    // Online Store settles directly to the seller, so charge through their Paystack
+    // subaccount (checkout then shows the store's business name, not the platform's).
+    // Trade Assurance orders stay on the platform account because funds are held.
+    let subaccount = null;
+    if (!usesTradeAssurance(channel)) {
+      const tenant = await Tenant.findByPk(store.tenantId, {
+        attributes: ['id', 'paystackSubaccountCode'],
+        transaction,
+      });
+      subaccount = tenant?.paystackSubaccountCode || null;
+    }
+
     const buildInit = (reference, channels) => paystackService.initializeTransaction({
       email: shopper.email,
       amount: amountPesewas,
@@ -2353,6 +2365,7 @@ exports.initializeStorefrontOrderPaystack = async (req, res, next) => {
       reference,
       metadata,
       channels,
+      ...(subaccount ? { subaccount } : {}),
     });
 
     let result;
@@ -3393,9 +3406,11 @@ exports.setDefaultStorefrontDeliveryAddress = async (req, res, next) => {
 
 exports.previewStorefrontCheckout = async (req, res, next) => {
   try {
+    // Totals don't depend on the address; it is validated when payment starts.
     const draft = await buildStorefrontCheckoutDraft({
       shopper: req.storefrontCustomer,
       body: req.body,
+      validateDeliveryAddress: false,
     });
 
     return res.status(200).json({

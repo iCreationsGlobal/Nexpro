@@ -434,7 +434,7 @@ export const ProductImage = ({ product, loading = 'lazy' }) => {
         alt={product?.title || 'Product'}
         loading={loading}
         decoding="async"
-        className="h-full w-full object-contain p-2 transition-transform duration-500 group-hover:scale-105"
+        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
       />
     );
   }
@@ -916,7 +916,7 @@ export const StoreScopedFooter = ({
               ) : null}
             </span>
           </Link>
-          <p className={`mt-4 max-w-sm text-sm leading-6 ${mutedTextFaint}`}>
+          <p className={`mt-4 max-w-sm line-clamp-3 text-sm leading-6 ${mutedTextFaint}`}>
             {store?.description || (singleStoreMode
               ? `Browse our ${isServiceStore ? 'services' : 'products'}.`
               : `Browse ${isServiceStore ? 'services' : 'products'} directly from this store.`)}
