@@ -210,7 +210,7 @@ const StorefrontAuthPage = () => {
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[color:color-mix(in_srgb,var(--store-accent,#166534)_28%,white)] bg-white text-[color:color-mix(in_srgb,var(--store-accent,#166534)_85%,black)]">
             <LockKeyhole className="h-7 w-7" />
           </span>
-          <p className="mt-6 text-sm font-bold uppercase tracking-[0.18em] text-[color:var(--store-accent,#166534)]">No Guest Checkout</p>
+          <p className="mt-6 text-sm font-bold uppercase tracking-[0.18em] text-[color:var(--store-accent,#166534)]">{isSingleStoreMode ? 'Shopper account' : 'No Guest Checkout'}</p>
           <h1 className="mt-3 text-3xl font-black text-[color:color-mix(in_srgb,var(--store-accent,#166534)_55%,#020617)]">
             {isVerification
               ? 'Verify your shopper email'
@@ -222,9 +222,14 @@ const StorefrontAuthPage = () => {
           </h1>
           <p className="mt-3 text-sm leading-6 text-[color:color-mix(in_srgb,var(--store-accent,#166534)_55%,#020617)]/70">
             {isSingleStoreMode
-              ? 'Shoppers can browse freely, but purchases require a customer account for order tracking and communication with the store.'
+              ? 'An account is optional. Sign in to see all your orders and saved addresses in one place, or check out as a guest.'
               : 'Shoppers can browse freely, but purchases require a Sabito Store customer account for order tracking, trade assurance, and seller communication.'}
           </p>
+          {isSingleStoreMode && isCheckoutReturn ? (
+            <Button asChild variant="outline" className="mt-6 w-full rounded-full bg-white">
+              <Link to="/checkout">Continue as guest</Link>
+            </Button>
+          ) : null}
           {isCheckoutReturn ? (
             <Alert className="mt-6 border-amber-200 bg-amber-50">
               <ShoppingBag className="h-4 w-4" />

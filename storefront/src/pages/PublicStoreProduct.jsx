@@ -836,7 +836,7 @@ const PublicStoreProduct = () => {
           ) : null}
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white sm:rounded-[2rem]">
+        <div key={product.id} className="sf-page-enter overflow-hidden rounded-2xl border border-slate-200 bg-white sm:rounded-[2rem]">
           <div className="grid gap-6 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:p-8">
             <div className="space-y-3">
               <div className="group relative aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 sm:rounded-3xl">

@@ -197,7 +197,7 @@ export default function OnlineStorePageShell({ children, title, description }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1440px] px-3 py-6 sm:px-4 sm:py-8">
+      <main className="sf-page-enter mx-auto w-full max-w-[1440px] px-3 py-6 sm:px-4 sm:py-8">
         {(title || description) ? (
           <div className="mb-6">
             {title ? <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1> : null}

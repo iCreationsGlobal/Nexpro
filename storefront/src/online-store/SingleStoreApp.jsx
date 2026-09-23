@@ -41,7 +41,7 @@ export const CheckoutRoute = () => {
   const returnTo = `${location.pathname}${location.search || ''}`;
 
   useEffect(() => {
-    // Online Store uses full /signup under OnlineStorePageShell (store footer).
+    // Online Store allows guest checkout; only the Sabito marketplace requires an account.
     if (isLoading || isAuthenticated || isSingleStoreMode) return;
     openShopperAuthModal({
       mode: 'signup',
@@ -56,16 +56,7 @@ export const CheckoutRoute = () => {
     return <ComingSoonPage type="auth-loading" />;
   }
 
-  if (!isAuthenticated) {
-    if (isSingleStoreMode) {
-      return (
-        <Navigate
-          to={`/signup?returnTo=${encodeURIComponent(returnTo)}`}
-          replace
-          state={{ returnTo }}
-        />
-      );
-    }
+  if (!isAuthenticated && !isSingleStoreMode) {
     return <ComingSoonPage type="checkout-auth-required" />;
   }
 
@@ -93,8 +84,8 @@ export const singleStoreCommerceRouteElements = [
   <Route key="track-order" path="/track-order" element={withRouteSuspense(<TrackOrderPage />)} />,
   <Route key="cart" path="/cart" element={withRouteSuspense(<CartPage />)} />,
   <Route key="checkout" path="/checkout" element={<CheckoutRoute />} />,
-  <Route key="checkout-paystack" path="/checkout/paystack-callback" element={<RequireShopperAuth>{withRouteSuspense(<CheckoutPaystackCallbackPage />)}</RequireShopperAuth>} />,
-  <Route key="checkout-success" path="/checkout/success/:id" element={<RequireShopperAuth>{withRouteSuspense(<OrderSuccessPage />)}</RequireShopperAuth>} />,
+  <Route key="checkout-paystack" path="/checkout/paystack-callback" element={withRouteSuspense(<CheckoutPaystackCallbackPage />)} />,
+  <Route key="checkout-success" path="/checkout/success/:id" element={withRouteSuspense(<OrderSuccessPage />)} />,
   <Route key="login" path="/login" element={withRouteSuspense(<StorefrontAuthPage />)} />,
   <Route key="signup" path="/signup" element={withRouteSuspense(<StorefrontAuthPage />)} />,
   <Route key="verify-email" path="/verify-email" element={withRouteSuspense(<StorefrontAuthPage />)} />,

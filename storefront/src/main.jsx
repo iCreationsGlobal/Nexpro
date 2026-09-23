@@ -8,6 +8,7 @@ import { QUERY_CACHE } from './constants';
 import { CartProvider } from './context/CartContext';
 import { StorefrontAuthProvider } from './context/StorefrontAuthContext';
 import { WishlistProvider } from './context/WishlistContext';
+import { startScrollReveal } from './utils/scrollReveal';
 import 'react-toastify/dist/ReactToastify.css';
 import './index.css';
 
@@ -24,6 +25,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+startScrollReveal();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <QueryClientProvider client={queryClient}>

@@ -3,6 +3,8 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import { CheckCircle2, Loader2, MessageCircle, Package, ShieldCheck } from 'lucide-react';
 
 import { useStorefrontMode } from '../context/StorefrontModeContext';
+import { useStorefrontAuth } from '../context/StorefrontAuthContext';
+import { getGuestOrderToken } from '../utils/guestCheckout';
 import { brandAccent } from '../online-store/brandAccent';
 import { buildStoreHomePath } from '../online-store/storePaths';
 import storeService from '../services/storeService';
@@ -16,6 +18,9 @@ const OrderSuccessPage = () => {
   const { id } = useParams();
   const location = useLocation();
   const { isSingleStoreMode, storeSlug: modeSlug, pathPrefix, isCustomDomain } = useStorefrontMode();
+  const { isAuthenticated, isLoading: isAuthLoading } = useStorefrontAuth();
+  const guestToken = useMemo(() => getGuestOrderToken(id), [id]);
+  const isGuestOrder = Boolean(guestToken);
   const [order, setOrder] = useState(location.state?.order || null);
   const [isLoading, setIsLoading] = useState(!location.state?.order && Boolean(id));
 
@@ -46,9 +51,17 @@ const OrderSuccessPage = () => {
   }, [isSingleStoreMode, order]);
 
   useEffect(() => {
-    if (order || !id) return undefined;
+    if (order || !id || isAuthLoading) return undefined;
+    if (!isGuestOrder && !isAuthenticated) {
+      // A guest on another device: the order is still reachable through Track Order.
+      setIsLoading(false);
+      return undefined;
+    }
     let mounted = true;
-    storeService.getStorefrontOrder(id)
+    const request = isGuestOrder
+      ? storeService.getStorefrontGuestOrder(id, guestToken)
+      : storeService.getStorefrontOrder(id);
+    request
       .then((response) => {
         if (mounted) setOrder(response?.data?.order || response?.order || null);
       })
@@ -61,7 +74,7 @@ const OrderSuccessPage = () => {
     return () => {
       mounted = false;
     };
-  }, [id, order]);
+  }, [guestToken, id, isAuthLoading, isAuthenticated, isGuestOrder, order]);
 
   return (
     <PageShell activePath="/checkout" appMode>
@@ -116,7 +129,14 @@ const OrderSuccessPage = () => {
                 ) : (
                   <p>If payment is still processing, refresh this page shortly or check your orders list.</p>
                 )}
-                <p>You can track this order from your shopper account and confirm receipt after delivery.</p>
+                {isGuestOrder ? (
+                  <p>
+                    Save your order number{order?.saleNumber ? ` (${order.saleNumber})` : ''}. You can track it any time
+                    with the email or phone you used at checkout.
+                  </p>
+                ) : (
+                  <p>You can track this order from your shopper account and confirm receipt after delivery.</p>
+                )}
               </div>
             </div>
 
@@ -136,10 +156,17 @@ const OrderSuccessPage = () => {
                 <Link to={continuePath}>{continueLabel}</Link>
               </Button>
               <Button className={brandAccent.primaryBtn} asChild>
-                <Link to={order?.id ? `/account/orders/${order.id}` : '/account/orders'}>
-                  <Package className="mr-2 h-4 w-4" />
-                  View order
-                </Link>
+                {isGuestOrder || !isAuthenticated ? (
+                  <Link to="/track-order">
+                    <Package className="mr-2 h-4 w-4" />
+                    Track order
+                  </Link>
+                ) : (
+                  <Link to={order?.id ? `/account/orders/${order.id}` : '/account/orders'}>
+                    <Package className="mr-2 h-4 w-4" />
+                    View order
+                  </Link>
+                )}
               </Button>
             </div>
           </>

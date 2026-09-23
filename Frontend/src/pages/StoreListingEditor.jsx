@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import useClipboardImagePaste from '../hooks/useClipboardImagePaste';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -240,7 +241,7 @@ const ImageGallery = ({ images, onUpload, onRemove, onMakeCover, uploading, inpu
     <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <CardTitle className="text-base">Store Images</CardTitle>
-        <p className="text-sm text-muted-foreground">Add 1 to 5 images. The first image is the cover.</p>
+        <p className="text-sm text-muted-foreground">Add 1 to 5 images. The first image is the cover. You can also paste an image (Ctrl/Cmd+V).</p>
       </div>
       <div>
         <input
@@ -487,9 +488,8 @@ const StoreListingEditor = () => {
     form.setValue('images', nextImages.slice(0, 5), { shouldDirty: true, shouldValidate: true });
   }, [form]);
 
-  const handleUpload = useCallback(async (event) => {
-    const files = Array.from(event.target.files || []).slice(0, 5 - images.length);
-    event.target.value = '';
+  const uploadImageFiles = useCallback(async (selectedFiles) => {
+    const files = Array.from(selectedFiles || []).slice(0, 5 - images.length);
     if (!files.length) return;
 
     setUploading(true);
@@ -504,6 +504,17 @@ const StoreListingEditor = () => {
       setUploading(false);
     }
   }, [images, setImages]);
+
+  const handleUpload = useCallback((event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    uploadImageFiles(files);
+  }, [uploadImageFiles]);
+
+  useClipboardImagePaste({
+    enabled: !uploading && images.length < 5,
+    onImages: uploadImageFiles,
+  });
 
   const handleRemoveImage = useCallback((index) => {
     setImages(images.filter((_, imageIndex) => imageIndex !== index));

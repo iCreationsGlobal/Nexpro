@@ -389,11 +389,12 @@ export const StorefrontMobileMenu = ({ activePath = '/', onClose }) => {
 
 export const ActionLink = ({ to, icon: Icon, label, badge, disabled = false, onClick }) => {
   const content = (
-    <span className="group flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:text-green-800">
+    <span className="group flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:text-[color:var(--store-accent,#166534)]">
       <span className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white">
         <Icon className="h-4.5 w-4.5" />
         {badge ? (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-green-950">
+          // key re-mounts the badge when the count changes so the bump replays.
+          <span key={badge} className="sf-bump absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-slate-950">
             {badge}
           </span>
         ) : null}
@@ -1322,7 +1323,7 @@ export const ProductCard = ({ product }) => {
   };
 
   return (
-    <div className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition-all hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] sm:rounded-3xl">
+    <div className="sf-reveal sf-card group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] sm:rounded-3xl">
       <div className="relative aspect-square overflow-hidden border-b border-slate-100 bg-slate-50">
         <Link to={productUrl} className="block h-full w-full">
           <ProductImage product={product} />

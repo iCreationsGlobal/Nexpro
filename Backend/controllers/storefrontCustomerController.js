@@ -198,6 +198,7 @@ const getStorefrontPaystackMetadata = (metadata = {}) => ({
   tenantId: metadata.tenantId || metadata.tenant_id || null,
   storefrontCustomerId: metadata.storefrontCustomerId || metadata.storefront_customer_id || null,
   storeSlug: metadata.storeSlug || metadata.store_slug || null,
+  checkoutMode: metadata.checkoutMode || metadata.checkout_mode || null,
 });
 
 const assertShopperAuthenticated = (shopper) => {
@@ -623,6 +624,47 @@ const shopperOrderWhere = (shopperId, extra = {}) => ({
   ],
 });
 
+const GUEST_CHECKOUT_MODE = 'guest';
+
+const hashGuestAccessToken = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
+
+/**
+ * Guests have no account, so each guest order gets a random access token (only its hash is
+ * stored). The browser keeps the token to verify payment and view the order afterwards.
+ */
+const guestOrderMatchesToken = (sale, token) => {
+  const expected = getSaleMetadata(sale)?.guestCheckout?.accessTokenHash;
+  if (!expected || !token) return false;
+  const expectedBuf = Buffer.from(expected, 'hex');
+  const actualBuf = Buffer.from(hashGuestAccessToken(token), 'hex');
+  return expectedBuf.length === actualBuf.length && crypto.timingSafeEqual(expectedBuf, actualBuf);
+};
+
+const guestOrderWhere = (saleId) => ({
+  id: saleId,
+  [Op.and]: [
+    sequelize.where(saleMetadataJsonKey('source'), ONLINE_STORE_SOURCE),
+    sequelize.where(saleMetadataJsonKey('checkoutMode'), GUEST_CHECKOUT_MODE),
+  ],
+});
+
+/** Validates guest contact details and returns a shopper-shaped buyer with no account id. */
+const resolveGuestBuyer = (payload = {}) => {
+  const name = compact(payload?.name, 160);
+  const email = normalizeEmail(payload?.email);
+  const phone = compact(payload?.phone, 40);
+  if (!name || name.length < 2) {
+    buildCheckoutHttpError(400, 'Enter your full name to checkout as a guest.', 'GUEST_CHECKOUT_NAME_REQUIRED');
+  }
+  if (!email || !EMAIL_REGEX.test(email)) {
+    buildCheckoutHttpError(400, 'Enter a valid email address for your receipt.', 'GUEST_CHECKOUT_EMAIL_REQUIRED');
+  }
+  if (!phone) {
+    buildCheckoutHttpError(400, PHONE_REQUIRED_MESSAGE, 'GUEST_CHECKOUT_PHONE_REQUIRED');
+  }
+  return { id: null, name, email, phone, emailVerifiedAt: null, isGuest: true };
+};
+
 const normalizeAddress = (payload = {}) => ({
   label: compact(payload.label || 'Delivery address', 80) || 'Delivery address',
   recipientName: compact(payload.recipientName || payload.name, 160),
@@ -741,7 +783,7 @@ const toOrderSummary = (order, storeLabels = new Map()) => {
     total: Number(plain.total || 0),
     amountPaid: Number(plain.amountPaid || 0),
     currency: store?.currency || metadata.currency || DEFAULT_CURRENCY,
-    storeName: store?.displayName || plain.shop?.name || metadata.storeSlug || 'Sabito seller',
+    storeName: store?.displayName || plain.shop?.name || metadata.storeSlug || 'Seller',
     storeSlug: metadata.storeSlug || null,
     storeWhatsappNumber: store?.whatsappNumber || null,
     storeContactPhone: store?.contactPhone || null,
@@ -887,7 +929,29 @@ const toPublicTrackingOrder = (order, storeLabels = new Map()) => {
   };
 };
 
-const sendStorefrontVerificationOtp = async (customer, purpose = 'Use this code to activate your Sabito Store shopper account.') => {
+/**
+ * Shopper emails sent from an Online Store carry that store's name, never Sabito branding.
+ * Only Sabito marketplace requests keep the platform name.
+ */
+const resolveShopperEmailBrand = async (req) => {
+  const channel = resolveCommerceChannelFromRequest(req, req?.body || {});
+  if (usesTradeAssurance(channel)) {
+    const name = process.env.APP_NAME || 'Sabito Store';
+    return { company: { name }, accountLabel: `your ${name} shopper account` };
+  }
+  const slug = compact(req?.body?.storeSlug, 80).toLowerCase();
+  const store = slug
+    ? await OnlineStoreSettings.findOne({ where: { slug }, attributes: ['displayName'] }).catch(() => null)
+    : null;
+  const storeName = store?.displayName || null;
+  return {
+    company: { name: storeName || 'ABS Online Store' },
+    accountLabel: storeName ? `your ${storeName} shopper account` : 'your shopper account',
+  };
+};
+
+const sendStorefrontVerificationOtp = async (customer, brand = null) => {
+  const purpose = `Use this code to activate ${brand?.accountLabel || 'your shopper account'}.`;
   const code = generateOtp();
   const rounds = parseInt(process.env.BCRYPT_ROUNDS, 10) || 10;
   const otpHash = await bcrypt.hash(code, rounds);
@@ -913,7 +977,7 @@ const sendStorefrontVerificationOtp = async (customer, purpose = 'Use this code 
     code,
     purpose,
     minutesValid: OTP_TTL_MINUTES,
-    company: { name: process.env.APP_NAME || 'Sabito Store' },
+    company: brand?.company || { name: process.env.APP_NAME || 'Sabito Store' },
   });
 
   return emailService.sendPlatformMessage(customer.email, subject, html, text, [], {
@@ -925,7 +989,7 @@ const sendStorefrontVerificationOtp = async (customer, purpose = 'Use this code 
   }).then((result) => ({ ...result, otpLogged }));
 };
 
-const sendStorefrontOtp = async ({ customer, metadataKey, purpose, source, categories = [] }) => {
+const sendStorefrontOtp = async ({ customer, metadataKey, purpose, source, categories = [], company = null }) => {
   const code = generateOtp();
   const rounds = parseInt(process.env.BCRYPT_ROUNDS, 10) || 10;
   const otpHash = await bcrypt.hash(code, rounds);
@@ -946,7 +1010,7 @@ const sendStorefrontOtp = async ({ customer, metadataKey, purpose, source, categ
     code,
     purpose,
     minutesValid: OTP_TTL_MINUTES,
-    company: { name: process.env.APP_NAME || 'Sabito Store' },
+    company: company || { name: process.env.APP_NAME || 'Sabito Store' },
   });
 
   return emailService.sendPlatformMessage(customer.email, subject, html, text, [], {
@@ -1166,7 +1230,7 @@ const findOrCreateTenantCustomer = async ({ shopper, store, deliveryAddress, tra
     city: city || null,
     country: country || 'Ghana',
     sabitoSourceType: 'direct',
-    notes: 'Created from Sabito Store shopper checkout.',
+    notes: 'Created from online checkout.',
   }, { transaction });
 };
 
@@ -1217,7 +1281,7 @@ exports.registerStorefrontCustomer = async (req, res, next) => {
         metadata,
       });
 
-      const sendResult = await sendStorefrontVerificationOtp(existing);
+      const sendResult = await sendStorefrontVerificationOtp(existing, await resolveShopperEmailBrand(req));
       return res.status(200).json(buildRegistrationSuccessPayload(existing, sendResult));
     }
 
@@ -1231,7 +1295,7 @@ exports.registerStorefrontCustomer = async (req, res, next) => {
       metadata: { source: 'storefront_signup' },
     });
 
-    const sendResult = await sendStorefrontVerificationOtp(customer);
+    const sendResult = await sendStorefrontVerificationOtp(customer, await resolveShopperEmailBrand(req));
     return res.status(201).json(buildRegistrationSuccessPayload(customer, sendResult));
   } catch (error) {
     next(error);
@@ -1302,7 +1366,7 @@ exports.googleAuthStorefrontCustomer = async (req, res, next) => {
 
     const googleId = String(payload.sub || '').trim();
     const email = normalizeEmail(payload.email);
-    const name = compact(payload.name || payload.email || 'Sabito shopper', 160);
+    const name = compact(payload.name || payload.email || 'Shopper', 160);
     const picture = payload.picture || null;
 
     if (!googleId || !email || !EMAIL_REGEX.test(email)) {
@@ -1415,7 +1479,7 @@ exports.requestStorefrontPasswordReset = async (req, res, next) => {
       resetParams.set('returnTo', returnTo);
     }
     const resetLink = `${getStorefrontBaseUrl()}/reset-password?${resetParams.toString()}`;
-    const company = { name: process.env.APP_NAME || 'Sabito Store' };
+    const { company } = await resolveShopperEmailBrand(req);
     const { subject, html, text } = passwordResetEmailTemplate(customer, resetLink, company);
     setImmediate(async () => {
       try {
@@ -1493,10 +1557,12 @@ exports.sendStorefrontLoginOtp = async (req, res, next) => {
       });
     }
 
+    const loginBrand = await resolveShopperEmailBrand(req);
     const sendResult = await sendStorefrontOtp({
       customer,
       metadataKey: 'loginOtp',
-      purpose: 'Use this code to sign in to your Sabito Store shopper account.',
+      company: loginBrand.company,
+      purpose: `Use this code to sign in to ${loginBrand.accountLabel}.`,
       source: 'storefront_customer_login_otp',
       categories: ['storefront-login-otp'],
     });
@@ -1789,7 +1855,7 @@ exports.resendStorefrontCustomerVerification = async (req, res, next) => {
       });
     }
 
-    const sendResult = await sendStorefrontVerificationOtp(customer);
+    const sendResult = await sendStorefrontVerificationOtp(customer, await resolveShopperEmailBrand(req));
     if (!sendResult?.success) {
       if (sendResult?.otpLogged && process.env.NODE_ENV !== 'production') {
         const response = verificationPendingResponse(
@@ -2000,9 +2066,7 @@ exports.toggleStorefrontWishlistItem = async (req, res, next) => {
   }
 };
 
-const buildStorefrontCheckoutDraft = async ({ shopper, body, transaction = null, validateDeliveryAddress = true }) => {
-  assertShopperAuthenticated(shopper);
-
+const buildStorefrontCheckoutDraft = async ({ body, transaction = null, validateDeliveryAddress = true }) => {
   const storeSlug = compact(body?.storeSlug, 80).toLowerCase();
   const requestedItems = Array.isArray(body?.items) ? body.items : [];
   if (!storeSlug || requestedItems.length === 0) {
@@ -2134,8 +2198,14 @@ const buildStorefrontCheckoutDraft = async ({ shopper, body, transaction = null,
   };
 };
 
-const createPendingStorefrontSaleFromCheckout = async ({ shopper, body, transaction, commerceChannel }) => {
-  const draft = await buildStorefrontCheckoutDraft({ shopper, body, transaction });
+const createPendingStorefrontSaleFromCheckout = async ({
+  shopper,
+  body,
+  transaction,
+  commerceChannel,
+  guestAccessTokenHash = null,
+}) => {
+  const draft = await buildStorefrontCheckoutDraft({ body, transaction });
   const {
     store,
     saleItems,
@@ -2183,6 +2253,15 @@ const createPendingStorefrontSaleFromCheckout = async ({ shopper, body, transact
       storefrontCustomerId: shopper.id,
       storefrontCustomerEmail: shopper.email,
       storefrontCustomerEmailVerified: Boolean(shopper.emailVerifiedAt),
+      ...(shopper.isGuest
+        ? {
+          checkoutMode: GUEST_CHECKOUT_MODE,
+          guestCheckout: {
+            accessTokenHash: guestAccessTokenHash,
+            contact: { name: shopper.name, email: shopper.email, phone: shopper.phone },
+          },
+        }
+        : {}),
       storeSlug: store.slug,
       fulfillmentMethod,
       deliveryAddress: deliveryRequired ? deliveryAddress : null,
@@ -2247,7 +2326,9 @@ const createPendingStorefrontSaleFromCheckout = async ({ shopper, body, transact
     tenantId: store.tenantId,
     type: 'note',
     subject: 'Online order created',
-    notes: `Online order ${sale.saleNumber} created by authenticated shopper ${shopper.email}`,
+    notes: shopper.isGuest
+      ? `Online order ${sale.saleNumber} created by guest ${shopper.email}`
+      : `Online order ${sale.saleNumber} created by authenticated shopper ${shopper.email}`,
     createdBy: null,
     metadata: {
       source: ONLINE_STORE_SOURCE,
@@ -2290,13 +2371,23 @@ exports.createStorefrontOrder = async (req, res, next) => {
 exports.initializeStorefrontOrderPaystack = async (req, res, next) => {
   const transaction = await sequelize.transaction();
   try {
-    const shopper = req.storefrontCustomer;
     const commerceChannel = resolveCommerceChannelFromRequest(req, req.body || {});
+    let shopper = req.storefrontCustomer || null;
+    let guestAccessToken = null;
+    if (!shopper) {
+      // Marketplace (Trade Assurance) orders need an account for delivery confirmation and disputes.
+      if (usesTradeAssurance(commerceChannel)) {
+        assertShopperAuthenticated(null);
+      }
+      shopper = resolveGuestBuyer(req.body?.guest);
+      guestAccessToken = crypto.randomBytes(32).toString('base64url');
+    }
     const checkout = await createPendingStorefrontSaleFromCheckout({
       shopper,
       body: req.body,
       transaction,
       commerceChannel,
+      guestAccessTokenHash: guestAccessToken ? hashGuestAccessToken(guestAccessToken) : null,
     });
     const { sale, store, subtotal, deliveryFee, total } = checkout;
     const channel = checkout.commerceChannel;
@@ -2320,6 +2411,7 @@ exports.initializeStorefrontOrderPaystack = async (req, res, next) => {
       saleId: sale.id,
       tenantId: store.tenantId,
       storefrontCustomerId: shopper.id,
+      ...(shopper.isGuest ? { checkoutMode: GUEST_CHECKOUT_MODE } : {}),
       storeSlug: store.slug,
     };
 
@@ -2414,9 +2506,12 @@ exports.initializeStorefrontOrderPaystack = async (req, res, next) => {
           ...toInitializedOrderPayload(sale, store, { subtotal, deliveryFee, total }),
           commerceChannel: channel,
         },
+        ...(guestAccessToken ? { guestAccessToken } : {}),
         verification: {
           isEmailVerified: Boolean(shopper.emailVerifiedAt),
-          warning: shopper.emailVerifiedAt ? null : 'Email verification is pending for this shopper account.',
+          warning: shopper.emailVerifiedAt || shopper.isGuest
+            ? null
+            : 'Email verification is pending for this shopper account.',
         },
       },
     });
@@ -2438,8 +2533,9 @@ exports.initializeStorefrontOrderPaystack = async (req, res, next) => {
 exports.verifyStorefrontOrderPaystack = async (req, res, next) => {
   const transaction = await sequelize.transaction();
   try {
-    const shopper = req.storefrontCustomer;
-    if (!shopper) {
+    const shopper = req.storefrontCustomer || null;
+    const guestToken = compact(req.body?.guestToken, 200);
+    if (!shopper && !guestToken) {
       await transaction.rollback();
       return res.status(401).json({
         success: false,
@@ -2521,7 +2617,11 @@ exports.verifyStorefrontOrderPaystack = async (req, res, next) => {
       });
     }
 
-    if (String(txMetadata.storefrontCustomerId) !== String(shopper.id)) {
+    const isGuestPayment = String(txMetadata.checkoutMode || '') === GUEST_CHECKOUT_MODE;
+    const paymentOwnerMismatch = isGuestPayment
+      ? !guestToken
+      : !shopper || String(txMetadata.storefrontCustomerId) !== String(shopper.id);
+    if (paymentOwnerMismatch) {
       await transaction.rollback();
       return res.status(403).json({
         success: false,
@@ -2530,11 +2630,16 @@ exports.verifyStorefrontOrderPaystack = async (req, res, next) => {
       });
     }
 
-    const sale = await Sale.findOne({
-      where: shopperOrderWhere(shopper.id, { id: txMetadata.saleId }),
+    const foundSale = await Sale.findOne({
+      where: isGuestPayment
+        ? guestOrderWhere(txMetadata.saleId)
+        : shopperOrderWhere(shopper.id, { id: txMetadata.saleId }),
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
+    const sale = foundSale && (!isGuestPayment || guestOrderMatchesToken(foundSale, guestToken))
+      ? foundSale
+      : null;
     if (!sale) {
       await transaction.rollback();
       return res.status(404).json({
@@ -2655,7 +2760,7 @@ exports.verifyStorefrontOrderPaystack = async (req, res, next) => {
       metadata: {
         source: ONLINE_STORE_SOURCE,
         commerceChannel: channel,
-        storefrontCustomerId: shopper.id,
+        storefrontCustomerId: shopper?.id || null,
         paystackReference: reference,
       },
     }, { transaction });
@@ -2750,6 +2855,36 @@ exports.getStorefrontCustomerOrder = async (req, res, next) => {
       success: true,
       data: {
         order: orderDetail,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getStorefrontGuestOrder = async (req, res, next) => {
+  try {
+    const token = compact(req.query?.token, 200);
+    const order = token
+      ? await Sale.findOne({
+        where: guestOrderWhere(req.params.id),
+        include: [
+          orderDetailItemInclude,
+          { model: Shop, as: 'shop', attributes: ['id', 'name'], required: false },
+        ],
+        order: [[{ model: SaleItem, as: 'items' }, 'createdAt', 'ASC']],
+      })
+      : null;
+
+    if (!order || !guestOrderMatchesToken(order, token)) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    const storeLabels = await getStoreLabelsForOrders([order]);
+    return res.status(200).json({
+      success: true,
+      data: {
+        order: { ...toOrderDetail(order, storeLabels), reviewActions: null, isGuestOrder: true },
       },
     });
   } catch (error) {
@@ -3408,7 +3543,6 @@ exports.previewStorefrontCheckout = async (req, res, next) => {
   try {
     // Totals don't depend on the address; it is validated when payment starts.
     const draft = await buildStorefrontCheckoutDraft({
-      shopper: req.storefrontCustomer,
       body: req.body,
       validateDeliveryAddress: false,
     });

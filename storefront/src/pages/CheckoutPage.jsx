@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, Loader2, MapPin, MessageCircle, ShieldCheck, ShoppingBag, Truck } from 'lucide-react';
+import { AlertCircle, Loader2, MapPin, MessageCircle, ShieldCheck, ShoppingBag, Truck, UserRound } from 'lucide-react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useCart } from '../context/CartContext';
 import { useStorefrontMode } from '../context/StorefrontModeContext';
+import { useStorefrontAuth } from '../context/StorefrontAuthContext';
+import { saveGuestCheckoutPending } from '../utils/guestCheckout';
 import { buildStoreHomePath } from '../online-store/storePaths';
 import storeService from '../services/storeService';
 import { DEFAULT_DELIVERY_COUNTRY, GHANA_REGIONS } from '../constants';
@@ -44,6 +46,8 @@ const emptyAddress = {
 const comparableAddressFields = ['recipientName', 'phone', 'line1', 'line2', 'city', 'region', 'country'];
 const EMPTY_REGION_VALUE = 'none';
 const REQUIRED_DELIVERY_FIELDS = ['recipientName', 'phone', 'line1', 'city'];
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const emptyGuestContact = { name: '', email: '', phone: '' };
 const DELIVERY_FIELD_LABELS = {
   recipientName: 'Recipient name',
   phone: 'Phone',
@@ -89,6 +93,11 @@ const CheckoutPage = () => {
   const queryClient = useQueryClient();
   const { cartSummary, items } = useCart();
   const { isSingleStoreMode, storeSlug: modeSlug, pathPrefix, isCustomDomain } = useStorefrontMode();
+  const { isAuthenticated } = useStorefrontAuth();
+  const isGuest = !isAuthenticated;
+  const [guestContact, setGuestContact] = useState(emptyGuestContact);
+  const [guestErrors, setGuestErrors] = useState({});
+  const guestFieldRefs = useRef({});
   const [selectedAddressId, setSelectedAddressId] = useState('new');
   const [addressForm, setAddressForm] = useState(emptyAddress);
   const [saveAddressForLater, setSaveAddressForLater] = useState(false);
@@ -149,6 +158,7 @@ const CheckoutPage = () => {
   const addressesQuery = useQuery({
     queryKey: SHOPPER_QUERY_KEYS.addresses,
     queryFn: storeService.getDeliveryAddresses,
+    enabled: isAuthenticated,
     staleTime: QUERY_STALE.LIST,
     refetchOnWindowFocus: false,
   });
@@ -183,7 +193,41 @@ const CheckoutPage = () => {
   );
 
   const deliveryAddress = selectedAddressId === 'new' ? addressForm : selectedAddress;
-  const shouldSaveInlineAddress = fulfillmentMethod === 'delivery' && selectedAddressId === 'new' && saveAddressForLater;
+  const shouldSaveInlineAddress = isAuthenticated
+    && fulfillmentMethod === 'delivery'
+    && selectedAddressId === 'new'
+    && saveAddressForLater;
+
+  // Guests type their name and phone once; mirror them into the delivery recipient
+  // fields unless the shopper has typed something different there.
+  const updateGuestContact = useCallback((field, value) => {
+    const previousValue = guestContact[field];
+    const addressField = field === 'name' ? 'recipientName' : field === 'phone' ? 'phone' : null;
+    setGuestContact((current) => ({ ...current, [field]: value }));
+    if (addressField) {
+      setAddressForm((form) => (
+        !form[addressField] || form[addressField] === previousValue
+          ? { ...form, [addressField]: value }
+          : form
+      ));
+    }
+    setGuestErrors((current) => ({ ...current, [field]: undefined }));
+  }, [guestContact]);
+
+  const validateGuestContact = useCallback(() => {
+    if (!isGuest) return true;
+    const nextErrors = {};
+    if (guestContact.name.trim().length < 2) nextErrors.name = 'Enter your full name.';
+    if (!EMAIL_PATTERN.test(guestContact.email.trim())) nextErrors.email = 'Enter a valid email for your receipt.';
+    if (!guestContact.phone.trim()) nextErrors.phone = 'Phone is required.';
+    setGuestErrors(nextErrors);
+    const firstField = ['name', 'email', 'phone'].find((field) => nextErrors[field]);
+    if (firstField) {
+      guestFieldRefs.current[firstField]?.focus();
+      return false;
+    }
+    return true;
+  }, [guestContact, isGuest]);
 
   const checkoutPayload = useMemo(() => {
     if (!store) return null;
@@ -263,6 +307,7 @@ const CheckoutPage = () => {
   const placeOrder = useCallback(async (event) => {
     event.preventDefault();
     if (!checkoutPayload || !store || items.length === 0) return;
+    if (!validateGuestContact()) return;
     if (!validateDeliveryAddress()) return;
     if (checkoutPreviewError) {
       showError(new Error(checkoutPreviewError), 'Fix the checkout issue before paying.');
@@ -313,10 +358,25 @@ const CheckoutPage = () => {
         }
       }
 
-      const response = await storeService.initializeStorefrontOrderPaystack(checkoutPayload);
-      const authorizationUrl = response?.data?.authorization_url || response?.authorization_url;
+      const response = await storeService.initializeStorefrontOrderPaystack(
+        isGuest
+          ? {
+            ...checkoutPayload,
+            guest: {
+              name: guestContact.name.trim(),
+              email: guestContact.email.trim(),
+              phone: guestContact.phone.trim(),
+            },
+          }
+          : checkoutPayload,
+      );
+      const initData = response?.data || response || {};
+      const authorizationUrl = initData.authorization_url;
       if (!authorizationUrl) {
         throw new Error('Paystack checkout could not be started.');
+      }
+      if (initData.guestAccessToken) {
+        saveGuestCheckoutPending({ orderId: initData.order?.id, token: initData.guestAccessToken });
       }
 
       setPaymentPhase('redirecting');
@@ -330,11 +390,14 @@ const CheckoutPage = () => {
     addresses,
     checkoutPayload,
     checkoutPreviewError,
+    guestContact,
+    isGuest,
     items,
     queryClient,
     shouldSaveInlineAddress,
     store,
     validateDeliveryAddress,
+    validateGuestContact,
   ]);
 
   if (items.length === 0) {
@@ -381,6 +444,33 @@ const CheckoutPage = () => {
                 : `You are ordering from ${store?.displayName}. Sabito holds payment until delivery is confirmed.`}
             </p>
           </div>
+
+          {isGuest ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:rounded-[2rem] sm:p-5 md:p-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="inline-flex items-center gap-2 text-xl font-black text-slate-950">
+                  <UserRound className="h-5 w-5 text-[color:var(--store-accent,#166534)]" />
+                  Your details
+                </h2>
+                <Link
+                  to={`/login?returnTo=${encodeURIComponent('/checkout')}`}
+                  className="text-sm font-semibold text-[color:var(--store-accent,#166534)] hover:underline"
+                >
+                  Have an account? Sign in
+                </Link>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                No account needed. We send your receipt and order updates here.
+              </p>
+              <div className="mt-4 grid gap-3">
+                <Field name="name" label="Full name" value={guestContact.name} onChange={(value) => updateGuestContact('name', value)} error={guestErrors.name} fieldRefs={guestFieldRefs} required />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field name="email" label="Email" type="email" value={guestContact.email} onChange={(value) => updateGuestContact('email', value)} error={guestErrors.email} fieldRefs={guestFieldRefs} required />
+                  <Field name="phone" label="Your phone" type="tel" value={guestContact.phone} onChange={(value) => updateGuestContact('phone', value)} error={guestErrors.phone} fieldRefs={guestFieldRefs} required />
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:rounded-[2rem] sm:p-5 md:p-6">
             <h2 className="inline-flex items-center gap-2 text-xl font-black text-slate-950">
@@ -471,7 +561,7 @@ const CheckoutPage = () => {
                       onClearError={(field) => setAddressErrors((current) => ({ ...current, [field]: undefined }))}
                       fieldRefs={addressFieldRefs}
                       saveAddressForLater={saveAddressForLater}
-                      onSaveAddressForLaterChange={setSaveAddressForLater}
+                      onSaveAddressForLaterChange={isAuthenticated ? setSaveAddressForLater : null}
                     />
                   ) : null}
                 </div>
@@ -629,6 +719,7 @@ const AddressForm = ({
       <Field name="city" label="City" value={value.city} onChange={(city) => onChange((current) => ({ ...current, city }))} error={errors.city} onClearError={onClearError} fieldRefs={fieldRefs} required />
       <RegionSelect value={value.region} onChange={(region) => onChange((current) => ({ ...current, region }))} />
     </div>
+    {onSaveAddressForLaterChange ? (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:rounded-3xl">
       <label className="flex items-start gap-3 text-sm font-semibold text-slate-700">
         <input
@@ -643,10 +734,11 @@ const AddressForm = ({
         </span>
       </label>
     </div>
+    ) : null}
   </div>
 );
 
-const Field = ({ name, label, value, onChange, required = false, error, onClearError, fieldRefs }) => {
+const Field = ({ name, label, value, onChange, required = false, error, onClearError, fieldRefs, type = 'text' }) => {
   const id = label.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const errorId = `${id}-error`;
   return (
@@ -657,6 +749,7 @@ const Field = ({ name, label, value, onChange, required = false, error, onClearE
           if (name && fieldRefs) fieldRefs.current[name] = node;
         }}
         id={id}
+        type={type}
         value={value}
         onChange={(event) => {
           onChange(event.target.value);

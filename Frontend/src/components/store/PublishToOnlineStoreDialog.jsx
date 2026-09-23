@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import useClipboardImagePaste from '../../hooks/useClipboardImagePaste';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -97,7 +98,7 @@ const ListingImagesField = ({
     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
       <div>
         <FormLabel>Listing images</FormLabel>
-        <p className="text-sm text-muted-foreground">Add 1 to 5 images. The first image is used as the cover.</p>
+        <p className="text-sm text-muted-foreground">Add 1 to 5 images. The first image is used as the cover. You can also paste an image (Ctrl/Cmd+V).</p>
       </div>
       <div>
         <input
@@ -281,10 +282,9 @@ const PublishToOnlineStoreDialog = ({
     };
   }, [product?.name]);
 
-  const handleImagesUpload = useCallback(async (event) => {
+  const uploadImageFiles = useCallback(async (selectedFiles) => {
     const current = parseListingImages(form.getValues('imagesText'));
-    const files = Array.from(event.target.files || []).slice(0, 5 - current.length);
-    event.target.value = '';
+    const files = Array.from(selectedFiles || []).slice(0, 5 - current.length);
     if (!files.length) return;
     setUploading(true);
     try {
@@ -299,6 +299,17 @@ const PublishToOnlineStoreDialog = ({
       setUploading(false);
     }
   }, [form]);
+
+  const handleImagesUpload = useCallback((event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    uploadImageFiles(files);
+  }, [uploadImageFiles]);
+
+  useClipboardImagePaste({
+    enabled: open && !uploading && images.length < 5,
+    onImages: uploadImageFiles,
+  });
 
   const handleAddImagesClick = useCallback(() => {
     document.getElementById(imagesInputId)?.click();

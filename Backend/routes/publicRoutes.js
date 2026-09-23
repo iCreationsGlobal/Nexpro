@@ -68,6 +68,7 @@ const {
   getProductReviewEligibility,
   getStorefrontCustomerSession,
   getStorefrontCustomerOrder,
+  getStorefrontGuestOrder,
   getStorefrontWishlistStatus,
   getStoreReviewEligibility,
   googleAuthStorefrontCustomer,
@@ -102,7 +103,7 @@ const {
   listStorefrontCustomerDisputes,
   getStorefrontCustomerDispute,
 } = require('../controllers/storefrontCustomerController');
-const { requireStorefrontCustomer } = require('../middleware/storefrontAuth');
+const { requireStorefrontCustomer, optionalStorefrontCustomer } = require('../middleware/storefrontAuth');
 const { cacheMiddleware, generatePublicCacheKey } = require('../middleware/cache');
 const {
   authLimiter,
@@ -112,6 +113,7 @@ const {
   publicFeedbackSubmitLimiter,
   publicRentalBookingSubmitLimiter,
   publicRentalAvailabilityLimiter,
+  guestCheckoutLimiter,
   registrationLimiter,
   marketerWriteLimiter,
 } = require('../middleware/rateLimiter');
@@ -236,9 +238,11 @@ router.put('/storefront/auth/profile', requireStorefrontCustomer, updateStorefro
 router.post('/storefront/auth/profile/avatar', requireStorefrontCustomer, uploadStorefrontAvatarFields, uploadStorefrontCustomerAvatar);
 router.delete('/storefront/auth/profile/avatar', requireStorefrontCustomer, removeStorefrontCustomerAvatar);
 router.get('/storefront/orders/track', publicTrackingLookupLimiter, trackStorefrontOrder);
-router.post('/storefront/checkout/preview', requireStorefrontCustomer, previewStorefrontCheckout);
-router.post('/storefront/orders/initialize-paystack', requireStorefrontCustomer, initializeStorefrontOrderPaystack);
-router.post('/storefront/orders/verify-paystack', requireStorefrontCustomer, verifyStorefrontOrderPaystack);
+// Checkout accepts signed-in shoppers or guests (Online Store only; enforced in the controller).
+router.post('/storefront/checkout/preview', optionalStorefrontCustomer, previewStorefrontCheckout);
+router.post('/storefront/orders/initialize-paystack', guestCheckoutLimiter, optionalStorefrontCustomer, initializeStorefrontOrderPaystack);
+router.post('/storefront/orders/verify-paystack', optionalStorefrontCustomer, verifyStorefrontOrderPaystack);
+router.get('/storefront/guest-orders/:id', publicTrackingLookupLimiter, getStorefrontGuestOrder);
 router.post('/storefront/orders', requireStorefrontCustomer, createStorefrontOrder);
 router.post('/storefront/services/initialize-paystack', requireStorefrontCustomer, initializeServiceBookingPaystack);
 router.post('/storefront/services/verify-paystack', requireStorefrontCustomer, verifyServiceBookingPaystack);

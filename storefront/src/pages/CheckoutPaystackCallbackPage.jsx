@@ -5,6 +5,7 @@ import { AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
 import storeService from '../services/storeService';
 import { useCart } from '../context/CartContext';
 import { showError } from '../utils/toast';
+import { clearGuestCheckoutPending, readGuestCheckoutPending, rememberGuestOrder } from '../utils/guestCheckout';
 import { Breadcrumbs, PageShell } from '../components/storefront/StorefrontLayout';
 import { Button } from '@/components/ui/button';
 
@@ -29,10 +30,16 @@ const CheckoutPaystackCallbackPage = () => {
     setPhase('verifying');
     setErrorMessage('');
     try {
-      const response = await storeService.verifyStorefrontOrderPaystack(reference);
+      // Guest orders prove ownership with the token saved when payment started.
+      const pendingGuest = readGuestCheckoutPending();
+      const response = await storeService.verifyStorefrontOrderPaystack(reference, pendingGuest?.token || null);
       const order = response?.data?.order || response?.order;
       if (!order?.id) {
         throw new Error('Payment was verified but the order could not be loaded.');
+      }
+      if (pendingGuest?.orderId === order.id) {
+        rememberGuestOrder(order.id, pendingGuest.token);
+        clearGuestCheckoutPending();
       }
       clearCart();
       setPhase('success');

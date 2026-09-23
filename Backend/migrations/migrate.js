@@ -515,6 +515,10 @@ const migrate = async () => {
     const addMarketingCampaignTags = require('./add-marketing-campaign-tags');
     await addMarketingCampaignTags({ closeConnection: false });
 
+    // Marketing send queue: one row per recipient per channel
+    const createMarketingCampaignRecipients = require('./create-marketing-campaign-recipients');
+    await createMarketingCampaignRecipients({ closeConnection: false });
+
     // Collapse duplicate paymentToken indexes/constraints on invoices (perf: fewer indexes to
     // maintain on every invoice write)
     const fixDuplicateInvoicePaymentTokenIndexes = require('./fix-duplicate-invoice-payment-token-indexes');

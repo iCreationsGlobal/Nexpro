@@ -7,6 +7,7 @@
  */
 
 import { lazy, Suspense, useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import useClipboardImagePaste from '../hooks/useClipboardImagePaste';
 import { useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -1742,6 +1743,13 @@ const Products = () => {
     }
   }, [form, getErrorMessage, showError, showSuccess]);
 
+  // Paste a copied photo or screenshot (Ctrl/Cmd+V) anywhere in the open product form.
+  useClipboardImagePaste({
+    // The publish dialog has its own paste target; don't also grab the image here.
+    enabled: formOpen && !storeListingOpen && !productImageUploading,
+    onImages: (files) => handleProductImageSelect(files[0]),
+  });
+
   const handleRemoveProductImage = useCallback(() => {
     form.setValue('imageUrl', '');
   }, [form]);
@@ -3008,9 +3016,9 @@ const Products = () => {
                                 <div className="text-center">
                                   <p className="text-sm">
                                     <span className="font-medium text-brand">Click to upload</span>
-                                    <span className="text-muted-foreground"> or drag and drop</span>
+                                    <span className="text-muted-foreground">, drag and drop, or paste</span>
                                   </p>
-                                  <p className="text-xs text-muted-foreground mt-1">PNG, JPG, WEBP, JPEG</p>
+                                  <p className="text-xs text-muted-foreground mt-1">PNG, JPG, WEBP, JPEG · Ctrl/Cmd+V to paste</p>
                                 </div>
                               </>
                             )}

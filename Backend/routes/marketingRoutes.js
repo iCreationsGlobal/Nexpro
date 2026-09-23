@@ -4,9 +4,11 @@ const {
   getCampaign,
   getCapabilities,
   getOverview,
+  getCampaignRecipients,
   getPreview,
   listCampaigns,
   postBroadcast,
+  retryCampaignFailed,
   scheduleCampaign,
   sendCampaign,
   updateCampaign,
@@ -56,6 +58,8 @@ router.get('/campaigns/:id', authorize('admin', 'manager'), getCampaign);
 router.put('/campaigns/:id', authorize('admin', 'manager'), updateCampaign);
 router.post('/campaigns/:id/send', bulkOperationLimiter, authorize('admin', 'manager'), sendCampaign);
 router.post('/campaigns/:id/schedule', authorize('admin', 'manager'), scheduleCampaign);
+router.get('/campaigns/:id/recipients', authorize('admin', 'manager'), getCampaignRecipients);
+router.post('/campaigns/:id/retry-failed', bulkOperationLimiter, authorize('admin', 'manager'), retryCampaignFailed);
 
 /**
  * @openapi

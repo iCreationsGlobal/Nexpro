@@ -38,7 +38,9 @@ import {
 import {
   ActionLink,
   getStoreServiceUrl,
+  getDiscountPercent,
   ProductCard,
+  ProductImage,
   ServiceCard,
   StoreScopedFooter,
   StoreLogo,
@@ -354,7 +356,7 @@ const StoreScopedHeader = ({
 
 const ProductSection = ({ storeName, title, description, products, emptyText, sectionId = 'products', theme, accent }) => (
   <section id={sectionId} className="space-y-5">
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div className="sf-reveal flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div>
         {storeName ? (
           <p className="text-sm font-semibold uppercase tracking-wide" style={{ color: accent }}>{storeName}</p>
@@ -364,7 +366,7 @@ const ProductSection = ({ storeName, title, description, products, emptyText, se
       </div>
     </div>
     {products.length ? (
-      <div className={theme?.gridClass || 'grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]'}>
+      <div className={`sf-stagger ${theme?.gridClass || 'grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]'}`}>
         {products.map((product) => (
           <ProductCard key={product.id} product={product} />
         ))}
@@ -390,7 +392,7 @@ const ServiceSection = ({
   accent,
 }) => (
   <section id={sectionId} className="space-y-5">
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div className="sf-reveal flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div>
         {storeName ? (
           <p
@@ -405,7 +407,7 @@ const ServiceSection = ({
       </div>
     </div>
     {services.length ? (
-      <div className="grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
+      <div className="sf-stagger grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
         {services.map((service) => (
           <ServiceCard
             key={service.id}
@@ -429,6 +431,60 @@ const ServiceSection = ({
 const promoBannerStyle = {
   backgroundColor: 'color-mix(in srgb, var(--store-accent, #166534) 85%, black)',
   borderColor: 'color-mix(in srgb, var(--store-accent, #166534) 40%, white)',
+};
+
+/**
+ * Featured promo: shows the promoted product's photo and name.
+ * Falls back to the promo text only when no product is attached.
+ */
+const PromoBanner = ({ promo, storeSlug, pathname, isCustomDomain, ctaLabel = 'Shop offer' }) => {
+  const product = promo.product || null;
+  const productUrl = product ? getProductUrl(storeSlug, product, pathname, isCustomDomain) : null;
+  const discount = getDiscountPercent(product);
+  const description = product
+    ? ''
+    : (promo.description || 'Explore current featured products from this store.');
+
+  return (
+    <section className="sf-reveal overflow-hidden rounded-2xl border p-4 text-white sm:rounded-3xl sm:p-6 md:p-8" style={promoBannerStyle}>
+      <div className={`grid items-center gap-5 md:gap-8 ${product ? 'sm:grid-cols-[160px_minmax(0,1fr)] md:grid-cols-[220px_minmax(0,1fr)_auto]' : 'md:grid-cols-[minmax(0,1fr)_auto]'}`}>
+        {product ? (
+          <Link
+            to={productUrl}
+            className="group relative block aspect-square overflow-hidden rounded-2xl bg-white shadow-lg shadow-black/20 ring-1 ring-white/30"
+            aria-label={product.title}
+          >
+            <ProductImage product={product} loading="eager" />
+            {discount > 0 ? (
+              <span className="absolute left-2 top-2 rounded-full bg-rose-500 px-2.5 py-1 text-xs font-bold text-white">-{discount}%</span>
+            ) : null}
+          </Link>
+        ) : null}
+
+        <div className="min-w-0">
+          <p className="text-sm font-semibold uppercase tracking-wide text-white/80">Featured Promo</p>
+          <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">{promo.title || 'Featured offer'}</h2>
+          {product ? (
+            <Link to={productUrl} className="mt-3 block text-xl font-bold text-white hover:underline sm:text-2xl">
+              {product.title}
+            </Link>
+          ) : null}
+          {description ? (
+            <p className="mt-2 line-clamp-3 max-w-2xl text-white/80">{description}</p>
+          ) : null}
+        </div>
+
+        {product ? (
+          <Button
+            className="w-full bg-white text-[color:var(--store-accent,#166534)] hover:bg-white/90 sm:col-span-2 md:col-span-1 md:w-auto"
+            asChild
+          >
+            <Link to={productUrl}>{ctaLabel}</Link>
+          </Button>
+        ) : null}
+      </div>
+    </section>
+  );
 };
 
 const PublicStoreHome = ({
@@ -702,7 +758,7 @@ const PublicStoreHome = ({
   );
 
   const categoriesCard = (!isOwnedShop || categories.length > 0) ? (
-    <Card id="categories" className="border border-border">
+    <Card id="categories" className="sf-reveal border border-border">
       <CardContent className="p-5">
         <h2 className="text-lg font-semibold">{isServiceStore ? 'Browse by Category' : 'Shop by Category'}</h2>
         <div className="mt-4 grid gap-2">
@@ -742,7 +798,7 @@ const PublicStoreHome = ({
   ) : null;
 
   const aboutCard = (
-    <Card id="about" className="border border-border">
+    <Card id="about" className="sf-reveal border border-border">
       <CardContent className="p-5">
         <h2 className="text-lg font-semibold">{isOwnedShop ? 'About us' : 'About Store'}</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -802,7 +858,7 @@ const PublicStoreHome = ({
 
   const deliveryCard = (store.freeDeliveryThreshold || store.deliveryEnabled) ? (
     <Card
-      className="border"
+      className="sf-reveal border"
       style={{
         borderColor: 'color-mix(in srgb, var(--store-accent, #166534) 28%, #e5e7eb)',
         backgroundColor: 'var(--store-accent-soft, #f0fdf4)',
@@ -824,7 +880,7 @@ const PublicStoreHome = ({
 
   const trustSection = (
     <section className="border-y border-border bg-muted/20">
-      <div className="grid w-full gap-3 px-3 py-6 sm:px-4 md:grid-cols-4">
+      <div className="sf-stagger grid w-full gap-3 px-3 py-6 sm:px-4 md:grid-cols-4">
         {[
           isServiceStore
             ? { title: 'Professional Services', description: isOwnedShop ? 'Services we offer' : `Offered by ${store.displayName}`, icon: Scissors }
@@ -839,7 +895,7 @@ const PublicStoreHome = ({
         ].map((item) => {
           const Icon = item.icon;
           return (
-            <div key={item.title} className="rounded-2xl border border-border bg-background p-4">
+            <div key={item.title} className="sf-reveal rounded-2xl border border-border bg-background p-4">
               <Icon className="h-6 w-6 text-[color:var(--store-accent,#166534)]" />
               <p className="mt-3 font-semibold">{item.title}</p>
               <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
@@ -1050,24 +1106,13 @@ const PublicStoreHome = ({
     <>
       <section className="w-full space-y-10 px-3 py-8 sm:px-4 sm:py-10">
         {promo ? (
-          <section className="rounded-2xl border p-6 text-white sm:rounded-3xl md:p-8" style={promoBannerStyle}>
-            <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-wide text-white/80">Featured Promo</p>
-                <h2 className="mt-2 text-3xl font-semibold">{promo.title || 'Featured offer'}</h2>
-                {promo.description ? (
-                  <p className="mt-3 max-w-2xl text-white/80">{promo.description}</p>
-                ) : null}
-              </div>
-              {promo.product ? (
-                <Button className="w-full bg-white text-[color:var(--store-accent,#166534)] hover:bg-white/90 md:w-auto" asChild>
-                  <Link to={getProductUrl(storeSlug, promo.product, location.pathname, isCustomDomain)}>
-                    Shop offer
-                  </Link>
-                </Button>
-              ) : null}
-            </div>
-          </section>
+          <PromoBanner
+            promo={promo}
+            storeSlug={storeSlug}
+            pathname={location.pathname}
+            isCustomDomain={isCustomDomain}
+            ctaLabel="Shop offer"
+          />
         ) : null}
 
         {ownedProductBlocks}
@@ -1096,24 +1141,13 @@ const PublicStoreHome = ({
 
         <div className="space-y-10">
           {promo ? (
-            <section className="rounded-2xl border p-6 text-white sm:rounded-3xl md:p-8" style={promoBannerStyle}>
-              <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-wide text-white/80">Featured Promo</p>
-                  <h2 className="mt-2 text-3xl font-semibold">{promo.title || 'Featured offer'}</h2>
-                  <p className="mt-3 max-w-2xl text-white/80">
-                    {promo.description || 'Explore current featured products from this store.'}
-                  </p>
-                </div>
-                {promo.product ? (
-                  <Button className="w-full bg-white text-[color:var(--store-accent,#166534)] hover:bg-white/90 md:w-auto" asChild>
-                    <Link to={getProductUrl(storeSlug, promo.product, location.pathname, isCustomDomain)}>
-                      View deal
-                    </Link>
-                  </Button>
-                ) : null}
-              </div>
-            </section>
+            <PromoBanner
+              promo={promo}
+              storeSlug={storeSlug}
+              pathname={location.pathname}
+              isCustomDomain={isCustomDomain}
+                ctaLabel="View deal"
+            />
           ) : null}
 
           {isServiceStore ? (
@@ -1192,7 +1226,7 @@ const PublicStoreHome = ({
 
   const reviewsSection = (
     <section id="reviews" className="w-full px-3 py-10 sm:px-4 sm:py-12">
-      <div className="grid gap-5 rounded-2xl border border-slate-200 bg-white p-5 sm:rounded-3xl md:p-8">
+      <div className="sf-reveal grid gap-5 rounded-2xl border border-slate-200 bg-white p-5 sm:rounded-3xl md:p-8">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-[color:var(--store-accent,#166534)]">Customer Reviews</p>
@@ -1270,14 +1304,14 @@ const PublicStoreHome = ({
             ? (isServiceStore ? 'Browse our service categories.' : 'Browse our product categories.')
             : (isServiceStore ? 'Browse service categories from this store.' : 'Browse product categories from this store.')}
         </p>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="sf-stagger mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {categories.length ? categories.map((category) => {
             const imageUrl = getCategoryImageUrl(category);
             return (
               <Link
                 key={category.id || category.name}
                 to={categoryLinkFor(category)}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition-colors hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:bg-[var(--store-accent-soft,#f0fdf4)]"
+                className="sf-reveal sf-card flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition-colors hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:bg-[var(--store-accent-soft,#f0fdf4)]"
               >
                 <span className="flex min-w-0 items-center gap-3">
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--store-accent,#166534)_20%,white)] bg-white text-[color:var(--store-accent,#166534)]">
@@ -1532,7 +1566,10 @@ const PublicStoreHome = ({
           ? (isOwnedShop ? ownedHeroSection : fullHeroSection)
           : compactSummarySection}
 
-        {pageContent}
+        {/* key replays the entrance when switching Home / Products / Categories / About / Reviews */}
+        <div key={activePage} className="sf-page-enter">
+          {pageContent}
+        </div>
 
         </div>
       </main>

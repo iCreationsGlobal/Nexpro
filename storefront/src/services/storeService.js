@@ -110,7 +110,15 @@ const storeService = {
 
   initializeStorefrontOrderPaystack: async (payload) => api.post('/public/storefront/orders/initialize-paystack', payload),
 
-  verifyStorefrontOrderPaystack: async (reference) => api.post('/public/storefront/orders/verify-paystack', { reference }),
+  verifyStorefrontOrderPaystack: async (reference, guestToken = null) => api.post(
+    '/public/storefront/orders/verify-paystack',
+    { reference, ...(guestToken ? { guestToken } : {}) },
+  ),
+
+  getStorefrontGuestOrder: async (id, token) => api.get(
+    `/public/storefront/guest-orders/${encodeURIComponent(id)}`,
+    { params: { token } },
+  ),
 
   trackStorefrontOrder: async (params = {}) => {
     const query = buildPublicQuery(params);

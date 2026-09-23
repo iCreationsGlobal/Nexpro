@@ -103,19 +103,6 @@ const LiveStorePreviewFrame = ({ liveStoreUrl, displayUrl, storeName }) => {
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
             />
-            {/* Hero-band only: button captures clicks; rest of preview stays scrollable */}
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-end p-3 sm:p-4">
-              <a
-                href={liveStoreUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="pointer-events-auto inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#166534]"
-                aria-label={`Open ${storeName}`}
-              >
-                Open store
-                <ExternalLink className="h-4 w-4" aria-hidden />
-              </a>
-            </div>
           </div>
         </div>
       </div>

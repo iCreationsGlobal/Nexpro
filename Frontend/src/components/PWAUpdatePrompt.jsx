@@ -46,6 +46,11 @@ export default function PWAUpdatePrompt() {
     window.setTimeout(() => {
       reloadApp();
     }, 300);
+    // Some tablet browsers ignore a reload issued while the service worker is swapping;
+    // navigate to the same URL as a fallback so "Updating…" can never hang.
+    window.setTimeout(() => {
+      window.location.replace(window.location.href);
+    }, 4000);
   }, [updating, reloadApp]);
 
   const handleRemindLater = useCallback(() => {

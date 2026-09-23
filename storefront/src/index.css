@@ -59,3 +59,65 @@
 .Toastify__toast--error {
   border-left: 4px solid #ef4444;
 }
+
+/* ---------------------------------------------------------------------------
+ * Storefront motion. Hidden-until-revealed styles are gated on html.sf-motion,
+ * which utils/scrollReveal.js adds only once its observer is running.
+ * ------------------------------------------------------------------------ */
+@keyframes sf-fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes sf-bump {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.35); }
+  70% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+
+/* Keyframes (fill: backwards) rather than transitions, so the stagger delay never
+   slows hover effects and nothing is pinned once the entrance finishes. */
+.sf-motion .sf-reveal:not(.is-visible) {
+  opacity: 0;
+}
+
+.sf-motion .sf-reveal.is-visible {
+  animation: sf-fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) var(--sf-delay, 0ms) backwards;
+}
+
+/* Cards in a grid arrive one after another (capped so long lists don't lag). */
+.sf-stagger > :nth-child(2) { --sf-delay: 60ms; }
+.sf-stagger > :nth-child(3) { --sf-delay: 120ms; }
+.sf-stagger > :nth-child(4) { --sf-delay: 180ms; }
+.sf-stagger > :nth-child(5) { --sf-delay: 240ms; }
+.sf-stagger > :nth-child(n + 6) { --sf-delay: 300ms; }
+
+.sf-page-enter {
+  animation: sf-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Product cards lift with a soft shadow tinted by the store's brand color. */
+.sf-card {
+  transition:
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.3s ease,
+    border-color 0.2s ease;
+}
+
+@media (hover: hover) {
+  .sf-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 14px 30px -12px color-mix(in srgb, var(--store-accent, #166534) 35%, transparent);
+  }
+}
+
+.sf-bump {
+  animation: sf-bump 0.45s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sf-motion .sf-reveal:not(.is-visible) { opacity: 1; }
+  .sf-motion .sf-reveal.is-visible, .sf-page-enter, .sf-bump { animation: none; }
+  .sf-card, .sf-card:hover { transition: none; transform: none; }
+}

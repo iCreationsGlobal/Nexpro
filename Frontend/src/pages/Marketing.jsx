@@ -12,6 +12,7 @@ import {
   Megaphone,
   MessageSquare,
   Plus,
+  RotateCcw,
   Send,
   Tag as TagIcon,
   UserPlus,
@@ -36,6 +37,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import {
   Table,
@@ -111,6 +113,7 @@ const STEPS = [
 const STATUS_STYLES = {
   draft: 'bg-slate-100 text-slate-700 border-slate-200',
   scheduled: 'bg-amber-100 text-amber-800 border-amber-200',
+  sending: 'bg-sky-100 text-sky-800 border-sky-200',
   sent: 'bg-emerald-100 text-emerald-800 border-emerald-200',
   failed: 'bg-red-100 text-red-800 border-red-200',
 };
@@ -637,6 +640,7 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
   const [step, setStep] = useState(0);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [manualSelection, setManualSelection] = useState(false);
+  const [contactSearch, setContactSearch] = useState('');
   const [form, setForm] = useState(() => getDefaultForm());
   const recipientIdsField = form.audienceType === 'lead' ? 'leadIds' : 'customerIds';
 
@@ -672,7 +676,6 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
     source: form.source || undefined,
     priority: form.priority || undefined,
     channels: form.channels,
-    leadIds: manualSelection ? Array.from(selectedIds) : undefined,
   } : {
     audienceType: 'customer',
     activeOnly: form.activeOnly ? 'true' : 'false',
@@ -683,8 +686,7 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
     hasEmail: form.hasEmail ? 'true' : undefined,
     hasPhone: form.hasPhone ? 'true' : undefined,
     channels: form.channels,
-    customerIds: manualSelection ? Array.from(selectedIds) : undefined,
-  }), [form.audienceType, form.activeOnly, form.marketingConsentOnly, form.lastPurchaseWindowDays, form.owingOnly, form.inactiveDays, form.hasEmail, form.hasPhone, form.status, form.source, form.priority, form.channels, manualSelection, selectedIds]);
+  }), [form.audienceType, form.activeOnly, form.marketingConsentOnly, form.lastPurchaseWindowDays, form.owingOnly, form.inactiveDays, form.hasEmail, form.hasPhone, form.status, form.source, form.priority, form.channels]);
 
   const { data: previewResponse, isLoading: previewLoading } = useQuery({
     queryKey: ['marketing', 'preview', activeTenantId, previewParams],
@@ -733,7 +735,7 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['marketing'] });
-      showSuccess('Campaign sent');
+      showSuccess('Sending started. Open the campaign to follow its progress.');
       onComplete?.();
     },
     onError: (err) => handleApiError(err, { context: 'Send campaign' }),
@@ -765,14 +767,68 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
     onError: (err) => handleApiError(err, { context: 'Schedule campaign' }),
   });
 
-  const selectedCount = manualSelection ? selectedIds.size : contacts.length;
-  const totalEligible = form.channels.reduce((sum, channel) => sum + Number(preview.eligible?.[channel] || 0), 0);
+  const selectedCount = manualSelection ? selectedIds.size : Number(preview.batchSize ?? contacts.length);
+  // With a hand-picked list, count reachable messages from the picked contacts only.
+  const totalEligible = manualSelection
+    ? contacts.reduce((sum, contact) => (
+      selectedIds.has(contact.id)
+        ? sum + form.channels.filter((channel) => contact.eligibleChannels?.[channel]).length
+        : sum
+    ), 0)
+    : form.channels.reduce((sum, channel) => sum + Number(preview.eligible?.[channel] || 0), 0);
+
+  const searchTerm = contactSearch.trim().toLowerCase();
+  const searchDigits = searchTerm.replace(/\D/g, '');
+  const visibleContacts = useMemo(() => {
+    if (!searchTerm) return contacts;
+    return contacts.filter((contact) => {
+      const text = [contact.name, contact.company, contact.email].filter(Boolean).join(' ').toLowerCase();
+      if (text.includes(searchTerm)) return true;
+      // Match phone numbers however they are typed (spaces, +233 or leading 0).
+      const phoneDigits = String(contact.phone || '').replace(/\D/g, '');
+      return searchDigits.length >= 3 && (phoneDigits.includes(searchDigits) || phoneDigits.includes(searchDigits.replace(/^0/, '')));
+    });
+  }, [contacts, searchDigits, searchTerm]);
+
+  /** Any change to individual ticks switches to a hand-picked list, starting from what is ticked now. */
+  const updateSelection = useCallback((updater) => {
+    setManualSelection(true);
+    setSelectedIds((prev) => updater(new Set(prev)));
+  }, []);
+
+  const toggleContact = useCallback((contactId, checked) => {
+    updateSelection((next) => {
+      if (checked) next.add(contactId);
+      else next.delete(contactId);
+      return next;
+    });
+  }, [updateSelection]);
+
+  const allVisibleSelected = visibleContacts.length > 0 && visibleContacts.every((contact) => selectedIds.has(contact.id));
+  const toggleAllVisible = useCallback((checked) => {
+    updateSelection((next) => {
+      visibleContacts.forEach((contact) => {
+        if (checked) next.add(contact.id);
+        else next.delete(contact.id);
+      });
+      return next;
+    });
+  }, [updateSelection, visibleContacts]);
+
+  const selectWholeAudience = useCallback(() => {
+    setManualSelection(false);
+    setSelectedIds(new Set(contacts.map((contact) => contact.id)));
+  }, [contacts]);
 
   const setField = useCallback((field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   }, []);
 
   const handleNext = () => {
+    if (step === 1 && manualSelection && selectedIds.size === 0) {
+      showError(`Select at least one ${form.audienceType === 'lead' ? 'lead' : 'customer'}`);
+      return;
+    }
     const error = validateStep(step, form);
     if (error) {
       showError(error);
@@ -860,6 +916,7 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
                         setForm((prev) => ({ ...prev, audienceType: value }));
                         setManualSelection(false);
                         setSelectedIds(new Set());
+                        setContactSearch('');
                       }}
                     >
                       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${selected ? 'bg-brand/15 text-brand' : 'bg-muted text-muted-foreground'}`}>
@@ -1078,14 +1135,29 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <CardTitle className="text-base">Audience preview</CardTitle>
-                  <CardDescription>{previewLoading ? 'Loading…' : `${contacts.length} contacts in preview, ${selectedCount} selected`}</CardDescription>
+                  <CardDescription>
+                    {previewLoading
+                      ? 'Loading…'
+                      : `${Number(preview.batchSize ?? contacts.length).toLocaleString()} ${form.audienceType === 'lead' ? 'leads' : 'customers'}, ${selectedCount.toLocaleString()} selected. Untick anyone you want to leave out.`}
+                  </CardDescription>
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={() => setManualSelection((prev) => !prev)}>
-                  {manualSelection ? 'Use smart audience' : 'Select manually'}
-                </Button>
+                {manualSelection ? (
+                  <Button type="button" variant="outline" size="sm" onClick={selectWholeAudience}>
+                    Select everyone
+                  </Button>
+                ) : null}
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              {contacts.length > 0 ? (
+                <Input
+                  type="search"
+                  value={contactSearch}
+                  onChange={(event) => setContactSearch(event.target.value)}
+                  placeholder={`Search ${form.audienceType === 'lead' ? 'leads' : 'customers'} by name, phone or email`}
+                  aria-label="Search contacts"
+                />
+              ) : null}
               {contacts.length === 0 ? (
                 <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
                   {form.audienceType === 'lead' ? 'No leads match these filters.' : 'No customers match these filters.'}
@@ -1095,26 +1167,37 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
-                        <TableHead className="w-10"></TableHead>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={allVisibleSelected}
+                            onCheckedChange={(value) => toggleAllVisible(Boolean(value))}
+                            aria-label={searchTerm ? 'Select all matching contacts' : 'Select all contacts'}
+                            disabled={visibleContacts.length === 0}
+                          />
+                        </TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead className="hidden md:table-cell">Consent</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {contacts.map((contact) => (
-                        <TableRow key={contact.id}>
-                          <TableCell>
+                      {visibleContacts.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="py-6 text-center text-sm text-muted-foreground">
+                            No contacts match “{contactSearch.trim()}”.
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                      {visibleContacts.map((contact) => (
+                        <TableRow
+                          key={contact.id}
+                          className="cursor-pointer"
+                          onClick={() => toggleContact(contact.id, !selectedIds.has(contact.id))}
+                        >
+                          <TableCell onClick={(event) => event.stopPropagation()}>
                             <Checkbox
                               checked={selectedIds.has(contact.id)}
-                              disabled={!manualSelection}
-                              onCheckedChange={(value) => {
-                                setSelectedIds((prev) => {
-                                  const next = new Set(prev);
-                                  if (value) next.add(contact.id);
-                                  else next.delete(contact.id);
-                                  return next;
-                                });
-                              }}
+                              onCheckedChange={(value) => toggleContact(contact.id, Boolean(value))}
+                              aria-label={`Include ${contact.name || contact.company || 'contact'}`}
                             />
                           </TableCell>
                           <TableCell>
@@ -1193,7 +1276,7 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
                 <div className="rounded-md border border-border p-3"><p className="text-xs text-muted-foreground">Recipients</p><p className="text-xl font-semibold">{selectedCount}</p></div>
                 <div className="rounded-md border border-border p-3"><p className="text-xs text-muted-foreground">Eligible sends</p><p className="text-xl font-semibold">{totalEligible}</p></div>
                 <div className="rounded-md border border-border p-3"><p className="text-xs text-muted-foreground">Channels</p><p className="text-sm font-semibold capitalize">{channelsLabel(form.channels)}</p></div>
-                <div className="rounded-md border border-border p-3"><p className="text-xs text-muted-foreground">Batch limit</p><p className="text-xl font-semibold">{preview.maxRecipients || 500}</p></div>
+                <div className="rounded-md border border-border p-3"><p className="text-xs text-muted-foreground">Campaign limit</p><p className="text-xl font-semibold">{Number(preview.maxRecipients || 0).toLocaleString()}</p></div>
               </div>
               <Alert className="border-amber-200 bg-amber-50/80">
                 <AlertCircle className="h-4 w-4 text-amber-800" />
@@ -1207,8 +1290,10 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
               {preview.truncated ? (
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Audience capped</AlertTitle>
-                  <AlertDescription>Only the newest {preview.maxRecipients || 500} matching customers are included in this send batch.</AlertDescription>
+                  <AlertTitle>Audience too large</AlertTitle>
+                  <AlertDescription>
+                    This audience has {Number(preview.totalInWorkspace || 0).toLocaleString()} contacts. A campaign can reach at most {Number(preview.maxRecipients || 0).toLocaleString()}. Narrow your filters before sending.
+                  </AlertDescription>
                 </Alert>
               ) : null}
             </CardContent>
@@ -1311,6 +1396,105 @@ function CreateCampaignDialog({ open, mode = 'create', campaignId, onOpenChange,
   );
 }
 
+const EDITABLE_CAMPAIGN_STATUSES = new Set(['draft', 'scheduled', 'failed']);
+const RECIPIENT_STATUS_STYLES = {
+  pending: 'bg-slate-100 text-slate-700 border-slate-200',
+  processing: 'bg-sky-100 text-sky-800 border-sky-200',
+  sent: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  failed: 'bg-red-100 text-red-800 border-red-200',
+};
+const RECIPIENT_PAGE_SIZE = 25;
+
+/** Per-recipient send log: who got the message on which channel, and why any failed. */
+function CampaignRecipientsCard({ campaignId, isSending }) {
+  const { activeTenantId } = useAuth();
+  const [status, setStatus] = useState('all');
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = useQuery({
+    queryKey: ['marketing', 'campaign-recipients', activeTenantId, campaignId, status, page],
+    queryFn: () => marketingService.getCampaignRecipients(campaignId, {
+      status: status === 'all' ? undefined : status,
+      page,
+      limit: RECIPIENT_PAGE_SIZE,
+    }),
+    enabled: !!activeTenantId && !!campaignId,
+    refetchInterval: isSending ? 4000 : false,
+  });
+  const result = data?.data || {};
+  const recipients = result.recipients || [];
+  const totalPages = result.totalPages || 1;
+
+  return (
+    <Card style={CARD_BORDER}>
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <CardTitle className="text-base">Recipients</CardTitle>
+          <CardDescription>Every message in this campaign and what happened to it.</CardDescription>
+        </div>
+        <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); }}>
+          <SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All messages</SelectItem>
+            <SelectItem value="sent">Sent</SelectItem>
+            <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="pending">Waiting to send</SelectItem>
+          </SelectContent>
+        </Select>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading recipients…</p>
+        ) : recipients.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {status === 'all' ? 'No messages have been queued for this campaign yet.' : 'No messages with this status.'}
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Recipient</TableHead>
+                <TableHead>Channel</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="hidden md:table-cell">Details</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {recipients.map((recipient) => (
+                <TableRow key={recipient.id}>
+                  <TableCell>
+                    <div className="font-medium">{recipient.recipientName || '—'}</div>
+                    <div className="text-xs text-muted-foreground">{recipient.address}</div>
+                  </TableCell>
+                  <TableCell className="capitalize">{recipient.channel}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={RECIPIENT_STATUS_STYLES[recipient.status] || RECIPIENT_STATUS_STYLES.pending}>
+                      {recipient.status === 'pending' || recipient.status === 'processing' ? 'waiting' : recipient.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden max-w-xs text-xs text-muted-foreground md:table-cell">
+                    {recipient.status === 'failed'
+                      ? recipient.error
+                      : recipient.sentAt ? `Sent ${formatDate(recipient.sentAt)}` : ''}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        {totalPages > 1 ? (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Page {page} of {totalPages}</span>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+              <Button type="button" variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+            </div>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 function CampaignDetail() {
   const { id } = useParams();
   const { activeTenantId } = useAuth();
@@ -1320,6 +1504,8 @@ function CampaignDetail() {
     queryKey: ['marketing', 'campaign', activeTenantId, id],
     queryFn: () => marketingService.getCampaign(id),
     enabled: !!activeTenantId && !!id,
+    // Follow progress while the background worker is sending.
+    refetchInterval: (query) => (query.state.data?.data?.status === 'sending' ? 3000 : false),
   });
   const campaign = data?.data;
 
@@ -1327,9 +1513,19 @@ function CampaignDetail() {
     mutationFn: () => marketingService.sendCampaign(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['marketing'] });
-      showSuccess('Campaign sent');
+      showSuccess('Sending started');
     },
     onError: (err) => handleApiError(err, { context: 'Send campaign' }),
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: () => marketingService.retryFailedRecipients(id),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['marketing'] });
+      const count = response?.data?.requeued || 0;
+      showSuccess(`Retrying ${count} failed message${count === 1 ? '' : 's'}`);
+    },
+    onError: (err) => handleApiError(err, { context: 'Retry failed messages' }),
   });
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading campaign…</p>;
@@ -1337,6 +1533,11 @@ function CampaignDetail() {
 
   const snapshot = campaign.audienceSnapshot || {};
   const stats = campaign.stats || {};
+  const isSending = campaign.status === 'sending';
+  const hasQueued = Number(stats.totalQueued || 0) > 0;
+  const canEdit = EDITABLE_CAMPAIGN_STATUSES.has(campaign.status) && !hasQueued;
+  const canRetry = !isSending && Number(stats.totalFailed || 0) > 0;
+  const lastError = campaign.metadata?.lastError;
 
   return (
     <>
@@ -1347,12 +1548,18 @@ function CampaignDetail() {
           actions={
             <>
               <Button asChild variant="outline"><Link to="/marketing/campaigns"><ArrowLeft className="mr-2 h-4 w-4" />Campaigns</Link></Button>
-              {campaign.status !== 'sent' ? (
+              {canEdit ? (
                 <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(true)}>
                   Edit draft
                 </Button>
               ) : null}
-              {campaign.status !== 'sent' ? (
+              {canRetry ? (
+                <Button type="button" variant="outline" onClick={() => retryMutation.mutate()} disabled={retryMutation.isPending}>
+                  {retryMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
+                  Retry failed
+                </Button>
+              ) : null}
+              {canEdit ? (
                 <Button className="bg-brand hover:bg-brand-dark" onClick={() => sendMutation.mutate()} disabled={sendMutation.isPending}>
                   {sendMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                   Send now
@@ -1362,11 +1569,36 @@ function CampaignDetail() {
           }
         />
 
+        {lastError && !isSending ? (
+          <Alert className="border-red-200 bg-red-50/80">
+            <AlertCircle className="h-4 w-4 text-red-800" />
+            <AlertTitle className="text-red-900">{hasQueued ? 'Some messages could not be sent' : 'This campaign could not be sent'}</AlertTitle>
+            <AlertDescription className="text-sm text-red-950/90">{lastError}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {isSending ? (
+          <Card style={CARD_BORDER}>
+            <CardContent className="space-y-3 p-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="inline-flex items-center gap-2 font-medium">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Sending in the background. You can leave this page.
+                </span>
+                <span className="text-muted-foreground">
+                  {Number((stats.totalSent || 0) + (stats.totalFailed || 0)).toLocaleString()} of {Number(stats.totalQueued || 0).toLocaleString()}
+                </span>
+              </div>
+              <Progress value={Number(stats.progress || 0)} className="h-2.5" />
+            </CardContent>
+          </Card>
+        ) : null}
+
         <div className="grid gap-4 md:grid-cols-4">
           <Card style={CARD_BORDER}><CardContent className="p-4"><p className="text-xs text-muted-foreground">Status</p><div className="mt-2"><StatusBadge status={campaign.status} /></div></CardContent></Card>
-          <Card style={CARD_BORDER}><CardContent className="p-4"><p className="text-xs text-muted-foreground">Recipients</p><p className="mt-2 text-2xl font-semibold">{snapshot.batchSize || 0}</p></CardContent></Card>
-          <Card style={CARD_BORDER}><CardContent className="p-4"><p className="text-xs text-muted-foreground">Sent</p><p className="mt-2 text-2xl font-semibold">{stats.totalSent || 0}</p></CardContent></Card>
-          <Card style={CARD_BORDER}><CardContent className="p-4"><p className="text-xs text-muted-foreground">Failed</p><p className="mt-2 text-2xl font-semibold">{stats.totalFailed || 0}</p></CardContent></Card>
+          <Card style={CARD_BORDER}><CardContent className="p-4"><p className="text-xs text-muted-foreground">Messages</p><p className="mt-2 text-2xl font-semibold">{Number(stats.totalQueued || snapshot.batchSize || 0).toLocaleString()}</p></CardContent></Card>
+          <Card style={CARD_BORDER}><CardContent className="p-4"><p className="text-xs text-muted-foreground">Sent</p><p className="mt-2 text-2xl font-semibold">{Number(stats.totalSent || 0).toLocaleString()}</p></CardContent></Card>
+          <Card style={CARD_BORDER}><CardContent className="p-4"><p className="text-xs text-muted-foreground">Failed</p><p className="mt-2 text-2xl font-semibold">{Number(stats.totalFailed || 0).toLocaleString()}</p></CardContent></Card>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -1377,7 +1609,7 @@ function CampaignDetail() {
               <p><span className="text-muted-foreground">Channels:</span> <span className="capitalize">{channelsLabel(campaign.channels)}</span></p>
               <p><span className="text-muted-foreground">Created:</span> {formatDate(campaign.createdAt)}</p>
               <p><span className="text-muted-foreground">Scheduled:</span> {formatDate(campaign.scheduledAt)}</p>
-              <p><span className="text-muted-foreground">Sent:</span> {formatDate(campaign.sentAt)}</p>
+              <p><span className="text-muted-foreground">Sending started:</span> {formatDate(campaign.sentAt)}</p>
             </CardContent>
           </Card>
 
@@ -1388,13 +1620,20 @@ function CampaignDetail() {
                 <div key={channel} className="flex items-center justify-between rounded-md border border-border p-3">
                   <span className="capitalize">{channel}</span>
                   <span className="text-muted-foreground">
-                    sent {stats[channel]?.sent || 0}, skipped {stats[channel]?.skipped || 0}, failed {stats[channel]?.failed || 0}
+                    sent {stats[channel]?.sent || 0}
+                    {stats[channel]?.pending ? `, waiting ${stats[channel].pending}` : ''}
+                    , failed {stats[channel]?.failed || 0}, skipped {stats[channel]?.skipped || 0}
                   </span>
                 </div>
               ))}
+              <p className="pt-1 text-xs text-muted-foreground">
+                Skipped contacts had no valid address, no marketing consent, or shared an address with another contact.
+              </p>
             </CardContent>
           </Card>
         </div>
+
+        {hasQueued ? <CampaignRecipientsCard campaignId={campaign.id} isSending={isSending} /> : null}
       </div>
       <CreateCampaignDialog
         open={isEditDialogOpen}

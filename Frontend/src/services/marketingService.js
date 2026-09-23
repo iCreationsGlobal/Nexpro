@@ -56,6 +56,17 @@ export async function scheduleCampaign(id, body) {
   return api.post(`/marketing/campaigns/${id}/schedule`, body);
 }
 
+/**
+ * Per-recipient send log. @param {{ status?: string, channel?: string, page?: number, limit?: number }} params
+ */
+export async function getCampaignRecipients(id, params = {}) {
+  return api.get(`/marketing/campaigns/${id}/recipients`, { params });
+}
+
+export async function retryFailedRecipients(id) {
+  return api.post(`/marketing/campaigns/${id}/retry-failed`);
+}
+
 export default {
   getCapabilities,
   getOverview,
@@ -67,4 +78,6 @@ export default {
   updateCampaign,
   sendCampaign,
   scheduleCampaign,
+  getCampaignRecipients,
+  retryFailedRecipients,
 };

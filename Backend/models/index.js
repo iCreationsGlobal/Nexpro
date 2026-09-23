@@ -93,6 +93,7 @@ const AutomationRun = require('./AutomationRun');
 const AutomationDelayedRun = require('./AutomationDelayedRun');
 const WhatsAppMessageEvent = require('./WhatsAppMessageEvent');
 const MarketingCampaign = require('./MarketingCampaign');
+const MarketingCampaignRecipient = require('./MarketingCampaignRecipient');
 const StudioLocation = require('./StudioLocation');
 const UserStudioLocation = require('./UserStudioLocation');
 const UserShop = require('./UserShop');
@@ -953,6 +954,8 @@ Tenant.hasMany(WhatsAppMessageEvent, { foreignKey: 'tenantId', as: 'whatsAppMess
 WhatsAppMessageEvent.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
 Tenant.hasMany(MarketingCampaign, { foreignKey: 'tenantId', as: 'marketingCampaigns' });
 MarketingCampaign.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+MarketingCampaign.hasMany(MarketingCampaignRecipient, { foreignKey: 'campaignId', as: 'recipients' });
+MarketingCampaignRecipient.belongsTo(MarketingCampaign, { foreignKey: 'campaignId', as: 'campaign' });
 MarketingCampaign.hasMany(WhatsAppMessageEvent, { foreignKey: 'campaignId', as: 'whatsAppMessageEvents' });
 WhatsAppMessageEvent.belongsTo(MarketingCampaign, { foreignKey: 'campaignId', as: 'campaign' });
 
@@ -1178,6 +1181,7 @@ module.exports = {
   AutomationDelayedRun,
   WhatsAppMessageEvent,
   MarketingCampaign,
+  MarketingCampaignRecipient,
   StudioLocation,
   UserStudioLocation,
   UserShop,

@@ -22,6 +22,8 @@ class MarketingCampaignSchedulerService {
   }
 
   start() {
+    // Sends queued campaign messages in the background.
+    require('./marketingSendQueueService').startWorker();
     // Every 5 minutes
     cron.schedule('*/5 * * * *', () => {
       this.run();

@@ -1,4 +1,7 @@
+import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2, Smile } from 'lucide-react';
+import { releaseBodyInteractionLocks } from '../utils/releaseBodyInteractionLocks';
 import { Button } from '@/components/ui/button';
 import { SecondaryButton } from '@/components/ui/secondary-button';
 import { cn } from '@/lib/utils';
@@ -70,11 +73,20 @@ export default function AppUpdateRequiredDialog({
   onRemindLater,
   updating = false,
 }) {
-  if (!open) return null;
+  // A Sheet/Dialog (e.g. the tablet sidebar) can leave `pointer-events: none` / `inert` on
+  // <body>; the buttons would then ignore every tap. Clear those locks when we open.
+  useEffect(() => {
+    if (open) releaseBodyInteractionLocks();
+  }, [open]);
 
-  return (
+  if (!open || typeof document === 'undefined') return null;
+
+  // Portal straight onto <body> with pointer events forced on and a z-index above other
+  // overlays (tour is 10000), so nothing in the app tree can cover or disable it.
+  return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/50 p-4"
+      style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="abs-update-title"
@@ -125,6 +137,7 @@ export default function AppUpdateRequiredDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

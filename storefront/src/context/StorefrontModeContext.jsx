@@ -232,9 +232,19 @@ export const writeOnlineStoreSession = (session) => {
  * @param {object|null|undefined} store
  * @param {{ pathPrefix?: 'shop'|'stores' }} [opts]
  */
+/** Browser tab + mobile address bar follow the store, never Sabito branding. */
+export const applyOnlineStoreDocumentBrand = ({ displayName, primaryColor } = {}) => {
+  if (typeof document === 'undefined') return;
+  const name = optionalTrimmedString(displayName);
+  document.title = name || 'Online Store';
+  const color = optionalHexColor(primaryColor);
+  if (color) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
+};
+
 export const persistOnlineStoreBrand = (store, opts = {}) => {
   const slug = optionalTrimmedString(store?.slug);
   if (!slug) return;
+  applyOnlineStoreDocumentBrand(store);
   writeOnlineStoreSession({
     slug,
     pathPrefix: opts.pathPrefix === 'stores' ? 'stores' : 'shop',
@@ -390,6 +400,12 @@ export function StorefrontModeProvider({
     isTemplatesHost,
     location.pathname,
   ]);
+
+  useEffect(() => {
+    if (!value.isSingleStoreMode) return;
+    const session = readOnlineStoreSession();
+    applyOnlineStoreDocumentBrand(session?.slug === value.storeSlug ? session : {});
+  }, [value.isSingleStoreMode, value.storeSlug]);
 
   return (
     <StorefrontModeContext.Provider value={value}>

@@ -50,4 +50,15 @@ const requireStorefrontCustomer = async (req, res, next) => {
   }
 };
 
-module.exports = { requireStorefrontCustomer };
+/**
+ * Like requireStorefrontCustomer, but lets requests without a token through as guests
+ * (req.storefrontCustomer stays unset). A token that is present but invalid still fails,
+ * so a signed-in shopper is never silently downgraded to a guest.
+ */
+const optionalStorefrontCustomer = (req, res, next) => {
+  const header = req.headers.authorization || '';
+  if (!header.startsWith('Bearer ')) return next();
+  return requireStorefrontCustomer(req, res, next);
+};
+
+module.exports = { requireStorefrontCustomer, optionalStorefrontCustomer };

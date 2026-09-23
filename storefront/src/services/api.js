@@ -137,6 +137,25 @@ api.interceptors.request.use((config) => {
       ? 'online_store'
       : 'sabito_marketplace';
     config.headers['X-Storefront-Channel'] = channel;
+
+    // Shopper auth emails (codes, password reset) are branded with the store's name,
+    // so tell the API which Online Store the shopper is on.
+    const isAuthPost = String(config.method || '').toLowerCase() === 'post'
+      && String(config.url || '').includes('/public/storefront/auth/');
+    const body = config.data;
+    const isPlainBody = body && typeof body === 'object' && !(typeof FormData !== 'undefined' && body instanceof FormData);
+    if (channel === 'online_store' && isAuthPost && isPlainBody && !body.storeSlug) {
+      const pathParts = path.split('/').filter(Boolean);
+      const pathSlug = pathParts[0] === 'shop' ? pathParts[1] : null;
+      let sessionSlug = null;
+      try {
+        sessionSlug = JSON.parse(window.sessionStorage?.getItem('sabito_online_store_session') || 'null')?.slug || null;
+      } catch {
+        sessionSlug = null;
+      }
+      const storeSlug = pathSlug || sessionSlug;
+      if (storeSlug) config.data = { ...body, storeSlug };
+    }
   }
 
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) {

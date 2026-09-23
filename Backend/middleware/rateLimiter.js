@@ -221,6 +221,21 @@ const publicRentalBookingSubmitLimiter = rateLimit({
   validate: false,
 });
 
+/**
+ * Guest (no-account) storefront checkout start — per IP. Signed-in shoppers skip it.
+ * Each attempt creates a pending order that reserves stock, so keep this tight.
+ */
+const guestCheckoutLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => String(req.headers?.authorization || '').startsWith('Bearer '),
+  keyGenerator: (req) => req.ip || req.connection?.remoteAddress || 'unknown',
+  handler: createErrorHandler('Too many checkout attempts. Please wait a few minutes and try again.'),
+  validate: false,
+});
+
 const publicRentalAvailabilityLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -249,5 +264,6 @@ module.exports = {
   publicFeedbackSubmitLimiter,
   publicRentalBookingSubmitLimiter,
   publicRentalAvailabilityLimiter,
+  guestCheckoutLimiter,
   marketerWriteLimiter,
 };
