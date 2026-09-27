@@ -16,14 +16,25 @@ const IMPORT_COLUMNS = {
     { header: 'Product Name', key: 'name', type: 'string', required: true },
     { header: 'SKU', key: 'sku', type: 'string', required: false },
     { header: 'Category', key: 'categoryName', type: 'string', required: false },
-    { header: 'Cost Price', key: 'costPrice', type: 'currency', required: true },
-    { header: 'Selling Price', key: 'sellingPrice', type: 'currency', required: true },
-    { header: 'Stock', key: 'quantityOnHand', type: 'number', required: true },
+    { header: 'Cost Price', key: 'costPrice', type: 'currency', required: false },
+    { header: 'Selling Price', key: 'sellingPrice', type: 'currency', required: false },
+    { header: 'Stock', key: 'quantityOnHand', type: 'number', required: false },
     { header: 'Reorder Level', key: 'reorderLevel', type: 'number', required: false },
     { header: 'Unit', key: 'unit', type: 'string', required: false },
     { header: 'Active', key: 'isActive', type: 'boolean', required: false },
     { header: 'Description', key: 'description', type: 'string', required: false },
     { header: 'Barcode', key: 'barcode', type: 'string', required: false },
+    { header: 'Product Code', key: 'productCode', type: 'string', required: false },
+    { header: 'Wholesale Price', key: 'wholesalePrice', type: 'currency', required: false },
+    { header: 'Reorder Quantity', key: 'reorderQuantity', type: 'number', required: false },
+    { header: 'Brand', key: 'brand', type: 'string', required: false },
+    { header: 'Supplier', key: 'supplier', type: 'string', required: false },
+    { header: 'Track Stock', key: 'trackStock', type: 'boolean', required: false },
+    { header: 'Expiry Date', key: 'expiryDate', type: 'date', required: false },
+    { header: 'Batch Number', key: 'batchNumber', type: 'string', required: false },
+    { header: 'Rentable', key: 'isRentable', type: 'boolean', required: false },
+    { header: 'Salable', key: 'isSalable', type: 'boolean', required: false },
+    { header: 'Rental Rate Per Day', key: 'rentalRatePerDay', type: 'currency', required: false },
   ],
   materials: [
     { header: 'Name', key: 'name', type: 'string', required: true },
@@ -69,7 +80,6 @@ const IMPORT_COLUMNS = {
 };
 
 const TEMPLATE_COLUMNS = {
-  products: ['Product Name', 'Selling Price', 'Stock'],
   customers: ['Name', 'Phone'],
   leads: ['Name', 'Phone'],
 };
@@ -256,6 +266,12 @@ function validateProductRow(mapped) {
   if (Number.isFinite(cost) && cost < 0) return { valid: false, error: 'Cost Price cannot be negative' };
   if (Number.isFinite(selling) && selling < 0) return { valid: false, error: 'Selling Price cannot be negative' };
   if (Number.isFinite(qty) && qty < 0) return { valid: false, error: 'Stock cannot be negative' };
+  for (const key of ['wholesalePrice', 'reorderLevel', 'reorderQuantity', 'rentalRatePerDay']) {
+    if (mapped[key] != null && mapped[key] < 0) {
+      const column = IMPORT_COLUMNS.products.find((col) => col.key === key);
+      return { valid: false, error: `${column.header} cannot be negative` };
+    }
+  }
   return { valid: true };
 }
 

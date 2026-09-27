@@ -4712,7 +4712,7 @@ const Products = () => {
           <DialogHeader>
             <DialogTitle>Import products</DialogTitle>
             <DialogDescription>
-              Download the CSV template, fill in your products (no images), then upload the file. Max 500 rows per file.
+              Download the template and fill it in using Excel. It includes product codes, prices, stock, supplier, expiry, and rental fields. Only Product Name is required; optional columns can be left blank. Use YYYY-MM-DD for expiry dates and Yes/No for switches. Save as CSV or XLSX, then upload (max 500 rows; no images).
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-4">
