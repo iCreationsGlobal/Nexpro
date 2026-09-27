@@ -1,0 +1,42 @@
+import { render, screen, fireEvent } from '@testing-library/react';
+import { vi, it, expect } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import POSPaymentModal from '../../components/pos/POSPaymentModal';
+vi.mock('../../services/settingsService', () => ({ default: { getDeliverySettings: vi.fn().mockResolvedValue({enabled:false}) } }));
+vi.mock('../../services/mobileMoneyService', () => ({ default: {} }));
+vi.mock('../../utils/fileUtils', () => ({ resolveImageUrl: value => value || '' }));
+vi.mock('../../hooks/useResponsive', () => ({ useResponsive: () => ({isMobile:false}) }));
+it('validates simple cash payment and passes tender and change to checkout', async () => {
+ const confirm = vi.fn();
+ render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><POSPaymentModal isOpen simpleMode onClose={vi.fn()} total={44} items={[{id:1,name:'Water',quantity:1,unitPrice:44}]} onConfirmPayment={confirm} /></QueryClientProvider>);
+ expect(screen.getByRole('heading',{name:'Take Payment'})).toBeInTheDocument();
+ const cash = screen.getByLabelText('Cash received');
+ fireEvent.change(cash,{target:{value:'20'}});
+ expect(screen.getByRole('button',{name:'Complete Sale'})).toBeDisabled();
+ fireEvent.change(cash,{target:{value:'50'}});
+ fireEvent.click(screen.getByRole('button',{name:'Complete Sale'}));
+ expect(confirm).toHaveBeenCalledWith(expect.objectContaining({paymentMethod:'cash',amountPaid:50,change:6,total:44}));
+});
+it('hides provider selection in Simple Mode even after entering a phone number', () => {
+ render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><POSPaymentModal isOpen simpleMode onClose={vi.fn()} total={44} items={[{id:1,name:'Water',quantity:1,unitPrice:44}]} onConfirmPayment={vi.fn()} /></QueryClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'MTN MoMo'}));
+ expect(screen.queryByText('Select Provider')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('switch',{name:'Automatic collection'}));
+ fireEvent.change(screen.getByPlaceholderText('0XX XXX XXXX'),{target:{value:'0241234567'}});
+ expect(screen.queryByRole('button',{name:'Vodafone'})).not.toBeInTheDocument();
+});
+it('switches Simple Mode MoMo to manual receipt confirmation', () => {
+ const confirm = vi.fn(); const request = vi.fn();
+ render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><POSPaymentModal isOpen simpleMode onClose={vi.fn()} total={44} items={[{id:1,name:'Water',quantity:1,unitPrice:44}]} onConfirmPayment={confirm} onRequestMobileMoney={request} /></QueryClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'MTN MoMo'}));
+ const toggle = screen.getByRole('switch',{name:'Automatic collection'});
+ expect(toggle).not.toBeChecked();
+ expect(screen.queryByText('Manual MoMo Instructions')).not.toBeInTheDocument();
+ expect(screen.queryByText(/Customer dials/)).not.toBeInTheDocument();
+ expect(screen.queryByPlaceholderText('0XX XXX XXXX')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Confirm payment received'}));
+ expect(request).not.toHaveBeenCalled();
+ expect(confirm).toHaveBeenCalledWith(expect.objectContaining({amountPaid:44,mobileMoneyProvider:'MTN',paymentMethodUi:'momo_direct'}));
+ fireEvent.click(toggle);
+ expect(screen.getByPlaceholderText('0XX XXX XXXX')).toBeInTheDocument();
+});

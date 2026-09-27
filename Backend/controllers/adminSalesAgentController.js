@@ -50,7 +50,7 @@ exports.getSalesAgent = async (req, res, next) => {
 
 /**
  * POST /api/admin/sales-agents
- * Body: { name, email?, phone?, status?, commissionAmount?, notes?, code?, createCode? }
+ * Body: { name, email?, phone?, status?, commissionPercent?, notes?, code?, createCode? }
  */
 exports.createSalesAgent = async (req, res, next) => {
   try {

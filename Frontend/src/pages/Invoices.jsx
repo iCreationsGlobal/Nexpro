@@ -257,10 +257,14 @@ const Invoices = () => {
   const organization = organizationData?.data?.data || organizationData?.data || {};
 
   const printOrganization = useMemo(() => {
-    if (viewingInvoice?.organization && typeof viewingInvoice.organization === 'object') {
-      return viewingInvoice.organization;
-    }
-    return organization;
+    const branchOrganization = viewingInvoice?.organization;
+    if (!branchOrganization || typeof branchOrganization !== 'object') return organization;
+    // The invoice's branch/tenant branding wins, but a missing logo (e.g. branch without one,
+    // or a stored path the API could not turn into a public URL) falls back to Settings.
+    return {
+      ...branchOrganization,
+      logoUrl: branchOrganization.logoUrl || organization?.logoUrl || '',
+    };
   }, [viewingInvoice, organization]);
 
   const { posConfig } = usePOSConfig();

@@ -38,12 +38,24 @@ const isAbsolutePublicLogoUrl = (value) => {
   }
 };
 
+/**
+ * Undo HTML escaping that request sanitizing can leave on stored paths
+ * (e.g. "&#x2F;uploads&#x2F;logo.png"), which otherwise no longer looks like an upload path.
+ */
+const decodeHtmlEntities = (value) => value
+  .replace(/&#x2F;|&#47;/gi, '/')
+  .replace(/&#x3A;|&#58;/gi, ':')
+  .replace(/&amp;/gi, '&');
+
 const toPublicAssetUrl = (value) => {
-  const logoUrl = typeof value === 'string' ? value.trim() : '';
+  const logoUrl = typeof value === 'string' ? decodeHtmlEntities(value.trim()) : '';
   if (!logoUrl) return '';
   if (isAbsolutePublicLogoUrl(logoUrl)) return logoUrl;
   if (logoUrl.startsWith('/uploads/')) {
     return `${getPublicAssetBaseUrl()}${logoUrl}`;
+  }
+  if (logoUrl.startsWith('uploads/')) {
+    return `${getPublicAssetBaseUrl()}/${logoUrl}`;
   }
   return '';
 };

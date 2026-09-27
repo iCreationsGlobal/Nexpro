@@ -644,15 +644,16 @@ const attachShopStockToProducts = async (products, {
  * @param {string} shopId
  * @returns {object}
  */
-const shopCatalogVisibilityLiteral = (shopId) => {
+const shopCatalogVisibilityLiteral = (shopId, productAlias = 'Product') => {
+  const alias = `"${String(productAlias).replace(/"/g, '""')}"`;
   const escaped = String(shopId).replace(/'/g, "''");
   return sequelize.literal(`(
-    "Product"."shopId" = '${escaped}'
-    OR "Product"."shopId" IS NULL
+    ${alias}."shopId" = '${escaped}'
+    OR ${alias}."shopId" IS NULL
     OR EXISTS (
       SELECT 1 FROM product_shop_stocks pss
-      WHERE pss."productId" = "Product"."id"
-        AND pss."tenantId" = "Product"."tenantId"
+      WHERE pss."productId" = ${alias}."id"
+        AND pss."tenantId" = ${alias}."tenantId"
         AND pss."shopId" = '${escaped}'
     )
   )`);

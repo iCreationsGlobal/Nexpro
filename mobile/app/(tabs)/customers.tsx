@@ -1,3 +1,5 @@
+import { useSimpleMode } from '@/hooks/useSimpleMode';
+import { SimpleCustomersScreen } from '@/components/simple/SimpleCustomersScreen';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -79,7 +81,13 @@ const FALLBACK_CUSTOMER_SOURCES = [
 
 const OTHER_SOURCE_VALUE = '__OTHER__';
 
-export default function CustomersScreen() {
+/** Simple Mode shows the essentials-only screen; everyone else the full one. */
+export default function CustomersScreenRoute() {
+  const { isRestricted } = useSimpleMode();
+  return isRestricted ? <SimpleCustomersScreen /> : <CustomersScreen />;
+}
+
+function CustomersScreen() {
   const params = useLocalSearchParams<{ search?: string; add?: string }>();
   const router = useRouter();
   const { activeTenantId, hasFeature } = useAuth();

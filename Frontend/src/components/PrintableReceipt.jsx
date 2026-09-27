@@ -1,11 +1,12 @@
+import { formatDisplayPhone } from '../utils/phoneUtils';
 import React from 'react';
 import dayjs from 'dayjs';
 import { MapPin, Phone, Globe, Mail } from 'lucide-react';
-import { APP_LOGO_SRC } from '../config/appBrand';
-import { API_BASE_URL } from '../services/api';
+import { resolveImageUrl } from '../utils/fileUtils';
 import { getSalePartyDetails } from '../utils/saleParty';
 import { formatLineItemQuantity } from '../utils/documentLineItems';
 import { getPrintStyles } from '../utils/printStyles';
+import { getThermalReceiptStyles } from '../utils/thermalReceiptStyles';
 import GraEvatStampBlock from './GraEvatStampBlock';
 
 const formatAddress = (address) => {
@@ -60,24 +61,24 @@ const PrintableReceipt = ({
   organization = {},
   printConfig = {}
 }) => {
+  // Declared before the early return so hook order stays stable.
+  const [failedLogoSrc, setFailedLogoSrc] = React.useState(null);
+
   if (!sale) return null;
 
   const titleText = documentTitle || 'RECEIPT';
   const printStyles = getPrintStyles(printConfig);
   const party = getSalePartyDetails(sale);
 
-  // Format logo URL - handle relative paths by prepending API base URL
-  const logoSource = organization?.logoUrl
-    ? (organization.logoUrl.startsWith('data:') || organization.logoUrl.startsWith('http')
-        ? organization.logoUrl
-        : (API_BASE_URL
-            ? `${API_BASE_URL}${organization.logoUrl.startsWith('/') ? '' : '/'}${organization.logoUrl}`
-            : organization.logoUrl))
-    : APP_LOGO_SRC;
+  // The business's own logo only (never the ABS logo). resolveImageUrl also decodes HTML-escaped
+  // stored paths; if the image still fails, the receipt shows just the business name.
+  const resolvedLogo = resolveImageUrl(organization?.logoUrl) || null;
+  const logoSource = resolvedLogo && resolvedLogo !== failedLogoSrc ? resolvedLogo : null;
+  const handleLogoError = () => setFailedLogoSrc(resolvedLogo);
 
   const companyInfo = {
     name: organization.name || 'Company Name',
-    phone: organization.phone || '',
+    phone: formatDisplayPhone(organization.phone),
     website: organization.website || '',
     email: organization.email || '',
     location: formatAddress(organization.address),
@@ -197,6 +198,13 @@ const PrintableReceipt = ({
             max-width: 150px;
             max-height: 60px;
           }
+        }
+        .company-name {
+          font-size: 18px;
+          font-weight: 700;
+          color: #111827;
+          margin-bottom: 6px;
+          overflow-wrap: anywhere;
         }
         .company-details {
           font-size: ${printStyles.bodySize};
@@ -403,88 +411,8 @@ const PrintableReceipt = ({
         }
         
         /* Thermal receipt layout */
-        .thermal-receipt {
-          text-align: center;
-          max-width: ${printStyles.contentWidth};
-          margin: 0 auto;
-          padding: ${printStyles.isThermal ? '2mm' : '0'};
-          font-family: Arial, sans-serif;
-          font-size: 10px;
-          color: var(--receipt-fg);
-        }
-        .thermal-logo {
-          display: block;
-          max-width: 120px;
-          max-height: 50px;
-          margin: 0 auto 6px;
-          object-fit: contain;
-        }
-        .thermal-title {
-          font-size: 14px;
-          font-weight: bold;
-          margin-bottom: 4px;
-          letter-spacing: 1px;
-        }
-        .thermal-business {
-          font-size: 9px;
-          line-height: 1.4;
-          margin-bottom: 6px;
-          color: var(--receipt-fg);
-        }
-        .thermal-separator {
-          border: none;
-          border-top: 1px dotted var(--receipt-border);
-          margin: 6px 0;
-        }
-        .thermal-date-row {
-          display: flex;
-          justify-content: space-between;
-          font-size: 9px;
-          margin-bottom: 6px;
-        }
-        .thermal-items {
-          text-align: left;
-          margin: 8px 0;
-          list-style: none;
-          padding: 0;
-        }
-        .thermal-item-list {
-          display: flex;
-          justify-content: space-between;
-          align-items: baseline;
-          gap: 8px;
-          font-size: 9px;
-          padding: 4px 0;
-          border-bottom: none;
-        }
-        .thermal-item-name {
-          flex: 1;
-          min-width: 0;
-        }
-        .thermal-item-amount {
-          font-weight: 500;
-          text-align: right;
-          flex-shrink: 0;
-        }
-        .thermal-total-row {
-          display: flex;
-          justify-content: space-between;
-          font-size: 10px;
-          padding: 3px 0;
-        }
-        .thermal-total-row.bold {
-          font-weight: bold;
-          font-size: 11px;
-          border-top: 1px dotted var(--receipt-border);
-          padding-top: 6px;
-          margin-top: 4px;
-        }
-        .thermal-thanks {
-          font-size: 12px;
-          font-weight: bold;
-          margin-top: 10px;
-          letter-spacing: 2px;
-        }
+        ${getThermalReceiptStyles(printStyles)}
+
       `}</style>
 
       <div className={`printable-receipt ${printStyles.isThermal ? 'thermal-mode' : ''}`}>
@@ -492,7 +420,7 @@ const PrintableReceipt = ({
           /* Thermal receipt layout - simplified CASH RECEIPT style */
           <div className="thermal-receipt">
             {printStyles.showLogo && logoSource && (
-              <img src={logoSource} alt={companyInfo.name} className="thermal-logo" />
+              <img src={logoSource} alt={companyInfo.name} className="thermal-logo" onError={handleLogoError} />
             )}
             <div className="thermal-title">CASH RECEIPT</div>
             <div className="thermal-business">
@@ -522,9 +450,9 @@ const PrintableReceipt = ({
                   return (
                     <div key={item.id || index} className="thermal-item-list">
                       <span className="thermal-item-name">{item.name || item.product?.name || 'Item'}</span>
-                      {variantLabel && <span className="thermal-item-name">Variant: {variantLabel}</span>}
-                      {productCode && <span className="thermal-item-name">Product Code: {productCode}</span>}
-                      {priceOverridden && <span className="thermal-item-name">Catalog: ₵ {catalogUnitPrice.toFixed(2)}</span>}
+                      {variantLabel && <span className="thermal-item-detail">Variant: {variantLabel}</span>}
+                      {productCode && <span className="thermal-item-detail">Product Code: {productCode}</span>}
+                      {priceOverridden && <span className="thermal-item-detail">Catalog: ₵ {catalogUnitPrice.toFixed(2)}</span>}
                       <span className="thermal-item-amount">{formatLineItemQuantity(item, qty)} × ₵ {unitPrice} = ₵ {total}</span>
                     </div>
                   );
@@ -538,7 +466,7 @@ const PrintableReceipt = ({
             </div>
             <hr className="thermal-separator" />
             <div className="thermal-total-row">
-              <span>Sub-total</span>
+              <span>Subtotal</span>
               <span>₵ {parseFloat(sale.subtotal || 0).toFixed(2)}</span>
             </div>
             {parseFloat(sale.tax || 0) > 0 && (
@@ -560,7 +488,7 @@ const PrintableReceipt = ({
             <hr className="thermal-separator" />
             {(companyInfo.invoiceFooter || companyInfo.name) && (
               <div className="thermal-thanks text-center" style={{ whiteSpace: 'pre-line' }}>
-                {companyInfo.invoiceFooter || companyInfo.name}
+                {companyInfo.invoiceFooter || 'Thank you for doing business with us.'}
               </div>
             )}
             <div className="thermal-business-footer" style={{ fontSize: '9px', marginTop: '8px', lineHeight: 1.4 }}>
@@ -573,7 +501,10 @@ const PrintableReceipt = ({
         {/* Header */}
         <div className="receipt-header">
           <div className="company-info">
-            <img src={logoSource} alt={companyInfo.name} className="company-logo" />
+            {logoSource && (
+              <img src={logoSource} alt={companyInfo.name} className="company-logo" onError={handleLogoError} />
+            )}
+            <div className="company-name">{companyInfo.name}</div>
             <div className="company-details">
               {companyInfo.location && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
@@ -658,7 +589,7 @@ const PrintableReceipt = ({
                   <div>{sale.shop.address}</div>
                 )}
                 {sale.shop.phone && (
-                  <div>Phone: {sale.shop.phone}</div>
+                  <div>Phone: {formatDisplayPhone(sale.shop.phone)}</div>
                 )}
               </div>
             </div>

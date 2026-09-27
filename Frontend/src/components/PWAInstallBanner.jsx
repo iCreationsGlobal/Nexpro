@@ -8,6 +8,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { usePWAInstall } from '../context/PWAInstallContext';
+import { useSimpleMode } from '../hooks/useSimpleMode';
 
 /**
  * PWA Install Banner Component
@@ -15,6 +16,7 @@ import { usePWAInstall } from '../context/PWAInstallContext';
  * (Safari desktop, Firefox, Edge, Opera Mini).
  */
 export const PWAInstallBanner = () => {
+  const { isSimple } = useSimpleMode();
   const {
     canInstall,
     showInstallBanner,
@@ -25,7 +27,7 @@ export const PWAInstallBanner = () => {
     closeIOSInstructions,
   } = usePWAInstall();
 
-  if (!showInstallBanner) return null;
+  if (isSimple || !showInstallBanner) return null;
 
   // Opera Mini: message only, no install button
   if (installVariant === 'opera-mini') {

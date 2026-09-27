@@ -2097,12 +2097,20 @@ exports.updateInterfaceMode = async (req, res, next) => {
     if (!membership) {
       return res.status(400).json({ success: false, message: 'Tenant membership required' });
     }
-    const { interfaceMode } = sanitizePayload(req.body || {});
-    const sanitized = sanitizeInterfaceMode(interfaceMode);
+    const { interfaceMode, showAdvanced } = sanitizePayload(req.body || {});
+    if (interfaceMode === undefined && showAdvanced === undefined) {
+      return res.status(400).json({ success: false, message: 'interfaceMode or showAdvanced is required' });
+    }
 
+    // Personal preference for this member only; either field may be updated on its own.
     const metadata =
       membership.metadata && typeof membership.metadata === 'object' ? { ...membership.metadata } : {};
-    metadata.interfaceMode = sanitized;
+    if (interfaceMode !== undefined) {
+      metadata.interfaceMode = sanitizeInterfaceMode(interfaceMode);
+    }
+    if (showAdvanced !== undefined) {
+      metadata.simpleModeShowAdvanced = showAdvanced === true || showAdvanced === 'true';
+    }
 
     await UserTenant.update(
       { metadata },
@@ -2110,7 +2118,8 @@ exports.updateInterfaceMode = async (req, res, next) => {
     );
     invalidateTenantMembershipCache(req.user.id, req.tenantId);
 
-    res.status(200).json({ success: true, data: { interfaceMode: sanitized, source: 'user' } });
+    const { getInterfaceMode: buildInterfaceMode } = require('../services/interfaceModeHelper');
+    res.status(200).json({ success: true, data: buildInterfaceMode({ metadata }) });
   } catch (error) {
     next(error);
   }

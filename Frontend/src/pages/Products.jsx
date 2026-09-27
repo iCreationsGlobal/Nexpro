@@ -62,6 +62,9 @@ import TableSkeleton from '../components/TableSkeleton';
 import DashboardTable from '../components/DashboardTable';
 import DashboardStatsCard from '../components/DashboardStatsCard';
 import WelcomeSection from '../components/WelcomeSection';
+import { useSimpleMode } from '../hooks/useSimpleMode';
+import SimpleProductsList from '../components/simple/SimpleProductsList';
+import SimpleProductForm from '../components/simple/SimpleProductForm';
 import FeatureNotAvailable from '../components/FeatureNotAvailable';
 import productService from '../services/productService';
 import storeService from '../services/storeService';
@@ -680,6 +683,8 @@ const Products = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
+  // Simple Mode: add button, search and a plain list; a short photo/name/price/stock form.
+  const { isRestricted: isSimpleProducts } = useSimpleMode();
   const [editingProduct, setEditingProduct] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
@@ -2666,6 +2671,21 @@ const Products = () => {
         </Alert>
       )}
 
+      {isSimpleProducts ? (
+        <SimpleProductsList
+          products={products}
+          loading={loading}
+          totalCount={pagination.total || products.length}
+          search={searchValue}
+          onSearchChange={setSearchValue}
+          onAdd={handleCreateProduct}
+          onOpenProduct={handleEditProduct}
+          page={pagination.current}
+          totalPages={Math.max(Math.ceil((pagination.total || 0) / pagination.pageSize), 1)}
+          onPageChange={(nextPage) => handlePageChange({ ...pagination, current: nextPage })}
+        />
+      ) : (
+      <>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <WelcomeSection
@@ -2801,6 +2821,23 @@ const Products = () => {
         viewMode={tableViewMode}
         onViewModeChange={setTableViewMode}
       />
+      </>
+      )}
+
+      {/* Simple Mode product form (photo upload and paste reuse this page's image handling). */}
+      <SimpleProductForm
+        open={formOpen && isSimpleProducts}
+        onOpenChange={(open) => { if (!open) { setFormOpen(false); setEditingProduct(null); } }}
+        product={editingProduct}
+        // Only subscribe to the photo field when the simple form is actually in use.
+        imageUrl={isSimpleProducts && formOpen ? form.watch('imageUrl') : ''}
+        imageUploading={productImageUploading}
+        onPickImage={handleProductImageSelect}
+        onRemoveImage={handleRemoveProductImage}
+        saving={submitting}
+        // Merge over the loaded form values so fields this form doesn't show keep what was saved.
+        onSave={(values) => handleFormSubmit({ ...form.getValues(), ...values })}
+      />
 
       {/* Filter Drawer */}
       <ResponsiveSheet
@@ -2897,7 +2934,7 @@ const Products = () => {
 
       {/* Product Form Dialog */}
       <MobileFormDialog
-        open={formOpen}
+        open={formOpen && !isSimpleProducts}
         onOpenChange={setFormOpen}
         title={editingProduct ? 'Edit Product' : 'Add New Product'}
         description={editingProduct ? 'Update product details below' : 'Fill in the product details to add it to your catalog'}

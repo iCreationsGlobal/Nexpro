@@ -302,14 +302,14 @@ const formatProductListResponse = (records, req) => {
  * @param {string|null|undefined} shopIdQuery
  * @returns {{ where: object, effectiveShopId: string|null }}
  */
-const applyProductShopScope = (req, where, shopIdQuery) => {
+const applyProductShopScope = (req, where, shopIdQuery, productAlias = 'Product') => {
   const effectiveShopId = shopIdQuery || (req.shopScoped ? req.shopFilterId : null) || null;
 
   if (effectiveShopId) {
     const next = { ...where };
     next[Op.and] = [
       ...(Array.isArray(where[Op.and]) ? where[Op.and] : where[Op.and] ? [where[Op.and]] : []),
-      shopCatalogVisibilityLiteral(effectiveShopId),
+      shopCatalogVisibilityLiteral(effectiveShopId, productAlias),
     ];
     return { where: next, effectiveShopId };
   }
@@ -1655,9 +1655,7 @@ exports.getProductByBarcode = async (req, res, next) => {
       ],
     });
 
-    if (req.shopScoped) {
-      productWhere = applyShopReadFilter(req, productWhere);
-    }
+    productWhere = applyProductShopScope(req, productWhere).where;
     
     const product = await Product.findOne({
       where: productWhere,
@@ -1691,9 +1689,7 @@ exports.getProductByBarcode = async (req, res, next) => {
         include: [{
           model: Product,
           as: 'product',
-          where: req.shopScoped
-            ? applyShopReadFilter(req, applyTenantFilter(req.tenantId, {}))
-            : applyTenantFilter(req.tenantId, {}),
+          where: applyProductShopScope(req, applyTenantFilter(req.tenantId, {}), null, 'product').where,
           required: true,
           include: [{
             model: ProductVariant,
@@ -1727,7 +1723,8 @@ exports.getProductByBarcode = async (req, res, next) => {
           {
             model: Product,
             as: 'product',
-            ...(req.shopScoped ? { where: applyShopReadFilter(req, {}) } : {}),
+            where: applyProductShopScope(req, applyTenantFilter(req.tenantId, {}), null, 'product').where,
+            required: false,
             include: [{
               model: ProductVariant,
               as: 'variants',
@@ -1742,9 +1739,7 @@ exports.getProductByBarcode = async (req, res, next) => {
             include: [{
               model: Product,
               as: 'product',
-              where: req.shopScoped
-                ? applyShopReadFilter(req, applyTenantFilter(req.tenantId, {}))
-                : applyTenantFilter(req.tenantId, {}),
+              where: applyProductShopScope(req, applyTenantFilter(req.tenantId, {}), null, 'productVariant->product').where,
               required: false,
               include: [{
                 model: ProductVariant,

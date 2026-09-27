@@ -33,6 +33,7 @@ const { invalidateInvoiceListCache, invalidateAfterMutation } = require('../midd
 const {
   applyStudioLocationFilter,
   attachStudioLocationToPayload,
+  requiresExplicitStudioLocation,
 } = require('../utils/studioLocationUtils');
 const { parseDeliveryStatusInput } = require('../utils/deliveryStatus');
 const {
@@ -1116,6 +1117,15 @@ exports.getJob = async (req, res, next) => {
 // @route   POST /api/jobs
 // @access  Private
 exports.createJob = async (req, res, next) => {
+  if (requiresExplicitStudioLocation(req)) {
+    return res.status(400).json({
+      success: false,
+      code: 'STUDIO_LOCATION_REQUIRED',
+      message: 'Select the branch this job belongs to (top of the sidebar) before creating it. '
+        + 'Jobs cannot be created while viewing all branches.',
+    });
+  }
+
   const maxRetries = 5;
   let retryCount = 0;
   

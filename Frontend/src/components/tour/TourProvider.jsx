@@ -1,3 +1,4 @@
+import { useSimpleMode } from '../../hooks/useSimpleMode';
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
@@ -40,6 +41,7 @@ export default function TourProvider({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { activeTenant, suppressAppGuidance } = useAuth();
+  const { isSimple: isSimpleMode } = useSimpleMode();
   const { primaryColor: brandPrimaryHex } = useBranding();
   const tourValue = useTourInternal();
   const {
@@ -178,6 +180,7 @@ export default function TourProvider({ children }) {
     if (
       !isTourStatusReady ||
       suppressAppGuidance ||
+      isSimpleMode ||
       location.pathname !== '/dashboard' ||
       mainTourCompleted
     ) {
@@ -193,7 +196,7 @@ export default function TourProvider({ children }) {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [location.pathname, isTourStatusReady, suppressAppGuidance, mainTourCompleted]);
+  }, [location.pathname, isTourStatusReady, suppressAppGuidance, isSimpleMode, mainTourCompleted]);
 
   const handleStartTour = useCallback(() => {
     setShowTourPrompt(false);

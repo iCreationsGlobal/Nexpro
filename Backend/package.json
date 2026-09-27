@@ -54,7 +54,8 @@
     "load:k6": "k6 run ./load-tests/backend-load-test.js",
     "load:k6:100": "PROFILE=100 k6 run ./load-tests/backend-load-test.js",
     "load:k6:200": "PROFILE=200 k6 run ./load-tests/backend-load-test.js",
-    "load:k6:300": "PROFILE=300 k6 run ./load-tests/backend-load-test.js"
+    "load:k6:300": "PROFILE=300 k6 run ./load-tests/backend-load-test.js",
+    "migrate:partner-portal": "node migrations/create-abs-partner-portal.js"
   },
   "keywords": [
     "printing",

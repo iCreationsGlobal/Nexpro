@@ -31,7 +31,29 @@ export const startScrollReveal = () => {
   observeWithin(document.body);
 
   // Lists render after data loads and routes swap content; catch new elements as they mount.
+  // Added nodes are batched and scanned once per animation frame, so a big render (or many
+  // small ones) costs a single pass instead of one query per inserted element.
+  let pending = [];
+  let frame = 0;
+  const flush = () => {
+    frame = 0;
+    const roots = pending;
+    pending = [];
+    // Many inserts in one frame (a page or list render): one scan of the page is cheaper.
+    if (roots.length > 20) {
+      observeWithin(document.body);
+      return;
+    }
+    roots.forEach((node) => {
+      if (node.isConnected) observeWithin(node);
+    });
+  };
   new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => mutation.addedNodes.forEach(observeWithin));
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === 1) pending.push(node);
+      });
+    });
+    if (pending.length && !frame) frame = window.requestAnimationFrame(flush);
   }).observe(document.body, { childList: true, subtree: true });
 };

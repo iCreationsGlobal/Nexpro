@@ -1,3 +1,4 @@
+import PartnerPortalDesk from '../../components/admin/PartnerPortalDesk';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -45,7 +46,7 @@ const agentSchema = z.object({
   email: z.string().email('Valid email required').optional().or(z.literal('')),
   phone: z.string().optional().or(z.literal('')),
   status: z.enum(['pending', 'active', 'disabled']).default('active'),
-  commissionAmount: z.coerce.number().min(0, 'Must be 0 or more').default(5000),
+  commissionPercent: z.preprocess(value => value === '' ? undefined : value, z.coerce.number().min(0).max(100).multipleOf(0.01, 'Use at most two decimal places')), 
   notes: z.string().optional().or(z.literal('')),
   code: z.string().optional().or(z.literal('')),
 });
@@ -82,7 +83,7 @@ const AdminSalesAgents = () => {
       email: '',
       phone: '',
       status: 'active',
-      commissionAmount: 5000,
+      commissionPercent: '',
       notes: '',
       code: '',
     },
@@ -152,7 +153,7 @@ const AdminSalesAgents = () => {
         email: values.email?.trim() || undefined,
         phone: values.phone?.trim() || undefined,
         status: values.status,
-        commissionAmount: values.commissionAmount,
+        commissionPercent: values.commissionPercent,
         notes: values.notes?.trim() || undefined,
         code: values.code?.trim() || undefined,
         createCode: values.status === 'active',
@@ -338,6 +339,8 @@ const AdminSalesAgents = () => {
         </div>
       </div>
 
+      <PartnerPortalDesk agents={agents} canInvite={canUpdate} canManageBilling={hasPermission('billing.manage')} />
+
       <DashboardTable
         data={agents}
         columns={columns}
@@ -401,15 +404,15 @@ const AdminSalesAgents = () => {
               />
               <FormField
                 control={form.control}
-                name="commissionAmount"
+                name="commissionPercent"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Commission per paid month (pesewas)</FormLabel>
+                    <FormLabel>Commission per subscription payment (%)</FormLabel>
                     <FormControl>
-                      <Input {...field} type="number" min={0} />
+                      <Input {...field} type="number" min={0} max={100} step="0.01" placeholder="Enter percentage" />
                     </FormControl>
                     <p className="text-xs text-muted-foreground">
-                      Default 5000 = GHS 50.00. Paid on up to 3 successful subscription payments.
+                      Percentage of the amount the client actually pays. For example, 10% of GHS 200 earns GHS 20. Applies to up to 3 successful subscription payments.
                     </p>
                     <FormMessage />
                   </FormItem>
@@ -500,9 +503,28 @@ const AdminSalesAgents = () => {
               </DescriptionItem>
               <DescriptionItem label="Email">{detail.email || '—'}</DescriptionItem>
               <DescriptionItem label="Phone">{detail.phone || '—'}</DescriptionItem>
-              <DescriptionItem label="Commission">{formatGhs(detail.commissionAmount)} / paid month</DescriptionItem>
+              <DescriptionItem label="Commission">{detail.metadata?.commissionPercent != null ? `${detail.metadata.commissionPercent}% of each payment` : `Percentage not set (existing fixed rate: ${formatGhs(detail.commissionAmount)})`}</DescriptionItem>
               <DescriptionItem label="Created">{dayjs(detail.createdAt).format('MMM D, YYYY')}</DescriptionItem>
             </Descriptions>
+
+            {canUpdate && (
+              <form key={detail.id} className="space-y-2 rounded-lg border p-3" onSubmit={async event => {
+                event.preventDefault();
+                const commissionPercent = Number(new FormData(event.currentTarget).get('commissionPercent'));
+                setSubmitting(true);
+                try {
+                  await adminService.updateSalesAgent(detail.id, { commissionPercent });
+                  setDetail(current => ({ ...current, metadata: { ...current.metadata, commissionPercent } }));
+                  showSuccess('Commission percentage saved. Applies to future payments.');
+                  fetchAgents(pagination.current, pagination.pageSize);
+                } catch (error) { handleApiError(error, { context: 'update commission percentage' }); }
+                finally { setSubmitting(false); }
+              }}>
+                <label htmlFor="agent-commission-percent" className="text-sm font-medium">Commission percentage (%)</label>
+                <div className="flex gap-2"><Input id="agent-commission-percent" name="commissionPercent" type="number" min="0" max="100" step="0.01" required defaultValue={detail.metadata?.commissionPercent ?? ''} placeholder="Enter percentage" /><Button disabled={submitting}>Save percentage</Button></div>
+                <p className="text-xs text-muted-foreground">Applies to future successful subscription payments. Existing earned commissions stay unchanged.</p>
+              </form>
+            )}
 
             {canUpdate && (
               <div className="flex flex-wrap gap-2">

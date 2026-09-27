@@ -1,3 +1,5 @@
+import { useSimpleMode } from '@/hooks/useSimpleMode';
+import { SimpleSalesScreen } from '@/components/simple/SimpleSalesScreen';
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
@@ -72,7 +74,13 @@ type SalesListResponse = {
   data?: Sale[];
 };
 
-export default function SalesScreen() {
+/** Simple Mode shows the essentials-only screen; everyone else the full one. */
+export default function SalesScreenRoute() {
+  const { isRestricted } = useSimpleMode();
+  return isRestricted ? <SimpleSalesScreen /> : <SalesScreen />;
+}
+
+function SalesScreen() {
   const router = useRouter();
   const { activeTenant, activeTenantId, hasFeature } = useAuth();
   const { activeShopId, activeStudioLocationId, scopeReady } = useWorkspaceScope();

@@ -9,6 +9,7 @@ import {
   Link as LinkIcon,
   User,
   ChevronDown,
+  Lock,
   Search,
   Sparkles,
   RefreshCw,
@@ -36,12 +37,15 @@ import { resolveImageUrl } from '@/utils/fileUtils';
 import { isSabitoStoreEnabled } from '@/utils/sabitoStoreFeature';
 import NotificationBell from '@/components/NotificationBell';
 import TourButton from '@/components/tour/TourButton';
+import { useSimpleMode } from '@/hooks/useSimpleMode';
+import { lockSimpleMode } from '@/components/simple/SimpleModePinGate';
 import { MobileSidebar } from './Sidebar';
 import { cn } from '@/lib/utils';
 
 export function Header() {
   const navigate = useNavigate();
   const { user, logout, activeTenant, isManager, isDriver } = useAuth();
+  const simpleMode = useSimpleMode();
   const { hintMode, toggleHintMode } = useHintMode();
   const {
     placeholder,
@@ -288,8 +292,8 @@ export function Header() {
           {/* Mobile Sidebar - Hide when search is expanded */}
           {(!isMobile || !isSearchExpanded) && <MobileSidebar />}
           
-          {/* Search - Icon only on mobile when collapsed, full input when expanded */}
-          {isMobile ? (
+          {/* Search - Icon only on mobile when collapsed, full input when expanded (hidden in Simple Mode) */}
+          {simpleMode.isRestricted ? null : isMobile ? (
             isSearchExpanded ? (
               // Expanded search on mobile
               <div className="relative flex-1 w-full flex items-center gap-2" data-tour="header-search">
@@ -410,8 +414,8 @@ export function Header() {
               <TooltipContent side="bottom">Hard refresh</TooltipContent>
             </Tooltip>
 
-            {/* Ask iBIS — staff+ (read-only analysis); drivers excluded */}
-            {!isDriver && (
+            {/* Ask iBIS — staff+ (read-only analysis); drivers and Simple Mode excluded */}
+            {!isDriver && !simpleMode.isSimple && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -431,15 +435,31 @@ export function Header() {
               </Tooltip>
             )}
 
-            {/* Notification Bell */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div data-tour="header-notifications" className="inline-flex">
-                  <NotificationBell />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">View order updates, low stock alerts, and other notifications</TooltipContent>
-            </Tooltip>
+            {/* Notification Bell (Simple Mode: no notifications or alerts) */}
+            {!simpleMode.isSimple && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div data-tour="header-notifications" className="inline-flex">
+                    <NotificationBell />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">View order updates, low stock alerts, and other notifications</TooltipContent>
+              </Tooltip>
+            )}
+
+            {/* Simple Mode: lock the app until the PIN is entered again */}
+            {simpleMode.isSimple && (
+              <Button
+                variant="outline"
+                size={isMobile ? 'icon' : 'sm'}
+                onClick={lockSimpleMode}
+                aria-label="Lock"
+                className={cn(isMobile ? 'min-h-[44px] min-w-[44px]' : 'h-9', 'border-border')}
+              >
+                <Lock className={cn('h-4 w-4', !isMobile && 'mr-2')} />
+                {!isMobile && <span>Lock</span>}
+              </Button>
+            )}
             
             {/* User Profile Dropdown */}
             <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
@@ -471,18 +491,22 @@ export function Header() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 p-0">
-                <div
-                  className="p-0"
-                  onClick={closeMenu}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') closeMenu(); }}
-                  role="presentation"
-                >
-                  <TourButton
-                    variant="ghost"
-                    className="w-full justify-start min-h-[44px] rounded-sm px-2"
-                  />
-                </div>
-                <DropdownMenuSeparator className="mx-0 my-0" />
+                {!simpleMode.isSimple && (
+                  <>
+                    <div
+                      className="p-0"
+                      onClick={closeMenu}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') closeMenu(); }}
+                      role="presentation"
+                    >
+                      <TourButton
+                        variant="ghost"
+                        className="w-full justify-start min-h-[44px] rounded-sm px-2"
+                      />
+                    </div>
+                    <DropdownMenuSeparator className="mx-0 my-0" />
+                  </>
+                )}
                 <div className="flex items-center justify-between gap-3 px-2 py-2 min-h-[44px]">
                   <Lightbulb className="h-4 w-4 text-muted-foreground shrink-0" />
                   <span className="text-sm font-medium flex-1">Hint Mode</span>

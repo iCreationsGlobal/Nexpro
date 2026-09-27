@@ -80,3 +80,15 @@ export function validatePhone(phone, defaultCountryCode = DEFAULT_COUNTRY_CODE) 
   }
   return { valid: true, normalized, error: undefined };
 }
+
+/**
+ * Tidy a stored phone for printing. Collapses a country code that was saved twice
+ * ("+233+233555155972" → "+233555155972", which happens when a dial-code picker is combined
+ * with a number that already had the code). Anything else is returned trimmed, unchanged.
+ * @param {string} phone
+ * @returns {string}
+ */
+export function formatDisplayPhone(phone) {
+  const value = String(phone ?? '').trim();
+  return value.replace(/^(\+\d{1,4})(?:\s*\1)+(?=\d)/, '$1');
+}

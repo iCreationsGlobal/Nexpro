@@ -1,11 +1,12 @@
 import React, { useCallback, useMemo } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { Pressable, View, StyleSheet, Text } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 
 import { AppIcon } from '@/components/AppIcon';
 import {
   AppBottomSheet,
+  APP_SHEET_HEIGHT_COMPACT,
   APP_SHEET_HEIGHT_TALL,
   SheetMenuRow,
   SheetSectionLabel,
@@ -14,6 +15,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useFocusAreas } from '@/hooks/useFocusAreas';
 import { useIsStoreSetupRoute } from '@/hooks/useIsStoreSetupRoute';
 import { useScreenColors } from '@/hooks/useScreenColors';
+import { useSimpleMode } from '@/hooks/useSimpleMode';
+import { FontFamily } from '@/constants/typography';
 import { storeService } from '@/services/storeService';
 import {
   buildMoreMenuSections,
@@ -32,7 +35,7 @@ type MoreMenuSheetProps = {
 export function MoreMenuSheet({ visible, onClose }: MoreMenuSheetProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { activeTenant, activeTenantId, hasFeature, user, isDriver } = useAuth();
+  const { activeTenant, activeTenantId, hasFeature, user, isDriver, isManager } = useAuth();
   const { mutedColor } = useScreenColors();
   const inStoreSetup = useIsStoreSetupRoute();
   const { focusAreas } = useFocusAreas();
@@ -84,6 +87,36 @@ export function MoreMenuSheet({ visible, onClose }: MoreMenuSheetProps) {
     [onClose, router]
   );
 
+  const { isRestricted: isSimpleRestricted, config: simpleConfig } = useSimpleMode();
+  if (isSimpleRestricted && simpleConfig) {
+    // Simple Mode: big coloured tiles, the same colours as the web sidebar.
+    return (
+      <AppBottomSheet visible={visible} title="Menu" onClose={onClose} height={APP_SHEET_HEIGHT_COMPACT}>
+        <View style={styles.tileGrid}>
+          {simpleConfig.more.filter((item) => !item.managerOnly || isManager).map((item) => (
+            <Pressable
+              key={item.id}
+              onPress={() => {
+                onClose();
+                requestAnimationFrame(() => router.push(item.route as any));
+              }}
+              style={({ pressed }) => [
+                styles.tile,
+                { backgroundColor: item.tone.background },
+                pressed && styles.tilePressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={item.label}
+            >
+              <AppIcon name={item.icon} size={40} color={item.tone.icon} strokeWidth={1.75} />
+              <Text style={[styles.tileLabel, { color: item.tone.text }]}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </AppBottomSheet>
+    );
+  }
+
   return (
     <AppBottomSheet
       visible={visible}
@@ -122,4 +155,17 @@ export function MoreMenuSheet({ visible, onClose }: MoreMenuSheetProps) {
 
 const styles = StyleSheet.create({
   section: { marginBottom: 8 },
+  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 16 },
+  tile: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    minHeight: 120,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 18,
+  },
+  tilePressed: { opacity: 0.8 },
+  tileLabel: { fontSize: 18, fontFamily: FontFamily.semiBold },
 });

@@ -1,3 +1,4 @@
+const { validateCommissionPercent, getCommissionPercent, calculatePercentageCommission } = require('../utils/salesAgentCommissionRate');
 const crypto = require('crypto');
 const dayjs = require('dayjs');
 const { Op } = require('sequelize');
@@ -278,10 +279,13 @@ async function maybeCreateCommissionForSuccessfulPayment(payment, options = {}) 
   }
 
   const periodNumber = existingCount + 1;
-  const commissionAmount =
-    Number.isFinite(Number(agent.commissionAmount)) && Number(agent.commissionAmount) > 0
-      ? Number(agent.commissionAmount)
-      : DEFAULT_COMMISSION_PESEWAS;
+  const commissionPercent = getCommissionPercent(agent);
+  // Preserve existing agreements until an administrator explicitly sets a percentage.
+  const commissionAmount = commissionPercent !== null
+    ? calculatePercentageCommission(amount, commissionPercent)
+    : (Number.isFinite(Number(agent.commissionAmount)) ? Math.max(0, Number(agent.commissionAmount)) : DEFAULT_COMMISSION_PESEWAS);
+  if (commissionAmount <= 0) return { created: false, skippedReason: 'zero_commission' };
+
 
   try {
     const commission = await SalesAgentCommission.create(
@@ -295,6 +299,9 @@ async function maybeCreateCommissionForSuccessfulPayment(payment, options = {}) 
         status: 'due',
         metadata: {
           source: 'subscription_payment',
+          commissionType: commissionPercent === null ? 'fixed' : 'percentage',
+          commissionPercent,
+          paymentAmount: amount,
           paymentPlan: payment.plan,
           billingPeriod: payment.billingPeriod,
           provider: payment.provider,
@@ -337,6 +344,8 @@ async function createSalesAgent(payload = {}, options = {}) {
   }
 
   const status = AGENT_STATUSES.has(payload.status) ? payload.status : 'pending';
+  const commissionPercent = payload.commissionPercent == null && status === 'pending'
+    ? null : validateCommissionPercent(payload.commissionPercent);
   const commissionAmount =
     payload.commissionAmount != null && Number(payload.commissionAmount) >= 0
       ? Math.round(Number(payload.commissionAmount))
@@ -352,7 +361,7 @@ async function createSalesAgent(payload = {}, options = {}) {
     leadId: payload.leadId || null,
     approvedAt: status === 'active' ? new Date() : null,
     approvedBy: status === 'active' ? options.approvedBy || null : null,
-    metadata: payload.metadata || {},
+    metadata: { ...(payload.metadata || {}), ...(commissionPercent !== null ? { commissionPercent } : {}) },
   });
 
   let codeRow = null;
@@ -393,6 +402,9 @@ async function updateSalesAgent(agentId, patch = {}, options = {}) {
   }
   if (patch.notes !== undefined) {
     updates.notes = patch.notes ? String(patch.notes).trim() : null;
+  }
+  if (patch.commissionPercent !== undefined) {
+    updates.metadata = { ...(agent.metadata || {}), commissionPercent: validateCommissionPercent(patch.commissionPercent) };
   }
   if (patch.commissionAmount != null) {
     const amount = Math.round(Number(patch.commissionAmount));

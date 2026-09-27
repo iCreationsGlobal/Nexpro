@@ -1,3 +1,5 @@
+import { useSimpleMode } from '../hooks/useSimpleMode';
+import SimpleDashboard from '../components/simple/SimpleDashboard';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useResponsive } from '../hooks/useResponsive';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
@@ -1503,6 +1505,12 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+/** Simple Mode members get the essentials-only dashboard; everyone else the full one. */
+const DashboardRoute = () => {
+  const { isSimple } = useSimpleMode();
+  return isSimple ? <SimpleDashboard /> : <Dashboard />;
+};
+
+export default DashboardRoute;
 
 

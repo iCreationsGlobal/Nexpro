@@ -47,6 +47,8 @@ import {
 
 // POS Components
 import POSCart from '../components/pos/POSCart';
+import SimplePOS from '../components/pos/SimplePOS';
+import { useSimpleMode } from '../hooks/useSimpleMode';
 import POSProductSearch from '../components/pos/POSProductSearch';
 import POSPaymentModal from '../components/pos/POSPaymentModal';
 import POSReceiptModal from '../components/pos/POSReceiptModal';
@@ -382,6 +384,7 @@ const CustomerSelectDialog = ({ isOpen, onClose, onSelect, onFindOrCreate }) => 
  * Main POS Page Component
  */
 const POS = () => {
+  const { isRestricted: isSimplePOS } = useSimpleMode();
   const { activeTenant, activeTenantId, user, isManager, isAdmin, hasFeature } = useAuth();
   const businessType = activeTenant?.businessType || null;
   const shopType =
@@ -397,6 +400,7 @@ const POS = () => {
 
   const { posConfig } = usePOSConfig();
   const { scanningEnabled, allowExternalScanner } = useScanningEnabled();
+  const [hardwareScanSignal, setHardwareScanSignal] = useState(0);
 
   const {
     isOnline,
@@ -519,7 +523,7 @@ const POS = () => {
   const safeAreaInsets = useSafeAreaInsets();
   const [isMobile, setIsMobile] = useState(isMobileWidth);
 
-  const { data: activeProductsFromQuery, refetch: refetchActiveProducts, isLoading: productsLoading } = useQuery({
+  const { data: activeProductsFromQuery, refetch: refetchActiveProducts, isLoading: productsLoading, isError: productsError } = useQuery({
     queryKey: queryKeys.products.active(tenantIdForProducts, activeShopId),
     queryFn: () => productService.getAllActiveProducts(),
     enabled: !!tenantIdForProducts && (!isShop || !!activeShopId),
@@ -735,6 +739,7 @@ const POS = () => {
   // Mirrors POSScanMode's camera-scan handling so lookups/logging/toasts stay consistent.
   const handleHardwareScan = useCallback(async (decodedText) => {
     const text = (decodedText || '').trim();
+    setHardwareScanSignal((n) => n + 1);
     const looksLikeQRJson = text.startsWith('{');
     console.info('[Hardware Scan] Received scan:', { code: text, looksLikeQRJson });
 
@@ -1669,7 +1674,15 @@ const POS = () => {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 pt-3 pl-3 sm:pt-4 sm:pl-4 md:pt-6 md:pl-6 bg-muted/50">
+    <div className={`flex flex-col h-full min-h-0 bg-muted/50 ${isSimplePOS ? '' : 'pt-3 pl-3 sm:pt-4 sm:pl-4 md:pt-6 md:pl-6'}`}>
+      {isSimplePOS ? <SimplePOS
+        products={allProducts} loading={productsLoading} error={productsError} onRetry={handleRefreshProducts}
+        cart={cart} totals={cartTotals} onAdd={addToCart} onQuantity={updateCartItemQuantity}
+        onClear={clearCart} onCheckout={handleCheckout} customer={selectedCustomer}
+        onCustomer={() => setCustomerDialogOpen(true)} isOnline={isOnline}
+        scanningEnabled={scanningEnabled} onScan={() => setScanModeOpen(true)}
+        scanSignal={hardwareScanSignal}
+      /> : <>
       {/* Header */}
       <div
         className={`shrink-0 mb-4 ${
@@ -1938,6 +1951,8 @@ const POS = () => {
         </div>
       </div>
 
+      </>}
+
       {/* Customer selection dialog */}
       <CustomerSelectDialog
         isOpen={customerDialogOpen}
@@ -2060,6 +2075,7 @@ const POS = () => {
 
       {/* Payment modal */}
       <POSPaymentModal
+        simpleMode={isSimplePOS}
         isOpen={paymentModalOpen}
         onClose={() => setPaymentModalOpen(false)}
         total={cartTotals.total}
@@ -2069,7 +2085,7 @@ const POS = () => {
           taxAmount: cartTotals.taxAmount,
           taxLabel: cartTotals.taxLabel
         }}
-        items={cart}
+        items={cart.map(item => ({ ...item, imageUrl: allProducts.find(product => product.id === item.productId)?.imageUrl }))}
         customer={selectedCustomer}
         customers={customersList}
         onRequestChangeCustomer={() => setCustomerDialogOpen(true)}
@@ -2130,7 +2146,7 @@ const POS = () => {
       </Sheet>
 
       {/* Tablet/mobile checkout bar — tap summary to open cart sheet */}
-      <div
+      {!isSimplePOS && <div
         className="lg:hidden shrink-0 z-20 border-t border-border bg-background px-4 pt-3 -ml-3 sm:-ml-4 md:ml-0 pr-4"
         style={mobileCheckoutBarPaddingBottom ? { paddingBottom: mobileCheckoutBarPaddingBottom } : undefined}
       >
@@ -2171,6 +2187,8 @@ const POS = () => {
           </div>
         </div>
       </div>
+
+      }
 
       {/* Receipt modal */}
       <POSReceiptModal

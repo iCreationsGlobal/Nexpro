@@ -51,6 +51,9 @@ import DashboardTable from '../components/DashboardTable';
 import ViewToggle from '../components/ViewToggle';
 import DashboardStatsCard from '../components/DashboardStatsCard';
 import WelcomeSection from '../components/WelcomeSection';
+import { useSimpleMode } from '../hooks/useSimpleMode';
+import SimpleExpensesList, { SIMPLE_EXPENSE_PERIODS } from '../components/simple/SimpleExpensesList';
+import SimpleExpenseForm from '../components/simple/SimpleExpenseForm';
 import { Button } from '@/components/ui/button';
 import { SecondaryButton } from '@/components/ui/secondary-button';
 import { Input } from '@/components/ui/input';
@@ -190,16 +193,36 @@ const Expenses = () => {
     pageSize: 10,
     total: 0
   });
-  const [filters, setFilters] = useState({
-    category: 'all',
-    status: 'all',
-    jobId: 'all',
-    viewType: 'all',
-    startDate: null,
-    endDate: null
+  // Simple Mode: a plain list with a big Add expense button and a short form.
+  const { isRestricted: isSimpleExpenses } = useSimpleMode();
+  const [simplePeriod, setSimplePeriod] = useState('today');
+  // Start Simple Mode on today's range so the first request is already the right one.
+  const [filters, setFilters] = useState(() => {
+    const today = SIMPLE_EXPENSE_PERIODS[0];
+    return {
+      category: 'all',
+      status: 'all',
+      jobId: 'all',
+      viewType: 'all',
+      startDate: isSimpleExpenses ? today.start().toDate() : null,
+      endDate: isSimpleExpenses ? today.end().toDate() : null,
+    };
   });
   const [tableViewMode, setTableViewMode] = useState('table');
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  useEffect(() => {
+    if (!isSimpleExpenses) return;
+    const period = SIMPLE_EXPENSE_PERIODS.find((p) => p.key === simplePeriod) || SIMPLE_EXPENSE_PERIODS[0];
+    setFilters({
+      category: 'all',
+      status: 'all',
+      jobId: 'all',
+      viewType: 'all',
+      startDate: period.start().toDate(),
+      endDate: period.end().toDate(),
+    });
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  }, [isSimpleExpenses, simplePeriod]);
   const [rejectionModalVisible, setRejectionModalVisible] = useState(false);
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -567,6 +590,18 @@ const Expenses = () => {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to deep-link id
   }, [searchParams.get('open'), setSearchParams]);
+
+  // `?new=1` (e.g. the Simple Mode dashboard's Add expense button) opens the add form.
+  useEffect(() => {
+    if (searchParams.get('new') !== '1') return;
+    handleCreate(false);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('new');
+      return next;
+    }, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the deep-link flag
+  }, [searchParams.get('new'), setSearchParams]);
 
   const handleCloseDrawer = () => {
     setDrawerVisible(false);
@@ -1213,6 +1248,21 @@ const Expenses = () => {
 
   return (
     <div className="space-y-4 md:space-y-6">
+      {isSimpleExpenses ? (
+        <SimpleExpensesList
+          expenses={paginatedExpenses}
+          loading={expensesLoading}
+          totalCount={expensesCount}
+          period={simplePeriod}
+          onPeriodChange={setSimplePeriod}
+          onAdd={() => handleCreate(false)}
+          onOpenExpense={handleEdit}
+          page={pagination.current}
+          totalPages={Math.max(Math.ceil(expensesCount / pagination.pageSize), 1)}
+          onPageChange={(nextPage) => setPagination((prev) => ({ ...prev, current: nextPage }))}
+        />
+      ) : (
+      <>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 md:gap-4">
         <WelcomeSection
           welcomeMessage="Expenses"
@@ -1328,6 +1378,8 @@ const Expenses = () => {
         viewMode={tableViewMode}
         onViewModeChange={setTableViewMode}
       />
+      </>
+      )}
 
       {/* Filter Drawer */}
       <Sheet open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>
@@ -1524,8 +1576,30 @@ const Expenses = () => {
       </AlertDialog>
 
       {/* Add/Edit Dialog */}
+      {/* Simple Mode: picture tiles, amount and date instead of the full form. */}
+      <SimpleExpenseForm
+        open={modalVisible && isSimpleExpenses}
+        onOpenChange={(open) => {
+          if (!open) {
+            setModalVisible(false);
+            setEditingExpense(null);
+            form.reset();
+          }
+        }}
+        expense={editingExpense}
+        saving={submittingExpense}
+        // Merge over the loaded form values so fields this form doesn't show (vendor, notes…)
+        // keep what was saved when editing.
+        onSave={(values) => onSubmit({ ...form.getValues(), ...values })}
+        onRemove={() => {
+          setExpenseToArchive(editingExpense);
+          setArchiveConfirmOpen(true);
+          setModalVisible(false);
+        }}
+      />
+
       <MobileFormDialog
-        open={modalVisible}
+        open={modalVisible && !isSimpleExpenses}
         onOpenChange={(open) => {
           if (!open) {
             setModalVisible(false);

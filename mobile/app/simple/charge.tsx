@@ -1,9 +1,8 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import { router } from 'expo-router';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
-import { Banknote, CreditCard, Smartphone } from 'lucide-react-native';
 import { useCart } from '@/context/CartContext';
 import { saleService } from '@/services/saleService';
 import { getApiErrorMessage } from '@/utils/parseApiListResponse';
@@ -13,20 +12,20 @@ import { FontFamily } from '@/constants/typography';
 const generateSaleClientId = () =>
   `mobile-sale-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
-type PaymentMethod = 'cash' | 'mobile_money' | 'card';
+type PaymentMethod = 'cash' | 'mobile_money';
 
-const METHODS: { id: PaymentMethod; label: string; Icon: typeof Banknote }[] = [
-  { id: 'cash', label: 'Cash', Icon: Banknote },
-  { id: 'mobile_money', label: 'Mobile Money', Icon: Smartphone },
-  { id: 'card', label: 'Card', Icon: CreditCard },
+const METHODS: { id: PaymentMethod; label: string; image: ImageSourcePropType }[] = [
+  { id: 'cash', label: 'Cash', image: require('@/assets/images/payments/ghana-cedi.jpg') },
+  { id: 'mobile_money', label: 'MTN MoMo', image: require('@/assets/images/payments/mtn-momo.png') },
 ];
 
 /**
- * Charge screen — payment as icon buttons, one giant CHARGE button. No change calculation or
+ * Charge screen — payment as picture buttons, one giant CHARGE button. No change calculation or
  * momo-number entry in v1: amountPaid is assumed to equal the total (the common case for these
  * shops); typed exceptions stay in Full Mode's cart screen.
  */
 export default function SimpleCharge() {
+  const queryClient = useQueryClient();
   const { items, getTotal, getSubtotal, clearCart } = useCart();
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const total = getTotal();
@@ -59,6 +58,8 @@ export default function SimpleCharge() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       const saleId = sale?.id ?? sale?.data?.id ?? '';
       clearCart();
+      // Home, Sales and Reports totals include this sale now.
+      void queryClient.invalidateQueries({ queryKey: ['simple'] });
       router.replace({ pathname: '/simple/receipt', params: { saleId, total: String(total) } });
     },
     onError: (error) => {
@@ -81,13 +82,17 @@ export default function SimpleCharge() {
       <Text style={styles.total}>{formatCurrency(total)}</Text>
 
       <View style={styles.methods}>
-        {METHODS.map(({ id, label, Icon }) => (
+        {METHODS.map(({ id, label, image }) => (
           <Pressable
             key={id}
             onPress={() => setMethod(id)}
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            accessibilityState={{ selected: method === id, disabled: createSaleMutation.isPending }}
+            disabled={createSaleMutation.isPending}
             style={[styles.methodBtn, method === id && styles.methodBtnActive]}
           >
-            <Icon size={32} color={method === id ? '#fff' : '#166534'} />
+            <View style={styles.methodImageWrap}><Image source={image} style={styles.methodImage} resizeMode="contain" /></View>
             <Text style={[styles.methodLabel, method === id && styles.methodLabelActive]}>{label}</Text>
           </Pressable>
         ))}
@@ -117,18 +122,21 @@ const styles = StyleSheet.create({
     marginTop: 48,
     marginBottom: 40,
   },
-  methods: { flexDirection: 'row', gap: 16, marginBottom: 48 },
+  methods: { flexDirection: 'row', width: '100%', paddingHorizontal: 20, gap: 16, marginBottom: 32 },
   methodBtn: {
-    width: 96,
-    height: 96,
+    flex: 1,
+    minHeight: 176,
+    padding: 10,
     borderRadius: 20,
     backgroundColor: '#f0fdf4',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 12,
   },
   methodBtnActive: { backgroundColor: '#166534' },
-  methodLabel: { fontSize: 12, fontFamily: FontFamily.medium, color: '#166534', textAlign: 'center' },
+  methodImageWrap: { width: '100%', height: 112, borderRadius: 12, backgroundColor: '#fff', padding: 6 },
+  methodImage: { width: '100%', height: '100%' },
+  methodLabel: { fontSize: 20, fontFamily: FontFamily.medium, color: '#166534', textAlign: 'center' },
   methodLabelActive: { color: '#fff' },
   chargeBtn: {
     width: '88%',

@@ -1,3 +1,5 @@
+import { useSimpleMode } from '@/hooks/useSimpleMode';
+import { lockSimpleMode } from '@/components/simple/SimpleModePinGate';
 import React, { useCallback, useMemo } from 'react';
 import {
   View,
@@ -36,15 +38,17 @@ export function Header() {
   const { pageConfig, searchValue, setSearchValue } = useSmartSearch();
   const inStoreSetup = useIsStoreSetupRoute();
 
+  const { isSimple } = useSimpleMode();
   const searchConfig = useMemo(
-    () => resolveHeaderSearchConfig(pathname, pageConfig),
-    [pathname, pageConfig]
+    () => (isSimple ? null : resolveHeaderSearchConfig(pathname, pageConfig)),
+    [isSimple, pathname, pageConfig]
   );
 
   const { data: notificationSummary } = useQuery({
     queryKey: ['notifications', 'summary', activeTenantId],
     queryFn: () => notificationService.getSummary(),
-    enabled: !!activeTenantId && !isDriver && !inStoreSetup,
+    // Simple Mode shows no notifications, so don't poll for them.
+    enabled: !!activeTenantId && !isDriver && !inStoreSetup && !isSimple,
     staleTime: 5 * 60 * 1000,
     refetchInterval: inStoreSetup ? false : 5 * 60 * 1000,
     refetchIntervalInBackground: false,
@@ -88,7 +92,21 @@ export function Header() {
             <HeaderScopeTitle embedded />
           </View>
         </View>
-        {!isDriver && (
+        {!isDriver && isSimple && (
+          <View style={styles.topRowRight}>
+            <Pressable
+              onPress={lockSimpleMode}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Lock"
+            >
+              <AppIcon name="lock" size={22} color={colors.text} />
+            </Pressable>
+            <UserAvatar size={34} onPress={handleAccountPress} accessibilityLabel="Open account" />
+          </View>
+        )}
+        {!isDriver && !isSimple && (
           <View style={styles.topRowRight}>
             <Pressable
               onPress={handleChatPress}

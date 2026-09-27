@@ -15,6 +15,8 @@ import { useFocusAreas } from '@/hooks/useFocusAreas';
 import { getFocusAreaDefinition } from '@/constants/focusAreas';
 import { isRentalBusinessType, resolveBusinessType } from '@/constants';
 import { OPEN_SCAN_CAMERA_EVENT } from '@/utils/scanTabEvents';
+import { useSimpleMode } from '@/hooks/useSimpleMode';
+import type { SimpleTone } from '@/constants/simpleMode';
 
 function TabBarIcon({
   name,
@@ -25,6 +27,26 @@ function TabBarIcon({
 }) {
   return <AppIcon name={name} size={24} color={color} style={{ marginBottom: -2 }} />;
 }
+
+/** Simple Mode tab icon: the item's light colour behind its icon (same palette as the web sidebar). */
+function SimpleTabIcon({ name, tone, focused }: { name: AppIconName; tone: SimpleTone; focused: boolean }) {
+  return (
+    <View
+      style={[
+        styles.simpleIconPill,
+        { backgroundColor: tone.background, borderColor: focused ? tone.icon : 'transparent' },
+      ]}
+    >
+      <AppIcon name={name} size={24} color={tone.icon} />
+    </View>
+  );
+}
+
+/** Screens that exist in the tabs group but are not tabs in Simple Mode (reachable via More / links). */
+const SIMPLE_HIDDEN_TAB_SCREENS = [
+  'customers', 'invoices', 'orders', 'online-orders', 'store', 'store-services', 'products', 'jobs',
+  'chat', 'cart', 'quotes', 'dealers', 'leads', 'tasks', 'rentals', 'deliveries',
+] as const;
 
 /** Stable header component — avoids remounting Header on every TabLayout render (notification poll spam). */
 function TabsHeader() {
@@ -71,6 +93,7 @@ export default function TabLayout() {
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const lastCenterTapRef = useRef(0);
   const DOUBLE_TAP_WINDOW_MS = 350;
+  const { isRestricted: isSimpleRestricted, config: simpleConfig } = useSimpleMode();
 
   useEffect(() => {
     if (!isDriver) return;
@@ -94,6 +117,74 @@ export default function TabLayout() {
     }),
     [colors.tint, colors.tabIconDefault]
   );
+
+  if (isSimpleRestricted && simpleConfig) {
+    const [homeTab, salesTab, expensesTab] = simpleConfig.tabs;
+    const simpleTabOptions = (item: typeof homeTab) => ({
+      title: item.label,
+      tabBarActiveTintColor: item.tone.text,
+      tabBarInactiveTintColor: item.tone.text,
+      tabBarIcon: ({ focused }: { focused: boolean }) => (
+        <SimpleTabIcon name={item.icon} tone={item.tone} focused={focused} />
+      ),
+    });
+    // Simple Mode: Home · Sales · [Sell] · Expenses · More. Everything else is hidden but still routable.
+    return (
+      <SmartSearchProvider>
+      <>
+      <MoreMenuSheet visible={menuOpen} onClose={closeMenu} />
+      <Tabs screenOptions={{ ...screenOptions, tabBarStyle: { height: 76, paddingTop: 6 } }}>
+        <Tabs.Screen name="index" options={simpleTabOptions(homeTab)} />
+        <Tabs.Screen name="sales" options={simpleTabOptions(salesTab)} />
+        <Tabs.Screen
+          name="scan"
+          options={{
+            title: 'Sell',
+            tabBarButton: () => (
+              <Pressable
+                onPress={() => router.push('/simple' as never)}
+                style={({ pressed }) => [styles.centerTab, pressed && styles.centerButtonPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Sell"
+              >
+                <View style={styles.centerTabContent}>
+                  <View style={[styles.centerButton, { backgroundColor: colors.tint }]}>
+                    <AppIcon name="shopping-cart" size={28} color="#fff" strokeWidth={2.5} />
+                  </View>
+                  <Text style={[styles.centerTabLabel, { color: colors.text }]}>Sell</Text>
+                </View>
+              </Pressable>
+            ),
+          }}
+        />
+        <Tabs.Screen name="expenses" options={simpleTabOptions(expensesTab)} />
+        <Tabs.Screen
+          name="more"
+          options={{
+            title: 'More',
+            tabBarIcon: ({ focused }) => <SimpleTabIcon name="bars" tone={SIMPLE_MORE_TONE} focused={focused} />,
+            tabBarActiveTintColor: SIMPLE_MORE_TONE.text,
+            tabBarInactiveTintColor: SIMPLE_MORE_TONE.text,
+            tabBarButton: (props) => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="More menu"
+                onPress={() => setMenuOpen(true)}
+                style={props.style}
+              >
+                {props.children}
+              </Pressable>
+            ),
+          }}
+        />
+        {SIMPLE_HIDDEN_TAB_SCREENS.map((name) => (
+          <Tabs.Screen key={name} name={name} options={{ href: null }} />
+        ))}
+      </Tabs>
+      </>
+      </SmartSearchProvider>
+    );
+  }
 
   return (
     <SmartSearchProvider>
@@ -282,7 +373,17 @@ export default function TabLayout() {
   );
 }
 
+const SIMPLE_MORE_TONE: SimpleTone = { background: '#f1f5f9', icon: '#334155', text: '#0f172a' };
+
 const styles = StyleSheet.create({
+  simpleIconPill: {
+    width: 44,
+    height: 32,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   centerTab: {
     flex: 1,
     alignItems: 'center',

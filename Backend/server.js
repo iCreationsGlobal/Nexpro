@@ -272,6 +272,7 @@ app.use('/api/leads', leadRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/tours', tourRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/abs-partners', require('./routes/absPartnerPortalRoutes'));
 app.use('/api/partner-program', require('./routes/partnerProgramRoutes'));
 app.use('/api/employees', employeeRoutes);
 app.use('/api/accounting', accountingRoutes);

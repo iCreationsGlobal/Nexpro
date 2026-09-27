@@ -1,3 +1,5 @@
+import { useSimpleMode } from '../../hooks/useSimpleMode';
+import { buildSimpleModeNav } from '../../config/simpleMode';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -431,10 +433,12 @@ export function Sidebar({ collapsed, onCollapse }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin, isManager, isDriver, activeTenant, user, hasFeature, isPlatformAdmin, isSupportAccessActive } = useAuth();
+  const simpleMode = useSimpleMode();
   const { kind, isShopScoped, hasWorkspaceFeature } = useWorkspaceProfile();
   const hidePlatformAdminNav = isPlatformAdmin && !isSupportAccessActive;
   const { appName, primaryColor } = useBranding();
   const { canInstall, promptInstall } = usePWAInstall();
+  const showInstallApp = canInstall && !simpleMode.isSimple;
   const studio = useStudioLocationOptional();
   const [openKeys, setOpenKeys] = useState([]);
 
@@ -485,7 +489,9 @@ export function Sidebar({ collapsed, onCollapse }) {
       hasWorkspaceFeature,
       hidePlatformAdminNav
     );
-    return filterHiddenNavItems(items, hiddenSidebarKeys);
+    const visible = filterHiddenNavItems(items, hiddenSidebarKeys);
+    // Simple Mode: only the essentials, flattened out of their groups.
+    return simpleMode.isRestricted ? buildSimpleModeNav(simpleMode.config, visible) : visible;
   }, [
     businessType,
     isAdmin,
@@ -495,6 +501,8 @@ export function Sidebar({ collapsed, onCollapse }) {
     hasWorkspaceFeature,
     hidePlatformAdminNav,
     hiddenSidebarKeys,
+    simpleMode.isRestricted,
+    simpleMode.config,
   ]);
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -510,7 +518,11 @@ export function Sidebar({ collapsed, onCollapse }) {
       enabled
     );
   }, [activeTenant, hasFeature, menuItems]);
-  const quickActions = useMemo(() => getQuickActions(businessType, shopType), [businessType, shopType]);
+  // Simple Mode sells from the dashboard's Sell button; no quick-action list.
+  const quickActions = useMemo(
+    () => (simpleMode.isRestricted ? [] : getQuickActions(businessType, shopType)),
+    [businessType, shopType, simpleMode.isRestricted]
+  );
 
   // Open the group that contains the current route by default (only on route change)
   useEffect(() => {
@@ -751,13 +763,22 @@ export function Sidebar({ collapsed, onCollapse }) {
                           "w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted transition-colors",
                           location.pathname === item.key 
                             ? "bg-brand text-white font-medium hover:bg-brand-dark" 
-                            : "text-foreground",
-                          collapsed && "justify-center !p-2 w-10 h-10 mx-auto"
+                            : (simpleMode.isRestricted && item.tone) || "text-foreground",
+                          simpleMode.isRestricted
+                            ? collapsed
+                              ? "flex-col justify-center gap-2 px-1 py-3"
+                              : "flex-col justify-center gap-2 px-3 py-4 text-center text-base font-semibold"
+                            : collapsed && "justify-center !p-2 w-10 h-10 mx-auto"
                         )}
                         data-tour={dataTourId}
+                        aria-label={item.label}
+                        aria-current={location.pathname === item.key ? 'page' : undefined}
                       >
-                        <NavMenuIcon icon={item.icon} className="h-5 w-5 flex-shrink-0" />
-                        {!collapsed && <span>{item.label}</span>}
+                        <NavMenuIcon icon={item.icon} className={cn(
+                          "flex-shrink-0",
+                          simpleMode.isRestricted ? (collapsed ? "h-10 w-10" : "h-12 w-12") : "h-5 w-5"
+                        )} />
+                        {!collapsed && <span className={cn(simpleMode.isRestricted && "w-full break-words leading-snug")}>{item.label}</span>}
                       </button>
                     );
                     return (
@@ -823,10 +844,10 @@ export function Sidebar({ collapsed, onCollapse }) {
           <div
             className={cn(
               "w-full",
-              canInstall && !collapsed ? "flex min-w-0 items-center gap-2" : "space-y-2"
+              showInstallApp && !collapsed ? "flex min-w-0 items-center gap-2" : "space-y-2"
             )}
           >
-            {canInstall && (
+            {showInstallApp && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -855,7 +876,7 @@ export function Sidebar({ collapsed, onCollapse }) {
                   onClick={() => onCollapse?.(!collapsed)}
                   className={cn(
                     "hover:bg-muted text-foreground",
-                    canInstall && !collapsed ? "h-10 w-10 flex-shrink-0" : "w-full",
+                    showInstallApp && !collapsed ? "h-10 w-10 flex-shrink-0" : "w-full",
                     collapsed && "w-10 mx-auto"
                   )}
                 >
@@ -882,10 +903,12 @@ export function MobileSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin, isManager, isDriver, activeTenant, hasFeature, isPlatformAdmin, isSupportAccessActive } = useAuth();
+  const simpleMode = useSimpleMode();
   const { kind, isShopScoped, hasWorkspaceFeature } = useWorkspaceProfile();
   const hidePlatformAdminNav = isPlatformAdmin && !isSupportAccessActive;
   const { appName, primaryColor } = useBranding();
   const { canInstall, promptInstall } = usePWAInstall();
+  const showInstallApp = canInstall && !simpleMode.isSimple;
   const studio = useStudioLocationOptional();
   const [openKeys, setOpenKeys] = useState([]);
 
@@ -935,7 +958,9 @@ export function MobileSidebar() {
       hasWorkspaceFeature,
       hidePlatformAdminNav
     );
-    return filterHiddenNavItems(items, hiddenSidebarKeys);
+    const visible = filterHiddenNavItems(items, hiddenSidebarKeys);
+    // Simple Mode: only the essentials, flattened out of their groups.
+    return simpleMode.isRestricted ? buildSimpleModeNav(simpleMode.config, visible) : visible;
   }, [
     businessType,
     isAdmin,
@@ -945,8 +970,14 @@ export function MobileSidebar() {
     hasWorkspaceFeature,
     hidePlatformAdminNav,
     hiddenSidebarKeys,
+    simpleMode.isRestricted,
+    simpleMode.config,
   ]);
-  const quickActions = useMemo(() => getQuickActions(businessType, shopType), [businessType, shopType]);
+  // Simple Mode sells from the dashboard's Sell button; no quick-action list.
+  const quickActions = useMemo(
+    () => (simpleMode.isRestricted ? [] : getQuickActions(businessType, shopType)),
+    [businessType, shopType, simpleMode.isRestricted]
+  );
 
   // Open the group that contains the current route when sheet opens or location changes
   useEffect(() => {
@@ -1104,11 +1135,13 @@ export function MobileSidebar() {
                       "w-full flex items-center gap-3 px-3 py-3 rounded-md hover:bg-muted transition-colors min-h-[44px]",
                       location.pathname === item.key 
                         ? "bg-brand text-white font-medium hover:bg-brand-dark" 
-                        : "text-foreground"
+                        : (simpleMode.isRestricted && item.tone) || "text-foreground",
+                      simpleMode.isRestricted && "flex-col justify-center gap-2 py-4 text-center text-base font-semibold"
                     )}
+                    aria-current={location.pathname === item.key ? 'page' : undefined}
                   >
-                    <NavMenuIcon icon={item.icon} className="h-5 w-5 flex-shrink-0" />
-                    <span>{item.label}</span>
+                    <NavMenuIcon icon={item.icon} className={cn("flex-shrink-0", simpleMode.isRestricted ? "h-12 w-12" : "h-5 w-5")} />
+                    <span className={cn(simpleMode.isRestricted && "w-full break-words leading-snug")}>{item.label}</span>
                   </button>
                 )}
               </div>
@@ -1137,7 +1170,7 @@ export function MobileSidebar() {
               </div>
             </div>
           )}
-          {canInstall && (
+          {showInstallApp && (
             <div className="-mx-4 mt-2 border-t border-border pt-2 pb-2">
               <div className="px-4">
                 <button

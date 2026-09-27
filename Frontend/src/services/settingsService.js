@@ -124,6 +124,12 @@ const updateInterfaceMode = async (interfaceMode) => {
   return res?.data?.data ?? res?.data ?? { interfaceMode, source: 'user' };
 };
 
+/** Simple Mode: show or hide the full menu for this member only. */
+const updateSimpleModeShowAdvanced = async (showAdvanced) => {
+  const res = await api.patch('/settings/interface-mode', { showAdvanced: Boolean(showAdvanced) });
+  return res?.data?.data ?? res?.data ?? { showAdvanced: Boolean(showAdvanced) };
+};
+
 const getDeliverySettings = async () => {
   const res = await api.get('/settings/delivery');
   return res?.data?.data ?? res?.data ?? res;
@@ -298,6 +304,7 @@ export default {
   updatePOSConfig,
   getInterfaceMode,
   updateInterfaceMode,
+  updateSimpleModeShowAdvanced,
   getDeliverySettings,
   updateDeliverySettings,
   getRentalSettings,
@@ -334,4 +341,3 @@ export default {
   updateSmsTemplate,
   resetSmsTemplate,
 };
-

@@ -1,3 +1,5 @@
+import { useSimpleMode } from '../hooks/useSimpleMode';
+import SimpleReports from '../components/simple/SimpleReports';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -4372,6 +4374,9 @@ function ReportsInner() {
 }
 
 function Reports() {
+  // Simple Mode: totals, best sellers and spending only (no charts, AI or statements).
+  const { isRestricted } = useSimpleMode();
+  if (isRestricted) return <SimpleReports />;
   return (
     <RechartsModuleProvider>
       <ReportsInner />

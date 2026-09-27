@@ -1,3 +1,5 @@
+import { useSimpleMode } from '@/hooks/useSimpleMode';
+import { SimpleDashboard } from '@/components/simple/SimpleDashboard';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
@@ -266,7 +268,13 @@ function getDueDateBadge(
   };
 }
 
-export default function DashboardScreen() {
+/** Simple Mode members get the essentials-only Home; everyone else the full dashboard. */
+export default function DashboardRoute() {
+  const { isSimple } = useSimpleMode();
+  return isSimple ? <SimpleDashboard /> : <DashboardScreen />;
+}
+
+function DashboardScreen() {
   const router = useRouter();
   const { user, activeTenant, activeTenantId, wasInvited, suppressAppGuidance, refreshAuth, hasFeature } = useAuth();
   const { activeShopId, activeStudioLocationId, scopeReady } = useWorkspaceScope();

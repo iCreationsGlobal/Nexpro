@@ -9,9 +9,16 @@ import * as Crypto from 'expo-crypto';
  */
 
 const PIN_KEY_PREFIX = 'device_pin_hash_';
+const ATTEMPTS_KEY_PREFIX = 'device_pin_attempts_';
+/** Wrong PINs allowed before the PIN is wiped and a full password sign-in is required. */
+export const MAX_PIN_ATTEMPTS = 5;
 
 function keyFor(userId: string): string {
   return `${PIN_KEY_PREFIX}${userId}`;
+}
+
+function attemptsKeyFor(userId: string): string {
+  return `${ATTEMPTS_KEY_PREFIX}${userId}`;
 }
 
 async function hashPin(userId: string, pin: string): Promise<string> {
@@ -44,5 +51,24 @@ export const devicePinService = {
   async clearPin(userId: string): Promise<void> {
     if (!userId) return;
     await SecureStore.deleteItemAsync(keyFor(userId));
+    await SecureStore.deleteItemAsync(attemptsKeyFor(userId));
+  },
+
+  /** Wrong attempts so far (persisted, so restarting the app doesn't reset the count). */
+  async getFailedAttempts(userId: string): Promise<number> {
+    if (!userId) return 0;
+    return Number((await SecureStore.getItemAsync(attemptsKeyFor(userId))) || 0);
+  },
+
+  async recordFailedAttempt(userId: string): Promise<number> {
+    if (!userId) return 0;
+    const next = (await this.getFailedAttempts(userId)) + 1;
+    await SecureStore.setItemAsync(attemptsKeyFor(userId), String(next));
+    return next;
+  },
+
+  async resetFailedAttempts(userId: string): Promise<void> {
+    if (!userId) return;
+    await SecureStore.deleteItemAsync(attemptsKeyFor(userId));
   },
 };

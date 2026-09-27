@@ -7,11 +7,20 @@
 export type InterfaceMode = 'full' | 'simple';
 
 type MembershipLike = {
-  metadata?: { interfaceMode?: unknown } | null;
-  dataValues?: { metadata?: { interfaceMode?: unknown } | null } | null;
+  metadata?: { interfaceMode?: unknown; simpleModeShowAdvanced?: unknown } | null;
+  dataValues?: { metadata?: { interfaceMode?: unknown; simpleModeShowAdvanced?: unknown } | null } | null;
 };
 
 export function getInterfaceMode(membership: MembershipLike | null | undefined): InterfaceMode {
   const metadata = membership?.metadata ?? membership?.dataValues?.metadata;
   return metadata?.interfaceMode === 'simple' ? 'simple' : 'full';
+}
+
+/**
+ * Whether a Simple Mode member chose to bring back the full app (Settings → Show advanced
+ * features). Personal to the member, like interfaceMode. Mirrors Frontend/src/utils/interfaceMode.js.
+ */
+export function getSimpleModeShowAdvanced(membership: MembershipLike | null | undefined): boolean {
+  const metadata = membership?.metadata ?? membership?.dataValues?.metadata;
+  return metadata?.simpleModeShowAdvanced === true;
 }

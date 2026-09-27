@@ -20,6 +20,7 @@ const protect = async (req, res, next) => {
 
     try {
       const decoded = jwt.verify(token, config.jwt.secret);
+      if (decoded.partnerId || !decoded.id) throw new Error('Invalid application session');
       const cacheKey = getAuthUserCacheKey(decoded.id);
       let user = cache.get(cacheKey);
       if (!user) {

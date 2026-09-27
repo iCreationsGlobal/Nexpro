@@ -37,6 +37,9 @@ import DashboardTable from '../components/DashboardTable';
 import ViewToggle from '../components/ViewToggle';
 import DashboardStatsCard from '../components/DashboardStatsCard';
 import WelcomeSection from '../components/WelcomeSection';
+import { useSimpleMode } from '../hooks/useSimpleMode';
+import SimpleCustomersList from '../components/simple/SimpleCustomersList';
+import SimpleCustomerForm from '../components/simple/SimpleCustomerForm';
 import { showSuccess, showError, showWarning, handleApiError } from '../utils/toast';
 import { EMPTY_STATES } from '../constants/microcopy';
 import { getEmptyStateProps } from '../components/ui/empty-state';
@@ -184,6 +187,8 @@ const Customers = () => {
   const [importContactsOpen, setImportContactsOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
+  // Simple Mode: add button, search box and a plain list; a short form to add or edit.
+  const { isRestricted: isSimpleCustomers } = useSimpleMode();
   const { isManager, tenantRole, activeTenant, activeTenantId, hasFeature } = useAuth();
   const canManageCustomer = isManager || tenantRole === 'staff';
   const customerEvat = useCustomerEvat({
@@ -852,6 +857,21 @@ const Customers = () => {
 
   return (
     <div className="space-y-4 md:space-y-6">
+      {isSimpleCustomers ? (
+        <SimpleCustomersList
+          customers={customers}
+          loading={loading}
+          totalCount={pagination.total}
+          search={searchValue}
+          onSearchChange={setSearchValue}
+          onAdd={handleAdd}
+          onOpenCustomer={handleEdit}
+          page={pagination.current}
+          totalPages={Math.max(Math.ceil((pagination.total || 0) / pagination.pageSize), 1)}
+          onPageChange={(nextPage) => setPagination((prev) => ({ ...prev, current: nextPage }))}
+        />
+      ) : (
+      <>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 md:gap-4">
         <WelcomeSection
           welcomeMessage="Customers"
@@ -1004,9 +1024,21 @@ const Customers = () => {
           onViewModeChange={setTableViewMode}
         />
       </div>
+      </>
+      )}
+
+      {/* Simple Mode: name, phone and email only (plus Call / WhatsApp when editing). */}
+      <SimpleCustomerForm
+        open={modalVisible && isSimpleCustomers}
+        onOpenChange={(open) => { if (!open) discardCustomerModal(); }}
+        customer={editingCustomer}
+        saving={createMutation.isPending || updateMutation.isPending}
+        // Merge over the loaded form values so fields this form doesn't show keep what was saved.
+        onSave={(values) => onSubmit({ ...form.getValues(), ...values })}
+      />
 
       <MobileFormDialog
-        open={modalVisible}
+        open={modalVisible && !isSimpleCustomers}
         onOpenChange={setModalVisible}
         isDirty={form.formState.isDirty}
         onDiscard={discardCustomerModal}

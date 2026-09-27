@@ -8,7 +8,7 @@ import { logger } from '@/utils/logger';
 import { shouldSuppressAppGuidance } from '@/utils/appGuidanceEligibility';
 import { isOnboardingComplete } from '@/utils/onboardingStatus';
 import { membershipTenantId, normalizeMemberships } from '@/utils/membership';
-import { getInterfaceMode, type InterfaceMode } from '@/utils/interfaceMode';
+import { getInterfaceMode, getSimpleModeShowAdvanced, type InterfaceMode } from '@/utils/interfaceMode';
 import { getCurrentNetworkOnline } from '@/utils/connectivity';
 import { sanitizeAuthUserForMobile } from '@/utils/stripOversizedInlineDataUrls';
 
@@ -43,7 +43,7 @@ type Membership = {
   invitedBy?: string | null;
   createdAt?: string;
   joinedAt?: string;
-  metadata?: { interfaceMode?: string } | null;
+  metadata?: { interfaceMode?: string; simpleModeShowAdvanced?: boolean } | null;
 };
 
 type BootstrapUser = NonNullable<User> & {
@@ -108,6 +108,8 @@ type AuthContextType = {
   isManager: boolean;
   /** Simple/Full interface preference for the active membership — independent of role. */
   interfaceMode: InterfaceMode;
+  /** Simple Mode member brought the full app back (Settings → Show advanced features). */
+  simpleModeShowAdvanced: boolean;
   /** Plan/feature gating — same semantics as web: flag must be exactly true */
   hasFeature: (featureKey: string) => boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -137,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAdmin = ['owner', 'admin'].includes(tenantRole || '');
   const isManager = ['owner', 'admin', 'manager'].includes(tenantRole || '');
   const interfaceMode = getInterfaceMode(activeMembership);
+  const simpleModeShowAdvanced = getSimpleModeShowAdvanced(activeMembership);
 
   const activeFeatureFlags = useMemo(() => {
     const eff = activeTenant?.effectiveFeatureFlags;
@@ -549,6 +552,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAdmin,
     isManager,
     interfaceMode,
+    simpleModeShowAdvanced,
     hasFeature,
     login,
     logout,

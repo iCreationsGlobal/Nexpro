@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -15,7 +16,8 @@ import * as Haptics from 'expo-haptics';
 import { Boxes, Calculator, ImageOff, Minus, Plus, ShoppingCart } from 'lucide-react-native';
 import { SimpleHeader } from '@/components/simple/SimpleHeader';
 import { NumberPadModal } from '@/components/simple/NumberPad';
-import { useAuth } from '@/context/AuthContext';
+import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCart } from '@/context/CartContext';
 import { productService } from '@/services/productService';
 import { getOrCreateQuickSaleProduct } from '@/utils/quickSaleProduct';
@@ -42,13 +44,14 @@ type Product = {
  * (only text/typing is the literacy barrier being designed around).
  */
 export default function SimpleSell() {
-  const { activeTenantId } = useAuth();
+  const { activeTenantId, activeShopId, activeStudioLocationId, scopeReady } = useWorkspaceScope();
   const { items, addItem, addCustomAmountItem, updateQuantity, getTotal } = useCart();
   const [quickSaleVisible, setQuickSaleVisible] = useState(false);
   const [quickSaleBusy, setQuickSaleBusy] = useState(false);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['simple', 'products'],
+  const { data, isLoading, isError, refetch, isRefetching } = useQuery({
+    queryKey: ['simple', 'products', activeTenantId, activeShopId, activeStudioLocationId],
+    enabled: scopeReady,
     queryFn: () => productService.getProducts({ page: 1, limit: 60, isActive: true }),
     staleTime: 30_000,
   });
@@ -129,7 +132,7 @@ export default function SimpleSell() {
   const total = getTotal();
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <SimpleHeader>
         <Pressable
           style={styles.modeBtn}
@@ -157,7 +160,23 @@ export default function SimpleSell() {
         renderItem={renderTile}
         numColumns={3}
         contentContainerStyle={styles.grid}
-        refreshing={isLoading}
+        style={{ flex: 1 }}
+        refreshing={isRefetching}
+        onRefresh={() => { void refetch(); }}
+        ListEmptyComponent={
+          <View style={{ padding: 24, alignItems: 'center', gap: 16 }}>
+            {isLoading || !scopeReady ? <><ActivityIndicator size="large" color="#166534" /><Text>Loading products…</Text></> : <>
+              <ShoppingCart size={56} color="#166534" />
+              <Text style={{ textAlign: 'center', fontSize: 18, color: '#0f172a' }}>
+                {isError ? 'Could not load products.' : 'No products available for quick selling.'}
+              </Text>
+              <Pressable accessibilityRole="button" onPress={() => { void refetch(); }} style={{ padding: 16, borderRadius: 12, backgroundColor: '#166534' }}>
+                <Text style={{ color: '#fff', fontSize: 18 }}>Try again</Text>
+              </Pressable>
+              {!isError && <Text style={{ textAlign: 'center', color: '#475569' }}>Use Quick sale above to enter an amount. Products with variants are not shown here.</Text>}
+            </>}
+          </View>
+        }
         columnWrapperStyle={{ gap: 12 }}
       />
 
@@ -175,19 +194,21 @@ export default function SimpleSell() {
                 )}
                 <View style={styles.qtyRow}>
                   <Pressable
-                    style={styles.qtyBtn}
-                    accessibilityLabel="Decrease quantity"
+                    style={({ pressed }) => [styles.qtyBtn, styles.qtyDecrease, pressed && styles.tilePressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Decrease ${item.name} quantity`}
                     onPress={() => updateQuantity(item.id, item.quantity - 1)}
                   >
-                    <Minus size={16} color="#166534" />
+                    <Minus size={30} strokeWidth={3} color="#b91c1c" />
                   </Pressable>
                   <Text style={styles.qtyText}>{item.quantity}</Text>
                   <Pressable
-                    style={styles.qtyBtn}
-                    accessibilityLabel="Increase quantity"
+                    style={({ pressed }) => [styles.qtyBtn, styles.qtyIncrease, pressed && styles.tilePressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Increase ${item.name} quantity`}
                     onPress={() => updateQuantity(item.id, item.quantity + 1)}
                   >
-                    <Plus size={16} color="#166534" />
+                    <Plus size={30} strokeWidth={3} color="#fff" />
                   </Pressable>
                 </View>
               </View>
@@ -210,7 +231,7 @@ export default function SimpleSell() {
         onConfirm={handleQuickSaleConfirm}
         onCancel={() => setQuickSaleVisible(false)}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -249,23 +270,25 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   cartRow: { paddingHorizontal: 8, paddingTop: 8 },
-  cartItem: { alignItems: 'center', marginHorizontal: 6, width: 64 },
+  cartItem: { alignItems: 'center', marginHorizontal: 8, minWidth: 176 },
   cartItemImage: { width: 48, height: 48, borderRadius: 10 },
   cartItemImagePlaceholder: {
     backgroundColor: '#f3f4f6',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 },
+  qtyRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 10 },
   qtyBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     backgroundColor: '#f0fdf4',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  qtyText: { fontSize: 16, fontFamily: FontFamily.bold, minWidth: 20, textAlign: 'center' },
+  qtyDecrease: { backgroundColor: '#fee2e2' },
+  qtyIncrease: { backgroundColor: '#166534' },
+  qtyText: { fontSize: 24, fontFamily: FontFamily.bold, minWidth: 36, textAlign: 'center' },
   chargeBtn: {
     marginHorizontal: 16,
     marginTop: 8,

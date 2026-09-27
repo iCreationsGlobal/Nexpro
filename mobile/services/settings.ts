@@ -180,4 +180,10 @@ export const settingsService = {
     const res = await api.patch('/settings/interface-mode', { interfaceMode });
     return res?.data?.data ?? res?.data ?? { interfaceMode, source: 'user' };
   },
+
+  /** Simple Mode: bring back (or hide) the full app for this member only. */
+  updateSimpleModeShowAdvanced: async (showAdvanced: boolean) => {
+    const res = await api.patch('/settings/interface-mode', { showAdvanced });
+    return res?.data?.data ?? res?.data ?? { showAdvanced };
+  },
 };

@@ -7,8 +7,12 @@
  */
 
 const PIN_KEY_PREFIX = 'device_pin_hash_';
+const ATTEMPTS_KEY_PREFIX = 'device_pin_attempts_';
+/** Wrong PINs allowed before the PIN is wiped and a full password sign-in is required. */
+export const MAX_PIN_ATTEMPTS = 5;
 
 const keyFor = (userId) => `${PIN_KEY_PREFIX}${userId}`;
+const attemptsKeyFor = (userId) => `${ATTEMPTS_KEY_PREFIX}${userId}`;
 
 async function hashPin(userId, pin) {
   const data = new TextEncoder().encode(`${userId}:${pin}`);
@@ -43,5 +47,24 @@ export const devicePinService = {
   clearPin(userId) {
     if (!userId) return;
     window.localStorage.removeItem(keyFor(userId));
+    window.localStorage.removeItem(attemptsKeyFor(userId));
+  },
+
+  /** Wrong attempts so far (persisted, so closing the tab doesn't reset the count). */
+  getFailedAttempts(userId) {
+    if (!userId) return 0;
+    return Number(window.localStorage.getItem(attemptsKeyFor(userId)) || 0);
+  },
+
+  recordFailedAttempt(userId) {
+    if (!userId) return 0;
+    const next = this.getFailedAttempts(userId) + 1;
+    window.localStorage.setItem(attemptsKeyFor(userId), String(next));
+    return next;
+  },
+
+  resetFailedAttempts(userId) {
+    if (!userId) return;
+    window.localStorage.removeItem(attemptsKeyFor(userId));
   },
 };

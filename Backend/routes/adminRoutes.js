@@ -740,6 +740,13 @@ router.patch('/tenants/:id/branding', requirePlatformAdminPermission('tenants.up
  * Sales agents (growth / referral attribution + commissions)
  * Specific /codes and /commissions paths must be registered before /:id.
  */
+const absPartnerAdmin = require('../controllers/absPartnerAdminController');
+router.get('/partner-portal/payouts', requirePlatformAdminPermission('billing.manage'), absPartnerAdmin.payouts);
+router.get('/partner-portal', requirePlatformAdminPermission('tenants.view'), absPartnerAdmin.list);
+router.post('/sales-agents/:id/portal-invitation', requirePlatformAdminPermission('tenants.update'), absPartnerAdmin.invite);
+router.patch('/partner-portal/support/:id', requirePlatformAdminPermission('tenants.update'), absPartnerAdmin.updateSupport);
+router.patch('/partner-portal/records/:id', requirePlatformAdminPermission('billing.manage'), absPartnerAdmin.updateRecord);
+
 router.get('/sales-agents', requirePlatformAdminPermission('tenants.view'), listSalesAgents);
 router.post('/sales-agents', requirePlatformAdminPermission('tenants.create'), createSalesAgent);
 router.patch(

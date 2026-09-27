@@ -30,15 +30,15 @@ export function AppLoadingScreen({ onLayout, animate = false }: { onLayout?: () 
       stop();
       if (reduced || !animate) return;
       animations = motion.map((value, index) => Animated.loop(Animated.sequence([
-        Animated.timing(value, { toValue: 1, duration: 3000 + index * 850, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(value, { toValue: 0, duration: 3000 + index * 850, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(value, { toValue: 1, duration: 3000 + index * 850, easing: Easing.inOut(Easing.sin), useNativeDriver: true, isInteraction: false }),
+        Animated.timing(value, { toValue: 0, duration: 3000 + index * 850, easing: Easing.inOut(Easing.sin), useNativeDriver: true, isInteraction: false }),
       ])));
       // Indeterminate progress sweep: fill grows from a small stub to the full track width, then
       // resets and grows again — width can't run on the native driver, but this is a single tiny view.
       animations.push(Animated.loop(Animated.sequence([
-        Animated.timing(progress, { toValue: 1, duration: 1100, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+        Animated.timing(progress, { toValue: 1, duration: 1100, easing: Easing.out(Easing.cubic), useNativeDriver: false, isInteraction: false }),
         Animated.delay(200),
-        Animated.timing(progress, { toValue: 0, duration: 0, useNativeDriver: false }),
+        Animated.timing(progress, { toValue: 0, duration: 0, useNativeDriver: false, isInteraction: false }),
       ])));
       animations.forEach(animation => animation.start());
     };

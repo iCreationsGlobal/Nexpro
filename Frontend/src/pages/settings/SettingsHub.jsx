@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSettingsOnboardingBanner } from '../../hooks/useSettingsOnboardingBanner';
+import { useSimpleMode } from '../../hooks/useSimpleMode';
+import SettingsSimpleModeSection from '../../components/settings/sections/SettingsSimpleModeSection';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,21 +14,26 @@ import {
   groupSettingsCards,
 } from '../../utils/settingsRoutes';
 
+/** Settings cards shown in Simple Mode (until "Show advanced features" is on). */
+const SIMPLE_MODE_SETTINGS_SLUGS = new Set(['profile', 'organization', 'invoices-receipts', 'inventory', 'payments', 'billing']);
+
 /**
  * Settings hub card grid grouped by You / Business / Channels.
+ * Simple Mode puts its own controls (PIN, advanced features) first and trims the cards.
  */
 const SettingsHub = () => {
   const navigate = useNavigate();
   const { isManager, hasFeature, activeTenant } = useAuth();
   const { showOnboardingBanner } = useSettingsOnboardingBanner();
+  const { isSimple, isRestricted } = useSimpleMode();
 
   const visibleCards = useMemo(
     () => getVisibleSettingsCards({
       isManager,
       hasFeature,
       businessType: activeTenant?.businessType,
-    }),
-    [isManager, hasFeature, activeTenant?.businessType]
+    }).filter((card) => !isRestricted || SIMPLE_MODE_SETTINGS_SLUGS.has(card.slug)),
+    [isManager, hasFeature, activeTenant?.businessType, isRestricted]
   );
 
   const groups = useMemo(() => groupSettingsCards(visibleCards), [visibleCards]);
@@ -40,7 +47,13 @@ const SettingsHub = () => {
         </p>
       </div>
 
-      {showOnboardingBanner && (
+      {isSimple && (
+        <div className="mb-6 md:mb-8">
+          <SettingsSimpleModeSection />
+        </div>
+      )}
+
+      {showOnboardingBanner && !isRestricted && (
         <Card className="mb-3 md:mb-6 border-0 md:border border-brand bg-green-50">
           <CardContent className="p-2 md:p-6">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-4">

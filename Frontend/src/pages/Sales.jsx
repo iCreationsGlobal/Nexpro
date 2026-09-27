@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -19,6 +19,8 @@ import invoiceService from '../services/invoiceService';
 import settingsService from '../services/settingsService';
 import { mergeBranchOrganization } from '../utils/branchOrganization';
 import { getSalePartyLabel, getSalePartyDetails, isDealerSale } from '../utils/saleParty';
+import { useSimpleMode } from '../hooks/useSimpleMode';
+import SimpleSalesList, { SIMPLE_SALES_PERIODS } from '../components/simple/SimpleSalesList';
 import productService from '../services/productService';
 import { useAuth } from '../context/AuthContext';
 import { useShopOptional } from '../context/ShopContext';
@@ -194,12 +196,20 @@ const Sales = () => {
   const salesTab = location.pathname.endsWith('/returns') ? 'returns' : 'sales';
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [saleForPayment, setSaleForPayment] = useState(null);
-  const [filters, setFilters] = useState({ 
-    status: 'all',
-    customerId: 'all',
-    paymentMethod: 'all',
-    startDate: null,
-    endDate: null
+  // Simple Mode: a plain list with a Sell button; returns, filters and stats stay hidden.
+  const { isRestricted: isSimpleSales } = useSimpleMode();
+  const [simplePeriod, setSimplePeriod] = useState('today');
+  // Start Simple Mode on today's range so the first request is already the right one
+  // (not the full list followed by a second, filtered request).
+  const [filters, setFilters] = useState(() => {
+    const today = SIMPLE_SALES_PERIODS[0];
+    return {
+      status: 'all',
+      customerId: 'all',
+      paymentMethod: 'all',
+      startDate: isSimpleSales ? today.start().toDate() : null,
+      endDate: isSimpleSales ? today.end().toDate() : null,
+    };
   });
   const [tableViewMode, setTableViewMode] = useState('table');
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
@@ -218,6 +228,7 @@ const Sales = () => {
   const [updatingSaleDelivery, setUpdatingSaleDelivery] = useState(false);
   const [returnSale, setReturnSale] = useState(null);
   const { activeTenant, activeTenantId, isAdmin, isManager } = useAuth();
+  const [openingReceiptSaleId, setOpeningReceiptSaleId] = useState(null);
   const shopContext = useShopOptional();
   const activeShopId = shopContext?.activeShopId ?? null;
   const queryClient = useQueryClient();
@@ -369,6 +380,19 @@ const Sales = () => {
     [salesSummary.completedRevenue]
   );
 
+  useEffect(() => {
+    if (!isSimpleSales) return;
+    const period = SIMPLE_SALES_PERIODS.find((p) => p.key === simplePeriod) || SIMPLE_SALES_PERIODS[0];
+    setFilters({
+      status: 'all',
+      customerId: 'all',
+      paymentMethod: 'all',
+      startDate: period.start().toDate(),
+      endDate: period.end().toDate(),
+    });
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  }, [isSimpleSales, simplePeriod]);
+
   const fetchSaleDetails = useCallback(async (saleId) => {
     setLoadingSaleDetails(true);
     try {
@@ -415,7 +439,11 @@ const Sales = () => {
     printConfig,
     format: receiptPrintFormat,
     setFormat: setReceiptPrintFormat,
-  } = usePrintFormatOverride(posConfig.print, receiptData?.id || receiptData?.invoice?.id);
+  } = usePrintFormatOverride(
+    // Simple Mode opens receipts on 80mm (the usual shop printer); A4 and 58mm are one tap away.
+    isSimpleSales ? { ...(posConfig.print || {}), format: 'thermal_80' } : posConfig.print,
+    receiptData?.id || receiptData?.invoice?.id
+  );
 
   useEffect(() => {
     if (viewingSale?.id) {
@@ -500,6 +528,15 @@ const Sales = () => {
       setLoadingReceipt(false);
     }
   }, [viewingSale]);
+
+  const printReceiptPreview = useCallback(() => {
+    const wrapper = document.querySelector(
+      receiptData?.invoice ? '.printable-invoice' : '.printable-receipt'
+    )?.parentElement;
+    if (wrapper && receiptData) {
+      openPrintDialog(wrapper, `Receipt-${receiptData.saleNumber || 'receipt'}`);
+    }
+  }, [receiptData]);
 
   const handleViewInvoice = useCallback((sale) => {
     if (!sale.invoiceId) return;
@@ -824,8 +861,58 @@ const Sales = () => {
     );
   }
 
+  const receiptDocument = receiptData ? (
+    receiptData.invoice ? (
+      <PrintableInvoice
+        key={receiptData.invoice.id || 'receipt'}
+        invoice={receiptData.invoice}
+        documentTitle="RECEIPT"
+        saleNumber={receiptData.saleNumber}
+        organization={receiptOrganization}
+        printConfig={printConfig}
+      />
+    ) : (
+      <PrintableReceipt
+        key={receiptData.id || 'receipt'}
+        sale={receiptData}
+        organization={receiptOrganization}
+        printConfig={printConfig}
+      />
+    )
+  ) : null;
+
+  if (isSimpleSales && salesTab === 'returns') {
+    return <Navigate to="/sales" replace />;
+  }
+
   return (
     <div className="space-y-6">
+      {isSimpleSales ? (
+        <SimpleSalesList
+          sales={sales}
+          loading={loading}
+          totalCount={totalSalesCount}
+          revenue={totalRevenueCompleted}
+          period={simplePeriod}
+          onPeriodChange={setSimplePeriod}
+          onSell={() => setPosModalOpen(true)}
+          onOpenSale={async (sale) => {
+            setOpeningReceiptSaleId(sale.id);
+            try {
+              await handlePrintReceipt(sale);
+            } finally {
+              setOpeningReceiptSaleId(null);
+            }
+          }}
+          openingSaleId={openingReceiptSaleId}
+          page={pagination.current}
+          totalPages={Math.max(Math.ceil(totalSalesCount / pagination.pageSize), 1)}
+          onPageChange={(nextPage) => setPagination((prev) => ({ ...prev, current: nextPage }))}
+          getPartyLabel={getSalePartyLabel}
+          paymentMethodLabels={paymentMethodLabels}
+        />
+      ) : (
+      <>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <WelcomeSection
           welcomeMessage="Sales"
@@ -962,6 +1049,8 @@ const Sales = () => {
           return url ? resolveImageUrl(url) : null;
         }}
       />
+      </>
+      )}
       </>
       )}
 
@@ -1346,7 +1435,7 @@ const Sales = () => {
               onClick: () => handleOpenRecordPayment(viewingSale)
             });
           }
-          if (canStartSaleReturn(viewingSale, { isManager })) {
+          if (!isSimpleSales && canStartSaleReturn(viewingSale, { isManager })) {
             items.push({
               key: 'return-exchange',
               label: 'Return / Exchange',
@@ -1413,6 +1502,7 @@ const Sales = () => {
                     ))}
                   </Descriptions>
                 </DrawerSectionCard>
+                {!isSimpleSales && (
                 <DrawerSectionCard title="Delivery tracking (optional)">
                   <div className="space-y-2">
                     <Label htmlFor="sale-delivery-status">Delivery status</Label>
@@ -1435,6 +1525,7 @@ const Sales = () => {
                     </Select>
                   </div>
                 </DrawerSectionCard>
+                )}
               </div>
             )
           },
@@ -1628,10 +1719,10 @@ const Sales = () => {
               );
             })()
           }
-        ] : []}
+        ].filter((tab) => !(isSimpleSales && tab.key === 'activities')) : []}
       />
 
-      <Dialog open={printModalVisible} onOpenChange={setPrintModalVisible}>
+      <Dialog open={printModalVisible && !isSimpleSales} onOpenChange={setPrintModalVisible}>
         <DialogContent className="max-w-[95vw] sm:max-w-[920px] max-h-[90vh] flex flex-col p-0 rounded-2xl">
           <DialogHeader className="px-4 sm:px-6 py-4 border-b flex-shrink-0 text-left no-print">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
@@ -1646,14 +1737,7 @@ const Sales = () => {
                 <Button
                   variant="outline"
                   className="flex-1 sm:flex-initial"
-                  onClick={() => {
-                    const wrapper = document.querySelector(
-                      receiptData?.invoice ? '.printable-invoice' : '.printable-receipt'
-                    )?.parentElement;
-                    if (wrapper && receiptData) {
-                      openPrintDialog(wrapper, `Receipt-${receiptData.saleNumber || 'receipt'}`);
-                    }
-                  }}
+                  onClick={printReceiptPreview}
                 >
                   <Printer className="h-4 w-4 mr-2" />
                   Print
@@ -1691,29 +1775,35 @@ const Sales = () => {
           </DialogHeader>
           <div className="flex-1 overflow-y-auto overflow-x-hidden bg-muted/50 p-2 sm:p-4 md:p-8">
             <div className="max-w-full sm:max-w-[900px] mx-auto w-full" id="receipt-pdf-content">
-              {receiptData && (
-                receiptData.invoice ? (
-                  <PrintableInvoice
-                    key={receiptData.invoice.id || 'receipt'}
-                    invoice={receiptData.invoice}
-                    documentTitle="RECEIPT"
-                    saleNumber={receiptData.saleNumber}
-                    organization={receiptOrganization}
-                    printConfig={printConfig}
-                  />
-                ) : (
-                  <PrintableReceipt
-                    key={receiptData.id || 'receipt'}
-                    sale={receiptData}
-                    organization={receiptOrganization}
-                    printConfig={printConfig}
-                  />
-                )
-              )}
+              {receiptDocument}
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Simple Mode: the receipt in a side drawer with one big Print button. */}
+      <Sheet open={printModalVisible && isSimpleSales} onOpenChange={setPrintModalVisible}>
+        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-xl md:max-w-2xl">
+          <SheetHeader className="no-print flex-shrink-0 space-y-3 border-b px-4 py-4 text-left">
+            <SheetTitle>Receipt{receiptData?.saleNumber ? ` ${receiptData.saleNumber}` : ''}</SheetTitle>
+            <PrintFormatSwitcher size="lg" value={receiptPrintFormat} onChange={setReceiptPrintFormat} />
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden bg-muted/50 p-2 sm:p-4">
+            {receiptDocument}
+          </div>
+          <div className="no-print flex-shrink-0 border-t p-3 sm:p-4">
+            <Button
+              type="button"
+              onClick={printReceiptPreview}
+              disabled={!receiptData}
+              className="h-16 w-full rounded-2xl bg-brand text-xl font-bold text-white hover:bg-brand-dark"
+            >
+              <Printer className="mr-3 h-7 w-7" />
+              Print
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <AlertDialog
         open={!!saleToDelete}

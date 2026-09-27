@@ -114,20 +114,19 @@ async function findTenantCampaign(req) {
   return MarketingCampaign.findOne({ where: { id: req.params.id, tenantId: req.tenantId } });
 }
 
-/** Campaign fields from a create/broadcast body, including a fresh audience snapshot. */
-async function buildCampaignFields(tenantId, body, existing = null) {
+/**
+ * Campaign fields from a create/broadcast body. The audience snapshot needs a full audience
+ * scan, so callers that start sending straight away (which writes its own snapshot) skip it.
+ */
+async function buildCampaignFields(tenantId, body, existing = null, { withSnapshot = true } = {}) {
   const audienceType = normalizeAudienceType(body.audienceType ?? existing?.audienceType);
   const channels = body.channels !== undefined ? normalizeChannels(body.channels) : (existing?.channels || []);
   const audienceFilter = readAudienceFilter(audienceType, body.audienceFilter || existing?.audienceFilter || body);
   const messageContent = normalizeMessageContent(body.messageContent || existing?.messageContent || body);
+  const fields = { audienceType, channels, audienceFilter, messageContent };
+  if (!withSnapshot) return fields;
   const preview = await buildPreviewData(tenantId, { ...audienceFilter, audienceType, channels });
-  return {
-    audienceType,
-    channels,
-    audienceFilter,
-    messageContent,
-    audienceSnapshot: buildCampaignSnapshot(preview, channels),
-  };
+  return { ...fields, audienceSnapshot: buildCampaignSnapshot(preview, channels) };
 }
 
 // @desc    Which marketing channels are configured for this tenant
@@ -161,7 +160,8 @@ exports.getPreview = async (req, res, next) => {
 exports.postBroadcast = async (req, res, next) => {
   try {
     const body = req.body || {};
-    const fields = await buildCampaignFields(req.tenantId, body);
+    // Sending writes its own snapshot and a dry run doesn't need one: skip the extra audience scan.
+    const fields = await buildCampaignFields(req.tenantId, body, null, { withSnapshot: false });
     const campaignData = {
       tenantId: req.tenantId,
       name: body.name?.trim() || `Broadcast ${new Date().toLocaleDateString('en-US')}`,

@@ -221,17 +221,29 @@ const attachStudioLocationToPayload = (req, payload = {}) => {
 };
 
 /**
- * Studio location for a job created from a quote: prefer active request scope, else quote's location.
+ * True when a new job needs the user to pick a branch first: the workspace has several
+ * branches and the user is viewing "All branches". Saving to the default branch in that
+ * case would put the job on the wrong branch.
+ * @param {object} req
+ * @returns {boolean}
+ */
+const requiresExplicitStudioLocation = (req) => Boolean(
+  req?.studioLocationScoped
+  && !req.studioLocationFilterId
+  && (req.allowedStudioLocationIds?.length || 0) > 1
+);
+
+/**
+ * Studio location for a job created from a quote: the explicitly selected branch, else the
+ * quote's own branch, else the workspace default.
  * @param {object|null} req
  * @param {{ studioLocationId?: string|null }} quote
  * @returns {string|null}
  */
 const resolveStudioLocationIdForJobFromQuote = (req, quote) => {
-  if (req) {
-    const fromReq = attachStudioLocationToPayload(req, {}).studioLocationId;
-    if (fromReq) return fromReq;
-  }
-  return quote?.studioLocationId || null;
+  if (req?.studioLocationFilterId) return req.studioLocationFilterId;
+  if (quote?.studioLocationId) return quote.studioLocationId;
+  return req ? attachStudioLocationToPayload(req, {}).studioLocationId || null : null;
 };
 
 /**
@@ -271,6 +283,7 @@ module.exports = {
   applyStudioLocationReadFilter,
   getStudioLocationSqlFragment,
   getStudioLocationIdForWrite,
+  requiresExplicitStudioLocation,
   attachStudioLocationToPayload,
   resolveStudioLocationIdForJobFromQuote,
   setUserStudioLocations,

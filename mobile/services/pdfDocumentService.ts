@@ -520,6 +520,16 @@ export async function prepareReceiptPdf(sale: AnyRecord): Promise<PreparedPdfFil
   return printHtmlToPdfFile(html, getReceiptPdfFilename(sale), `Receipt ${number}`);
 }
 
+/**
+ * Open the native print dialog for a sale receipt (AirPrint / Android print service), so a
+ * receipt printer registered with the phone shows up as a normal destination.
+ */
+export async function printReceipt(sale: AnyRecord) {
+  const { html, number } = buildReceiptPdfBody(sale);
+  logger.info('PDFDocuments', 'Printing receipt', { saleId: sale.id, saleNumber: number });
+  await Print.printAsync({ html });
+}
+
 export async function shareReceiptPdf(sale: AnyRecord) {
   const prepared = await prepareReceiptPdf(sale);
   logger.info('PDFDocuments', 'Sharing receipt PDF', { saleId: sale.id, saleNumber: prepared.title });

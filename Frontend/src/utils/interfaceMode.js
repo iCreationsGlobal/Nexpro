@@ -7,3 +7,11 @@ export function getInterfaceMode(membership) {
   const metadata = membership?.metadata;
   return metadata?.interfaceMode === 'simple' ? 'simple' : 'full';
 }
+
+/**
+ * Whether a Simple Mode member has chosen to bring back the full menu (Settings → Show advanced
+ * features). Personal to the member, like interfaceMode itself.
+ */
+export function getSimpleModeShowAdvanced(membership) {
+  return membership?.metadata?.simpleModeShowAdvanced === true;
+}

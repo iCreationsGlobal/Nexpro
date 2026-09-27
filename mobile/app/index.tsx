@@ -11,9 +11,10 @@ import {
 } from '@/utils/introOnboarding';
 
 export default function Index() {
-  const { user, loading, sessionSyncing, activeTenant, wasInvited, suppressAppGuidance, isDriver, interfaceMode } =
+  const { user, loading, sessionSyncing, activeTenant, wasInvited, suppressAppGuidance, isDriver } =
     useAuth();
-  const homeRoute = interfaceMode === 'simple' ? '/simple' : '/(tabs)';
+  // Simple Mode now runs inside the normal tabs (trimmed), so everyone starts there.
+  const homeRoute = '/(tabs)';
 
   useEffect(() => {
     if (loading || sessionSyncing) {

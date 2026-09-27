@@ -19,6 +19,7 @@ import { useResponsive, useSafeAreaInsets, BREAKPOINTS } from '../hooks/useRespo
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../context/AuthContext';
+import { useSimpleMode } from '../hooks/useSimpleMode';
 import { useDismissibleDashboardBanner } from '../hooks/useDismissibleDashboardBanner';
 import authService from '../services/authService';
 import { showSuccess, showError } from '../utils/toast';
@@ -65,7 +66,9 @@ const MainLayout = () => {
     () => pageContextFromPath(location.pathname),
     [location.pathname]
   );
-  const showAssistantFab = !isDriver && !assistantOpen && location.pathname !== '/ask-ai';
+  const { isSimple } = useSimpleMode();
+  // Simple Mode: no AI assistant.
+  const showAssistantFab = !isDriver && !isSimple && !assistantOpen && location.pathname !== '/ask-ai';
   const openAssistant = useCallback(() => setAssistantOpen(true), []);
 
   const showVerifyEmailBanner = useMemo(() => Boolean(needsEmailVerification), [needsEmailVerification]);
@@ -196,11 +199,13 @@ const MainLayout = () => {
             </div>
           )}
           {/* Auto-send on but payment not set: refetched every 10 min */}
-          <PaymentCollectionRequiredBanner
-            dismissible={isDashboardRoute}
-            dismissed={isDashboardRoute && paymentCollectionDismissedOnDashboard}
-            onDismiss={dismissPaymentCollectionDashboard}
-          />
+          {!isSimple && (
+            <PaymentCollectionRequiredBanner
+              dismissible={isDashboardRoute}
+              dismissed={isDashboardRoute && paymentCollectionDismissedOnDashboard}
+              onDismiss={dismissPaymentCollectionDashboard}
+            />
+          )}
           <ShopAccessBanner />
           <BillingGraceBanner billing={billingStatus} />
           <main
@@ -230,11 +235,13 @@ const MainLayout = () => {
           hideOnScroll={false}
         />
       )}
-      <AssistantChatPanel
-        open={assistantOpen}
-        onOpenChange={setAssistantOpen}
-        pageContext={assistantPageContext}
-      />
+      {!isSimple && (
+        <AssistantChatPanel
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
+          pageContext={assistantPageContext}
+        />
+      )}
       </ShopProvider>
       </StudioLocationProvider>
     </SmartSearchProvider>

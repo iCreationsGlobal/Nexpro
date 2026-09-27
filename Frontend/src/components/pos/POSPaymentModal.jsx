@@ -3,7 +3,10 @@
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
+  Banknote,
+  Package,
   Smartphone,
   CreditCard,
   FileText,
@@ -46,6 +49,7 @@ import { formatAmount, parseDecimalInput } from '../../utils/formatNumber';
 import { useResponsive } from '../../hooks/useResponsive';
 import mobileMoneyService from '../../services/mobileMoneyService';
 import settingsService from '../../services/settingsService';
+import { resolveImageUrl } from '../../utils/fileUtils';
 
 /** 1px card borders + consistent section spacing */
 const SECTION_CARD = 'rounded-lg border border-[#e5e7eb] bg-card';
@@ -829,7 +833,16 @@ const ManualMobileMoneyPayment = ({ total, onConfirm, isProcessing, canComplete 
 /**
  * Mobile Money payment flow.
  */
+function ManualPaymentAction({ container, children }) {
+  return container
+    ? createPortal(children, container)
+    : <StickyPaymentAction>{children}</StickyPaymentAction>;
+}
+
 const MobileMoneyPayment = ({
+  fixedProvider = null,
+  allowCollectionToggle = false,
+  actionContainer = null,
   total,
   customer,
   onRequestMobileMoney,
@@ -842,18 +855,21 @@ const MobileMoneyPayment = ({
   mobileMoneyFallbackMode = null,
   canComplete = true,
 }) => {
-  const [provider, setProvider] = useState('mtn');
+  const [automaticCollection, setAutomaticCollection] = useState(() => !allowCollectionToggle);
+  const [selectedProvider, setProvider] = useState('mtn');
+  const provider = fixedProvider || selectedProvider;
   const [phone, setPhone] = useState(customer?.phone || '');
   const [otp, setOtp] = useState('');
 
   useEffect(() => {
+    if (fixedProvider) return;
     const trimmed = phone.trim();
     if (trimmed.length < 10) return;
     const detected = mobileMoneyService.detectProviderLocal(trimmed);
     if (detected === 'MTN') setProvider('mtn');
     else if (detected === 'AIRTEL') setProvider('airtel');
     else if (detected === 'VODAFONE') setProvider('vodafone');
-  }, [phone]);
+  }, [phone, fixedProvider]);
 
   useEffect(() => {
     if (mobileMoneyState !== 'awaiting_otp') setOtp('');
@@ -866,7 +882,7 @@ const MobileMoneyPayment = ({
     || mobileMoneyState === 'waiting'
     || isAwaitingOtp;
   const isSuccess = mobileMoneyState === 'success';
-  const isFallbackManual = mobileMoneyFallbackMode === 'manual';
+  const isFallbackManual = mobileMoneyFallbackMode === 'manual' || (allowCollectionToggle && !automaticCollection);
   const logicalProvider = provider === 'mtn' ? 'MTN' : provider === 'airtel' ? 'AIRTEL' : 'VODAFONE';
   const otpReady = otp.trim().length >= 4;
 
@@ -877,7 +893,20 @@ const MobileMoneyPayment = ({
         <p className="text-3xl font-bold text-green-700 mt-1">{formatAmount(total)}</p>
       </div>
 
-      <div>
+      {allowCollectionToggle && (
+        <div className="flex items-center justify-between gap-4 rounded-xl border bg-muted/40 p-4">
+          <div>
+            <Label htmlFor="simple-momo-automatic" className="text-lg font-semibold">Automatic collection</Label>
+          </div>
+          <Switch id="simple-momo-automatic"
+            checked={!isFallbackManual}
+            onCheckedChange={setAutomaticCollection}
+            disabled={isWaiting || isProcessing || isSuccess || mobileMoneyFallbackMode === 'manual'}
+          />
+        </div>
+      )}
+
+      {!fixedProvider && <div>
         <Label>Select Provider</Label>
         <div className="flex gap-2 mt-2">
           {Object.entries(MOBILE_MONEY_PROVIDERS).map(([key, config]) => (
@@ -899,7 +928,7 @@ const MobileMoneyPayment = ({
             </Button>
           ))}
         </div>
-      </div>
+      </div>}
 
       {!isFallbackManual && (
         <div>
@@ -958,7 +987,7 @@ const MobileMoneyPayment = ({
         </Card>
       ) : (
         <>
-          <Card className="border-yellow-200 bg-yellow-50">
+          {!allowCollectionToggle && <Card className="border-yellow-200 bg-yellow-50">
             <CardContent className="p-4">
               <h4 className="font-medium text-yellow-800 mb-2">Manual MoMo Instructions</h4>
               <ol className="text-sm text-yellow-700 space-y-1 list-decimal list-inside">
@@ -968,11 +997,16 @@ const MobileMoneyPayment = ({
                 <li>Confirm payment on their phone</li>
               </ol>
             </CardContent>
-          </Card>
-          <StickyPaymentAction>
+          </Card>}
+          <ManualPaymentAction container={actionContainer}>
             <Button
               type="button"
-              className="w-full h-12 bg-green-700 hover:bg-green-800"
+              className={cn(
+                'w-full bg-green-700 hover:bg-green-800',
+                allowCollectionToggle
+                  ? 'h-20 shrink-0 gap-3 rounded-xl text-2xl sm:text-3xl font-bold'
+                  : 'h-12'
+              )}
               disabled={isProcessing || !canComplete}
               loading={isProcessing}
               onClick={() => onConfirm({
@@ -982,11 +1016,11 @@ const MobileMoneyPayment = ({
                 mobileMoneyProvider: logicalProvider,
               })}
             >
-              <Check className="h-5 w-5 mr-2" aria-hidden />
-              Confirm payment received
+              <Check className={allowCollectionToggle ? "h-10 w-10 shrink-0" : "h-5 w-5 mr-2"} aria-hidden />
+              <span className="whitespace-normal leading-tight">Confirm payment received</span>
             </Button>
             {mobileMoneyError && <p className="text-xs text-red-600 mt-2">{mobileMoneyError}</p>}
-          </StickyPaymentAction>
+          </ManualPaymentAction>
         </>
       )}
 
@@ -1158,6 +1192,7 @@ const AutomaticPaymentPlaceholder = ({ methodId, total }) => {
 const POSPaymentModal = ({
   isOpen,
   onClose,
+  simpleMode = false,
   total,
   taxSummary = null,
   items,
@@ -1180,6 +1215,14 @@ const POSPaymentModal = ({
   dealerSummary = null,
   canOverrideCredit = false,
 }) => {
+  const [simpleTendered, setSimpleTendered] = useState('');
+  const [simplePaymentFooter, setSimplePaymentFooter] = useState(null);
+  useEffect(() => {
+    if (isOpen && simpleMode) {
+      setSimpleTendered('');
+      setActiveMethod('cash');
+    }
+  }, [isOpen, simpleMode]);
   const [activeGroup, setActiveGroup] = useState('manual');
   const [activeMethod, setActiveMethod] = useState('cash');
   const [sendToKitchen, setSendToKitchen] = useState(true);
@@ -1335,6 +1378,65 @@ const POSPaymentModal = ({
     setActiveMethod(methodId);
     setActiveGroup(PAYMENT_METHOD_TO_GROUP[methodId] || 'manual');
   }, []);
+
+  if (simpleMode && !isDealerMode) {
+    const tendered = simpleTendered === '' ? checkoutTotal : parseDecimalInput(simpleTendered);
+    const validCash = Number.isFinite(tendered) && tendered >= checkoutTotal;
+    const change = validCash ? tendered - checkoutTotal : 0;
+    return (
+      <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !isProcessing) onClose(false); }}>
+        <DialogContent className="w-[96vw] sm:w-[94vw] sm:max-w-6xl max-h-[94dvh] flex flex-col rounded-2xl p-4 sm:p-6" onEscapeKeyDown={(event) => { if (isProcessing) event.preventDefault(); }} onPointerDownOutside={(event) => { if (isProcessing) event.preventDefault(); }}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3 pr-8 text-2xl sm:text-4xl font-bold"><Banknote className="h-12 w-12 text-green-700" />Take Payment</DialogTitle>
+            <DialogDescription className="sr-only">Review items and choose how the customer will pay.</DialogDescription>
+          </DialogHeader>
+          <DialogBody className="min-h-0 flex-1 overflow-y-auto">
+            <div className="grid gap-5 md:grid-cols-2">
+              <section className="self-start rounded-2xl bg-muted/50 p-3 sm:p-4" aria-label="Items to pay">
+                <h2 className="mb-3 text-xl font-bold">Items to Pay</h2>
+                <div className="max-h-72 overflow-y-auto rounded-xl bg-card px-3">
+                  {(items || []).map((item) => (
+                    <div key={item.id} className="flex items-center gap-3 border-b py-4 last:border-0">
+                      <div className="flex h-20 w-16 shrink-0 items-center justify-center rounded-xl bg-muted/50">
+                        {item.imageUrl ? <img src={resolveImageUrl(item.imageUrl)} alt="" className="h-full w-full object-contain p-1" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : <Package className="h-9 w-9 text-muted-foreground" />}
+                      </div>
+                      <div className="min-w-0 flex-1"><p className="text-lg font-semibold break-words">{item.name}</p><p className="mt-1 text-muted-foreground">{item.quantity} × {formatAmount(item.unitPrice)}</p></div>
+                      <span className="text-lg font-bold text-green-700">{formatAmount(item.quantity * item.unitPrice - (item.discount || 0))}</span>
+                    </div>
+                  ))}
+                </div>
+                {Number(taxSummary?.taxAmount) > 0 && <p className="flex justify-between pt-3"><span>{taxSummary.taxLabel || 'Tax'}</span><span>{formatAmount(taxSummary.taxAmount)}</span></p>}
+                {Number(taxSummary?.discount) > 0 && <p className="flex justify-between pt-3"><span>Discount</span><span>−{formatAmount(taxSummary.discount)}</span></p>}
+                {deliveryFee > 0 && <p className="flex justify-between pt-3"><span>Delivery</span><span>{formatAmount(deliveryFee)}</span></p>}
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-green-50 p-4 text-green-950"><span className="text-2xl font-bold">Total</span><span className="text-3xl sm:text-4xl font-bold text-green-700">{formatAmount(checkoutTotal)}</span></div>
+              </section>
+              <section className="space-y-4" aria-label="Payment choices">
+                <h2 className="text-xl sm:text-2xl font-bold">How will the customer pay?</h2>
+                <div className="grid grid-cols-2 gap-3">
+                  {[{ id: 'cash', label: 'Cash' }, { id: 'momo_prompt', label: 'MTN MoMo' }].map(({ id, label }) => (
+                    <button key={id} type="button" disabled={isProcessing} aria-pressed={activeMethod === id} onClick={() => setActiveMethod(id)} className={cn('relative flex min-h-40 sm:min-h-52 flex-col items-center justify-center gap-3 rounded-2xl border-2 p-3 text-xl sm:text-2xl font-bold disabled:opacity-60', id === 'cash' ? 'border-green-300 bg-green-50 text-green-950' : 'border-yellow-300 bg-white text-slate-950', activeMethod === id && 'ring-2 ring-green-700 ring-offset-2')}>
+                      {activeMethod === id && <Check className="absolute right-3 top-3 h-6 w-6" />}{id === 'momo_prompt' ? (
+                        <img src="/images/payments/mtn-momo.png" alt="" className="h-24 w-full max-w-52 object-contain sm:h-28" />
+                      ) : (
+                        <img src="/images/payments/ghana-cedi.jpg" alt="Ghana cedi banknotes" className="h-28 w-full max-w-52 rounded-lg object-contain sm:h-32" />
+                      )}{label}
+                    </button>
+                  ))}
+                </div>
+                <Button variant="outline" disabled={isProcessing} onClick={onRequestChangeCustomer} className="h-16 w-full justify-start gap-3 rounded-xl text-lg"><User className="h-8 w-8" /><span className="truncate">{customer?.name || customer?.company || 'Select Customer (optional)'}</span></Button>
+                {customer && <Button variant="ghost" disabled={isProcessing} onClick={onClearCustomer}>Remove customer</Button>}
+                <DeliveryCheckoutSection deliverySettings={deliverySettings} deliveryRequired={deliveryRequired} onDeliveryRequiredChange={setDeliveryRequired} selectedBandId={selectedDeliveryBandId} onSelectedBandIdChange={setSelectedDeliveryBandId} selectedBand={selectedDeliveryBand} validationMessage={deliveryValidationMessage} />
+                {activeMethod === 'cash' && <div className="rounded-xl border p-3 space-y-2"><Label htmlFor="simple-cash-received" className="text-base">Cash received</Label><Input id="simple-cash-received" type="number" inputMode="decimal" min="0" step="0.01" placeholder={String(checkoutTotal)} value={simpleTendered} disabled={isProcessing} onChange={(event) => setSimpleTendered(event.target.value)} className="h-14 text-2xl" /><p className="flex justify-between text-lg font-semibold"><span>{validCash ? 'Change' : 'Still needed'}</span><span>{formatAmount(validCash ? change : checkoutTotal - (Number.isFinite(tendered) ? tendered : 0))}</span></p></div>}
+                {activeMethod === 'momo_prompt' && <MobileMoneyPayment actionContainer={simplePaymentFooter} allowCollectionToggle fixedProvider="mtn" total={checkoutTotal} customer={customer} onRequestMobileMoney={handleRequestMobileMoneyWithDelivery} onSubmitMobileMoneyOtp={onSubmitMobileMoneyOtp} onConfirm={handleConfirm} isProcessing={isProcessing} mobileMoneyState={mobileMoneyState} mobileMoneyError={mobileMoneyError} mobileMoneyOtpHint={mobileMoneyOtpHint} mobileMoneyFallbackMode={mobileMoneyFallbackMode} canComplete={canCompletePayment} />}
+              </section>
+            </div>
+          </DialogBody>
+          {activeMethod === 'momo_prompt' && <div ref={setSimplePaymentFooter} className="w-full shrink-0" />}
+          {activeMethod === 'cash' && <Button className="h-20 shrink-0 w-full gap-3 rounded-xl bg-green-700 text-2xl sm:text-3xl font-bold hover:bg-green-800" loading={isProcessing} disabled={isProcessing || !validCash || !canCompletePayment || !items?.length} onClick={() => handleConfirm({ ...buildPaymentDetails('cash'), amountPaid: tendered, change })}><Check className="h-10 w-10" />Complete Sale</Button>}
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

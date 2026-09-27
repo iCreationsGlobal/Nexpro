@@ -41,6 +41,13 @@ const createMarketingCampaignRecipients = async (options = {}) => {
       CREATE INDEX IF NOT EXISTS marketing_campaign_recipients_campaign_status
         ON marketing_campaign_recipients ("campaignId", status);
     `);
+    // The worker checks for stuck in-flight rows every minute; a partial index keeps that
+    // lookup tiny no matter how many past messages the table holds.
+    await sequelize.query(`
+      CREATE INDEX IF NOT EXISTS marketing_campaign_recipients_processing_locked
+        ON marketing_campaign_recipients ("lockedAt")
+        WHERE status = 'processing';
+    `);
     console.log('[createMarketingCampaignRecipients] Done.');
   } catch (error) {
     console.error('[createMarketingCampaignRecipients] Failed:', error.message);

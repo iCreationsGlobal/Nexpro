@@ -484,6 +484,8 @@ const migrate = async () => {
     const createSystemHealthTables = require('./create-system-health-tables');
     await createSystemHealthTables({ closeConnection: false });
 
+    await require('./create-abs-partner-portal')({ closeConnection: false });
+
     // Platform IT Ops vault (domains / servers / services) + ops.view permission
     const createPlatformOpsAssets = require('./create-platform-ops-assets');
     await createPlatformOpsAssets({ closeConnection: false });

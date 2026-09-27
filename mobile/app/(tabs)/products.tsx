@@ -1,3 +1,5 @@
+import { useSimpleMode } from '@/hooks/useSimpleMode';
+import { SimpleProductsScreen } from '@/components/simple/SimpleProductsScreen';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import {
@@ -69,7 +71,13 @@ type Product = {
   }>;
 };
 
-export default function ProductsScreen() {
+/** Simple Mode shows the essentials-only screen; everyone else the full one. */
+export default function ProductsScreenRoute() {
+  const { isRestricted } = useSimpleMode();
+  return isRestricted ? <SimpleProductsScreen /> : <ProductsScreen />;
+}
+
+function ProductsScreen() {
   const params = useLocalSearchParams<{ search?: string; add?: string }>();
   const router = useRouter();
   const { colors, bg, cardBg, borderColor, textColor, mutedColor, inputBg } = useScreenColors();

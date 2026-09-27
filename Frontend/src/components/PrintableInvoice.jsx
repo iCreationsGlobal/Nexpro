@@ -1,25 +1,49 @@
+import { formatDisplayPhone } from '../utils/phoneUtils';
 import React from 'react';
 import dayjs from 'dayjs';
 import { MapPin, Phone, Globe, Mail } from 'lucide-react';
-import { API_BASE_URL } from '../services/api';
+import { resolveImageUrl } from '../utils/fileUtils';
 import { getInvoiceTaxDisplay } from '../utils/invoiceTaxDisplay';
 import { formatLineItemQuantity } from '../utils/documentLineItems';
 import { resolvePrintedInvoiceTerms } from '../utils/invoicePrintTerms';
 import { resolveInvoiceDocumentContext } from '../utils/invoiceDocumentContext';
 import { getPrintStyles } from '../utils/printStyles';
+import { getThermalReceiptStyles } from '../utils/thermalReceiptStyles';
 import GraEvatStampBlock from './GraEvatStampBlock';
 
 const DEFAULT_THANK_YOU = 'Thank you for doing business with us.';
 
+const normalizeAddressPart = (value) => String(value || '').trim().toLowerCase();
+
+/**
+ * Printable address lines. Street lines often already end with the city (e.g. "Osu, Accra"),
+ * so city/region/country are left out when the lines above already contain them — otherwise
+ * the invoice shows "Accra" twice.
+ */
 const formatAddress = (address) => {
   if (!address) return '';
-  const parts = [
-    address.line1,
-    address.line2,
-    [address.city, address.state, address.postalCode].filter(Boolean).join(', '),
-    address.country
-  ].filter(Boolean);
-  return parts.join('\n');
+  const streetLines = [address.line1, address.line2].map((v) => String(v || '').trim()).filter(Boolean);
+  const streetText = normalizeAddressPart(streetLines.join(' '));
+  const containsWord = (text, part) => {
+    const needle = normalizeAddressPart(part);
+    if (!needle) return true;
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text);
+  };
+  const seen = streetText;
+  const localityParts = [address.city, address.state, address.postalCode]
+    .map((v) => String(v || '').trim())
+    .filter((part, index, list) => part
+      && !containsWord(seen, part)
+      && list.findIndex((other) => normalizeAddressPart(other) === normalizeAddressPart(part)) === index);
+  const country = String(address.country || '').trim();
+  const localityText = normalizeAddressPart(localityParts.join(' '));
+  const showCountry = country && !containsWord(`${seen} ${localityText}`, country);
+  return [
+    ...streetLines,
+    localityParts.join(', '),
+    showCountry ? country : '',
+  ].filter(Boolean).join('\n');
 };
 
 const getItemProductCode = (item) => {
@@ -63,6 +87,9 @@ const PrintableInvoice = ({
   /** Hide Job Details unless this is actually a job invoice. Inferred from sourceType when omitted. */
   showJobDetails,
 }) => {
+  // Declared before the early return so hook order stays stable.
+  const [failedLogoSrc, setFailedLogoSrc] = React.useState(null);
+
   if (!invoice) return null;
 
   const documentContext = resolveInvoiceDocumentContext(invoice);
@@ -82,19 +109,16 @@ const PrintableInvoice = ({
 
   const amountDisplay = (value) => (maskAmounts ? 'XXX' : `₵ ${parseFloat(value || 0).toFixed(2)}`);
 
-  // Format logo URL - data URLs (base64) and absolute URLs use as-is; relative paths get API base URL
-  // Only use tenant logo; no generic fallback when none is set
-  const logoSource = organization?.logoUrl
-    ? (organization.logoUrl.startsWith('data:') || organization.logoUrl.startsWith('http')
-        ? organization.logoUrl
-        : (API_BASE_URL
-            ? `${API_BASE_URL}${organization.logoUrl.startsWith('/') ? '' : '/'}${organization.logoUrl}`
-            : organization.logoUrl))
-    : null;
+  // Tenant/branch logo only (no generic fallback). resolveImageUrl also decodes HTML-escaped
+  // paths (e.g. "&#x2F;uploads&#x2F;logo.png") that the API can return, which previously
+  // produced a broken logo URL on printed invoices.
+  const resolvedLogo = resolveImageUrl(organization?.logoUrl) || null;
+  const logoSource = resolvedLogo && resolvedLogo !== failedLogoSrc ? resolvedLogo : null;
+  const handleLogoError = () => setFailedLogoSrc(resolvedLogo);
 
   const companyInfo = {
     name: organization.name || 'Company name',
-    phone: organization.phone || '',
+    phone: formatDisplayPhone(organization.phone),
     website: organization.website || '',
     email: organization.email || '',
     location: formatAddress(organization.address),
@@ -366,6 +390,9 @@ const PrintableInvoice = ({
           letter-spacing: 0.04em;
           color: #111827;
         }
+        .pay-to-block .notes-content {
+          color: #1f2937;
+        }
         .pay-to-block {
           margin-top: 14px;
           padding: 10px 12px;
@@ -389,93 +416,19 @@ const PrintableInvoice = ({
         }
         .footer {
           margin-top: 28px;
-          padding-top: 0;
-          border-top: none;
+          padding-top: 12px;
+          border-top: 1px solid #d1d5db;
           text-align: center;
-          font-size: 11px;
-          color: #9ca3af;
+          font-size: 12px;
+          line-height: 1.6;
+          font-weight: 500;
+          /* Dark enough to print clearly: businesses often put payment details here. */
+          color: #1f2937;
           white-space: pre-line;
         }
         
         /* Thermal receipt layout */
-        .thermal-receipt {
-          text-align: center;
-          max-width: ${printStyles.contentWidth};
-          margin: 0 auto;
-          padding: ${printStyles.isThermal ? '2mm' : '0'};
-          font-family: Helvetica, Arial, sans-serif;
-          font-size: 10px;
-          color: #000;
-        }
-        .thermal-logo {
-          display: block;
-          max-width: 120px;
-          max-height: 50px;
-          margin: 0 auto 6px;
-          object-fit: contain;
-        }
-        .thermal-title {
-          font-size: 14px;
-          font-weight: bold;
-          margin-bottom: 4px;
-          letter-spacing: 1px;
-        }
-        .thermal-business {
-          font-size: 9px;
-          line-height: 1.4;
-          margin-bottom: 6px;
-          color: #000;
-        }
-        .thermal-separator {
-          border: none;
-          border-top: 1px dotted #000;
-          margin: 6px 0;
-        }
-        .thermal-date-row {
-          display: flex;
-          justify-content: space-between;
-          font-size: 9px;
-          margin-bottom: 6px;
-        }
-        .thermal-items {
-          text-align: left;
-          margin: 8px 0;
-          list-style: none;
-          padding: 0;
-        }
-        .thermal-item-list {
-          font-size: 9px;
-          padding: 4px 0;
-          border-bottom: none;
-        }
-        .thermal-item-name {
-          display: block;
-          margin-bottom: 2px;
-        }
-        .thermal-item-amount {
-          display: block;
-          font-weight: 500;
-          padding-left: 8px;
-        }
-        .thermal-total-row {
-          display: flex;
-          justify-content: space-between;
-          font-size: 10px;
-          padding: 3px 0;
-        }
-        .thermal-total-row.bold {
-          font-weight: bold;
-          font-size: 11px;
-          border-top: 1px dotted #000;
-          padding-top: 6px;
-          margin-top: 4px;
-        }
-        .thermal-thanks {
-          font-size: 12px;
-          font-weight: bold;
-          margin-top: 10px;
-          letter-spacing: 2px;
-        }
+        ${getThermalReceiptStyles(printStyles)}
 
         .company-details-line--mobile {
           display: none;
@@ -729,7 +682,7 @@ const PrintableInvoice = ({
                   return (
                     <div key={index} className="thermal-item-list">
                       <span className="thermal-item-name">{item.description || item.category || 'Item'}</span>
-                      {productCode && displayProductCode && <span className="thermal-item-name">Product Code: {productCode}</span>}
+                      {productCode && displayProductCode && <span className="thermal-item-detail">Product Code: {productCode}</span>}
                       <span className="thermal-item-amount">{formatLineItemQuantity(item, qty)} × ₵ {unitPrice} = ₵ {total}</span>
                     </div>
                   );
@@ -771,7 +724,7 @@ const PrintableInvoice = ({
             <hr className="thermal-separator" />
             {(companyInfo.invoiceFooter || companyInfo.name) && (
               <div className="thermal-thanks text-center" style={{ whiteSpace: 'pre-line' }}>
-                {companyInfo.invoiceFooter || companyInfo.name}
+                {companyInfo.invoiceFooter || 'Thank you for doing business with us.'}
               </div>
             )}
             <div className="thermal-business-footer" style={{ fontSize: '9px', marginTop: '8px', lineHeight: 1.4 }}>
@@ -785,7 +738,12 @@ const PrintableInvoice = ({
         <div className="invoice-header">
           <div className="company-info">
             {logoSource ? (
-              <img src={logoSource} alt={companyInfo.name} className="company-logo" />
+              <img
+                src={logoSource}
+                alt={companyInfo.name}
+                className="company-logo"
+                onError={handleLogoError}
+              />
             ) : companyInfo.name ? (
               <div className="company-name-placeholder">{companyInfo.name}</div>
             ) : null}

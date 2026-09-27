@@ -17,3 +17,15 @@ describe('startup overlay readiness', () => {
     }
   });
 });
+
+describe('Simple Mode PIN startup', () => {
+  it('reveals the PIN gate without waiting for a route mounted behind it', () => {
+    expect(ready(true, false, false, [], true)).toBe(true);
+    expect(ready(true, false, false, ['index'], true)).toBe(true);
+  });
+  it('still waits for fonts and session initialization', () => {
+    expect(ready(false, false, false, ['index'], true)).toBe(false);
+    expect(ready(true, true, false, ['index'], true)).toBe(false);
+    expect(ready(true, false, true, ['index'], true)).toBe(false);
+  });
+});

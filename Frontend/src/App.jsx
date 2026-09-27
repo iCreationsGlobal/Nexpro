@@ -25,8 +25,12 @@ import { useIOSKeyboardFix } from './hooks/useKeyboardHandling';
 import { isBootstrapPlatformSuperAdmin } from './utils/platformAdminBootstrap';
 import { getStorefrontBaseUrl } from './utils/storefrontUrl';
 import { isPricingUiEnabled } from './utils/showPricing';
-import { hasEscapedSimpleMode } from './utils/simpleModeEscape';
+import { useSimpleMode } from './hooks/useSimpleMode';
+import { isSimpleModePathAllowed } from './config/simpleMode';
+import SimpleModePinGate from './components/simple/SimpleModePinGate';
 // Lazy load heavy pages for code splitting
+const PartnerPortal = lazy(() => import('./pages/PartnerPortal'));
+
 const Products = lazy(() => import('./pages/Products'));
 const TourProvider = lazy(() => import('./components/tour/TourProvider'));
 const Login = lazy(() => import('./pages/Login'));
@@ -131,14 +135,10 @@ const StoreServiceEditor = lazy(() => import('./pages/StoreServiceEditor'));
 const OnlineOrders = lazy(() => import('./pages/OnlineOrders'));
 const StoreSettings = lazy(() => import('./pages/StoreSettings'));
 const OnlineStore = lazy(() => import('./pages/OnlineStore'));
-const SimpleLayout = lazy(() => import('./pages/simple/SimpleLayout'));
-const SimpleSell = lazy(() => import('./pages/simple/SimpleSell'));
-const SimpleStock = lazy(() => import('./pages/simple/SimpleStock'));
-const SimpleCharge = lazy(() => import('./pages/simple/SimpleCharge'));
-const SimpleReceipt = lazy(() => import('./pages/simple/SimpleReceipt'));
 
 const WorkspaceRoot = () => {
-  const { user, isSupportAccessActive, isDriver, interfaceMode } = useAuth();
+  const { user, isSupportAccessActive, isDriver } = useAuth();
+  const { isSimple, isRestricted, config: simpleModeConfig } = useSimpleMode();
   const location = useLocation();
 
   if (user?.isPlatformAdmin && !isSupportAccessActive) {
@@ -149,10 +149,18 @@ const WorkspaceRoot = () => {
     return <Navigate to="/deliveries" replace />;
   }
 
-  // Simple Mode users only ever see /simple, unless they've used the PIN-gated escape hatch
-  // (SimpleHeader long-press) for this browser tab — see utils/simpleModeEscape.js.
-  if (interfaceMode === 'simple' && !isDriver && !hasEscapedSimpleMode()) {
-    return <Navigate to="/simple" replace />;
+  // Simple Mode: the same app with a trimmed menu. Pages outside the Simple Mode set go back
+  // to the dashboard until the member turns on "Show advanced features" in Settings.
+  if (isRestricted && !isSimpleModePathAllowed(simpleModeConfig, location.pathname)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  if (isSimple) {
+    return (
+      <SimpleModePinGate>
+        <MainLayout />
+      </SimpleModePinGate>
+    );
   }
 
   return <MainLayout />;
@@ -289,6 +297,7 @@ function AppContent() {
         <TourProvider>
         <Suspense fallback={<AppLoader />}>
           <Routes>
+          <Route path="/partners" element={<PartnerPortal />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/terms" element={<Terms />} />
@@ -423,19 +432,8 @@ function AppContent() {
             <Route path="checkout" element={<RequireWorkspaceManager>{isPricingUiEnabled() ? <Checkout /> : <Navigate to="/dashboard" replace />}</RequireWorkspaceManager>} />
           </Route>
 
-          <Route
-            path="/simple"
-            element={
-              <PrivateRoute>
-                <SimpleLayout />
-              </PrivateRoute>
-            }
-          >
-            <Route index element={<SimpleSell />} />
-            <Route path="stock" element={<SimpleStock />} />
-            <Route path="charge" element={<SimpleCharge />} />
-            <Route path="receipt" element={<SimpleReceipt />} />
-          </Route>
+          {/* The old standalone Simple Mode screens were replaced by Simple Mode in the main app. */}
+          <Route path="/simple/*" element={<Navigate to="/dashboard" replace />} />
 
           <Route
             path="/admin"

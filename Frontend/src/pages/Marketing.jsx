@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   ArrowLeft,
@@ -692,6 +692,11 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
     queryKey: ['marketing', 'preview', activeTenantId, previewParams],
     queryFn: () => marketingService.getPreview(previewParams),
     enabled: !!activeTenantId,
+    // The preview scans the whole audience on the server; reuse it while filters are unchanged
+    // and keep the previous list on screen while a new filter loads.
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 
   const { data: capResponse } = useQuery({

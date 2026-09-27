@@ -1,3 +1,6 @@
+import { useSimpleMode } from '@/hooks/useSimpleMode';
+import { isSimpleModePathAllowed } from '@/constants/simpleMode';
+import { SimpleModePinGate } from '@/components/simple/SimpleModePinGate';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from 'expo-router/react-navigation';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -6,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { Stack, usePathname, useSegments, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated, StyleSheet, AppState, AppStateStatus, Pressable, Text, TextInput, View } from 'react-native';
 import 'react-native-reanimated';
 import { offlineQueueService } from '@/services/offlineQueueService';
@@ -235,21 +238,30 @@ export default function RootLayout() {
 
 /** One overlay per cold launch; providers restore the session underneath it. */
 function StartupOverlay({ fontsReady }: { fontsReady: boolean }) {
-  const { loading, sessionSyncing } = useAuth();
+  const { loading, sessionSyncing, user } = useAuth();
+  const { isSimple } = useSimpleMode();
+  const pinGateActive = Boolean(user) && isSimple;
   const segments = useSegments();
   const [visible, setVisible] = useState(true);
   const opacity = useRef(new Animated.Value(1)).current;
-  const destinationReady = isStartupDestinationReady(fontsReady, loading, sessionSyncing, segments);
-  const dashboard = segments[0] === '(tabs)' && (!segments[1] || String(segments[1]) === 'index');
+  const destinationReady = isStartupDestinationReady(fontsReady, loading, sessionSyncing, segments, pinGateActive);
+  // The PIN gate must be visible before it can unlock and mount the dashboard.
+  const dashboard = !pinGateActive && segments[0] === '(tabs)' && (!segments[1] || String(segments[1]) === 'index');
   const startupData = useStartupData(destinationReady, dashboard, visible);
   const ready = destinationReady && startupData.ready;
   useEffect(() => {
     if (!ready || !visible) return;
-    const fade = Animated.timing(opacity, { toValue: 0, duration: 180, useNativeDriver: true });
-    fade.start(({ finished }) => { if (finished) setVisible(false); });
-    return () => fade.stop();
+    // Startup must not depend on a native animation completion callback.
+    setVisible(false);
   }, [ready, visible, opacity]);
-  if (!visible) return null;
+  useEffect(() => {
+    if (!visible) return;
+    logger.debug('StartupOverlay', 'Readiness', {
+      fontsReady, loading, sessionSyncing, pinGateActive,
+      route: segments.join('/'), destinationReady, dataReady: startupData.ready,
+    });
+  }, [visible, fontsReady, loading, sessionSyncing, pinGateActive, segments, destinationReady, startupData.ready]);
+  if (!visible || ready) return null;
   return <Animated.View accessibilityViewIsModal style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 100, opacity }]}>
     <AppLoadingScreen animate onLayout={() => { void SplashScreen.hideAsync().catch(() => {}); }} />
     {dashboard && startupData.needsRetry && (
@@ -266,10 +278,16 @@ function StartupOverlay({ fontsReady }: { fontsReady: boolean }) {
   </Animated.View>;
 }
 
+/** PIN lock over the whole app for Simple Mode members; everyone else passes straight through. */
+function SimpleModeGateWrapper({ enabled, children }: { enabled: boolean; children: ReactNode }) {
+  return enabled ? <SimpleModePinGate>{children}</SimpleModePinGate> : <>{children}</>;
+}
+
 function RootLayoutNav() {
   const router = useRouter();
   const pathname = usePathname();
-  const { isDriver, user, interfaceMode } = useAuth();
+  const { isDriver, user } = useAuth();
+  const { isSimple, isRestricted, config: simpleModeConfig } = useSimpleMode();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
   const headerTint = Colors[resolvedTheme ?? 'light'].tint;
@@ -305,13 +323,14 @@ function RootLayoutNav() {
     }
   }, [isDriver, pathname, router, user]);
 
-  // Simple Mode users only ever see /simple — the PIN-gated escape hatch is the only way out,
-  // so any other route (deep link, back button, stale nav state) bounces back there.
+  // Simple Mode: the normal app with a trimmed set of screens. Anything outside that set
+  // (deep link, back button, stale nav state) goes to Home until the member turns on
+  // "Show advanced features" in Settings.
   useEffect(() => {
-    if (!user || isDriver || interfaceMode !== 'simple') return;
-    if (pathname.startsWith('/simple')) return;
-    router.replace('/simple');
-  }, [interfaceMode, isDriver, pathname, router, user]);
+    if (!user || !isRestricted) return;
+    if (isSimpleModePathAllowed(simpleModeConfig, pathname)) return;
+    router.replace('/(tabs)');
+  }, [isRestricted, pathname, router, simpleModeConfig, user]);
 
   useEffect(() => observeSellerNotificationResponses((route) => router.push(route as never)), [router]);
 
@@ -319,6 +338,7 @@ function RootLayoutNav() {
     <NavigationThemeProvider value={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
       <View style={{ flex: 1, backgroundColor: isDark ? '#0f0f0f' : '#fff' }}>
         <ConnectivityBanner />
+        <SimpleModeGateWrapper enabled={isSimple}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="intro" />
@@ -340,6 +360,7 @@ function RootLayoutNav() {
           <Stack.Screen name="store-setup" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack>
+        </SimpleModeGateWrapper>
       </View>
     </NavigationThemeProvider>
   );

@@ -1,3 +1,5 @@
+import { useSimpleMode } from '@/hooks/useSimpleMode';
+import { SimpleExpensesScreen } from '@/components/simple/SimpleExpensesScreen';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'expo-router';
 import {
@@ -73,7 +75,13 @@ type ExpenseStatsResponse = {
   };
 };
 
-export default function ExpensesScreen() {
+/** Simple Mode shows the essentials-only screen; everyone else the full one. */
+export default function ExpensesScreenRoute() {
+  const { isRestricted } = useSimpleMode();
+  return isRestricted ? <SimpleExpensesScreen /> : <ExpensesScreen />;
+}
+
+function ExpensesScreen() {
   const router = useRouter();
   const { activeTenantId, hasFeature } = useAuth();
   const { activeShopId, activeStudioLocationId, scopeReady } = useWorkspaceScope();

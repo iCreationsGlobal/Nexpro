@@ -1,3 +1,6 @@
+import { useSimpleMode } from '@/hooks/useSimpleMode';
+import { lockSimpleMode } from '@/components/simple/SimpleModePinGate';
+import { devicePinService } from '@/services/devicePin';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
@@ -47,6 +50,8 @@ export default function SettingsScreen() {
     interfaceMode,
   } = useAuth();
   const [switchingInterfaceMode, setSwitchingInterfaceMode] = useState(false);
+  const [savingShowAdvanced, setSavingShowAdvanced] = useState(false);
+  const { isSimple, showAdvanced } = useSimpleMode();
   const { theme, setTheme } = useTheme();
   const { scanToSell, setScanToSell, isLoading: loadingScanToSell } = useScanToSell();
   const { colors, cardBg, borderColor, textColor, mutedColor, resolvedTheme } = useScreenColors();
@@ -79,7 +84,7 @@ export default function SettingsScreen() {
         await settingsService.updateInterfaceMode(next);
         await refreshAuth();
         if (enabled) {
-          router.replace('/simple');
+          router.replace('/(tabs)');
         }
       } catch (err) {
         Alert.alert('Error', getErrorMessage(err, 'Could not update your interface preference.'));
@@ -89,6 +94,24 @@ export default function SettingsScreen() {
     },
     [refreshAuth, router]
   );
+
+  const handleToggleShowAdvanced = useCallback(async (enabled: boolean) => {
+    setSavingShowAdvanced(true);
+    try {
+      await settingsService.updateSimpleModeShowAdvanced(enabled);
+      await refreshAuth();
+    } catch {
+      Alert.alert('Settings', 'Could not update your menu preference.');
+    } finally {
+      setSavingShowAdvanced(false);
+    }
+  }, [refreshAuth]);
+
+  const handleChangePin = useCallback(async () => {
+    if (!user?.id) return;
+    await devicePinService.clearPin(String(user.id));
+    lockSimpleMode();
+  }, [user?.id]);
 
   const handleResendVerification = useCallback(async () => {
     setResendLoading(true);
@@ -309,8 +332,9 @@ export default function SettingsScreen() {
             <View style={styles.toggleTextWrap}>
               <Text style={[styles.linkLabel, { color: textColor }]}>Use Simple Mode</Text>
               <Text style={[styles.linkSubtitle, { color: mutedColor }]}>
-                A photo-and-number screen for Sell and Stock — no reading required. Unlocks daily
-                with a 4-digit PIN; long-press the logo and enter it again to come back here.
+                Only the essentials: Home, Sales, Expenses, Customers, Products and Reports. No
+                notifications or AI. Unlocks with a 4-digit PIN on this phone. Only changes the
+                app for you.
               </Text>
             </View>
             {switchingInterfaceMode ? (
@@ -325,6 +349,51 @@ export default function SettingsScreen() {
               />
             )}
           </View>
+          {isSimple ? (
+            <>
+              <View style={[styles.toggleRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: borderColor }]}>
+                <View style={styles.toggleTextWrap}>
+                  <Text style={[styles.linkLabel, { color: textColor }]}>Show advanced features</Text>
+                  <Text style={[styles.linkSubtitle, { color: mutedColor }]}>
+                    Bring back the full app (invoices, marketing and more) while keeping PIN unlock.
+                  </Text>
+                </View>
+                {savingShowAdvanced ? (
+                  <ActivityIndicator color={brand} size="small" />
+                ) : (
+                  <Switch
+                    value={showAdvanced}
+                    onValueChange={handleToggleShowAdvanced}
+                    trackColor={{ false: borderColor, true: `${brand}88` }}
+                    thumbColor={showAdvanced ? brand : '#f4f4f5'}
+                    accessibilityLabel="Show advanced features"
+                  />
+                )}
+              </View>
+              <Pressable
+                onPress={() => { void handleChangePin(); }}
+                style={[styles.toggleRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: borderColor }]}
+                accessibilityRole="button"
+              >
+                <View style={styles.toggleTextWrap}>
+                  <Text style={[styles.linkLabel, { color: textColor }]}>Change PIN</Text>
+                  <Text style={[styles.linkSubtitle, { color: mutedColor }]}>Set a new 4-digit PIN for this phone.</Text>
+                </View>
+                <AppIcon name="chevron-right" size={20} color={mutedColor} />
+              </Pressable>
+              <Pressable
+                onPress={lockSimpleMode}
+                style={[styles.toggleRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: borderColor }]}
+                accessibilityRole="button"
+              >
+                <View style={styles.toggleTextWrap}>
+                  <Text style={[styles.linkLabel, { color: textColor }]}>Lock now</Text>
+                  <Text style={[styles.linkSubtitle, { color: mutedColor }]}>Ask for the PIN before anyone uses ABS again.</Text>
+                </View>
+                <AppIcon name="lock" size={20} color={mutedColor} />
+              </Pressable>
+            </>
+          ) : null}
         </View>
 
         <Text style={[styles.sectionTitle, { color: textColor }]}>Appearance</Text>
