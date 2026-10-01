@@ -232,8 +232,11 @@ const productService = {
    * Download CSV template for bulk product import (no images).
    * @returns {Promise<Blob>}
    */
-  getProductImportTemplate: async () => {
-    const response = await api.get('/products/import/template', { responseType: 'blob' });
+  getProductImportTemplate: async (columns) => {
+    const response = await api.get('/products/import/template', {
+      responseType: 'blob',
+      params: columns ? { columns: columns.join(',') } : undefined,
+    });
     return response.data;
   },
 

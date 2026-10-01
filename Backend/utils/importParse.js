@@ -89,9 +89,14 @@ const TEMPLATE_COLUMNS = {
  * @param {'products'|'materials'|'equipment'|'customers'|'leads'} entity
  * @returns {string}
  */
-function getTemplateCSV(entity) {
+function getTemplateCSV(entity, selectedColumns) {
   const cols = IMPORT_COLUMNS[entity];
   if (!cols) return '';
+  if (entity === 'products' && Array.isArray(selectedColumns)) {
+    const selected = new Set(selectedColumns);
+    const headers = cols.filter((col) => col.required || selected.has(col.key)).map((col) => escapeCSV(col.header));
+    return headers.join(',') + '\n';
+  }
   const templateHeaders = TEMPLATE_COLUMNS[entity];
   const headers = (templateHeaders || cols.map((c) => c.header)).map(escapeCSV);
   return headers.join(',') + '\n';

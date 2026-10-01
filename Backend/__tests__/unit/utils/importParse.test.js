@@ -1,6 +1,12 @@
 const { IMPORT_COLUMNS, getTemplateCSV, parseImportFile } = require('../../../utils/importParse');
 
 describe('product import template', () => {
+  it('downloads only selected fields and always includes Product Name', () => {
+    expect(getTemplateCSV('products', ['barcode', 'sellingPrice', 'barcode', 'unknown']))
+      .toBe('Product Name,Selling Price,Barcode\n');
+    expect(getTemplateCSV('products', [])).toBe('Product Name\n');
+  });
+
   it('includes every supported product column', () => {
     expect(getTemplateCSV('products').trim().split(',')).toEqual(
       IMPORT_COLUMNS.products.map((column) => column.header)

@@ -1,0 +1,26 @@
+export const PRODUCT_IMPORT_COLUMNS = [
+  { key: 'name', label: 'Product Name' },
+  { key: 'sku', label: 'SKU' },
+  { key: 'categoryName', label: 'Category' },
+  { key: 'costPrice', label: 'Cost Price' },
+  { key: 'sellingPrice', label: 'Selling Price' },
+  { key: 'quantityOnHand', label: 'Stock' },
+  { key: 'reorderLevel', label: 'Reorder Level' },
+  { key: 'unit', label: 'Unit' },
+  { key: 'isActive', label: 'Active' },
+  { key: 'description', label: 'Description' },
+  { key: 'barcode', label: 'Barcode' },
+  { key: 'productCode', label: 'Product Code' },
+  { key: 'wholesalePrice', label: 'Wholesale Price' },
+  { key: 'reorderQuantity', label: 'Reorder Quantity' },
+  { key: 'brand', label: 'Brand' },
+  { key: 'supplier', label: 'Supplier' },
+  { key: 'trackStock', label: 'Track Stock' },
+  { key: 'expiryDate', label: 'Expiry Date' },
+  { key: 'batchNumber', label: 'Batch Number' },
+  { key: 'isRentable', label: 'Rentable' },
+  { key: 'isSalable', label: 'Salable' },
+  { key: 'rentalRatePerDay', label: 'Rental Rate Per Day' },
+];
+
+export const BASIC_PRODUCT_IMPORT_COLUMNS = ['name', 'sellingPrice', 'quantityOnHand'];

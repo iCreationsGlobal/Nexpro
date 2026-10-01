@@ -67,6 +67,7 @@ import SimpleProductsList from '../components/simple/SimpleProductsList';
 import SimpleProductForm from '../components/simple/SimpleProductForm';
 import FeatureNotAvailable from '../components/FeatureNotAvailable';
 import productService from '../services/productService';
+import { PRODUCT_IMPORT_COLUMNS, BASIC_PRODUCT_IMPORT_COLUMNS } from '../constants/productImportColumns';
 import storeService from '../services/storeService';
 import PublishToOnlineStoreDialog from '../components/store/PublishToOnlineStoreDialog';
 import vendorService from '../services/vendorService';
@@ -747,6 +748,7 @@ const Products = () => {
   const [importResult, setImportResult] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
   const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateColumns, setTemplateColumns] = useState(BASIC_PRODUCT_IMPORT_COLUMNS);
 
   const { isOnline } = useOnlineStatus();
 
@@ -1329,7 +1331,7 @@ const Products = () => {
   const handleDownloadProductTemplate = useCallback(async () => {
     setTemplateLoading(true);
     try {
-      const blob = await productService.getProductImportTemplate();
+      const blob = await productService.getProductImportTemplate(templateColumns);
       const url = URL.createObjectURL(blob?.data ?? blob);
       const a = document.createElement('a');
       a.href = url;
@@ -1342,7 +1344,7 @@ const Products = () => {
     } finally {
       setTemplateLoading(false);
     }
-  }, []);
+  }, [templateColumns]);
 
   const handleImportSubmit = useCallback(async () => {
     if (!importFile) {
@@ -4716,6 +4718,29 @@ const Products = () => {
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-4">
+            <details className="rounded-md border border-border p-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                Template columns ({templateColumns.length} selected)
+              </summary>
+              <div className="flex gap-2 mt-3 mb-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setTemplateColumns(BASIC_PRODUCT_IMPORT_COLUMNS)}>Basic</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setTemplateColumns(PRODUCT_IMPORT_COLUMNS.map((column) => column.key))}>Select all</Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto py-2">
+                {PRODUCT_IMPORT_COLUMNS.map((column) => (
+                  <label key={column.key} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={templateColumns.includes(column.key)}
+                      disabled={column.key === 'name'}
+                      onCheckedChange={(checked) => setTemplateColumns((current) => checked
+                        ? [...new Set([...current, column.key])]
+                        : current.filter((key) => key !== column.key))}
+                    />
+                    <span>{column.label}{column.key === 'name' ? ' (required)' : ''}</span>
+                  </label>
+                ))}
+              </div>
+            </details>
             <div>
               <Button
                 type="button"

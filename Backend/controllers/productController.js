@@ -2294,7 +2294,8 @@ exports.exportProducts = async (req, res, next) => {
 // @access  Private (admin, manager)
 exports.getProductImportTemplate = (req, res) => {
   const { getTemplateCSV } = require('../utils/importParse');
-  const csv = getTemplateCSV('products');
+  const selectedColumns = typeof req.query.columns === 'string' ? req.query.columns.split(',') : undefined;
+  const csv = getTemplateCSV('products', selectedColumns);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="products_import_template.csv"');
   res.send(csv);
