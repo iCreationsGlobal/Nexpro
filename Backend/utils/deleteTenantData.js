@@ -118,6 +118,14 @@ const {
   UserShop,
   EmailVerificationToken,
   PasswordResetToken,
+  Rental,
+  RentalItem,
+  RentalUnit,
+  RentalExtension,
+  DamageReport,
+  LateCharge,
+  PreBooking,
+  PreBookingItem,
 } = require('../models');
 
 const PLATFORM_TENANT_SLUG = 'platform';
@@ -153,8 +161,12 @@ async function del(Model, where, opts = {}) {
  *
  * @param {string} tenantId
  * @param {import('sequelize').Transaction} [transaction]
+ * @param {{ preserveWorkspace?: boolean }} [resetOptions]
+ * When preserveWorkspace is true, business rows are removed and the tenant, shops,
+ * settings, subscription, user accounts, and workspace memberships are kept.
  */
-async function deleteTenantData(tenantId, transaction = null) {
+async function deleteTenantData(tenantId, transaction = null, resetOptions = {}) {
+  const preserveWorkspace = resetOptions.preserveWorkspace === true;
   const options = transaction ? { transaction } : {};
   const id = tenantId;
 
@@ -203,6 +215,22 @@ async function deleteTenantData(tenantId, transaction = null) {
   const studioLocationIds = (
     await StudioLocation.findAll({ where: { tenantId: id }, attributes: ['id'], ...options })
   ).map((r) => r.id);
+  let rentalIds = [];
+  let preBookingIds = [];
+  try {
+    rentalIds = (
+      await Rental.findAll({ where: { tenantId: id }, attributes: ['id'], ...options })
+    ).map((r) => r.id);
+  } catch (err) {
+    console.warn(`[deleteTenantData] Rental.findAll: ${err.message}`);
+  }
+  try {
+    preBookingIds = (
+      await PreBooking.findAll({ where: { tenantId: id }, attributes: ['id'], ...options })
+    ).map((r) => r.id);
+  } catch (err) {
+    console.warn(`[deleteTenantData] PreBooking.findAll: ${err.message}`);
+  }
   let saleReturnIds = [];
   try {
     saleReturnIds = (
@@ -235,14 +263,31 @@ async function deleteTenantData(tenantId, transaction = null) {
   await del(PartnerReferral, { tenantId: id }, options);
   await Sale.update({ invoiceId: null }, { where: { tenantId: id }, ...options });
   await Prescription.update({ invoiceId: null }, { where: { tenantId: id }, ...options });
-  await del(Invoice, { tenantId: id }, options);
+  if (rentalIds.length) {
+    await del(LateCharge, { rentalId: rentalIds }, options);
+    await del(RentalExtension, { rentalId: rentalIds }, options);
+    await del(DamageReport, { rentalId: rentalIds }, options);
+    await del(RentalItem, { rentalId: rentalIds }, options);
+  }
+  await del(Rental, { tenantId: id }, options);
+  await del(RentalUnit, { tenantId: id }, options);
+  if (preBookingIds.length) {
+    await del(PreBookingItem, { preBookingId: preBookingIds }, options);
+  }
+  try {
+    await PreBooking.update({ proformaInvoiceId: null }, { where: { tenantId: id }, ...options });
+  } catch (err) {
+    console.warn(`[deleteTenantData] PreBooking.update: ${err.message}`);
+  }
+  await del(PreBooking, { tenantId: id }, options);
+  await del(Invoice, { tenantId: id }, preserveWorkspace ? { ...options, strict: true } : options);
   if (leadIds.length) await del(LeadActivity, { leadId: leadIds }, options);
   await Lead.update({ convertedJobId: null }, { where: { tenantId: id }, ...options });
   await Job.update({ adminLeadId: null }, { where: { tenantId: id }, ...options });
-  await del(Job, { tenantId: id }, options);
+  await del(Job, { tenantId: id }, preserveWorkspace ? { ...options, strict: true } : options);
   if (quoteIds.length) await del(QuoteItem, { quoteId: quoteIds }, options);
   await del(QuoteActivity, { tenantId: id }, options);
-  await del(Quote, { tenantId: id }, options);
+  await del(Quote, { tenantId: id }, preserveWorkspace ? { ...options, strict: true } : options);
   await del(Lead, { tenantId: id }, options);
   await del(MarketplaceDispute, { tenantId: id }, options);
   await del(MarketplaceLedgerEntry, { tenantId: id }, options);
@@ -257,7 +302,7 @@ async function deleteTenantData(tenantId, transaction = null) {
   await del(SaleReturn, { tenantId: id }, options);
   if (saleIds.length) await del(SaleItem, { saleId: saleIds }, options);
   await del(SaleActivity, { tenantId: id }, options);
-  await del(Sale, { tenantId: id }, { ...options, force: true });
+  await del(Sale, { tenantId: id }, { ...options, force: true, ...(preserveWorkspace ? { strict: true } : {}) });
   await del(DealerProductPrice, { tenantId: id }, options);
   await del(DealerPriceTier, { tenantId: id }, options);
   await del(Dealer, { tenantId: id }, options);
@@ -272,13 +317,17 @@ async function deleteTenantData(tenantId, transaction = null) {
   await del(OnlineServiceListing, { tenantId: id }, options);
   await del(OnlineStoreSettings, { tenantId: id }, options);
   await del(Barcode, { tenantId: id }, options);
-  if (productIds.length) await del(ProductVariant, { productId: productIds }, options);
-  await del(Product, { tenantId: id }, options);
-  await del(ProductCategory, { tenantId: id }, options);
-  if (shopIds.length) {
-    await del(UserShop, { shopId: shopIds }, options);
+  if (productIds.length) {
+    await del(ProductVariant, { productId: productIds }, preserveWorkspace ? { ...options, strict: true } : options);
   }
-  await del(UserShop, { tenantId: id }, options);
+  await del(Product, { tenantId: id }, preserveWorkspace ? { ...options, strict: true } : options);
+  await del(ProductCategory, { tenantId: id }, options);
+  if (!preserveWorkspace) {
+    if (shopIds.length) {
+      await del(UserShop, { shopId: shopIds }, options);
+    }
+    await del(UserShop, { tenantId: id }, options);
+  }
   if (prescriptionIds.length) await del(PrescriptionItem, { prescriptionId: prescriptionIds }, options);
   await del(DrugInteraction, { tenantId: id }, options);
   if (drugIds.length) await del(ExpiryAlert, { drugId: drugIds }, options);
@@ -305,10 +354,12 @@ async function deleteTenantData(tenantId, transaction = null) {
   await del(EquipmentCategory, { tenantId: id }, options);
   await del(CustomerActivity, { tenantId: id }, options);
   await del(CustomerFeedback, { tenantId: id }, options);
-  await del(Customer, { tenantId: id }, options);
+  await del(Customer, { tenantId: id }, preserveWorkspace ? { ...options, strict: true } : options);
   await del(VendorPriceList, { tenantId: id }, options);
   await del(Vendor, { tenantId: id }, options);
-  await del(Setting, { tenantId: id }, options);
+  if (!preserveWorkspace) {
+    await del(Setting, { tenantId: id }, options);
+  }
   await del(PricingTemplate, { tenantId: id }, options);
   await del(CustomDropdownOption, { tenantId: id }, options);
   await del(InviteToken, { tenantId: id }, options);
@@ -318,7 +369,9 @@ async function deleteTenantData(tenantId, transaction = null) {
   await del(PartnershipApplication, { tenantId: id }, options);
   await del(PartnerProgramSettings, { tenantId: id }, options);
   await del(SalesAgentCommission, { tenantId: id }, options);
-  await del(SubscriptionPayment, { tenantId: id }, options);
+  if (!preserveWorkspace) {
+    await del(SubscriptionPayment, { tenantId: id }, options);
+  }
   await del(SupportTicket, { tenantId: id }, options);
   await del(SupportAccessSession, { tenantId: id }, options);
   await del(SystemHealthIssue, { tenantId: id }, options);
@@ -327,18 +380,32 @@ async function deleteTenantData(tenantId, transaction = null) {
   await del(VisionIncident, { tenantId: id }, options);
   await del(VisionEvent, { tenantId: id }, options);
   await del(VisionCamera, { tenantId: id }, options);
-  await del(Shop, { tenantId: id }, options);
+  if (!preserveWorkspace) {
+    await del(Shop, { tenantId: id }, options);
+  }
   await del(UserTask, { tenantId: id }, options);
   if (checklistIds.length) await del(UserChecklistItem, { checklistId: checklistIds }, options);
   await del(UserChecklist, { tenantId: id }, options);
   await del(TenantAccessAudit, { tenantId: id }, options);
-  if (studioLocationIds.length) {
-    await del(UserStudioLocation, { studioLocationId: studioLocationIds }, options);
+  if (!preserveWorkspace) {
+    if (studioLocationIds.length) {
+      await del(UserStudioLocation, { studioLocationId: studioLocationIds }, options);
+    }
+    await del(UserStudioLocation, { tenantId: id }, options);
+    await del(StudioLocation, { tenantId: id }, options);
+    await del(UserTenant, { tenantId: id }, options);
+    await del(Tenant, { id }, options);
   }
-  await del(UserStudioLocation, { tenantId: id }, options);
-  await del(StudioLocation, { tenantId: id }, options);
-  await del(UserTenant, { tenantId: id }, options);
-  await del(Tenant, { id }, options);
+}
+
+/**
+ * Hard-delete a tenant's operational data and leave the workspace login intact.
+ * Keeps the tenant row, shops, settings, subscription, user accounts, and memberships.
+ * @param {string} tenantId
+ * @param {import('sequelize').Transaction} [transaction]
+ */
+async function resetTenantWorkspaceData(tenantId, transaction = null) {
+  return deleteTenantData(tenantId, transaction, { preserveWorkspace: true });
 }
 
 /**
@@ -373,5 +440,6 @@ async function deleteOrphanUsersWithoutTenants(transaction = null) {
 module.exports = {
   PLATFORM_TENANT_SLUG,
   deleteTenantData,
+  resetTenantWorkspaceData,
   deleteOrphanUsersWithoutTenants,
 };

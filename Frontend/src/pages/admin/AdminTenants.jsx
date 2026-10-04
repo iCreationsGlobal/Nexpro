@@ -190,6 +190,9 @@ const AdminTenants = () => {
   const [cleanupDialog, setCleanupDialog] = useState({ open: false, type: null });
   const [cleanupConfirmSlug, setCleanupConfirmSlug] = useState('');
   const [cleanupSubmitting, setCleanupSubmitting] = useState(false);
+  const [resetWorkspaceOpen, setResetWorkspaceOpen] = useState(false);
+  const [resetWorkspaceSlug, setResetWorkspaceSlug] = useState('');
+  const [resetWorkspaceSubmitting, setResetWorkspaceSubmitting] = useState(false);
   const [resetTrialDialogOpen, setResetTrialDialogOpen] = useState(false);
   const [resettingTrial, setResettingTrial] = useState(false);
 
@@ -753,6 +756,34 @@ const AdminTenants = () => {
     }
   };
 
+  const handleResetWorkspace = async () => {
+    if (!selectedTenant?.id) return;
+    const slug = String(resetWorkspaceSlug || '').trim();
+    if (slug !== selectedTenant.slug) {
+      showError('Type the tenant slug exactly to confirm the reset.');
+      return;
+    }
+
+    setResetWorkspaceSubmitting(true);
+    try {
+      const response = await adminService.resetTenantWorkspace(selectedTenant.id, {
+        confirmSlug: slug,
+        reason: 'Superadmin workspace data reset from Control Center',
+      });
+      showSuccess(response?.message || 'Workspace business data was permanently deleted. User accounts were kept.');
+      setResetWorkspaceOpen(false);
+      setResetWorkspaceSlug('');
+      setSelectedCleanupRecords({ products: [], invoices: [], sales: [], quotes: [] });
+      await fetchTenantCleanupRecords(selectedTenant.id);
+      await fetchTenantAccessAudit(selectedTenant.id);
+      await fetchTenants(pagination.current, pagination.pageSize);
+    } catch (error) {
+      handleApiError(error, { context: 'reset workspace data' });
+    } finally {
+      setResetWorkspaceSubmitting(false);
+    }
+  };
+
   const handleOverrideToggle = (featureKey, nextValue) => {
     setAccessForm((prev) => {
       const featureOverrides = { ...(prev.featureOverrides || {}) };
@@ -874,15 +905,35 @@ const AdminTenants = () => {
               {config.label}
               <Badge variant="outline">{total}</Badge>
             </CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => openCleanupConfirm(type)}
-              disabled={selected.length === 0}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete selected ({selected.length})
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const visibleIds = records.map((record) => record.id);
+                  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id));
+                  if (allVisibleSelected) {
+                    visibleIds.forEach((id) => setCleanupRecordSelected(type, id, false));
+                    return;
+                  }
+                  visibleIds.forEach((id) => setCleanupRecordSelected(type, id, true));
+                }}
+                disabled={records.length === 0}
+              >
+                {records.length > 0 && records.every((record) => selected.includes(record.id)) ? 'Clear shown' : 'Select shown'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => openCleanupConfirm(type)}
+                disabled={selected.length === 0}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete selected ({selected.length})
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -893,18 +944,27 @@ const AdminTenants = () => {
           ) : records.length > 0 ? (
             <div className="space-y-3">
               <div className="space-y-2">
-                {records.map((record) => (
+                {records.map((record) => {
+                  const isSelected = selected.includes(record.id);
+                  return (
                   <div
                     key={record.id}
+                    role="checkbox"
+                    aria-checked={isSelected}
+                    tabIndex={0}
                     className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 hover:bg-muted/30"
-                    onClick={() => setCleanupRecordSelected(type, record.id, !selected.includes(record.id))}
+                    onClick={() => setCleanupRecordSelected(type, record.id, !isSelected)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      setCleanupRecordSelected(type, record.id, !isSelected);
+                    }}
                   >
                     <Checkbox
-                      className="mt-1"
-                      checked={selected.includes(record.id)}
-                      onClick={(event) => event.stopPropagation()}
-                      onCheckedChange={(checked) => setCleanupRecordSelected(type, record.id, checked === true)}
-                      aria-label={`Select ${renderCleanupRecordTitle(type, record)}`}
+                      className="mt-1 pointer-events-none"
+                      checked={isSelected}
+                      tabIndex={-1}
+                      aria-hidden="true"
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium text-foreground">{renderCleanupRecordTitle(type, record)}</span>
@@ -914,7 +974,8 @@ const AdminTenants = () => {
                       <span className="block text-xs text-muted-foreground break-all">{record.id}</span>
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               {cleanupMeta.hasMore?.[type] && (
                 <div className="rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
@@ -1719,6 +1780,29 @@ const AdminTenants = () => {
                 <TabsContent value="cleanup" className="mt-4 space-y-4 data-[state=inactive]:hidden">
                   <Card>
                     <CardHeader>
+                      <CardTitle className="text-base">Reset workspace data</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Permanently delete this workspace&apos;s business data: products, stock, sales, invoices, quotes, jobs, customers, and the rows tied to them. The tenant, user logins, workspace membership, shops, settings, and subscription stay.
+                      </p>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setResetWorkspaceSlug('');
+                            setResetWorkspaceOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Reset workspace data
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
                       <CardTitle className="text-base">Tenant cleanup</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
@@ -1932,6 +2016,61 @@ const AdminTenants = () => {
           )}
         </SheetContent>
       </Sheet>
+
+      <AlertDialog
+        open={resetWorkspaceOpen}
+        onOpenChange={(open) => {
+          setResetWorkspaceOpen(open);
+          if (!open) setResetWorkspaceSlug('');
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset workspace data?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  This permanently deletes business data for <strong className="text-foreground">{selectedTenant?.name}</strong>.
+                  Products, stock, sales, invoices, quotes, jobs, and customers are removed. This cannot be undone.
+                </p>
+                <p>
+                  The user account stays. They can still sign in. The workspace, membership, shops, settings, and subscription are kept.
+                </p>
+                <p>
+                  Type <strong className="text-foreground">{selectedTenant?.slug}</strong> to confirm.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-2">
+            <Label htmlFor="reset-workspace-slug">Tenant slug</Label>
+            <Input
+              id="reset-workspace-slug"
+              value={resetWorkspaceSlug}
+              onChange={(e) => setResetWorkspaceSlug(e.target.value)}
+              placeholder={selectedTenant?.slug || 'tenant-slug'}
+              className="mt-1.5"
+              autoComplete="off"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetWorkspaceSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleResetWorkspace();
+              }}
+              disabled={
+                resetWorkspaceSubmitting ||
+                resetWorkspaceSlug.trim() !== (selectedTenant?.slug || '')
+              }
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {resetWorkspaceSubmitting ? 'Deleting...' : 'Delete business data'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={cleanupDialog.open}

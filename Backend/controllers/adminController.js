@@ -98,6 +98,7 @@ const { hardDeleteSaleInTransaction } = require('../services/saleHardDeleteServi
 const { reverseAndDestroyJournalEntries } = require('../services/accountingService');
 const { getRecentSlowOperations } = require('../utils/performanceLogger');
 const { permanentlyDeleteTenant } = require('../services/permanentDeleteTenantService');
+const { PLATFORM_TENANT_SLUG, resetTenantWorkspaceData } = require('../utils/deleteTenantData');
 
 const PLAN_PRICING = {
   trial: 0,
@@ -2350,6 +2351,82 @@ exports.cleanupTenantQuotes = async (req, res, next) => {
       data: {
         tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
         results
+      }
+    });
+  } catch (error) {
+    if (error.code === 'CONFIRM_SLUG_REQUIRED') {
+      return res.status(error.statusCode || 400).json({
+        success: false,
+        message: error.message,
+        code: error.code
+      });
+    }
+    next(error);
+  }
+};
+
+// @desc    Hard-delete a tenant's business data and keep the login workspace
+// @route   POST /api/admin/tenants/:id/cleanup/reset
+// @access  Platform admin (tenants.delete)
+exports.resetTenantWorkspace = async (req, res, next) => {
+  try {
+    const tenant = await Tenant.findByPk(req.params.id, {
+      attributes: ['id', 'name', 'slug']
+    });
+    if (!tenant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tenant not found'
+      });
+    }
+    if (tenant.slug === PLATFORM_TENANT_SLUG) {
+      return res.status(400).json({
+        success: false,
+        message: 'The platform workspace cannot be reset.'
+      });
+    }
+
+    ensureTenantCleanupConfirmed(req, tenant);
+
+    const reason = String(req.body?.reason || 'Superadmin workspace data reset').trim();
+    await sequelize.transaction(async (transaction) => {
+      await resetTenantWorkspaceData(tenant.id, transaction);
+      await createTenantCleanupAudit({
+        tenantId: tenant.id,
+        actorUserId: req.user?.id || null,
+        action: 'tenant_workspace_data_reset_by_superadmin',
+        before: { id: tenant.id, name: tenant.name, slug: tenant.slug },
+        after: {
+          id: tenant.id,
+          reset: true,
+          kept: ['tenant', 'users', 'memberships', 'shops', 'settings', 'subscription']
+        },
+        reason,
+        transaction
+      });
+    });
+
+    invalidateAfterMutation(tenant.id);
+
+    console.log('[AdminCleanup] workspace reset tenantId=%s actor=%s', tenant.id, req.user?.id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Workspace business data was permanently deleted. The tenant and user accounts were kept.',
+      data: {
+        tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
+        kept: ['tenant', 'user accounts', 'workspace memberships', 'shops', 'settings', 'subscription'],
+        deleted: [
+          'products',
+          'variants',
+          'stock',
+          'sales',
+          'invoices',
+          'quotes',
+          'jobs',
+          'customers',
+          'related operational rows'
+        ]
       }
     });
   } catch (error) {

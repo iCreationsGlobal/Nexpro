@@ -25,6 +25,8 @@ const cleanupTenantSales = async (tenantId, payload) =>
   api.post(`/admin/tenants/${tenantId}/cleanup/sales`, payload);
 const cleanupTenantQuotes = async (tenantId, payload) =>
   api.post(`/admin/tenants/${tenantId}/cleanup/quotes`, payload);
+const resetTenantWorkspace = async (tenantId, payload) =>
+  api.post(`/admin/tenants/${tenantId}/cleanup/reset`, payload);
 
 const getSupportTickets = async (params = {}) => api.get('/admin/support-tickets', { params });
 const getSupportTicket = async (id) => api.get(`/admin/support-tickets/${id}`);
@@ -362,6 +364,7 @@ export default {
   cleanupTenantInvoices,
   cleanupTenantSales,
   cleanupTenantQuotes,
+  resetTenantWorkspace,
   getSupportTickets,
   getSupportTicket,
   createSupportTicket,
