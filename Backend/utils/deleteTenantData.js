@@ -131,10 +131,58 @@ const {
 const PLATFORM_TENANT_SLUG = 'platform';
 
 /**
+ * PostgreSQL undefined_table. Sequelize puts SQLSTATE on parent/original.
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+function isMissingRelationError(err) {
+  const code = err?.parent?.code || err?.original?.code || err?.code;
+  if (code === '42P01') return true;
+  return /relation ["'][^"']+["'] does not exist/i.test(String(err?.message || ''));
+}
+
+/**
+ * Run a statement in a savepoint when a transaction is open.
+ * PostgreSQL aborts the whole transaction after a failed statement. Rolling back
+ * to a savepoint keeps later cleanup deletes runnable.
+ * @param {import('sequelize').Sequelize} sequelize
+ * @param {import('sequelize').Transaction | null | undefined} transaction
+ * @param {(tx: import('sequelize').Transaction | null) => Promise<any>} work
+ */
+function inSavepoint(sequelize, transaction, work) {
+  if (transaction && sequelize) {
+    return sequelize.transaction({ transaction }, (savepoint) => work(savepoint));
+  }
+  return work(null);
+}
+
+/**
+ * @param {import('sequelize').Model} Model
+ * @param {object} where
+ * @param {import('sequelize').Transaction | null | undefined} transaction
+ * @returns {Promise<string[]>}
+ */
+async function loadIdsSkippingMissingRelation(Model, where, transaction) {
+  try {
+    const rows = await inSavepoint(Model.sequelize, transaction, (tx) => Model.findAll({
+      where,
+      attributes: ['id'],
+      ...(tx ? { transaction: tx } : {}),
+    }));
+    return rows.map((row) => row.id);
+  } catch (err) {
+    if (!isMissingRelationError(err)) throw err;
+    console.warn(`[deleteTenantData] ${Model.name}.findAll: ${err.message}`);
+    return [];
+  }
+}
+
+/**
  * Destroy rows matching `where`. Always scoped by the caller — pass tenantId (or child ids
  * already loaded for this tenant) so other tenants cannot be touched.
  * Sequelize associations do not set onDelete CASCADE; some migrations do at the DB layer.
- * Missing tables/columns are skipped unless strict mode is on.
+ * A missing relation (SQLSTATE 42P01) is skipped unless strict mode is on, and it does not
+ * abort the surrounding cleanup transaction.
  *
  * @param {import('sequelize').Model} Model
  * @param {object} where
@@ -144,14 +192,20 @@ const PLATFORM_TENANT_SLUG = 'platform';
 async function del(Model, where, opts = {}) {
   if (!Model?.destroy) return 0;
   const { strict, ...destroyOpts } = opts;
+  const strictMode = Boolean(strict) || process.env.DELETE_TENANT_DATA_STRICT === 'true';
+  const transaction = destroyOpts.transaction || null;
   try {
-    return await Model.destroy({ where, ...destroyOpts });
+    return await inSavepoint(Model.sequelize, transaction, (tx) => Model.destroy({
+      where,
+      ...destroyOpts,
+      ...(tx ? { transaction: tx } : {}),
+    }));
   } catch (err) {
-    if (strict || process.env.DELETE_TENANT_DATA_STRICT === 'true') {
-      throw err;
+    if (isMissingRelationError(err) && !strictMode) {
+      console.warn(`[deleteTenantData] ${Model.name}: ${err.message}`);
+      return 0;
     }
-    console.warn(`[deleteTenantData] ${Model.name}: ${err.message}`);
-    return 0;
+    throw err;
   }
 }
 
@@ -215,22 +269,8 @@ async function deleteTenantData(tenantId, transaction = null, resetOptions = {})
   const studioLocationIds = (
     await StudioLocation.findAll({ where: { tenantId: id }, attributes: ['id'], ...options })
   ).map((r) => r.id);
-  let rentalIds = [];
-  let preBookingIds = [];
-  try {
-    rentalIds = (
-      await Rental.findAll({ where: { tenantId: id }, attributes: ['id'], ...options })
-    ).map((r) => r.id);
-  } catch (err) {
-    console.warn(`[deleteTenantData] Rental.findAll: ${err.message}`);
-  }
-  try {
-    preBookingIds = (
-      await PreBooking.findAll({ where: { tenantId: id }, attributes: ['id'], ...options })
-    ).map((r) => r.id);
-  } catch (err) {
-    console.warn(`[deleteTenantData] PreBooking.findAll: ${err.message}`);
-  }
+  const rentalIds = await loadIdsSkippingMissingRelation(Rental, { tenantId: id }, transaction);
+  const preBookingIds = await loadIdsSkippingMissingRelation(PreBooking, { tenantId: id }, transaction);
   let saleReturnIds = [];
   try {
     saleReturnIds = (
@@ -275,8 +315,12 @@ async function deleteTenantData(tenantId, transaction = null, resetOptions = {})
     await del(PreBookingItem, { preBookingId: preBookingIds }, options);
   }
   try {
-    await PreBooking.update({ proformaInvoiceId: null }, { where: { tenantId: id }, ...options });
+    await inSavepoint(PreBooking.sequelize, transaction, (tx) => PreBooking.update(
+      { proformaInvoiceId: null },
+      { where: { tenantId: id }, ...(tx ? { transaction: tx } : {}) }
+    ));
   } catch (err) {
+    if (!isMissingRelationError(err)) throw err;
     console.warn(`[deleteTenantData] PreBooking.update: ${err.message}`);
   }
   await del(PreBooking, { tenantId: id }, options);
@@ -439,6 +483,7 @@ async function deleteOrphanUsersWithoutTenants(transaction = null) {
 
 module.exports = {
   PLATFORM_TENANT_SLUG,
+  isMissingRelationError,
   deleteTenantData,
   resetTenantWorkspaceData,
   deleteOrphanUsersWithoutTenants,

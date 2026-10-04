@@ -98,7 +98,7 @@ const { hardDeleteSaleInTransaction } = require('../services/saleHardDeleteServi
 const { reverseAndDestroyJournalEntries } = require('../services/accountingService');
 const { getRecentSlowOperations } = require('../utils/performanceLogger');
 const { permanentlyDeleteTenant } = require('../services/permanentDeleteTenantService');
-const { PLATFORM_TENANT_SLUG, resetTenantWorkspaceData } = require('../utils/deleteTenantData');
+const { PLATFORM_TENANT_SLUG, isMissingRelationError, resetTenantWorkspaceData } = require('../utils/deleteTenantData');
 
 const PLAN_PRICING = {
   trial: 0,
@@ -157,6 +157,22 @@ const productOrVariantMatch = (productId, variantIds) => ({
   ]
 });
 
+/**
+ * Run one cleanup statement in a savepoint. A missing relation (42P01) is skipped
+ * so product hard-delete can continue. Any other error still fails this product.
+ * @param {import('sequelize').Transaction} transaction
+ * @param {(savepoint: import('sequelize').Transaction) => Promise<any>} work
+ */
+const runSkippingMissingRelation = async (transaction, work) => {
+  try {
+    return await sequelize.transaction({ transaction }, (savepoint) => work(savepoint));
+  } catch (err) {
+    if (!isMissingRelationError(err)) throw err;
+    console.warn(`[AdminCleanup] skipping missing relation: ${err.message}`);
+    return undefined;
+  }
+};
+
 const hardDeleteProductForCleanup = async ({ tenant, product, transaction }) => {
   const variants = await ProductVariant.findAll({
     where: { productId: product.id },
@@ -210,13 +226,13 @@ const hardDeleteProductForCleanup = async ({ tenant, product, transaction }) => 
     transaction
   });
 
-  const rentalItems = await RentalItem.findAll({
+  const rentalItems = (await runSkippingMissingRelation(transaction, (savepoint) => RentalItem.findAll({
     where: { productId: product.id },
     attributes: ['id'],
-    transaction
-  });
+    transaction: savepoint
+  }))) || [];
   const rentalItemIds = rentalItems.map((item) => item.id);
-  const damageReports = await DamageReport.findAll({
+  const damageReports = (await runSkippingMissingRelation(transaction, (savepoint) => DamageReport.findAll({
     where: {
       [Op.or]: [
         { productId: product.id },
@@ -224,21 +240,32 @@ const hardDeleteProductForCleanup = async ({ tenant, product, transaction }) => 
       ]
     },
     attributes: ['id'],
-    transaction
-  });
+    transaction: savepoint
+  }))) || [];
   const damageReportIds = damageReports.map((report) => report.id);
   if (damageReportIds.length > 0) {
-    await Expense.update(
-      { damageReportId: null },
-      { where: { tenantId: tenant.id, damageReportId: { [Op.in]: damageReportIds } }, transaction }
-    );
-    await DamageReport.destroy({ where: { id: { [Op.in]: damageReportIds } }, transaction });
+    await runSkippingMissingRelation(transaction, async (savepoint) => {
+      await Expense.update(
+        { damageReportId: null },
+        { where: { tenantId: tenant.id, damageReportId: { [Op.in]: damageReportIds } }, transaction: savepoint }
+      );
+      await DamageReport.destroy({ where: { id: { [Op.in]: damageReportIds } }, transaction: savepoint });
+    });
   }
   if (rentalItemIds.length > 0) {
-    await RentalItem.destroy({ where: { id: { [Op.in]: rentalItemIds } }, transaction });
+    await runSkippingMissingRelation(transaction, (savepoint) => RentalItem.destroy({
+      where: { id: { [Op.in]: rentalItemIds } },
+      transaction: savepoint
+    }));
   }
-  await RentalUnit.destroy({ where: { productId: product.id }, transaction });
-  await PreBookingItem.destroy({ where: { productId: product.id }, transaction });
+  await runSkippingMissingRelation(transaction, (savepoint) => RentalUnit.destroy({
+    where: { productId: product.id },
+    transaction: savepoint
+  }));
+  await runSkippingMissingRelation(transaction, (savepoint) => PreBookingItem.destroy({
+    where: { productId: product.id },
+    transaction: savepoint
+  }));
   await OnlineProductListing.destroy({ where: tenantMatch, transaction });
   if (variantIds.length > 0) {
     await ProductVariant.destroy({ where: { productId: product.id }, transaction });
