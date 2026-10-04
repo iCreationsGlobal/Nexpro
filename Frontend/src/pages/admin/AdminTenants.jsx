@@ -81,7 +81,7 @@ const CLEANUP_RECORD_TYPES = {
     idsKey: 'productIds',
     icon: Package,
     emptyLabel: 'products',
-    confirmCopy: 'Unlinked products may be permanently deleted. Products with sales, stock transfers, stock counts, or quote history will be archived to preserve tenant history.',
+    confirmCopy: 'Selected products are permanently deleted, including variants, stock history, and store listings. Sale and quote lines keep their text, but the product link is removed.',
   },
   invoices: {
     label: 'Invoices',
@@ -89,7 +89,7 @@ const CLEANUP_RECORD_TYPES = {
     idsKey: 'invoiceIds',
     icon: Receipt,
     emptyLabel: 'invoices',
-    confirmCopy: 'Unpaid invoices may be permanently deleted. Paid or partially paid invoices will be cancelled and archived to avoid unsafe payment/accounting reversal.',
+    confirmCopy: 'Selected invoices are permanently deleted, including their accounting entries. Linked sales stay, but they no longer point at the invoice.',
   },
   sales: {
     label: 'Sales / Orders',
@@ -97,7 +97,7 @@ const CLEANUP_RECORD_TYPES = {
     idsKey: 'saleIds',
     icon: ShoppingCart,
     emptyLabel: 'sales or orders',
-    confirmCopy: 'Sales and kitchen orders with payments, invoices, or item history are cancelled and archived. Only unlinked empty records can be permanently deleted.',
+    confirmCopy: 'Selected sales and orders are permanently deleted, including their items, payments, and invoices. Stock taken by the sale is restored.',
   },
   quotes: {
     label: 'Quotes',
@@ -105,7 +105,7 @@ const CLEANUP_RECORD_TYPES = {
     idsKey: 'quoteIds',
     icon: FileText,
     emptyLabel: 'quotes',
-    confirmCopy: 'Unlinked quotes may be permanently deleted. Accepted quotes or quotes linked to jobs, invoices, or sales are archived instead.',
+    confirmCopy: 'Selected quotes are permanently deleted. Jobs and invoices that pointed at them stay, with the quote link removed.',
   },
 };
 const CLEANUP_RECORD_TYPE_KEYS = Object.keys(CLEANUP_RECORD_TYPES);
@@ -732,9 +732,14 @@ const AdminTenants = () => {
       const response = await cleanupRequestByType[cleanupDialog.type](selectedTenant.id, payload);
       const results = response?.data?.results || [];
       const deleted = results.filter((item) => item.status === 'deleted').length;
-      const archived = results.filter((item) => item.status === 'archived').length;
+      const failed = results.filter((item) => item.status === 'failed');
       const missing = results.filter((item) => item.status === 'not_found').length;
-      showSuccess(`Cleanup complete: ${deleted} deleted, ${archived} archived${missing ? `, ${missing} not found` : ''}.`);
+      const summary = `Permanently deleted ${deleted}${missing ? `, ${missing} not found` : ''}${failed.length ? `, ${failed.length} failed` : ''}.`;
+      if (failed.length && deleted === 0) {
+        showError(failed[0].message || summary);
+      } else {
+        showSuccess(failed.length ? `${summary} ${failed[0].message}` : summary);
+      }
       setSelectedCleanupRecords((prev) => ({ ...prev, [cleanupDialog.type]: [] }));
       setCleanupDialog({ open: false, type: null });
       setCleanupConfirmSlug('');
@@ -876,7 +881,7 @@ const AdminTenants = () => {
               disabled={selected.length === 0}
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              Cleanup selected ({selected.length})
+              Delete selected ({selected.length})
             </Button>
           </div>
         </CardHeader>
@@ -1718,7 +1723,7 @@ const AdminTenants = () => {
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <p className="text-sm text-muted-foreground">
-                        Search and select tenant records that need superadmin cleanup. Linked or historically important records are archived or cancelled instead of hard-deleted.
+                        Search and select tenant records to permanently delete. Related rows that would block the delete are removed or unlinked. This cannot be undone.
                       </p>
                       <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
                         Confirmation requires typing <span className="font-mono text-foreground">{selectedTenant.slug}</span> before any cleanup runs. Up to {cleanupMeta.limits?.maxBatchSize || 50} records can be selected per cleanup action.
@@ -1978,7 +1983,7 @@ const AdminTenants = () => {
               }
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {cleanupSubmitting ? 'Cleaning up...' : `Cleanup ${cleanupTypeLabel.toLowerCase()}`}
+              {cleanupSubmitting ? 'Deleting...' : 'Delete permanently'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
