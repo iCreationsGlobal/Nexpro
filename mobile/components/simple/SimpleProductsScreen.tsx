@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { AppIcon } from '@/components/AppIcon';
 import { useAuth } from '@/context/AuthContext';
@@ -15,10 +15,16 @@ import {
 import { SimpleProductSheet } from '@/components/simple/SimpleProductSheet';
 
 const PAGE_SIZE = 20;
+const PRODUCT_SORTS = [
+  { value: 'name_asc', label: 'Name' },
+  { value: 'price_asc', label: 'Price low–high' },
+  { value: 'price_desc', label: 'Price high–low' },
+] as const;
 
-/** Stock label for a row; products that don't track stock (or have variants) show none. */
+/** Stock label for a row. Variant products point at their sizes; products that don't track stock show nothing. */
 export function simpleStockLabel(product: Record<string, any>): { text: string; color: string } | null {
-  if (product?.trackStock === false || product?.hasVariants) return null;
+  if (product?.hasVariants) return { text: 'Sizes & colours', color: '#6b7280' };
+  if (product?.trackStock === false) return null;
   const qty = Number(product?.quantityOnHand || 0);
   const reorder = Number(product?.reorderLevel || 0);
   if (qty <= 0) return { text: 'Out of stock', color: '#b91c1c' };
@@ -46,6 +52,7 @@ export function SimpleProductsScreen() {
   const { bg, mutedColor } = useScreenColors();
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
+  const [sort, setSort] = useState<(typeof PRODUCT_SORTS)[number]['value']>('name_asc');
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
@@ -56,8 +63,8 @@ export function SimpleProductsScreen() {
   }, [search]);
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ['simple', 'products', activeTenantId, shop?.activeShopId ?? null, debounced, page],
-    queryFn: () => productService.getProducts({ page, limit: PAGE_SIZE, isActive: true, ...(debounced ? { search: debounced } : {}) }),
+    queryKey: ['simple', 'products', activeTenantId, shop?.activeShopId ?? null, debounced, sort, page],
+    queryFn: () => productService.getProducts({ page, limit: PAGE_SIZE, isActive: true, sort, ...(debounced ? { search: debounced } : {}) }),
     enabled: !!activeTenantId,
   });
   const body = (data || {}) as { data?: any[]; count?: number };
@@ -74,6 +81,23 @@ export function SimpleProductsScreen() {
       <SimpleTitle>Products</SimpleTitle>
       <SimpleBigButton label="Add product" icon="plus" onPress={() => { setEditing(null); setFormOpen(true); }} />
       <SimpleSearch value={search} onChange={setSearch} placeholder="Search products" />
+      <View style={styles.sortRow}>
+        {PRODUCT_SORTS.map((option) => {
+          const selected = sort === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => { setSort(option.value); setPage(1); }}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`Sort by ${option.label}`}
+              style={[styles.sortChip, { borderColor: selected ? '#166534' : '#e5e7eb', backgroundColor: selected ? '#f0fdf4' : '#fff' }]}
+            >
+              <Text style={{ color: selected ? '#166534' : mutedColor, fontFamily: FontFamily.semiBold }}>{option.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
       <Text style={{ color: mutedColor, fontFamily: FontFamily.regular }}>
         {isLoading ? 'Loading…' : `${count} ${count === 1 ? 'product' : 'products'}${debounced ? ' found' : ''}`}
       </Text>
@@ -106,6 +130,8 @@ export function SimpleProductsScreen() {
 }
 
 const styles = StyleSheet.create({
+  sortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  sortChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
   thumb: { width: 52, height: 52, borderRadius: 12, borderWidth: 1, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
   thumbImage: { width: '100%', height: '100%' },
 });

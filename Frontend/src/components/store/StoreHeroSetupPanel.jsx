@@ -246,7 +246,7 @@ export default function StoreHeroSetupPanel({
                       <img
                         src={resolveUrl(slide.imageUrl)}
                         alt={`Hero ${index + 1}`}
-                        className="aspect-[16/5] w-full object-cover"
+                        className="aspect-[16/6] w-full object-cover sm:aspect-[21/7]"
                       />
                       <button
                         type="button"

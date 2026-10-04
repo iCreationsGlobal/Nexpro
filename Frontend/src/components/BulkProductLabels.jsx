@@ -8,9 +8,21 @@ import { DEFAULT_LABEL_SETTINGS, labelDocument, labelGeometry } from '../utils/p
 
 const rowsOf = r => Array.isArray(r?.data) ? r.data : Array.isArray(r?.products) ? r.products : [];
 const fieldClass = 'border rounded-md bg-background p-2 w-full';
+
+/** Price sort for the label catalog and the printed sticker order. Other keys keep the current order. */
+function orderLabelItems(items, sortKey) {
+  if (sortKey !== 'price_asc' && sortKey !== 'price_desc') return items;
+  const direction = sortKey === 'price_desc' ? -1 : 1;
+  return [...items].sort((a, b) => {
+    const byPrice = (Number(a.sellingPrice) - Number(b.sellingPrice)) * direction;
+    if (byPrice) return byPrice;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
+}
+
 export default function BulkProductLabels({ onClose, shopId, profileKey, onSaved }) {
   const [step,setStep]=useState(1), [rows,setRows]=useState([]), [page,setPage]=useState(1), [hasNext,setHasNext]=useState(false);
-  const [search,setSearch]=useState(''), [selected,setSelected]=useState({}), [busy,setBusy]=useState(false), [error,setError]=useState('');
+  const [search,setSearch]=useState(''), [sort,setSort]=useState('name_asc'), [selected,setSelected]=useState({}), [busy,setBusy]=useState(false), [error,setError]=useState('');
   const [revision,setRevision]=useState(0), [documentHtml,setDocumentHtml]=useState(''), [prepared,setPrepared]=useState([]);
   const [settings,setSettings]=useState(()=>{try {return {...DEFAULT_LABEL_SETTINGS,...JSON.parse(localStorage.getItem(profileKey)||'{}')};}catch{return {...DEFAULT_LABEL_SETTINGS};}});
   useEffect(()=>{
@@ -18,14 +30,14 @@ export default function BulkProductLabels({ onClose, shopId, profileKey, onSaved
     const timer=setTimeout(async()=>{
       setBusy(true);setError('');
       try {
-        const result=await productService.getProducts({page,limit:25,search,shopId,isActive:true});
+        const result=await productService.getProducts({page,limit:25,search,shopId,isActive:true,sort});
         if(active){const list=rowsOf(result);setRows(list);setHasNext(result?.pagination?.total ? page*25<result.pagination.total : list.length===25);}
       }catch(e){if(active){setRows([]);setError(e.message||'Could not load products.');}}
       finally{if(active)setBusy(false);}
     },250);
     return()=>{active=false;clearTimeout(timer);};
-  },[page,search,shopId,revision]);
-  const items=Object.values(selected), total=items.reduce((n,p)=>n+Number(p.quantity||0),0);
+  },[page,search,shopId,revision,sort]);
+  const items=Object.values(selected), ordered=orderLabelItems(items, sort), total=items.reduce((n,p)=>n+Number(p.quantity||0),0);
   const keyOf=p=>`${p.variantId?'variant':'product'}:${p.variantId||p.id}`;
   const toggle=p=>setSelected(old=>{const next={...old}, key=keyOf(p);if(next[key])delete next[key];else next[key]={...p,quantity:1};return next;});
   const setSetting=(key,value)=>{setSettings(s=>({...s,[key]:value}));setDocumentHtml('');};
@@ -64,7 +76,7 @@ export default function BulkProductLabels({ onClose, shopId, profileKey, onSaved
       const code=settings.design!=='price';
       if(code&&items.some(p=>!p.barcode))throw new Error('Generate and save missing barcodes before continuing.');
       const labels=[];
-      for(const item of items){
+      for(const item of orderLabelItems(items, sort)){
         if(!Number.isFinite(Number(item.sellingPrice))||Number(item.sellingPrice)<0)throw new Error(`Check the selling price for ${item.name}.`);
         let image;
         if(settings.design.startsWith('qr')){
@@ -97,6 +109,7 @@ export default function BulkProductLabels({ onClose, shopId, profileKey, onSaved
     {error&&<div role="alert" className="p-3 mb-3 rounded bg-red-50 text-red-800">{error}</div>}
     {step===1&&<>
       <label className="block">Search products<input className={fieldClass} value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="Name, barcode or product code" /></label>
+      <label className="mt-3 block">Sort by<select className={fieldClass} value={sort} onChange={e=>{setSort(e.target.value);setPage(1);}}><option value="name_asc">Name A–Z</option><option value="price_asc">Price low–high</option><option value="price_desc">Price high–low</option></select></label>
       <div className="flex gap-3 my-3"><Button variant="outline" disabled={busy} onClick={()=>setSelected(old=>({...old,...Object.fromEntries(rows.filter(p=>!p.hasVariants).map(p=>[keyOf(p),old[keyOf(p)]||{...p,quantity:1}]))}))}>Select this page</Button><Button variant="outline" onClick={()=>setSelected({})}>Clear selection</Button><Button variant="outline" disabled={busy} onClick={()=>setRevision(v=>v+1)}>Refresh</Button></div>
       {busy&&<p role="status">Loading…</p>}
       <div className="max-h-72 overflow-auto border rounded"><table className="w-full text-sm"><thead><tr><th className="p-2 text-left">Product</th><th>Price</th><th>Copies</th></tr></thead><tbody>{rows.map(p=><tr key={keyOf(p)} className="border-t"><td className="p-2"><label className="flex gap-2 items-center"><input type="checkbox" disabled={!!p.hasVariants||busy} checked={!!selected[keyOf(p)]} onChange={()=>toggle(p)}/>{p.name}</label>{p.hasVariants&&<button className="underline ml-6" disabled={busy} onClick={()=>variants(p)}>Choose variants</button>}</td><td className="p-2">{settings.currency} {Number(p.sellingPrice||0).toFixed(2)}</td><td className="p-2"><input aria-label={`Copies of ${p.name}`} type="number" min="1" max="500" className={`${fieldClass} max-w-20`} disabled={!selected[keyOf(p)]} value={selected[keyOf(p)]?.quantity??1} onChange={e=>{const quantity=e.target.value;setSelected(old=>({...old,[keyOf(p)]:{...old[keyOf(p)],quantity}}));}}/></td></tr>)}</tbody></table>{!busy&&!rows.length&&<p className="p-4">No products found.</p>}</div>
@@ -113,7 +126,7 @@ export default function BulkProductLabels({ onClose, shopId, profileKey, onSaved
         <label>Currency symbol<input className={fieldClass} maxLength={5} value={settings.currency} onChange={e=>setSetting('currency',e.target.value)}/></label>
       </div>
       <p className="text-sm my-3">Default: generic thermal printer, 50 × 30 mm. Match the loaded stickers. Long product names are shortened on the label. Check the preview and print one test sticker first.</p>
-      <details className="my-3"><summary>Review {items.length} selected products / quantities</summary>{items.map(p=><div key={keyOf(p)} className="flex items-center gap-3 my-2"><span className="flex-1">{p.name}</span><input type="number" min="1" max="500" aria-label={`Copies of ${p.name}`} className={`${fieldClass} max-w-20`} value={p.quantity} onChange={e=>{const quantity=e.target.value;setSelected(old=>({...old,[keyOf(p)]:{...p,quantity}}));}}/><button className="underline" onClick={()=>toggle(p)}>Remove</button></div>)}</details>
+      <details className="my-3"><summary>Review {ordered.length} selected products / quantities</summary>{ordered.map(p=><div key={keyOf(p)} className="flex items-center gap-3 my-2"><span className="flex-1">{p.name}</span><input type="number" min="1" max="500" aria-label={`Copies of ${p.name}`} className={`${fieldClass} max-w-20`} value={p.quantity} onChange={e=>{const quantity=e.target.value;setSelected(old=>({...old,[keyOf(p)]:{...p,quantity}}));}}/><button className="underline" onClick={()=>toggle(p)}>Remove</button></div>)}</details>
       {settings.design!=='price'&&items.some(p=>!p.barcode)&&<div className="p-3 border rounded my-3"><p>{items.filter(p=>!p.barcode).length} products need a barcode. This saves a new internal code to each selected product or variant; existing codes stay unchanged.</p><Button disabled={busy} onClick={generateMissing}>Generate and save missing codes</Button></div>}
       <div className="flex flex-wrap gap-3"><Button variant="outline" disabled={busy} onClick={()=>setStep(1)}>Back</Button><Button variant="outline" onClick={()=>{try{labelGeometry(settings);localStorage.setItem(profileKey,JSON.stringify(settings));setError('');}catch(e){setError(e.message||'Could not save printer profile.');}}}>Save printer profile</Button><Button disabled={busy||!items.length} onClick={preview}>{busy?'Preparing…':'Preview labels'}</Button></div>
     </>}

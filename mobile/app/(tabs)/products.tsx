@@ -266,6 +266,7 @@ function ProductsScreen() {
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.55,
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
       if (result.canceled || !result.assets[0]?.uri) return;
       await uploadProductImageFromAsset(result.assets[0]);
@@ -286,6 +287,7 @@ function ProductsScreen() {
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.55,
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
       if (result.canceled || !result.assets[0]?.uri) return;
       await uploadProductImageFromAsset(result.assets[0]);
@@ -308,7 +310,10 @@ function ProductsScreen() {
   }, []);
 
   const handleCreateProduct = useCallback(() => {
-    if (uploadingImage) return;
+    if (uploadingImage) {
+      Alert.alert('Photo still uploading', 'Wait for the product photo to finish, then try again.');
+      return;
+    }
     if (!formData.name.trim()) {
       Alert.alert('Error', 'Product name is required');
       return;

@@ -76,6 +76,9 @@ import { cn } from '@/lib/utils';
 import { resolveImageUrl } from '../utils/fileUtils';
 import {
   compressProductImageFile,
+  isHeicLikeFile,
+  isProductImageFile,
+  PRODUCT_IMAGE_ACCEPT,
   PRODUCT_IMAGE_MAX_INPUT_BYTES,
   PRODUCT_IMAGE_SKIP_COMPRESS_MAX_BYTES,
 } from '../utils/compressProductImage';
@@ -715,6 +718,23 @@ const Products = () => {
   const [productImageStageProgress, setProductImageStageProgress] = useState(0);
   const [productImageDragging, setProductImageDragging] = useState(false);
   const productImageInputRef = useRef(null);
+  /** Bumps when a new photo is chosen or the form is reset, so a stale upload cannot write into the form. */
+  const productImageRequestRef = useRef(0);
+  /** In-flight upload. Update awaits this so a click during compression still saves the photo. */
+  const productImageUploadRef = useRef(null);
+  /** Last successfully uploaded URL, used if the form still holds a blob: preview. */
+  const productImageUrlRef = useRef('');
+  /** Keeps the simple product form from clearing the product while a variant dialog is open. */
+  const simpleVariantPauseRef = useRef(false);
+  const cancelPendingProductImage = useCallback(() => {
+    productImageRequestRef.current += 1;
+    productImageUploadRef.current = null;
+    productImageUrlRef.current = '';
+    setProductImageUploading(false);
+    setProductImagePhase(null);
+    setProductImageProgress(0);
+    setProductImageStageProgress(0);
+  }, []);
   const [vendors, setVendors] = useState([]);
 
   // Category creation state
@@ -848,7 +868,11 @@ const Products = () => {
     queryKey: selectedProductDetailQueryKey,
     queryFn: () => productService.getProductById(selectedProduct.id),
     options: {
-      enabled: Boolean(scopeReady && drawerOpen && selectedProduct?.id),
+      enabled: Boolean(
+        scopeReady
+        && selectedProduct?.id
+        && (drawerOpen || (isSimpleProducts && editingProduct?.id === selectedProduct.id))
+      ),
       staleTime: QUERY_STALE.TRANSACTIONAL,
       refetchOnWindowFocus: false,
       retry: 1,
@@ -1172,6 +1196,7 @@ const Products = () => {
   // Open form when add=1 query param is present (e.g., from dashboard "Add Product" button)
   useEffect(() => {
     if (searchParams.get('add') === '1') {
+      cancelPendingProductImage();
       setFormOpen(true);
       setEditingProduct(null);
       form.reset();
@@ -1179,7 +1204,7 @@ const Products = () => {
       next.delete('add');
       setSearchParams(next, { replace: true });
     }
-  }, [searchParams, setSearchParams, form]);
+  }, [searchParams, setSearchParams, form, cancelPendingProductImage]);
 
   // =============================================
   // HANDLERS
@@ -1210,6 +1235,7 @@ const Products = () => {
       }
     }
 
+    cancelPendingProductImage();
     setEditingProduct(productForEdit);
     
     // Reset form with product data
@@ -1268,8 +1294,9 @@ const Products = () => {
       } : {}),
     });
     
+    if (isSimpleProducts) setSelectedProduct(productForEdit);
     setFormOpen(true);
-  }, [activeTenantId, activeShopId, activeStudioLocationId, form, isRental, queryClient]);
+  }, [activeTenantId, activeShopId, activeStudioLocationId, form, isRental, isSimpleProducts, queryClient, cancelPendingProductImage]);
 
   const handleOpenStoreListing = useCallback((product) => {
     if (!product?.id) return;
@@ -1278,6 +1305,7 @@ const Products = () => {
   }, []);
 
   const handleCreateProduct = () => {
+    cancelPendingProductImage();
     setEditingProduct(null);
     form.reset({
       name: '',
@@ -1407,6 +1435,18 @@ const Products = () => {
     }
   };
 
+  const pauseSimpleProductForm = useCallback(() => {
+    if (!isSimpleProducts) return;
+    simpleVariantPauseRef.current = true;
+    setFormOpen(false);
+  }, [isSimpleProducts]);
+
+  const resumeSimpleProductForm = useCallback(() => {
+    if (!isSimpleProducts || !simpleVariantPauseRef.current) return;
+    simpleVariantPauseRef.current = false;
+    setFormOpen(true);
+  }, [isSimpleProducts]);
+
   const handleOpenVariantForm = useCallback((variant = null) => {
     if (variant) {
       // Editing existing variant
@@ -1443,15 +1483,19 @@ const Products = () => {
     setVariantFormOpen(false);
     setEditingVariant(null);
     variantForm.reset();
-  }, [variantForm]);
+    resumeSimpleProductForm();
+  }, [resumeSimpleProductForm, variantForm]);
 
   const refreshSelectedProduct = useCallback(() => {
     if (!selectedProduct?.id) return;
     productService.getProductById(selectedProduct.id).then((r) => {
-      const data = r?.data?.data ?? r?.data ?? r;
-      if (data?.id) setSelectedProduct(data);
+      const data = getProductDetail(r);
+      if (data?.id) {
+        setSelectedProduct(data);
+        if (data.hasVariants) form.setValue('hasVariants', true);
+      }
     });
-  }, [selectedProduct?.id]);
+  }, [form, selectedProduct?.id]);
 
   const fetchRentalUnits = useCallback(async (productId) => {
     if (!productId) {
@@ -1526,16 +1570,17 @@ const Products = () => {
     setVariantDetailOpen(true);
   }, []);
 
-  const handleCloseVariantDetail = useCallback(() => {
+  const handleCloseVariantDetail = useCallback((options = {}) => {
     setVariantDetailOpen(false);
     setSelectedVariantDetail(null);
     setVariantDeleteDialogOpen(false);
-  }, []);
+    if (!options.keepPaused) resumeSimpleProductForm();
+  }, [resumeSimpleProductForm]);
 
   const handleEditVariantFromDetail = useCallback(() => {
     if (!selectedVariantDetail) return;
     const variant = selectedVariantDetail;
-    handleCloseVariantDetail();
+    handleCloseVariantDetail({ keepPaused: true });
     handleOpenVariantForm(variant);
   }, [handleCloseVariantDetail, handleOpenVariantForm, selectedVariantDetail]);
 
@@ -1587,6 +1632,8 @@ const Products = () => {
         showSuccess('Variant added successfully');
       }
 
+      form.setValue('hasVariants', true);
+
       handleCloseVariantForm();
       refreshAfterInventoryChange(queryClient);
       refreshSelectedProduct();
@@ -1597,9 +1644,34 @@ const Products = () => {
     }
   };
 
+  const handleInvalidProductSubmit = useCallback((errors) => {
+    const firstMessage = Object.values(errors || []).map((error) => error?.message).find(Boolean);
+    showError(firstMessage || 'Please check the product form and try again.');
+  }, [showError]);
+
   const handleFormSubmit = async (values) => {
     setSubmitting(true);
     try {
+      let imageUrl = values.imageUrl || undefined;
+      const pendingUpload = productImageUploadRef.current;
+      if (pendingUpload) {
+        try {
+          const uploaded = await pendingUpload;
+          if (uploaded) imageUrl = uploaded;
+        } catch (error) {
+          showError(getErrorMessage(error, 'Could not upload the photo. Please try again.'));
+          return;
+        }
+      }
+      if (typeof imageUrl === 'string' && imageUrl.startsWith('blob:')) {
+        const settled = productImageUrlRef.current;
+        if (!settled || settled.startsWith('blob:')) {
+          showError('The photo is still processing. Please wait a moment and try again.');
+          return;
+        }
+        imageUrl = settled;
+      }
+
       // Extract metadata fields
       const metadataFields = [
         'expiryDate', 'batchNumber', 'isPerishable', 'serialNumber',
@@ -1629,7 +1701,10 @@ const Products = () => {
         description: values.description || undefined,
         categoryId: values.categoryId || undefined,
         sellingPrice: values.sellingPrice === '' ? 0 : (Number(values.sellingPrice) ?? 0),
-        quantityOnHand: values.quantityOnHand === '' ? 0 : (Number(values.quantityOnHand) ?? 0),
+        // Omit quantity when the caller leaves it unset (simple view keeps variant stock on each option).
+        ...(values.quantityOnHand === undefined || values.quantityOnHand === null
+          ? {}
+          : { quantityOnHand: values.quantityOnHand === '' ? 0 : (Number(values.quantityOnHand) || 0) }),
         reorderLevel: values.reorderLevel === '' ? 0 : (Number(values.reorderLevel) ?? 0),
         reorderQuantity: values.reorderQuantity === '' ? 0 : (Number(values.reorderQuantity) ?? 0),
         unit: values.unit,
@@ -1637,7 +1712,7 @@ const Products = () => {
         hasVariants: values.hasVariants,
         isActive: values.isActive,
         trackStock: values.trackStock,
-        imageUrl: values.imageUrl || undefined,
+        imageUrl,
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       };
       if (showWholesalePriceField) {
@@ -1684,34 +1759,44 @@ const Products = () => {
 
   const handleProductImageSelect = useCallback(async (eOrFile) => {
     const file = eOrFile?.target?.files?.[0] ?? (eOrFile instanceof File ? eOrFile : null);
-    if (!file || !file.type.startsWith('image/')) return;
+    // Clear immediately. A HEIC file left in this input fails the accept check and the
+    // browser then blocks Update with no visible message (the control is hidden).
+    if (eOrFile?.target) eOrFile.target.value = '';
+    if (productImageInputRef.current) productImageInputRef.current.value = '';
+    if (!file) return;
+    if (!isProductImageFile(file)) {
+      showError('Please choose a photo (JPG, PNG, WEBP, or an iPhone HEIC image).');
+      return;
+    }
     if (file.size > PRODUCT_IMAGE_MAX_INPUT_BYTES) {
       showError(
         `Image is too large (max ${PRODUCT_IMAGE_MAX_INPUT_BYTES / 1024 / 1024}MB). Try a smaller photo.`
       );
       return;
     }
+    const requestId = ++productImageRequestRef.current;
     const objectUrl = URL.createObjectURL(file);
     form.setValue('imageUrl', objectUrl);
     setProductImageUploading(true);
     setProductImageProgress(0);
     setProductImageStageProgress(0);
-    const needsCompress = file.size > PRODUCT_IMAGE_SKIP_COMPRESS_MAX_BYTES;
+    const needsCompress = file.size > PRODUCT_IMAGE_SKIP_COMPRESS_MAX_BYTES || isHeicLikeFile(file);
     setProductImagePhase(needsCompress ? 'compressing' : 'uploading');
-    // Let React paint the overlay before compression blocks the main thread (esp. without web worker).
-    await new Promise((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(resolve));
-    });
-    try {
-      let prepared = file;
-      if (needsCompress) {
-        prepared = await compressProductImageFile(file, {
-          onProgress: (p) => {
+    const task = (async () => {
+      // Let React paint the overlay before compression blocks the main thread (esp. without web worker).
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      });
+      const prepared = await compressProductImageFile(file, {
+        onProgress: needsCompress
+          ? (p) => {
+            if (productImageRequestRef.current !== requestId) return;
             setProductImageStageProgress(p);
             setProductImageProgress(Math.min(35, Math.round((p / 100) * 35)));
-          },
-        });
-      }
+          }
+          : undefined,
+      });
+      if (productImageRequestRef.current !== requestId) return null;
 
       setProductImagePhase('uploading');
       setProductImageStageProgress(0);
@@ -1721,32 +1806,40 @@ const Products = () => {
 
       const res = await productService.uploadProductImage(prepared, {
         onUploadProgress: (p) => {
+          if (productImageRequestRef.current !== requestId) return;
           setProductImageStageProgress(p);
           setProductImageProgress(uploadBase + Math.round((p / 100) * uploadSpan));
         },
       });
       const imageUrl = res?.data?.imageUrl ?? res?.imageUrl;
-      if (imageUrl) {
-        URL.revokeObjectURL(objectUrl);
-        form.setValue('imageUrl', imageUrl);
-        setProductImageProgress(100);
-        setProductImageStageProgress(100);
-        showSuccess('Image uploaded');
-      } else {
-        form.setValue('imageUrl', objectUrl);
-        showError('Upload succeeded but no image URL returned');
-      }
-    } catch (err) {
+      if (!imageUrl) throw new Error('Upload succeeded but no image URL returned');
+      return imageUrl;
+    })();
+    productImageUploadRef.current = task;
+    try {
+      const imageUrl = await task;
+      if (productImageRequestRef.current !== requestId || !imageUrl) return;
+      productImageUrlRef.current = imageUrl;
       URL.revokeObjectURL(objectUrl);
+      form.setValue('imageUrl', imageUrl);
+      setProductImageProgress(100);
+      setProductImageStageProgress(100);
+      showSuccess('Image uploaded');
+    } catch (err) {
+      if (productImageRequestRef.current !== requestId) return;
+      URL.revokeObjectURL(objectUrl);
+      productImageUrlRef.current = '';
       form.setValue('imageUrl', '');
       const message = err?.message || (typeof err === 'string' ? err : 'Failed to process image');
       showError(getErrorMessage(err, message));
     } finally {
-      setProductImageUploading(false);
-      setProductImagePhase(null);
-      setProductImageProgress(0);
-      setProductImageStageProgress(0);
-      if (productImageInputRef.current) productImageInputRef.current.value = '';
+      if (productImageUploadRef.current === task) productImageUploadRef.current = null;
+      if (productImageRequestRef.current === requestId) {
+        setProductImageUploading(false);
+        setProductImagePhase(null);
+        setProductImageProgress(0);
+        setProductImageStageProgress(0);
+      }
     }
   }, [form, getErrorMessage, showError, showSuccess]);
 
@@ -1758,8 +1851,9 @@ const Products = () => {
   });
 
   const handleRemoveProductImage = useCallback(() => {
+    cancelPendingProductImage();
     form.setValue('imageUrl', '');
-  }, [form]);
+  }, [form, cancelPendingProductImage]);
 
   const handleAdjustStockClick = (product) => {
     setProductToAdjust(product);
@@ -2682,6 +2776,8 @@ const Products = () => {
           onSearchChange={setSearchValue}
           onAdd={handleCreateProduct}
           onOpenProduct={handleEditProduct}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
           page={pagination.current}
           totalPages={Math.max(Math.ceil((pagination.total || 0) / pagination.pageSize), 1)}
           onPageChange={(nextPage) => handlePageChange({ ...pagination, current: nextPage })}
@@ -2829,8 +2925,28 @@ const Products = () => {
       {/* Simple Mode product form (photo upload and paste reuse this page's image handling). */}
       <SimpleProductForm
         open={formOpen && isSimpleProducts}
-        onOpenChange={(open) => { if (!open) { setFormOpen(false); setEditingProduct(null); } }}
+        onOpenChange={(open) => {
+          if (open) return;
+          if (simpleVariantPauseRef.current) {
+            setFormOpen(false);
+            return;
+          }
+          setFormOpen(false);
+          setEditingProduct(null);
+        }}
         product={editingProduct}
+        variants={editingProduct?.id && selectedProduct?.id === editingProduct.id ? (selectedProduct.variants || editingProduct.variants || []) : []}
+        onAddVariant={() => {
+          if (!editingProduct?.id) return;
+          setSelectedProduct((prev) => (prev?.id === editingProduct.id ? prev : editingProduct));
+          pauseSimpleProductForm();
+          handleOpenVariantForm();
+        }}
+        onOpenVariant={(variant) => {
+          setSelectedProduct((prev) => (prev?.id === editingProduct?.id ? prev : editingProduct));
+          pauseSimpleProductForm();
+          handleOpenVariantDetail(variant);
+        }}
         // Only subscribe to the photo field when the simple form is actually in use.
         imageUrl={isSimpleProducts && formOpen ? form.watch('imageUrl') : ''}
         imageUploading={productImageUploading}
@@ -2838,7 +2954,19 @@ const Products = () => {
         onRemoveImage={handleRemoveProductImage}
         saving={submitting}
         // Merge over the loaded form values so fields this form doesn't show keep what was saved.
-        onSave={(values) => handleFormSubmit({ ...form.getValues(), ...values })}
+        // Parent stock stays on the variants, so a simple save does not overwrite it.
+        onSave={(values) => {
+          const current = form.getValues();
+          const variantRows = (selectedProduct?.id === editingProduct?.id ? selectedProduct?.variants : null) || [];
+          const hasVariantRows = Boolean(current.hasVariants || editingProduct?.hasVariants || variantRows.length);
+          const next = {
+            ...current,
+            ...values,
+            hasVariants: hasVariantRows ? true : current.hasVariants,
+          };
+          if (hasVariantRows) delete next.quantityOnHand;
+          handleFormSubmit(next);
+        }}
       />
 
       {/* Filter Drawer */}
@@ -2961,7 +3089,7 @@ const Products = () => {
       >
           <TooltipProvider delayDuration={200}>
           <Form {...form}>
-            <form id="product-form" onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
+            <form id="product-form" noValidate onSubmit={form.handleSubmit(handleFormSubmit, handleInvalidProductSubmit)} className="space-y-6">
               {/* Basic Info */}
               <div className="space-y-4">
                 <h4 className="font-medium text-sm text-muted-foreground">Basic Information</h4>
@@ -2976,7 +3104,7 @@ const Products = () => {
                           <input
                             ref={productImageInputRef}
                             type="file"
-                            accept="image/png,image/jpg,image/jpeg,image/webp"
+                            accept={PRODUCT_IMAGE_ACCEPT}
                             className="hidden"
                             onChange={(e) => handleProductImageSelect(e)}
                           />
@@ -3057,7 +3185,7 @@ const Products = () => {
                                     <span className="font-medium text-brand">Click to upload</span>
                                     <span className="text-muted-foreground">, drag and drop, or paste</span>
                                   </p>
-                                  <p className="text-xs text-muted-foreground mt-1">PNG, JPG, WEBP, JPEG · Ctrl/Cmd+V to paste</p>
+                                  <p className="text-xs text-muted-foreground mt-1">PNG, JPG, WEBP, or iPhone HEIC · Ctrl/Cmd+V to paste</p>
                                 </div>
                               </>
                             )}

@@ -46,10 +46,27 @@ describe('SimpleProductForm', () => {
     expect(onSave).toHaveBeenCalledWith({ name: 'Rexona Men', sellingPrice: 35, costPrice: '', quantityOnHand: 12, barcode: '6034000181142' });
   });
 
-  it('does not edit products with sizes or colours', () => {
-    render(<SimpleProductForm {...base} onSave={vi.fn()} product={{ name: 'Shirt', hasVariants: true }} />);
-    expect(screen.getByText(/different sizes or colours/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+  it('edits products with sizes or colours and opens the variant editor', () => {
+    const onAddVariant = vi.fn();
+    const onOpenVariant = vi.fn();
+    const variant = { id: 'v1', name: 'Medium', sellingPrice: 20, quantityOnHand: 4 };
+    render(
+      <SimpleProductForm
+        {...base}
+        onSave={vi.fn()}
+        onAddVariant={onAddVariant}
+        onOpenVariant={onOpenVariant}
+        product={{ id: 'p1', name: 'Shirt', hasVariants: true, sellingPrice: 20, quantityOnHand: 0 }}
+        variants={[variant]}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
+    expect(screen.getByText('Medium')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Quantity in stock')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add size or colour' }));
+    expect(onAddVariant).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Medium/ }));
+    expect(onOpenVariant).toHaveBeenCalledWith(variant);
   });
 });
 

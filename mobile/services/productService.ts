@@ -10,6 +10,7 @@ type ProductParams = {
   isActive?: boolean;
   isRentable?: boolean;
   shopId?: string;
+  sort?: string;
 };
 
 export type CreateProductPayload = {

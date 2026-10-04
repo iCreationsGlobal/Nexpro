@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { ChevronRight, Loader2, Package, Plus, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { resolveImageUrl } from '../../utils/fileUtils';
 import { formatAmount } from '../../utils/formatNumber';
 
 /** Stock label for a product row; products that don't track stock show nothing. */
 export const getSimpleStockLabel = (product) => {
-  if (product?.trackStock === false || product?.hasVariants) return null;
+  if (product?.hasVariants) return { text: 'Sizes & colours', tone: 'text-muted-foreground' };
+  if (product?.trackStock === false) return null;
   const qty = Number(product?.quantityOnHand || 0);
   const reorder = Number(product?.reorderLevel || 0);
   if (qty <= 0) return { text: 'Out of stock', tone: 'text-red-700' };
@@ -38,6 +40,8 @@ export default function SimpleProductsList({
   onSearchChange,
   onAdd,
   onOpenProduct,
+  sortBy = 'name_asc',
+  onSortChange,
   page,
   totalPages,
   onPageChange,
@@ -55,6 +59,22 @@ export default function SimpleProductsList({
         <Plus className="mr-3 h-7 w-7" />
         Add product
       </Button>
+
+      {onSortChange ? (
+        <div className="space-y-2">
+          <span className="text-sm font-medium text-foreground">Sort by</span>
+          <Select value={sortBy} onValueChange={onSortChange}>
+            <SelectTrigger aria-label="Sort by" className="h-14 rounded-2xl">
+              <SelectValue placeholder="Name A–Z" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name_asc">Name A–Z</SelectItem>
+              <SelectItem value="price_asc">Price low–high</SelectItem>
+              <SelectItem value="price_desc">Price high–low</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
 
       <label className="flex h-14 items-center gap-3 rounded-2xl border border-border bg-card px-4 focus-within:ring-2 focus-within:ring-brand">
         <Search className="h-5 w-5 shrink-0 text-muted-foreground" />

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Barcode, Camera, Loader2, Package, X } from 'lucide-react';
+import { Barcode, Camera, ChevronRight, Loader2, Package, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { PRODUCT_IMAGE_ACCEPT } from '../../utils/compressProductImage';
 import { resolveImageUrl } from '../../utils/fileUtils';
+import { formatAmount } from '../../utils/formatNumber';
 
 const toNumberText = (value) => (value === null || value === undefined || value === '' ? '' : String(Number(value)));
 const cleanNumber = (text) => String(text).replace(/[^\d.]/g, '');
@@ -38,6 +40,9 @@ const MoneyField = ({ label, value, onChange, hint }) => (
  *   onPickImage: (file: File) => void,
  *   onRemoveImage: () => void,
  *   saving?: boolean,
+ *   variants?: Array<object>,
+ *   onAddVariant?: () => void,
+ *   onOpenVariant?: (variant: object) => void,
  *   onSave: (values: { name: string, sellingPrice: number, costPrice: number|'', quantityOnHand: number, barcode: string }) => void,
  * }} props
  */
@@ -50,6 +55,9 @@ export default function SimpleProductForm({
   onPickImage,
   onRemoveImage,
   saving = false,
+  variants = [],
+  onAddVariant,
+  onOpenVariant,
   onSave,
 }) {
   const [name, setName] = useState('');
@@ -59,11 +67,20 @@ export default function SimpleProductForm({
   const [barcode, setBarcode] = useState('');
   const [error, setError] = useState('');
   const fileRef = useRef(null);
-  const hasVariants = Boolean(product?.hasVariants);
+  const initializedFor = useRef(null);
+  const variantRows = Array.isArray(variants) ? variants : [];
+  const hasVariants = Boolean(product?.hasVariants) || variantRows.length > 0;
   const previewUrl = resolveImageUrl(imageUrl);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      // A real close clears the product. Pausing for the variant dialog keeps it, so typed values stay.
+      if (!product?.id) initializedFor.current = null;
+      return;
+    }
+    const key = product?.id ?? 'new';
+    if (initializedFor.current === key) return;
+    initializedFor.current = key;
     setName(product?.name || '');
     setPrice(toNumberText(product?.sellingPrice));
     setCost(product?.costPrice && Number(product.costPrice) > 0 ? toNumberText(product.costPrice) : '');
@@ -92,13 +109,7 @@ export default function SimpleProductForm({
         <DialogTitle className="pr-8 text-2xl font-bold sm:text-3xl">{product ? 'Edit Product' : 'Add Product'}</DialogTitle>
         <DialogDescription className="sr-only">Photo, name, price and stock.</DialogDescription>
 
-        {hasVariants ? (
-          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-base text-amber-900">
-            This product comes in different sizes or colours. To change it, turn on
-            <strong> Show advanced features</strong> in Settings.
-          </p>
-        ) : (
-          <>
+        <>
             <div className="flex items-center gap-4">
               <span className="relative flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border bg-muted">
                 {previewUrl ? <img src={previewUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-10 w-10 text-muted-foreground" />}
@@ -112,7 +123,7 @@ export default function SimpleProductForm({
                 <input
                   ref={fileRef}
                   type="file"
-                  accept="image/png,image/jpg,image/jpeg,image/webp"
+                  accept={PRODUCT_IMAGE_ACCEPT}
                   capture="environment"
                   className="hidden"
                   onChange={(e) => {
@@ -150,17 +161,59 @@ export default function SimpleProductForm({
               <MoneyField label="What it cost you" value={cost} onChange={setCost} hint="Optional. Used to work out profit." />
             </div>
 
-            <label className="block">
-              <span className="text-base font-semibold">How many do you have?</span>
-              <input
-                inputMode="numeric"
-                value={quantity}
-                onChange={(e) => setQuantity(cleanNumber(e.target.value))}
-                placeholder="0"
-                aria-label="Quantity in stock"
-                className="mt-2 h-16 w-full rounded-2xl border-2 border-border bg-card px-5 text-2xl font-bold outline-none focus:ring-2 focus:ring-brand"
-              />
-            </label>
+            {hasVariants ? (
+              <p className="text-sm text-muted-foreground">Stock is counted on each size or colour.</p>
+            ) : (
+              <label className="block">
+                <span className="text-base font-semibold">How many do you have?</span>
+                <input
+                  inputMode="numeric"
+                  value={quantity}
+                  onChange={(e) => setQuantity(cleanNumber(e.target.value))}
+                  placeholder="0"
+                  aria-label="Quantity in stock"
+                  className="mt-2 h-16 w-full rounded-2xl border-2 border-border bg-card px-5 text-2xl font-bold outline-none focus:ring-2 focus:ring-brand"
+                />
+              </label>
+            )}
+
+            <div className="space-y-3">
+              <span className="text-base font-semibold">Sizes and colours (optional)</span>
+              {product?.id ? (
+                <>
+                  {variantRows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No sizes or colours yet. Add one if this product comes in different options.
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-border overflow-hidden rounded-2xl border-2 border-border">
+                      {variantRows.map((variant) => (
+                        <li key={variant.id}>
+                          <button
+                            type="button"
+                            onClick={() => onOpenVariant?.(variant)}
+                            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/60"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{variant.name}</span>
+                              <span className="block text-sm text-muted-foreground">Stock: {variant.quantityOnHand ?? 0}</span>
+                            </span>
+                            <span className="text-lg font-bold">{formatAmount(variant.sellingPrice ?? product?.sellingPrice)}</span>
+                            <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <Button type="button" variant="outline" className="h-12 w-full rounded-xl text-base" onClick={onAddVariant}>
+                    <Plus className="mr-2 h-5 w-5" />
+                    Add size or colour
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Save the product first, then you can add sizes or colours.</p>
+              )}
+            </div>
 
             <label className="block">
               <span className="text-base font-semibold">Barcode (optional)</span>
@@ -187,14 +240,13 @@ export default function SimpleProductForm({
             <Button
               type="button"
               onClick={handleSave}
-              disabled={saving || imageUploading}
+              disabled={saving}
               className="mt-1 h-16 w-full rounded-2xl bg-brand px-6 text-xl font-bold text-white hover:bg-brand-dark"
             >
               {saving ? <Loader2 className="mr-3 h-6 w-6 animate-spin" /> : null}
               {product ? 'Save changes' : 'Save product'}
             </Button>
-          </>
-        )}
+        </>
       </DialogContent>
     </Dialog>
   );
