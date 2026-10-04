@@ -35,6 +35,7 @@ const {
   Shop,
   Sale,
   JournalEntry,
+  JournalEntryLine,
   Barcode,
   OnlineProductListing,
   StockTransfer,
@@ -43,6 +44,15 @@ const {
   Quote,
   QuoteActivity,
   SaleActivity,
+  ProductStockMovement,
+  ProductShopStock,
+  StorefrontWishlistItem,
+  DealerProductPrice,
+  JobItem,
+  Prescription,
+  PreBooking,
+  LateCharge,
+  PartnerCommission,
 } = require('../models');
 const {
   resolveBillingStatus,
@@ -242,29 +252,44 @@ const cleanupProductRecord = async ({ tenant, productId, actorUserId, reason, tr
   }
 
   try {
-    const variants = await ProductVariant.findAll({
-      where: { productId: product.id },
-      attributes: ['id'],
-      transaction
-    });
-    const variantIds = variants.map((variant) => variant.id);
-    if (variantIds.length > 0) {
-      await Barcode.destroy({
-        where: { tenantId: tenant.id, productVariantId: { [Op.in]: variantIds } },
-        transaction
-      });
-      await OnlineProductListing.destroy({
-        where: { tenantId: tenant.id, productVariantId: { [Op.in]: variantIds } },
-        transaction
-      });
-      await ProductVariant.destroy({
+    await runCleanupSavepoint(transaction, async (savepoint) => {
+      const variants = await ProductVariant.findAll({
         where: { productId: product.id },
-        transaction
+        attributes: ['id'],
+        transaction: savepoint
       });
-    }
-    await Barcode.destroy({ where: { tenantId: tenant.id, productId: product.id }, transaction });
-    await OnlineProductListing.destroy({ where: { tenantId: tenant.id, productId: product.id }, transaction });
-    await product.destroy({ transaction });
+      const variantIds = variants.map((variant) => variant.id);
+      const productOrVariantWhere = {
+        tenantId: tenant.id,
+        [Op.or]: [
+          { productId: product.id },
+          ...(variantIds.length ? [{ productVariantId: { [Op.in]: variantIds } }] : [])
+        ]
+      };
+
+      await ProductStockMovement.destroy({ where: productOrVariantWhere, transaction: savepoint });
+      await ProductShopStock.destroy({ where: productOrVariantWhere, transaction: savepoint });
+      await StorefrontWishlistItem.destroy({ where: productOrVariantWhere, transaction: savepoint });
+      await DealerProductPrice.destroy({ where: productOrVariantWhere, transaction: savepoint });
+
+      if (variantIds.length > 0) {
+        await Barcode.destroy({
+          where: { tenantId: tenant.id, productVariantId: { [Op.in]: variantIds } },
+          transaction: savepoint
+        });
+        await OnlineProductListing.destroy({
+          where: { tenantId: tenant.id, productVariantId: { [Op.in]: variantIds } },
+          transaction: savepoint
+        });
+        await ProductVariant.destroy({
+          where: { productId: product.id },
+          transaction: savepoint
+        });
+      }
+      await Barcode.destroy({ where: { tenantId: tenant.id, productId: product.id }, transaction: savepoint });
+      await OnlineProductListing.destroy({ where: { tenantId: tenant.id, productId: product.id }, transaction: savepoint });
+      await Product.destroy({ where: { id: product.id, tenantId: tenant.id }, transaction: savepoint });
+    });
     await createTenantCleanupAudit({
       tenantId: tenant.id,
       actorUserId,
@@ -281,7 +306,20 @@ const cleanupProductRecord = async ({ tenant, productId, actorUserId, reason, tr
       message: 'Product was permanently deleted.'
     };
   } catch (error) {
-    await archiveProductForCleanup({ product, actorUserId, reason, linkCounts, transaction });
+    console.warn('[AdminCleanup] product delete blocked, archiving instead', {
+      productId: product.id,
+      error: error?.message
+    });
+    const currentProduct = await Product.findByPk(product.id, { transaction });
+    if (!currentProduct) {
+      return {
+        id: product.id,
+        name: product.name,
+        status: 'deleted',
+        message: 'Product was permanently deleted.'
+      };
+    }
+    await archiveProductForCleanup({ product: currentProduct, actorUserId, reason, linkCounts, transaction });
     await createTenantCleanupAudit({
       tenantId: tenant.id,
       actorUserId,
@@ -362,15 +400,77 @@ const cleanupInvoiceRecord = async ({ tenant, invoiceId, actorUserId, reason, tr
     };
   }
 
-  await JournalEntry.destroy({
-    where: {
+  try {
+    await runCleanupSavepoint(transaction, async (savepoint) => {
+      const entries = await JournalEntry.findAll({
+        where: {
+          tenantId: tenant.id,
+          sourceId: invoice.id,
+          source: { [Op.in]: ['invoice_revenue', 'invoice_payment'] }
+        },
+        attributes: ['id'],
+        transaction: savepoint
+      });
+      const entryIds = entries.map((entry) => entry.id);
+      if (entryIds.length > 0) {
+        await JournalEntryLine.destroy({
+          where: { tenantId: tenant.id, journalEntryId: { [Op.in]: entryIds } },
+          transaction: savepoint
+        });
+        await JournalEntry.destroy({
+          where: { id: { [Op.in]: entryIds }, tenantId: tenant.id },
+          transaction: savepoint
+        });
+      }
+
+      const detachWhere = { tenantId: tenant.id, invoiceId: invoice.id };
+      await Sale.update({ invoiceId: null }, { where: detachWhere, transaction: savepoint });
+      await Prescription.update({ invoiceId: null }, { where: detachWhere, transaction: savepoint });
+      await LateCharge.update({ invoiceId: null }, { where: detachWhere, transaction: savepoint });
+      await PartnerCommission.update({ invoiceId: null }, { where: detachWhere, transaction: savepoint });
+      await PreBooking.update(
+        { proformaInvoiceId: null },
+        { where: { tenantId: tenant.id, proformaInvoiceId: invoice.id }, transaction: savepoint }
+      );
+      await Invoice.destroy({ where: { id: invoice.id, tenantId: tenant.id }, transaction: savepoint });
+    });
+  } catch (error) {
+    console.warn('[AdminCleanup] invoice delete blocked, archiving instead', {
+      invoiceId: invoice.id,
+      error: error?.message
+    });
+    const currentInvoice = await Invoice.findByPk(invoice.id, { transaction });
+    if (!currentInvoice) {
+      return {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        status: 'deleted',
+        message: 'Unpaid invoice was permanently deleted.'
+      };
+    }
+    await archiveInvoiceForCleanup({ invoice: currentInvoice, actorUserId, reason, transaction });
+    await createTenantCleanupAudit({
       tenantId: tenant.id,
-      sourceId: invoice.id,
-      source: { [Op.in]: ['invoice_revenue', 'invoice_payment'] }
-    },
-    transaction
-  });
-  await invoice.destroy({ transaction });
+      actorUserId,
+      action: 'tenant_invoice_archived_by_superadmin',
+      before,
+      after: {
+        id: invoice.id,
+        status: 'cancelled',
+        archived: true,
+        fallbackFromDeleteError: error?.name || error?.message || 'delete_failed'
+      },
+      reason,
+      transaction
+    });
+    return {
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      status: 'archived',
+      message: 'Invoice delete was blocked by related data, so it was cancelled and archived instead.'
+    };
+  }
+
   await createTenantCleanupAudit({
     tenantId: tenant.id,
     actorUserId,
@@ -449,42 +549,69 @@ const cleanupSaleRecord = async ({ tenant, saleId, actorUserId, reason, transact
   };
   const hasHistoricalLinks = (sale.items || []).length > 0 || !!sale.invoice || parseFloat(sale.amountPaid || 0) > 0;
 
+  let saleRecord = sale;
   if (!hasHistoricalLinks) {
-    await SaleActivity.destroy({ where: { tenantId: tenant.id, saleId: sale.id }, transaction });
-    await SaleItem.destroy({ where: { saleId: sale.id }, transaction });
-    await sale.destroy({ transaction });
-    await createTenantCleanupAudit({
-      tenantId: tenant.id,
-      actorUserId,
-      action: 'tenant_sale_deleted_by_superadmin',
-      before,
-      after: { id: sale.id, deleted: true },
-      reason,
-      transaction
-    });
-    return {
-      id: sale.id,
-      saleNumber: sale.saleNumber,
-      status: 'deleted',
-      message: 'Unlinked sale/order was permanently deleted.'
-    };
+    try {
+      await runCleanupSavepoint(transaction, async (savepoint) => {
+        await SaleActivity.destroy({ where: { tenantId: tenant.id, saleId: sale.id }, transaction: savepoint });
+        await SaleItem.destroy({ where: { saleId: sale.id }, transaction: savepoint });
+        await Sale.destroy({ where: { id: sale.id, tenantId: tenant.id }, transaction: savepoint });
+      });
+      await createTenantCleanupAudit({
+        tenantId: tenant.id,
+        actorUserId,
+        action: 'tenant_sale_deleted_by_superadmin',
+        before,
+        after: { id: sale.id, deleted: true },
+        reason,
+        transaction
+      });
+      return {
+        id: sale.id,
+        saleNumber: sale.saleNumber,
+        status: 'deleted',
+        message: 'Unlinked sale/order was permanently deleted.'
+      };
+    } catch (error) {
+      console.warn('[AdminCleanup] sale delete blocked, archiving instead', {
+        saleId: sale.id,
+        error: error?.message
+      });
+      const currentSale = await Sale.findOne({
+        where: { tenantId: tenant.id, id: sale.id },
+        include: [
+          { model: SaleItem, as: 'items', required: false },
+          { model: Invoice, as: 'invoice', required: false }
+        ],
+        transaction
+      });
+      if (!currentSale) {
+        return {
+          id: sale.id,
+          saleNumber: sale.saleNumber,
+          status: 'deleted',
+          message: 'Unlinked sale/order was permanently deleted.'
+        };
+      }
+      saleRecord = currentSale;
+    }
   }
 
-  const stockRestored = await restoreSaleStockForCleanup(sale, transaction);
-  await sale.update({
+  const stockRestored = await restoreSaleStockForCleanup(saleRecord, transaction);
+  await saleRecord.update({
     status: 'cancelled',
-    orderStatus: sale.orderStatus ? 'cancelled' : sale.orderStatus,
-    notes: appendCleanupNote(sale.notes, 'sale/order', actorUserId, reason),
+    orderStatus: saleRecord.orderStatus ? 'cancelled' : saleRecord.orderStatus,
+    notes: appendCleanupNote(saleRecord.notes, 'sale/order', actorUserId, reason),
     metadata: {
-      ...(sale.metadata || {}),
+      ...(saleRecord.metadata || {}),
       superadminCleanup: {
         action: 'archived',
         archivedAt: new Date().toISOString(),
         archivedBy: actorUserId || null,
         reason: reason || null,
         stockRestored,
-        invoiceId: sale.invoiceId || null,
-        itemCount: (sale.items || []).length
+        invoiceId: saleRecord.invoiceId || null,
+        itemCount: (saleRecord.items || []).length
       }
     }
   }, { transaction });
@@ -496,7 +623,7 @@ const cleanupSaleRecord = async ({ tenant, saleId, actorUserId, reason, transact
     after: {
       id: sale.id,
       status: 'cancelled',
-      orderStatus: sale.orderStatus ? 'cancelled' : sale.orderStatus,
+      orderStatus: saleRecord.orderStatus ? 'cancelled' : saleRecord.orderStatus,
       archived: true,
       stockRestored
     },
@@ -518,7 +645,13 @@ const getQuoteCleanupLinkCounts = async (tenantId, quoteId, transaction) => {
   const [jobs, invoices, sales] = await Promise.all([
     Job.count({ where: { tenantId, quoteId }, transaction }),
     Invoice.count({ where: { tenantId, quoteId }, transaction }),
-    Sale.count({ where: { tenantId, metadata: { quoteId } }, transaction })
+    Sale.count({
+      where: {
+        tenantId,
+        metadata: { [Op.contains]: { quoteId } }
+      },
+      transaction
+    })
   ]);
 
   return {
@@ -585,9 +718,81 @@ const cleanupQuoteRecord = async ({ tenant, quoteId, actorUserId, reason, transa
     };
   }
 
-  await QuoteActivity.destroy({ where: { tenantId: tenant.id, quoteId: quote.id }, transaction });
-  await QuoteItem.destroy({ where: { tenantId: tenant.id, quoteId: quote.id }, transaction });
-  await quote.destroy({ transaction });
+  try {
+    await runCleanupSavepoint(transaction, async (savepoint) => {
+      const items = await QuoteItem.findAll({
+        where: { tenantId: tenant.id, quoteId: quote.id },
+        attributes: ['id'],
+        transaction: savepoint
+      });
+      const itemIds = items.map((item) => item.id);
+      if (itemIds.length > 0) {
+        await JobItem.update(
+          { quoteItemId: null },
+          { where: { tenantId: tenant.id, quoteItemId: { [Op.in]: itemIds } }, transaction: savepoint }
+        );
+      }
+      await QuoteActivity.destroy({ where: { tenantId: tenant.id, quoteId: quote.id }, transaction: savepoint });
+      await QuoteItem.destroy({ where: { tenantId: tenant.id, quoteId: quote.id }, transaction: savepoint });
+      await Quote.destroy({ where: { id: quote.id, tenantId: tenant.id }, transaction: savepoint });
+    });
+  } catch (error) {
+    console.warn('[AdminCleanup] quote delete blocked, archiving instead', {
+      quoteId: quote.id,
+      error: error?.message
+    });
+    const currentQuote = await Quote.findByPk(quote.id, { transaction });
+    if (!currentQuote) {
+      return {
+        id: quote.id,
+        quoteNumber: quote.quoteNumber,
+        status: 'deleted',
+        message: 'Unlinked quote was permanently deleted.'
+      };
+    }
+    const targetStatus = currentQuote.status === 'draft' ? 'expired' : 'declined';
+    await currentQuote.update({
+      status: targetStatus,
+      notes: appendCleanupNote(currentQuote.notes, 'quote', actorUserId, reason)
+    }, { transaction });
+    await QuoteActivity.create({
+      tenantId: tenant.id,
+      quoteId: currentQuote.id,
+      type: 'status_change',
+      subject: 'Superadmin cleanup',
+      notes: 'Quote was archived by superadmin cleanup because related records blocked deletion.',
+      createdBy: actorUserId || null,
+      metadata: {
+        superadminCleanup: true,
+        reason: reason || null,
+        linkCounts,
+        fallbackFromDeleteError: error?.name || error?.message || 'delete_failed'
+      }
+    }, { transaction });
+    await createTenantCleanupAudit({
+      tenantId: tenant.id,
+      actorUserId,
+      action: 'tenant_quote_archived_by_superadmin',
+      before,
+      after: {
+        id: quote.id,
+        status: targetStatus,
+        archived: true,
+        linkCounts,
+        fallbackFromDeleteError: error?.name || error?.message || 'delete_failed'
+      },
+      reason,
+      transaction
+    });
+    return {
+      id: quote.id,
+      quoteNumber: quote.quoteNumber,
+      status: 'archived',
+      message: 'Quote delete was blocked by related data, so it was archived instead.',
+      linkCounts
+    };
+  }
+
   await createTenantCleanupAudit({
     tenantId: tenant.id,
     actorUserId,
@@ -606,12 +811,26 @@ const cleanupQuoteRecord = async ({ tenant, quoteId, actorUserId, reason, transa
   };
 };
 
-const buildCleanupSearchWhere = (tenantId, search, fields) => {
+/**
+ * Run a cleanup delete in a savepoint.
+ * PostgreSQL aborts the surrounding transaction after a failed statement, which
+ * blocked the archive fallback. A savepoint keeps the outer transaction usable.
+ */
+const runCleanupSavepoint = (transaction, work) => sequelize.transaction({ transaction }, work);
+
+const buildCleanupSearchWhere = (tenantId, search, textFields, enumColumns = []) => {
   const where = { tenantId };
   const term = String(search || '').trim();
-  if (term) {
-    where[Op.or] = fields.map((field) => ({ [field]: { [Op.iLike]: `%${term}%` } }));
-  }
+  if (!term) return where;
+
+  const pattern = `%${term}%`;
+  where[Op.or] = [
+    ...textFields.map((field) => ({ [field]: { [Op.iLike]: pattern } })),
+    ...enumColumns.map((column) => sequelize.where(
+      sequelize.cast(sequelize.col(column), 'TEXT'),
+      { [Op.iLike]: pattern }
+    ))
+  ];
   return where;
 };
 
@@ -1941,9 +2160,9 @@ exports.getTenantCleanupRecords = async (req, res, next) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
     const search = String(req.query.search || req.query.q || '').trim();
     const productWhere = buildCleanupSearchWhere(tenant.id, search, ['name', 'sku', 'barcode']);
-    const invoiceWhere = buildCleanupSearchWhere(tenant.id, search, ['invoiceNumber', 'status']);
-    const saleWhere = buildCleanupSearchWhere(tenant.id, search, ['saleNumber', 'status', 'orderStatus']);
-    const quoteWhere = buildCleanupSearchWhere(tenant.id, search, ['quoteNumber', 'title', 'status']);
+    const invoiceWhere = buildCleanupSearchWhere(tenant.id, search, ['invoiceNumber'], ['invoices.status']);
+    const saleWhere = buildCleanupSearchWhere(tenant.id, search, ['saleNumber', 'orderStatus'], ['sales.status']);
+    const quoteWhere = buildCleanupSearchWhere(tenant.id, search, ['quoteNumber', 'title'], ['quotes.status']);
     const [
       products,
       invoices,

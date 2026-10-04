@@ -676,19 +676,22 @@ const AdminTenants = () => {
     }
   };
 
-  const toggleCleanupSelection = (type, id) => {
+  const setCleanupRecordSelected = (type, id, checked) => {
     const selectedForType = selectedCleanupRecords[type] || [];
     const maxBatchSize = cleanupMeta.limits?.maxBatchSize || 50;
-    if (!selectedForType.includes(id) && selectedForType.length >= maxBatchSize) {
+    if (checked && !selectedForType.includes(id) && selectedForType.length >= maxBatchSize) {
       showError(`Cleanup can process up to ${maxBatchSize} ${CLEANUP_RECORD_TYPES[type]?.emptyLabel || 'records'} at a time.`);
       return;
     }
 
     setSelectedCleanupRecords((prev) => {
       const selected = prev[type] || [];
+      const alreadySelected = selected.includes(id);
+      if (checked === alreadySelected) return prev;
+      if (checked && selected.length >= maxBatchSize) return prev;
       return {
         ...prev,
-        [type]: selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id],
+        [type]: checked ? [...selected, id] : selected.filter((item) => item !== id),
       };
     });
   };
@@ -886,11 +889,16 @@ const AdminTenants = () => {
             <div className="space-y-3">
               <div className="space-y-2">
                 {records.map((record) => (
-                  <label key={record.id} className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 hover:bg-muted/30">
+                  <div
+                    key={record.id}
+                    className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 hover:bg-muted/30"
+                    onClick={() => setCleanupRecordSelected(type, record.id, !selected.includes(record.id))}
+                  >
                     <Checkbox
                       className="mt-1"
                       checked={selected.includes(record.id)}
-                      onCheckedChange={() => toggleCleanupSelection(type, record.id)}
+                      onClick={(event) => event.stopPropagation()}
+                      onCheckedChange={(checked) => setCleanupRecordSelected(type, record.id, checked === true)}
                       aria-label={`Select ${renderCleanupRecordTitle(type, record)}`}
                     />
                     <span className="min-w-0 flex-1">
@@ -900,7 +908,7 @@ const AdminTenants = () => {
                       </span>
                       <span className="block text-xs text-muted-foreground break-all">{record.id}</span>
                     </span>
-                  </label>
+                  </div>
                 ))}
               </div>
               {cleanupMeta.hasMore?.[type] && (
