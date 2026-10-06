@@ -307,6 +307,36 @@ const productService = {
   },
 
   /**
+   * Every product's codes, photo slots and live-store flag, for matching bulk-uploaded photos.
+   * @returns {Promise<Array<{ id: string, name: string, productCode: string|null, sku: string|null, barcode: string|null, imageUrl: string|null, storeImages: Object, liveOnStore: boolean }>>}
+   */
+  getProductImageIndex: async () => {
+    const query = buildScopedQueryString();
+    const response = await api.get(query ? `/products/image-index?${query}` : '/products/image-index');
+    return Array.isArray(response?.data) ? response.data : [];
+  },
+
+  /**
+   * Save a product's photo slots. A = main photo, B–E = extra online store photos.
+   * @param {string} id - Product ID
+   * @param {{ A?: string, B?: string, C?: string, D?: string, E?: string }} images - Uploaded image URLs by slot
+   * @param {{ updateLiveListing?: boolean }} [options]
+   * @returns {Promise<Object>}
+   */
+  setProductImages: async (id, images, { updateLiveListing = false } = {}) => {
+    return api.put(`/products/${id}/images`, { images, updateLiveListing });
+  },
+
+  /**
+   * Publish many products to the online store at once (up to 100 per call), using their saved photos.
+   * @param {string[]} productIds
+   * @returns {Promise<{ data: { published: Array<{ id: string, name: string }>, skipped: Array<{ id: string, name: string|null, reason: string }> } }>}
+   */
+  bulkPublishToStore: async (productIds) => {
+    return api.post('/products/bulk/store-listing', { productIds });
+  },
+
+  /**
    * Get product categories (from product_categories table, NOT inventory_categories)
    * @returns {Promise<Array>} - Array of categories
    */

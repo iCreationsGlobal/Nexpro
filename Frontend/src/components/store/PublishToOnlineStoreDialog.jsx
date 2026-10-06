@@ -80,6 +80,12 @@ const defaultValues = {
   sectionIds: [],
 };
 
+/** A new listing starts from the product's main photo plus its extra store photos B–E (from bulk upload). */
+const productListingImages = (product) => [
+  product?.imageUrl,
+  ...['B', 'C', 'D', 'E'].map((slot) => product?.storeImages?.[slot]),
+].filter(Boolean).slice(0, 5);
+
 /**
  * Listing image uploader for the publish dialog.
  */
@@ -236,9 +242,9 @@ const PublishToOnlineStoreDialog = ({
       publicPrice: Number(existingListing?.publicPrice ?? nextProduct.sellingPrice ?? 0),
       compareAtPrice: existingListing?.compareAtPrice ?? '',
       imagesText: formatListingImages(
-        Array.isArray(existingListing?.images)
+        Array.isArray(existingListing?.images) && existingListing.images.length > 0
           ? existingListing.images
-          : (nextProduct.imageUrl ? [nextProduct.imageUrl] : []),
+          : productListingImages(nextProduct),
       ),
       sectionIds: Array.isArray(existingListing?.metadata?.sectionIds)
         ? existingListing.metadata.sectionIds

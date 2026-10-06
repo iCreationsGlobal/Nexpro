@@ -21,6 +21,8 @@ const {
   getProductImportTemplate,
   importProducts,
   uploadProductImage,
+  getProductImageIndex,
+  setProductImages,
   getProductCategories,
   createProductCategory,
   deleteProductCategory
@@ -31,7 +33,7 @@ const { shopContext } = require('../middleware/shopContext');
 const { cacheMiddleware, generateProductListKey } = require('../middleware/cache');
 const { bulkOperationLimiter, exportLimiter } = require('../middleware/rateLimiter');
 const { productImageUploader, importFileUploader, checkStorageLimit } = require('../middleware/upload');
-const { createOrUpdateListingFromProduct } = require('../controllers/storeController');
+const { createOrUpdateListingFromProduct, bulkPublishProductListings } = require('../controllers/storeController');
 const { timeCrudAction } = require('../middleware/crudTiming');
 const {
   listProductRentalUnits,
@@ -69,6 +71,9 @@ router.route('/bulk')
   .put(bulkOperationLimiter, authorize('admin', 'manager'), timeCrudAction('products.bulk_update'), bulkUpdateProducts)
   .delete(bulkOperationLimiter, authorize('admin'), timeCrudAction('products.bulk_delete'), bulkDeleteProducts);
 
+router.route('/bulk/store-listing')
+  .post(bulkOperationLimiter, authorize('admin', 'manager'), timeCrudAction('products.bulk_store_listing'), bulkPublishProductListings);
+
 router.route('/bulk/stock')
   .put(bulkOperationLimiter, authorize('admin', 'manager', 'staff'), timeCrudAction('products.bulk_update_stock'), bulkUpdateStock);
 
@@ -82,6 +87,9 @@ router.route('/upload-image')
     productImageUploader.single('file'),
     uploadProductImage
   );
+
+// Bulk photo upload: match photos to products by file name, then save each product's slots
+router.get('/image-index', authorize('admin', 'manager'), getProductImageIndex);
 
 router.route('/categories')
   .get(getProductCategories)
@@ -105,6 +113,9 @@ router.route('/:id/sales')
 
 router.route('/:id/adjust-stock')
   .post(authorize('admin', 'manager', 'staff'), timeCrudAction('products.adjust_stock'), adjustProductStock);
+
+router.route('/:id/images')
+  .put(authorize('admin', 'manager'), timeCrudAction('products.images.set'), setProductImages);
 
 router.route('/:id/store-listing')
   .post(authorize('admin', 'manager', 'staff'), timeCrudAction('products.store_listing.upsert'), createOrUpdateListingFromProduct);

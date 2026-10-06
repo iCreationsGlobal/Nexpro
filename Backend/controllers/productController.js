@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { Product, ProductVariant, ProductStockMovement, Shop, ProductCategory, Barcode, SaleItem, Sale, Customer, User } = require('../models');
+const { Product, ProductVariant, ProductStockMovement, Shop, ProductCategory, Barcode, SaleItem, Sale, Customer, User, OnlineProductListing } = require('../models');
 const { Op } = require('sequelize');
 const { applyTenantFilter, sanitizePayload } = require('../utils/tenantUtils');
 const { getPagination } = require('../utils/paginationUtils');
@@ -533,6 +533,7 @@ exports.getProducts = async (req, res, next) => {
         exclude: ['metadata'],
         include: [
           [Product.sequelize.literal(`"Product"."metadata"->>'productCode'`), 'productCode'],
+          [Product.sequelize.literal(`"Product"."metadata"->'storeImages'`), 'storeImages'],
           [Product.sequelize.literal(`(
             SELECT COALESCE(SUM(pv."quantityOnHand"), 0)
             FROM product_variants pv
@@ -1061,6 +1062,136 @@ exports.uploadProductImage = async (req, res, next) => {
     fs.writeFileSync(filePath, req.file.buffer);
     const imageUrl = `/uploads/products/${tenantId}/${filename}`;
     res.status(200).json({ success: true, imageUrl });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Photo slots for bulk image upload: A = main product photo, B–E = extra online store photos. */
+const PRODUCT_IMAGE_SLOTS = ['A', 'B', 'C', 'D', 'E'];
+const PRODUCT_STORE_IMAGE_SLOTS = PRODUCT_IMAGE_SLOTS.slice(1);
+
+const readStoreImageSlots = (metadata) => {
+  const raw = metadata && typeof metadata === 'object' ? metadata.storeImages : null;
+  if (!raw || typeof raw !== 'object') return {};
+  return PRODUCT_STORE_IMAGE_SLOTS.reduce((acc, slot) => {
+    if (typeof raw[slot] === 'string' && raw[slot].trim()) acc[slot] = raw[slot];
+    return acc;
+  }, {});
+};
+
+// @desc    Every product's codes and photo slots, for matching bulk-uploaded photos by file name
+// @route   GET /api/products/image-index
+// @access  Private (admin, manager)
+exports.getProductImageIndex = async (req, res, next) => {
+  try {
+    let where = applyTenantFilter(req.tenantId, {});
+    where = applyProductShopScope(req, where, req.query.shopId).where;
+
+    const products = await Product.findAll({
+      where,
+      attributes: ['id', 'name', 'sku', 'barcode', 'imageUrl', 'sellingPrice', 'metadata'],
+      order: [['name', 'ASC']],
+    });
+    const ids = products.map((p) => p.id);
+    const liveListings = ids.length
+      ? await OnlineProductListing.findAll({
+        where: applyTenantFilter(req.tenantId, {
+          productId: { [Op.in]: ids },
+          productVariantId: null,
+          status: 'published',
+        }),
+        attributes: ['productId'],
+        raw: true,
+      })
+      : [];
+    const liveIds = new Set(liveListings.map((row) => row.productId));
+
+    const data = products.map((product) => {
+      const plain = product.get({ plain: true });
+      return {
+        id: plain.id,
+        name: plain.name,
+        sku: plain.sku || null,
+        barcode: plain.barcode || null,
+        productCode: plain.metadata?.productCode ? String(plain.metadata.productCode).trim() || null : null,
+        imageUrl: plain.imageUrl ? sanitizeInlineDataUrlForClient(plain.imageUrl) : null,
+        sellingPrice: Number(plain.sellingPrice) || 0,
+        storeImages: readStoreImageSlots(plain.metadata),
+        liveOnStore: liveIds.has(plain.id),
+      };
+    });
+
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Set a product's photo slots (A = main photo, B–E = extra store photos)
+// @route   PUT /api/products/:id/images
+// @access  Private (admin, manager)
+exports.setProductImages = async (req, res, next) => {
+  try {
+    const incoming = req.body?.images && typeof req.body.images === 'object' ? req.body.images : {};
+    const slots = Object.keys(incoming);
+    const invalid = slots.find((slot) => !PRODUCT_IMAGE_SLOTS.includes(slot)
+      || typeof incoming[slot] !== 'string'
+      || !incoming[slot].trim());
+    if (!slots.length || invalid) {
+      return res.status(400).json({
+        success: false,
+        message: invalid ? `Invalid photo for slot ${invalid}` : 'No photos to save',
+      });
+    }
+
+    const product = await Product.findOne({ where: applyTenantFilter(req.tenantId, { id: req.params.id }) });
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+    try {
+      assertShopRecordAccess(req, product);
+    } catch (accessErr) {
+      if (accessErr.statusCode === 403) {
+        return res.status(403).json({ success: false, message: accessErr.message });
+      }
+      throw accessErr;
+    }
+
+    const updates = {};
+    if (incoming.A) updates.imageUrl = incoming.A.trim();
+    const storeSlots = slots.filter((slot) => slot !== 'A');
+    if (storeSlots.length) {
+      const metadata = product.metadata && typeof product.metadata === 'object' ? product.metadata : {};
+      const storeImages = { ...readStoreImageSlots(metadata) };
+      storeSlots.forEach((slot) => { storeImages[slot] = incoming[slot].trim(); });
+      updates.metadata = { ...metadata, storeImages };
+    }
+    await product.update(updates);
+    invalidateProductListCache(req.tenantId);
+
+    let listingUpdated = false;
+    if (req.body?.updateLiveListing === true) {
+      const listing = await OnlineProductListing.findOne({
+        where: applyTenantFilter(req.tenantId, { productId: product.id, productVariantId: null, status: 'published' }),
+      });
+      if (listing) {
+        const current = Array.isArray(listing.images) ? [...listing.images] : [];
+        slots.forEach((slot) => { current[PRODUCT_IMAGE_SLOTS.indexOf(slot)] = incoming[slot].trim(); });
+        await listing.update({ images: current.filter(Boolean).slice(0, PRODUCT_IMAGE_SLOTS.length) });
+        listingUpdated = true;
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        id: product.id,
+        imageUrl: product.imageUrl ? sanitizeInlineDataUrlForClient(product.imageUrl) : null,
+        storeImages: readStoreImageSlots(product.metadata),
+        listingUpdated,
+      },
+    });
   } catch (error) {
     next(error);
   }

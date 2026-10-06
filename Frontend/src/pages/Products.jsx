@@ -65,6 +65,8 @@ import DashboardStatsCard from '../components/DashboardStatsCard';
 import WelcomeSection from '../components/WelcomeSection';
 import { useSimpleMode } from '../hooks/useSimpleMode';
 import SimpleProductsList from '../components/simple/SimpleProductsList';
+import BulkProductImagesDialog from '../components/BulkProductImagesDialog';
+import BulkPublishToStoreDialog from '../components/BulkPublishToStoreDialog';
 import SimpleProductForm from '../components/simple/SimpleProductForm';
 import FeatureNotAvailable from '../components/FeatureNotAvailable';
 import productService from '../services/productService';
@@ -763,6 +765,9 @@ const Products = () => {
   const [storeListingProduct, setStoreListingProduct] = useState(null);
 
   const [bulkLabelsOpen, setBulkLabelsOpen] = useState(false);
+  const [bulkImagesOpen, setBulkImagesOpen] = useState(false);
+  /** null = closed; otherwise the product ids to pre-select. */
+  const [bulkPublishIds, setBulkPublishIds] = useState(null);
 
   // Bulk import state
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -2847,6 +2852,14 @@ const Products = () => {
                   <Upload className="mr-2 h-4 w-4" />
                   Import products
                 </DropdownMenuItem>
+                <DropdownMenuItem disabled={!scopeReady || !isOnline} onSelect={() => setBulkImagesOpen(true)}>
+                  <ImagePlus className="mr-2 h-4 w-4" />
+                  Upload product images
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={!scopeReady || !isOnline} onSelect={() => setBulkPublishIds([])}>
+                  <Globe className="mr-2 h-4 w-4" />
+                  Publish to online store
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => handleOpenReceiveStock()}>
                   <Download className="mr-2 h-4 w-4" />
@@ -3913,6 +3926,17 @@ const Products = () => {
       />
 
       <Suspense fallback={<p role="status">Loading label tools…</p>}>
+      <BulkProductImagesDialog
+        open={bulkImagesOpen}
+        onOpenChange={setBulkImagesOpen}
+        onSaved={fetchProducts}
+        onPublish={(ids) => { setBulkImagesOpen(false); setBulkPublishIds(ids); }}
+      />
+      <BulkPublishToStoreDialog
+        open={bulkPublishIds !== null}
+        onOpenChange={(open) => { if (!open) setBulkPublishIds(null); }}
+        initialSelectedIds={bulkPublishIds || []}
+      />
       {bulkLabelsOpen && <BulkProductLabels key={`${activeTenantId}:${activeShopId}`} shopId={activeShopId} profileKey={`abs-label-printer:${activeTenantId}:${activeShopId}`} onClose={() => setBulkLabelsOpen(false)} onSaved={refetchProducts} />}
       {qrGenerateOpen && <ProductQRGenerateModal
         open={qrGenerateOpen}
@@ -4863,7 +4887,7 @@ const Products = () => {
           <DialogHeader>
             <DialogTitle>Import products</DialogTitle>
             <DialogDescription>
-              Download the template and fill it in using Excel. It includes product codes, prices, stock, supplier, expiry, and rental fields. Only Product Name is required; optional columns can be left blank. Use YYYY-MM-DD for expiry dates and Yes/No for switches. Save as CSV or XLSX, then upload (max 500 rows; no images).
+              Download the template and fill it in using Excel. It includes product codes, prices, stock, supplier, expiry, and rental fields. Only Product Name is required; optional columns can be left blank. Use YYYY-MM-DD for expiry dates and Yes/No for switches. Save as CSV or XLSX, then upload (max 500 rows). Add photos afterwards with Options → Upload product images.
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-4">
@@ -4925,6 +4949,17 @@ const Products = () => {
                     ))}
                     {importResult.errors.length > 20 && <li>… and {importResult.errors.length - 20} more</li>}
                   </ul>
+                )}
+                {(importResult.successCount ?? 0) > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setImportModalOpen(false); setBulkImagesOpen(true); }}
+                  >
+                    <ImagePlus className="mr-2 h-4 w-4" />
+                    Now upload their photos
+                  </Button>
                 )}
               </div>
             )}

@@ -3129,6 +3129,99 @@ exports.createOrUpdateListingFromProduct = async (req, res, next) => {
   }
 };
 
+const BULK_PUBLISH_MAX = 100;
+const STORE_IMAGE_SLOTS = ['B', 'C', 'D', 'E'];
+
+/** A product's main photo plus its extra store photos B–E (saved by bulk photo upload). */
+const productListingImages = (product) => {
+  const storeImages = product?.metadata?.storeImages && typeof product.metadata.storeImages === 'object'
+    ? product.metadata.storeImages
+    : {};
+  return normalizeImages([product?.imageUrl, ...STORE_IMAGE_SLOTS.map((slot) => storeImages[slot])]);
+};
+
+/** First free slug for a tenant: "bel-aqua", then "bel-aqua-2", "bel-aqua-3"… */
+const claimUniqueSlug = (base, taken) => {
+  let slug = base;
+  for (let n = 2; taken.has(slug); n += 1) slug = `${base.slice(0, 74)}-${n}`;
+  taken.add(slug);
+  return slug;
+};
+
+// @desc    Publish many products to the online store at once, using their saved photos
+// @route   POST /api/products/bulk/store-listing
+// @access  Private (admin, manager)
+exports.bulkPublishProductListings = async (req, res, next) => {
+  try {
+    const productIds = Array.isArray(req.body?.productIds)
+      ? [...new Set(req.body.productIds.map((id) => String(id || '').trim()).filter(Boolean))]
+      : [];
+    if (!productIds.length || productIds.length > BULK_PUBLISH_MAX) {
+      return res.status(400).json({
+        success: false,
+        message: productIds.length ? `Publish up to ${BULK_PUBLISH_MAX} products at a time` : 'No products selected',
+      });
+    }
+
+    const [products, listings, slugRows] = await Promise.all([
+      Product.findAll({ where: applyTenantFilter(req.tenantId, { id: { [Op.in]: productIds } }) }),
+      OnlineProductListing.findAll({
+        where: applyTenantFilter(req.tenantId, { productId: { [Op.in]: productIds }, productVariantId: null }),
+      }),
+      OnlineProductListing.findAll({ where: applyTenantFilter(req.tenantId, {}), attributes: ['slug'], raw: true }),
+    ]);
+    const productsById = new Map(products.map((product) => [product.id, product]));
+    const listingsByProductId = new Map(listings.map((listing) => [listing.productId, listing]));
+    const takenSlugs = new Set(slugRows.map((row) => row.slug));
+
+    const published = [];
+    const skipped = [];
+    for (const productId of productIds) {
+      const product = productsById.get(productId);
+      if (!product) {
+        skipped.push({ id: productId, name: null, reason: 'Product not found' });
+        continue;
+      }
+      try {
+        if (req.shopScoped) assertShopIdAccess(req, product.shopId || req.shopFilterId);
+        const existing = listingsByProductId.get(product.id);
+        const existingImages = normalizeImages(existing?.images);
+        const images = existingImages.length ? existingImages : productListingImages(product);
+        if (!images.length) {
+          skipped.push({ id: product.id, name: product.name, reason: 'No photo' });
+          continue;
+        }
+
+        if (existing) {
+          const update = { status: 'published', images, publishedAt: existing.publishedAt || new Date() };
+          assertListingPublishable({ ...existing.get({ plain: true }), ...update });
+          await existing.update(update);
+        } else {
+          const payload = listingPayloadFromBody({ status: 'published', images }, product);
+          assertListingPublishable(payload);
+          await OnlineProductListing.create({
+            ...payload,
+            slug: claimUniqueSlug(payload.slug, takenSlugs),
+            tenantId: req.tenantId,
+            productId: product.id,
+            productVariantId: null,
+            shopId: product.shopId || req.shopFilterId || null,
+            metadata: { ...payload.metadata, source: 'bulk_publish' },
+          });
+        }
+        published.push({ id: product.id, name: product.name });
+      } catch (error) {
+        if (!error.statusCode) throw error;
+        skipped.push({ id: product.id, name: product.name, reason: error.message });
+      }
+    }
+
+    res.status(200).json({ success: true, data: { published, skipped } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.uploadListingImages = async (req, res, next) => {
   try {
     const files = req.files || [];
