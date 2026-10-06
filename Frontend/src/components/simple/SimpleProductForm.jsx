@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Barcode, Camera, ChevronRight, Loader2, Package, Plus, X } from 'lucide-react';
+import { Barcode, Camera, ChevronRight, Loader2, Package, Plus, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { PRODUCT_IMAGE_ACCEPT } from '../../utils/compressProductImage';
@@ -67,6 +67,7 @@ export default function SimpleProductForm({
   const [barcode, setBarcode] = useState('');
   const [error, setError] = useState('');
   const fileRef = useRef(null);
+  const cameraRef = useRef(null);
   const initializedFor = useRef(null);
   const variantRows = Array.isArray(variants) ? variants : [];
   const hasVariants = Boolean(product?.hasVariants) || variantRows.length > 0;
@@ -120,22 +121,31 @@ export default function SimpleProductForm({
                 ) : null}
               </span>
               <div className="space-y-2">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept={PRODUCT_IMAGE_ACCEPT}
-                  capture="environment"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = '';
-                    if (file) onPickImage(file);
-                  }}
-                />
-                <Button type="button" variant="outline" className="h-12 rounded-xl text-base" disabled={imageUploading} onClick={() => fileRef.current?.click()}>
-                  <Camera className="mr-2 h-5 w-5" />
-                  {previewUrl ? 'Change photo' : 'Add photo'}
-                </Button>
+                {[cameraRef, fileRef].map((ref) => (
+                  <input
+                    key={ref === cameraRef ? 'camera' : 'file'}
+                    ref={ref}
+                    type="file"
+                    accept={PRODUCT_IMAGE_ACCEPT}
+                    capture={ref === cameraRef ? 'environment' : undefined}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) onPickImage(file);
+                    }}
+                  />
+                ))}
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" className="h-12 rounded-xl text-base" disabled={imageUploading} onClick={() => cameraRef.current?.click()}>
+                    <Camera className="mr-2 h-5 w-5" />
+                    {previewUrl ? 'Retake' : 'Take photo'}
+                  </Button>
+                  <Button type="button" variant="outline" className="h-12 rounded-xl text-base" disabled={imageUploading} onClick={() => fileRef.current?.click()}>
+                    <Upload className="mr-2 h-5 w-5" />
+                    Upload
+                  </Button>
+                </div>
                 {previewUrl && !imageUploading ? (
                   <button type="button" onClick={onRemoveImage} className="flex items-center text-sm font-medium text-red-700">
                     <X className="mr-1 h-4 w-4" />Remove photo

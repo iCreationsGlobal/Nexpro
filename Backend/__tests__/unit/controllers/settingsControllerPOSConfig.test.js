@@ -124,7 +124,7 @@ describe('settingsController POS config scanning', () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.body.data.scanning).toEqual({
-        enabled: false,
+        enabled: true,
         allowManualBarcodeEntry: true,
         allowExternalScanner: true,
       });

@@ -21,7 +21,7 @@ describe('product sticker printing',()=>{
  });
  it('escapes catalog text and keeps zero prices',()=>{
    const html=labelDocument([{name:'<script>alert(1)</script>',sellingPrice:0,barcode:'001234',quantity:1}],defaults);
-   expect(html).not.toContain('<script>');expect(html).toContain('&lt;script&gt;');expect(html).toContain('₵ 0.00');expect(html).toContain('size:50mm 30mm');
+   expect(html).not.toContain('<script>');expect(html).toContain('&lt;script&gt;');expect(html).toContain('₵ 0.00');expect(html).toContain('size:50mm 30mm');expect(html).toContain('.number{font-size:14pt}');
  });
  it('price-only labels exclude barcode artwork and test batches can reset skipped slots',()=>{
    const html=labelDocument([{name:'A',sellingPrice:12,quantity:1}],{...defaults,design:'price'});

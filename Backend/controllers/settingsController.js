@@ -2482,7 +2482,7 @@ const POS_CONFIG_DEFAULTS = {
   receipt: { mode: 'ask', channels: ['sms', 'print'] },
   print: { format: 'a4', showLogo: true, color: true, fontSize: 'normal' },
   customer: { phoneRequired: false, nameRequired: false },
-  scanning: { enabled: false, allowManualBarcodeEntry: true, allowExternalScanner: true },
+  scanning: { enabled: true, allowManualBarcodeEntry: true, allowExternalScanner: true },
 };
 
 const VALID_RECEIPT_MODES = ['ask', 'auto_send', 'auto_print', 'auto_both'];

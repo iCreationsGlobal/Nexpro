@@ -1,6 +1,6 @@
-/** Default barcode/camera scanning settings (opt-in). */
+/** Default barcode/camera scanning settings (on unless a workspace turns it off). */
 export const SCANNING_CONFIG_DEFAULTS = {
-  enabled: false,
+  enabled: true,
   allowManualBarcodeEntry: true,
   allowExternalScanner: true,
 };

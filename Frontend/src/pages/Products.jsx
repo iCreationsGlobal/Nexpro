@@ -36,6 +36,7 @@ import {
   Tag,
   ImagePlus,
   UploadCloud,
+  Camera,
   QrCode,
   Info,
   Receipt,
@@ -718,6 +719,7 @@ const Products = () => {
   const [productImageStageProgress, setProductImageStageProgress] = useState(0);
   const [productImageDragging, setProductImageDragging] = useState(false);
   const productImageInputRef = useRef(null);
+  const productImageCameraRef = useRef(null);
   /** Bumps when a new photo is chosen or the form is reset, so a stale upload cannot write into the form. */
   const productImageRequestRef = useRef(0);
   /** In-flight upload. Update awaits this so a click during compression still saves the photo. */
@@ -1763,6 +1765,7 @@ const Products = () => {
     // browser then blocks Update with no visible message (the control is hidden).
     if (eOrFile?.target) eOrFile.target.value = '';
     if (productImageInputRef.current) productImageInputRef.current.value = '';
+    if (productImageCameraRef.current) productImageCameraRef.current.value = '';
     if (!file) return;
     if (!isProductImageFile(file)) {
       showError('Please choose a photo (JPG, PNG, WEBP, or an iPhone HEIC image).');
@@ -3108,6 +3111,14 @@ const Products = () => {
                             className="hidden"
                             onChange={(e) => handleProductImageSelect(e)}
                           />
+                          <input
+                            ref={productImageCameraRef}
+                            type="file"
+                            accept={PRODUCT_IMAGE_ACCEPT}
+                            capture="environment"
+                            className="hidden"
+                            onChange={(e) => handleProductImageSelect(e)}
+                          />
                           <div
                             role="button"
                             tabIndex={0}
@@ -3190,6 +3201,16 @@ const Products = () => {
                               </>
                             )}
                           </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={productImageUploading}
+                            onClick={() => productImageCameraRef.current?.click()}
+                          >
+                            <Camera className="mr-2 h-4 w-4" />
+                            Take photo
+                          </Button>
                         </div>
                       </FormControl>
                       <FormMessage />
