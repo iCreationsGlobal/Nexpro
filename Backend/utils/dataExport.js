@@ -339,6 +339,14 @@ const COLUMN_DEFINITIONS = {
     { key: 'reorderLevel', header: 'Reorder Level', type: 'number' },
     { key: 'unit', header: 'Unit' },
     { key: 'isActive', header: 'Active', type: 'boolean' },
+    // Same headers as the import template, so an export can be edited and imported elsewhere.
+    { key: 'metadata.productCode', header: 'Product Code' },
+    { key: 'barcode', header: 'Barcode' },
+    { key: 'brand', header: 'Brand' },
+    { key: 'wholesalePrice', header: 'Wholesale Price', type: 'currency' },
+    { key: 'reorderQuantity', header: 'Reorder Quantity', type: 'number' },
+    { key: 'trackStock', header: 'Track Stock', type: 'boolean' },
+    { key: 'description', header: 'Description' },
   ],
   invoices: [
     { key: 'invoiceNumber', header: 'Invoice #' },

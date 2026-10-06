@@ -37,6 +37,7 @@ import {
   ImagePlus,
   UploadCloud,
   Camera,
+  FileDown,
   QrCode,
   Info,
   Receipt,
@@ -766,6 +767,7 @@ const Products = () => {
 
   const [bulkLabelsOpen, setBulkLabelsOpen] = useState(false);
   const [bulkImagesOpen, setBulkImagesOpen] = useState(false);
+  const [exportingProducts, setExportingProducts] = useState(false);
   /** null = closed; otherwise the product ids to pre-select. */
   const [bulkPublishIds, setBulkPublishIds] = useState(null);
 
@@ -1380,6 +1382,32 @@ const Products = () => {
       setTemplateLoading(false);
     }
   }, [templateColumns]);
+
+  const handleExportProducts = useCallback(async () => {
+    setExportingProducts(true);
+    try {
+      const response = await productService.exportProducts({ format: 'csv' });
+      const url = URL.createObjectURL(response?.data ?? response);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `products_${dayjs().format('YYYY-MM-DD')}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showSuccess('Products exported');
+    } catch (err) {
+      // Blob requests return the server's JSON error as a Blob.
+      let message = err?.message || 'Failed to export products';
+      const body = err?.response?.data;
+      if (body instanceof Blob) {
+        try { message = JSON.parse(await body.text())?.message || message; } catch { /* keep default */ }
+      } else if (body?.message) {
+        message = body.message;
+      }
+      showError(message);
+    } finally {
+      setExportingProducts(false);
+    }
+  }, []);
 
   const handleImportSubmit = useCallback(async () => {
     if (!importFile) {
@@ -2851,6 +2879,10 @@ const Products = () => {
                 <DropdownMenuItem onSelect={() => { setImportModalOpen(true); setImportResult(null); setImportFile(null); }}>
                   <Upload className="mr-2 h-4 w-4" />
                   Import products
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={!scopeReady || !isOnline || exportingProducts} onSelect={handleExportProducts}>
+                  {exportingProducts ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
+                  Export products (CSV)
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={!scopeReady || !isOnline} onSelect={() => setBulkImagesOpen(true)}>
                   <ImagePlus className="mr-2 h-4 w-4" />

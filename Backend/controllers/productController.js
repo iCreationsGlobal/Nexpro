@@ -2382,7 +2382,7 @@ exports.exportProducts = async (req, res, next) => {
     const { format = 'csv', categoryId, isActive } = req.query;
     const { sendCSV, sendExcel, COLUMN_DEFINITIONS } = require('../utils/dataExport');
 
-    const where = applyTenantFilter(req.tenantId, {});
+    const where = applyProductShopScope(req, applyTenantFilter(req.tenantId, {}), req.query.shopId).where;
     if (categoryId) where.categoryId = categoryId;
     if (isActive !== undefined) where.isActive = isActive === 'true';
 

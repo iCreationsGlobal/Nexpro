@@ -217,11 +217,11 @@ const productService = {
    * @returns {Promise<Blob>} - File blob for download
    */
   exportProducts: async (params = {}) => {
-    const searchParams = new URLSearchParams();
-    if (params.format) searchParams.append('format', params.format);
-    if (params.categoryId) searchParams.append('categoryId', params.categoryId);
-    if (params.isActive !== undefined) searchParams.append('isActive', params.isActive);
-    const query = searchParams.toString();
+    const query = buildScopedQueryString({
+      format: params.format,
+      categoryId: params.categoryId,
+      isActive: params.isActive,
+    });
     const response = await api.get(`/products/export${query ? `?${query}` : ''}`, {
       responseType: 'blob',
     });
