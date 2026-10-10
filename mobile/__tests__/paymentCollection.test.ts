@@ -1,4 +1,5 @@
 import {
+  describePayoutDestination,
   getDirectMomoProviders,
   isValidDirectMomoPhone,
   normalizeDirectMomoPhone,
@@ -33,5 +34,24 @@ describe('payment collection utilities', () => {
       'AIRTEL',
       'VODAFONE',
     ]);
+  });
+});
+
+describe('describePayoutDestination', () => {
+  it('summarises a Mobile Money payout wallet', () => {
+    expect(
+      describePayoutDestination({ settlement_type: 'momo', momo_provider: 'MTN', momo_phone_masked: '****4567' })
+    ).toBe('MTN MoMo ****4567');
+  });
+
+  it('summarises a bank payout account', () => {
+    expect(
+      describePayoutDestination({ settlement_type: 'bank', bank_name: 'GCB Bank', account_number_masked: '****1234' })
+    ).toBe('GCB Bank ****1234');
+  });
+
+  it('returns null when no payout destination is connected', () => {
+    expect(describePayoutDestination(null)).toBeNull();
+    expect(describePayoutDestination({ settlement_type: 'momo' })).toBeNull();
   });
 });

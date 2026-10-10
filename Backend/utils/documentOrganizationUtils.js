@@ -1,5 +1,6 @@
 const { Setting, Tenant } = require('../models');
 const { getTenantLogoUrl } = require('./tenantLogo');
+const { collapseRepeatedDialCode } = require('./phoneUtils');
 
 const PUBLIC_ASSET_BASE_ENV_KEYS = [
   'API_PUBLIC_URL',
@@ -111,7 +112,9 @@ const loadTenantOrganization = async (tenantId) => {
     name: pickFirstNonEmpty(orgSettings.name, tenant?.name, ''),
     legalName: orgSettings.legalName || '',
     email: pickFirstNonEmpty(orgSettings.email, tenantMetadata.email, tenantMetadata.companyEmail, ''),
-    phone: pickFirstNonEmpty(orgSettings.phone, tenantMetadata.phone, tenantMetadata.companyPhone, ''),
+    phone: collapseRepeatedDialCode(
+      pickFirstNonEmpty(orgSettings.phone, tenantMetadata.phone, tenantMetadata.companyPhone, '')
+    ),
     website: pickFirstNonEmpty(orgSettings.website, tenantMetadata.website, tenantMetadata.companyWebsite, ''),
     logoUrl: pickFirstPublicAssetUrl(orgSettings.logoUrl, tenantMetadata.logo, getTenantLogoUrl(tenant)),
     invoiceFooter: orgSettings.invoiceFooter || '',

@@ -18,7 +18,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import authService from '../services/authService';
 import dashboardService from '../services/dashboardService';
 import ReactCountryFlag from 'react-country-flag';
-import { stripLeadingTrunkZero } from '../utils/phoneUtils';
+import { joinDialCode, stripLeadingTrunkZero } from '../utils/phoneUtils';
 import { BUSINESS_OPTIONS, BUSINESS_GROUPS, getCoreTypeForBusinessSubType } from '@/constants/businessTypes';
 import {
   PRIVACY_POLICY_URL,
@@ -209,7 +209,7 @@ const Onboarding = () => {
 
   const onSubmit = async (values) => {
     const fullPhone = values.phoneCountryCode
-      ? `${values.phoneCountryCode} ${values.companyPhone}`
+      ? joinDialCode(values.phoneCountryCode, values.companyPhone)
       : values.companyPhone;
 
     setCheckingPhone(true);

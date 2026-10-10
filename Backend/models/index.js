@@ -1,3 +1,4 @@
+const { cleanPhoneFieldsOnSave } = require('../utils/phoneUtils');
 const PartnerRemittance = require('./PartnerRemittance');
 const SabitoAppPlatformSettings = require('./SabitoAppPlatformSettings');
 const User = require('./User');
@@ -1084,6 +1085,20 @@ LateCharge.belongsTo(Rental, { foreignKey: 'rentalId', as: 'rental' });
 LateCharge.belongsTo(Customer, { foreignKey: 'customerId', as: 'customer' });
 LateCharge.belongsTo(Shop, { foreignKey: 'branchId', as: 'branch' });
 LateCharge.belongsTo(Invoice, { foreignKey: 'invoiceId', as: 'invoice' });
+
+// A dial code saved twice ("+233+233…") breaks SMS, WhatsApp links and duplicate checks; clean it
+// on every write, whichever client or app version sent the number.
+[
+  [Customer, ['phone']],
+  [Vendor, ['phone']],
+  [Lead, ['phone']],
+  [Shop, ['phone']],
+  [Pharmacy, ['phone']],
+  [Prescription, ['prescriberPhone']],
+  [StorefrontCustomer, ['phone']],
+  [Dealer, ['phone']],
+  [OnlineStoreSettings, ['contactPhone', 'whatsappNumber']],
+].forEach(([Model, fields]) => cleanPhoneFieldsOnSave(Model, fields));
 
 module.exports = {
   PartnerRemittance,

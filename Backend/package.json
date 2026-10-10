@@ -40,6 +40,7 @@
     "import:products-csv": "node scripts/import-products-csv-for-tenant.js",
     "copy:products-between-shops": "node scripts/copy-products-between-tenant-shops.js",
     "fix:main-shop-assignments": "node scripts/assign-users-to-main-shop.js",
+    "fix:doubled-dial-codes": "node scripts/fix-doubled-dial-codes.js",
     "convert:pharmacy-to-hardware-shop": "node scripts/convert-pharmacy-tenant-to-hardware-shop.js",
     "test": "jest",
     "test:watch": "jest --watch",

@@ -3,6 +3,8 @@
  * Ghana-first: GHS, classic template, pickup on / delivery off.
  */
 
+import { formatDisplayPhone } from '@/utils/displayPhone';
+
 export const STORE_CURRENCY_GHS = 'GHS';
 export const STORE_TEMPLATE_CLASSIC = 'classic';
 export const STORE_PRIMARY_FALLBACK = '#166534';
@@ -165,7 +167,8 @@ export function buildOnlineStoreDefaultsFromTenant(
     tenantMetadata.companyName
   );
 
-  const contactPhone = firstFilled(
+  // Saved business phones can carry the dial code twice ("+233+233…"); never prefill that.
+  const contactPhone = formatDisplayPhone(firstFilled(
     organization?.phone,
     tenantMetadata.businessPhone,
     tenantMetadata.companyPhone,
@@ -175,7 +178,7 @@ export function buildOnlineStoreDefaultsFromTenant(
     profile?.phoneNumber,
     user?.phone,
     user?.phoneNumber
-  );
+  ));
 
   const contactEmail = firstFilled(
     organization?.email,
@@ -204,11 +207,11 @@ export function buildOnlineStoreDefaultsFromTenant(
       tenant?.description
     ),
     category: resolveBusinessCategory(tenant, tenantMetadata),
-    whatsappNumber: firstFilled(
+    whatsappNumber: formatDisplayPhone(firstFilled(
       tenantMetadata.whatsappNumber,
       tenantMetadata.whatsapp,
       contactPhone
-    ),
+    )),
     contactPhone,
     contactEmail,
     primaryColor: normalizePrimaryColor(rawPrimary),

@@ -1,5 +1,7 @@
 import { Alert, Linking } from 'react-native';
 
+import { collapseRepeatedDialCode } from '@/utils/displayPhone';
+
 type WhatsAppOpenOptions = {
   phone?: string | null;
   message?: string;
@@ -34,7 +36,7 @@ export function normalizePhoneForWhatsApp(
   phone?: string | null,
   defaultCountryCode?: string | null
 ): string {
-  const raw = String(phone ?? '').trim();
+  const raw = collapseRepeatedDialCode(phone);
   if (!raw) return '';
 
   const hasInternationalPrefix = raw.startsWith('+');

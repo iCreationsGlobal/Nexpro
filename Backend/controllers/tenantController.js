@@ -7,6 +7,7 @@ const config = require('../config/config');
 const { Tenant, User, UserTenant, Setting, EmailVerificationToken } = require('../models');
 const { seedDefaultCategories, seedDefaultEquipmentCategories } = require('../utils/categorySeeder');
 const { seedDefaultChartOfAccounts } = require('../utils/seedAccountingAccounts');
+const { collapseRepeatedDialCode } = require('../utils/phoneUtils');
 const emailService = require('../services/emailService');
 const { emailVerification: emailVerificationTemplate } = require('../services/emailTemplates');
 const { notifyAccountCreated, notifyTenantOnboarded } = require('../services/platformAdminNotificationService');
@@ -31,7 +32,7 @@ const generateToken = (userId) =>
 
 const normalizePhone = (phone) => {
   if (!phone || typeof phone !== 'string') return phone;
-  return phone.replace(/\s+/g, '').trim();
+  return collapseRepeatedDialCode(phone).replace(/\s+/g, '').trim();
 };
 
 const slugify = (value = '') => {

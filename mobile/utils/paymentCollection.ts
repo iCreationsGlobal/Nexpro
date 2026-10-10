@@ -1,3 +1,5 @@
+import { collapseRepeatedDialCode } from '@/utils/displayPhone';
+
 export function isPaymentCollectionConfigured(paymentCollection: unknown): boolean {
   if (!paymentCollection || typeof paymentCollection !== 'object') return false;
   const pc = paymentCollection as Record<string, unknown>;
@@ -20,6 +22,26 @@ export function isPaymentCollectionConfigured(paymentCollection: unknown): boole
   );
 }
 
+/**
+ * One-line summary of where online payments settle, e.g. "MTN MoMo ****4567" or "GCB Bank ****1234".
+ * Uses the masked fields from GET /settings/payment-collection; null when nothing is connected.
+ */
+export function describePayoutDestination(paymentCollection: unknown): string | null {
+  if (!paymentCollection || typeof paymentCollection !== 'object') return null;
+  const pc = paymentCollection as Record<string, unknown>;
+  const settlementType = String(pc.settlement_type ?? pc.settlementType ?? '');
+  if (settlementType === 'bank') {
+    const bank = String(pc.bank_name ?? '').trim();
+    const account = String(pc.account_number_masked ?? '').trim();
+    if (!bank && !account) return null;
+    return [bank || 'Bank account', account].filter(Boolean).join(' ');
+  }
+  const provider = String(pc.momo_provider ?? pc.momoProvider ?? '').trim();
+  const phone = String(pc.momo_phone_masked ?? '').trim();
+  if (!provider && !phone) return null;
+  return [provider ? `${provider} MoMo` : 'Mobile Money', phone].filter(Boolean).join(' ');
+}
+
 export type DirectMomoProvider = 'MTN' | 'AIRTEL' | 'VODAFONE';
 
 export const DIRECT_MOMO_PROVIDERS: Array<{ value: DirectMomoProvider; label: string }> = [
@@ -34,7 +56,7 @@ export function getDirectMomoProviders(paymentCollection: unknown): DirectMomoPr
 }
 
 export function normalizeDirectMomoPhone(phoneNumber: string): string {
-  const raw = String(phoneNumber || '').replace(/[^\d+]/g, '');
+  const raw = collapseRepeatedDialCode(phoneNumber).replace(/[^\d+]/g, '');
   if (!raw) return '';
   if (raw.startsWith('+233')) return raw.slice(1);
   if (raw.startsWith('233')) return raw;

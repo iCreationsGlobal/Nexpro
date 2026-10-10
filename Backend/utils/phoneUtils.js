@@ -48,6 +48,61 @@ const COUNTRY_CODES = {
  * @param {string} digits - Digits only, no leading +
  * @returns {string}
  */
+const GHANA_DIAL_DIGITS = '233';
+const GHANA_NATIONAL_LENGTH = 9;
+
+/**
+ * Collapse a dial code saved more than once at the start of a phone number. Happens when a
+ * dial-code picker is joined to a number that already carried the code:
+ *   "+233+233555155979"     → "+233555155979"
+ *   "+233 +233 55 515 5979" → "+233 55 515 5979"
+ *   "+233233555155979"      → "+233555155979"  (Ghana numbers have 9 digits after 233)
+ * Anything else is returned trimmed and unchanged.
+ * @param {string|null|undefined} phone
+ * @returns {string}
+ */
+function collapseRepeatedDialCode(phone) {
+  const value = String(phone ?? '').trim();
+  const collapsed = value.replace(/^(\+\d{1,4})(?:\s*\1)+(?=[\s\d])/, '$1');
+  if (collapsed !== value) return collapsed;
+
+  const digits = value.replace(/\D/g, '');
+  const doubledGhana = GHANA_DIAL_DIGITS + GHANA_DIAL_DIGITS;
+  if (digits.length === doubledGhana.length + GHANA_NATIONAL_LENGTH && digits.startsWith(doubledGhana)) {
+    return `+${GHANA_DIAL_DIGITS}${digits.slice(doubledGhana.length)}`;
+  }
+  return value;
+}
+
+/**
+ * Keep phone columns free of a doubled dial code whichever client (or app version) saved them.
+ * Covers instance saves, bulk creates (imports) and bulk `Model.update` calls.
+ * @param {import('sequelize').ModelStatic<any>} Model
+ * @param {string[]} fields
+ */
+function cleanPhoneFieldsOnSave(Model, fields) {
+  const cleanInstance = (instance) => {
+    fields.forEach((field) => {
+      const value = instance.get(field);
+      if (typeof value !== 'string') return;
+      const cleaned = collapseRepeatedDialCode(value);
+      if (cleaned !== value.trim()) instance.set(field, cleaned);
+    });
+  };
+  Model.addHook('beforeSave', 'collapseRepeatedDialCode', cleanInstance);
+  Model.addHook('beforeBulkCreate', 'collapseRepeatedDialCode', (instances) => {
+    instances.forEach(cleanInstance);
+  });
+  Model.addHook('beforeBulkUpdate', 'collapseRepeatedDialCode', (options) => {
+    const values = options.attributes || {};
+    fields.forEach((field) => {
+      if (typeof values[field] !== 'string') return;
+      const cleaned = collapseRepeatedDialCode(values[field]);
+      if (cleaned !== values[field].trim()) values[field] = cleaned;
+    });
+  });
+}
+
 function stripTrunkZeroAfterCountryCode(digits) {
   const knownCode = Object.values(COUNTRY_CODES)
     .filter((code) => code.startsWith('+'))
@@ -67,7 +122,7 @@ function formatToE164(phone, defaultCountryCode = '+233') {
   if (!phone) return null;
 
   // Remove all non-digit characters except +
-  let cleaned = phone.toString().trim().replace(/[^\d+]/g, '');
+  let cleaned = collapseRepeatedDialCode(phone.toString()).replace(/[^\d+]/g, '');
 
   // If already starts with +, validate format
   if (cleaned.startsWith('+')) {
@@ -166,10 +221,12 @@ function formatForDisplay(phone) {
  */
 function normalizePhoneNumber(phone) {
   if (!phone) return '';
-  return phone.toString().trim().replace(/[\s\-\(\)]/g, '');
+  return collapseRepeatedDialCode(phone.toString()).replace(/[\s\-\(\)]/g, '');
 }
 
 module.exports = {
+  collapseRepeatedDialCode,
+  cleanPhoneFieldsOnSave,
   formatToE164,
   isValidPhoneNumber,
   extractCountryCode,

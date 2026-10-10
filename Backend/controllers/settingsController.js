@@ -23,6 +23,7 @@ const {
   warmTaxConfigCache
 } = require('../utils/taxConfig');
 const { normalizeTaskAutomation } = require('../utils/taskAutomationConfig');
+const { collapseRepeatedDialCode } = require('../utils/phoneUtils');
 const { getCustomerSourceOptions } = require('../config/customerSourceOptions');
 const { getLeadSourceOptions } = require('../config/leadSourceOptions');
 const { notifyDataDeletionRequested } = require('../services/platformAdminNotificationService');
@@ -161,7 +162,7 @@ async function verifyStoredPaymentOtp(req) {
 
 const normalizePhone = (phone) => {
   if (!phone || typeof phone !== 'string') return phone;
-  return phone.replace(/\s+/g, '').trim();
+  return collapseRepeatedDialCode(phone).replace(/\s+/g, '').trim();
 };
 
 const getSettingValue = async (tenantId, key, fallback = {}) => {
@@ -190,9 +191,11 @@ const buildOrganizationPayload = (organizationSettings = {}, tenant = null) => {
     email: (organizationSettings.email !== undefined && organizationSettings.email !== null)
       ? organizationSettings.email
       : (tenantMetadata.email || ''),
-    phone: (organizationSettings.phone !== undefined && organizationSettings.phone !== null)
-      ? organizationSettings.phone
-      : (tenantMetadata.phone || ''),
+    phone: collapseRepeatedDialCode(
+      (organizationSettings.phone !== undefined && organizationSettings.phone !== null)
+        ? organizationSettings.phone
+        : (tenantMetadata.phone || '')
+    ),
     website: (organizationSettings.website !== undefined && organizationSettings.website !== null)
       ? organizationSettings.website
       : (tenantMetadata.website || ''),

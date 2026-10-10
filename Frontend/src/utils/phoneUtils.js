@@ -28,7 +28,7 @@ export function stripLeadingTrunkZero(number) {
  */
 export function normalizePhone(phone, defaultCountryCode = DEFAULT_COUNTRY_CODE) {
   if (!phone || typeof phone !== 'string') return '';
-  const stripped = phone.replace(/[\s\-\(\)\.]/g, '');
+  const stripped = collapseRepeatedDialCode(phone).replace(/[\s\-\(\)\.]/g, '');
   const digitsOnly = stripped.replace(/\D/g, '');
   if (digitsOnly.length === 0) return '';
 
@@ -81,6 +81,57 @@ export function validatePhone(phone, defaultCountryCode = DEFAULT_COUNTRY_CODE) 
   return { valid: true, normalized, error: undefined };
 }
 
+const GHANA_NATIONAL_LENGTH = 9;
+
+/**
+ * Collapse a dial code saved more than once at the start of a phone number. Happens when a
+ * dial-code picker is joined to a number that already carried the code:
+ *   "+233+233555155979"     → "+233555155979"
+ *   "+233 +233 55 515 5979" → "+233 55 515 5979"
+ *   "+233233555155979"      → "+233555155979"  (Ghana numbers have 9 digits after 233)
+ * Anything else is returned trimmed and unchanged. Mirrors Backend/utils/phoneUtils.js.
+ * @param {string} phone
+ * @returns {string}
+ */
+export function collapseRepeatedDialCode(phone) {
+  const value = String(phone ?? '').trim();
+  const collapsed = value.replace(/^(\+\d{1,4})(?:\s*\1)+(?=[\s\d])/, '$1');
+  if (collapsed !== value) return collapsed;
+
+  const digits = value.replace(/\D/g, '');
+  const doubledGhana = DEFAULT_COUNTRY_CODE + DEFAULT_COUNTRY_CODE;
+  if (digits.length === doubledGhana.length + GHANA_NATIONAL_LENGTH && digits.startsWith(doubledGhana)) {
+    return `+${DEFAULT_COUNTRY_CODE}${digits.slice(doubledGhana.length)}`;
+  }
+  return value;
+}
+
+/**
+ * Join a dial-code picker value with the typed number without doubling the code. A number that
+ * already carries a code (typed, pasted or autofilled as "+233…", "00233…" or "233…") keeps it;
+ * otherwise a trunk "0" is dropped and the picker's code is added.
+ *   joinDialCode('+233', '0555155979')     → '+233 555155979'
+ *   joinDialCode('+233', '+233555155979')  → '+233555155979'
+ *   joinDialCode('+233', '233 555 155 979') → '+233 555 155 979'
+ * @param {string} dialCode - Picker value, e.g. "+233"
+ * @param {string} number - What the user typed
+ * @returns {string}
+ */
+export function joinDialCode(dialCode, number) {
+  const rest = String(number ?? '').trim().replace(/^00(?=\d)/, '+');
+  if (!rest) return '';
+  if (rest.startsWith('+')) return collapseRepeatedDialCode(rest);
+
+  const code = String(dialCode ?? '').trim();
+  if (!code) return rest;
+  const codeDigits = code.replace(/\D/g, '');
+  const digits = rest.replace(/\D/g, '');
+  if (codeDigits && digits.startsWith(codeDigits) && digits.length - codeDigits.length >= GHANA_NATIONAL_LENGTH) {
+    return `${code} ${digits.slice(codeDigits.length)}`;
+  }
+  return `${code} ${stripLeadingTrunkZero(rest)}`.trim();
+}
+
 /**
  * Tidy a stored phone for printing. Collapses a country code that was saved twice
  * ("+233+233555155972" → "+233555155972", which happens when a dial-code picker is combined
@@ -89,6 +140,5 @@ export function validatePhone(phone, defaultCountryCode = DEFAULT_COUNTRY_CODE) 
  * @returns {string}
  */
 export function formatDisplayPhone(phone) {
-  const value = String(phone ?? '').trim();
-  return value.replace(/^(\+\d{1,4})(?:\s*\1)+(?=\d)/, '$1');
+  return collapseRepeatedDialCode(phone);
 }

@@ -8,7 +8,11 @@ import {
   SelectTrigger,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { stripLeadingTrunkZero as stripLeadingZero } from '../utils/phoneUtils';
+import {
+  collapseRepeatedDialCode,
+  joinDialCode,
+  stripLeadingTrunkZero as stripLeadingZero,
+} from '../utils/phoneUtils';
 
 // Complete list of all countries with dial codes (sorted alphabetically by name)
 const COUNTRIES = [
@@ -278,10 +282,13 @@ const PhoneNumberInput = forwardRef(({
     if (phoneValue == null || phoneValue === '') {
       return { countryCode: defaultCountry, number: '' };
     }
-    const asString = String(phoneValue).trim();
-    if (!asString) {
+    // Saved numbers can carry the dial code twice ("+233+233…") or none ("0555…", "233555…").
+    const cleaned = collapseRepeatedDialCode(phoneValue);
+    if (!cleaned) {
       return { countryCode: defaultCountry, number: '' };
     }
+    const defaultDialCode = COUNTRIES.find((c) => c.code === defaultCountry)?.dialCode || '';
+    const asString = cleaned.startsWith('+') ? cleaned : joinDialCode(defaultDialCode, cleaned);
     
     // Try to extract country code from value (match longest dial code first to handle overlaps like +1)
     const sortedCountries = [...COUNTRIES].sort((a, b) => b.dialCode.length - a.dialCode.length);
@@ -314,19 +321,21 @@ const PhoneNumberInput = forwardRef(({
     setSelectedCountry(countryCode);
     const country = COUNTRIES.find(c => c.code === countryCode);
     if (country) {
-      const fullNumber = phoneNumber ? `${country.dialCode} ${phoneNumber}`.trim() : '';
+      const fullNumber = phoneNumber ? joinDialCode(country.dialCode, phoneNumber) : '';
       onChange?.(fullNumber);
     }
   };
 
   const handleNumberChange = (e) => {
-    // Only allow digits, spaces, hyphens, parentheses, then drop a leading trunk "0" — the
-    // dial code selector already marks where the number starts, so "+233 0244..." is invalid.
-    const number = stripLeadingZero(e.target.value.replace(/[^\d\s\-()]/g, ''));
+    // Only allow digits, spaces, hyphens, parentheses (and a leading "+" for pasted/autofilled
+    // international numbers), then drop a leading trunk "0" — the dial code selector already marks
+    // where the number starts, so "+233 0244..." is invalid. joinDialCode keeps a number that
+    // already carries its code from getting it twice.
+    const number = stripLeadingZero(e.target.value.replace(/[^\d\s\-()+]/g, '').replace(/(?!^)\+/g, ''));
     setPhoneNumber(number);
     const country = COUNTRIES.find(c => c.code === selectedCountry);
     if (country) {
-      const fullNumber = number ? `${country.dialCode} ${number}`.trim() : '';
+      const fullNumber = number ? joinDialCode(country.dialCode, number) : '';
       onChange?.(fullNumber);
     }
   };
