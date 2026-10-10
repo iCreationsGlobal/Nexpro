@@ -89,3 +89,19 @@ vision-edge/videos/**
 
 # Local YOLO weights (downloaded on first --yolo / --youtube run)
 *.pt
+
+# Env files and backups of them — only examples are committed
+.env.*
+!.env.example
+
+# Customer, staff and client data — keep local, never commit
+Backend/uploads/employees/
+Backend/uploads/jobs/
+Backend/uploads/avatars/
+Backend/uploads/storefront-customers/
+Backend/uploads/vendor-price-list/
+Backend/uploads/watch/
+Backend/data/*.xlsx
+Backend/scripts/data/
+/*.xlsx
+/*.pdf
