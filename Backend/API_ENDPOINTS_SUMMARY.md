@@ -54,7 +54,10 @@ This document provides a comprehensive list of all API endpoints available for e
 
 ### Public Invoice Endpoints (No Authentication Required)
 - `GET /api/public/invoices/:token` - View invoice by payment token
-- `POST /api/public/invoices/:token/pay` - Process payment for invoice
+- `POST /api/public/invoices/:token/initialize-paystack` - Start a Paystack payment for the invoice
+- `POST /api/public/invoices/:token/verify-paystack` - Record a Paystack payment after Paystack confirms it
+- `POST /api/public/invoices/:token/mobile-money/initiate` - Start a mobile money payment
+- `POST /api/public/invoices/:token/mobile-money/poll` - Record a mobile money payment after the provider confirms it
 
 ### Payments & Expenses
 - `GET /api/payments` - List payments
@@ -274,7 +277,7 @@ All endpoints (except public invoice endpoints) require:
 
 ### Public Endpoints (No Authentication)
 - `GET /api/public/invoices/:token` - View invoice
-- `POST /api/public/invoices/:token/pay` - Pay invoice
+- `POST /api/public/invoices/:token/initialize-paystack` - Pay invoice (Paystack; mobile money via `/mobile-money/initiate`)
 - `GET /api/public/pricing` - View pricing plans
 
 ---

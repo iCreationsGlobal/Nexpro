@@ -6,15 +6,24 @@ const BOOTSTRAP_SUPERADMIN_EMAILS = new Set([
 ]);
 
 /**
+ * Super-admin access is granted by email alone, so these addresses are reserved: no flow other than
+ * a super admin acting directly may move an account onto one of them.
+ * @param {string | null | undefined} email
+ * @returns {boolean}
+ */
+const isBootstrapPlatformSuperAdminEmail = (email) => {
+  const normalized = String(email || '').trim().toLowerCase();
+  return normalized.length > 0 && BOOTSTRAP_SUPERADMIN_EMAILS.has(normalized);
+};
+
+/**
  * @param {{ email?: string } | null | undefined} user
  * @returns {boolean}
  */
-const isBootstrapPlatformSuperAdmin = (user) => {
-  const email = String(user?.email || '').trim().toLowerCase();
-  return email.length > 0 && BOOTSTRAP_SUPERADMIN_EMAILS.has(email);
-};
+const isBootstrapPlatformSuperAdmin = (user) => isBootstrapPlatformSuperAdminEmail(user?.email);
 
 module.exports = {
   BOOTSTRAP_SUPERADMIN_EMAILS,
   isBootstrapPlatformSuperAdmin,
+  isBootstrapPlatformSuperAdminEmail,
 };

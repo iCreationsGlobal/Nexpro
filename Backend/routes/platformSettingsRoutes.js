@@ -1,5 +1,6 @@
 const express = require('express');
 const { protect, requirePlatformAdmin } = require('../middleware/auth');
+const { requirePlatformAdminPermission } = require('../middleware/platformAdminPermissions');
 const {
   getPlatformSettings,
   updatePlatformSettings,
@@ -43,7 +44,7 @@ router.use(requirePlatformAdmin);
  *       200:
  *         description: Current platform settings.
  */
-router.get('/', getPlatformSettings);
+router.get('/', requirePlatformAdminPermission('settings.view'), getPlatformSettings);
 
 /**
  * @swagger
@@ -70,10 +71,10 @@ router.get('/', getPlatformSettings);
  *       200:
  *         description: Platform settings updated.
  */
-router.put('/', updatePlatformSettings);
+router.put('/', requirePlatformAdminPermission('settings.manage'), updatePlatformSettings);
 
-router.post('/email/test', testPlatformEmailSettings);
-router.post('/sms/test', testPlatformSmsSettings);
+router.post('/email/test', requirePlatformAdminPermission('settings.manage'), testPlatformEmailSettings);
+router.post('/sms/test', requirePlatformAdminPermission('settings.manage'), testPlatformSmsSettings);
 
 /**
  * @swagger
@@ -89,7 +90,7 @@ router.post('/sms/test', testPlatformSmsSettings);
  */
 router.get('/features', getFeatureCatalog);
 router.get('/feature-matrix', getFeaturePlanMatrix);
-router.put('/feature-matrix', updateFeaturePlanMatrix);
+router.put('/feature-matrix', requirePlatformAdminPermission('settings.manage'), updateFeaturePlanMatrix);
 
 /**
  * @swagger
@@ -145,7 +146,7 @@ router.get('/plans', getSubscriptionPlans);
  *       201:
  *         description: Subscription plan created
  */
-router.post('/plans', createSubscriptionPlan);
+router.post('/plans', requirePlatformAdminPermission('settings.manage'), createSubscriptionPlan);
 
 /**
  * @swagger
@@ -159,7 +160,7 @@ router.post('/plans', createSubscriptionPlan);
  *       200:
  *         description: Plan order updated
  */
-router.put('/plans/bulk/reorder', reorderSubscriptionPlans);
+router.put('/plans/bulk/reorder', requirePlatformAdminPermission('settings.manage'), reorderSubscriptionPlans);
 
 /**
  * @swagger
@@ -173,7 +174,7 @@ router.put('/plans/bulk/reorder', reorderSubscriptionPlans);
  *       200:
  *         description: Plans synced from Paystack
  */
-router.post('/plans/sync-paystack', syncPaystackPlans);
+router.post('/plans/sync-paystack', requirePlatformAdminPermission('settings.manage'), syncPaystackPlans);
 
 /**
  * @swagger
@@ -201,7 +202,7 @@ router.get('/plans/:id', getSubscriptionPlan);
  *       200:
  *         description: Subscription plan updated
  */
-router.put('/plans/:id', updateSubscriptionPlan);
+router.put('/plans/:id', requirePlatformAdminPermission('settings.manage'), updateSubscriptionPlan);
 
 /**
  * @swagger
@@ -215,7 +216,7 @@ router.put('/plans/:id', updateSubscriptionPlan);
  *       200:
  *         description: Subscription plan deleted
  */
-router.delete('/plans/:id', deleteSubscriptionPlan);
+router.delete('/plans/:id', requirePlatformAdminPermission('settings.manage'), deleteSubscriptionPlan);
 
 module.exports = router;
 

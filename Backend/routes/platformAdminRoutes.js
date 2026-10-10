@@ -1,6 +1,10 @@
 const express = require('express');
 const { protect, requirePlatformAdmin } = require('../middleware/auth');
 const {
+  requirePlatformAdminPermission,
+  requireAnyPlatformAdminPermission
+} = require('../middleware/platformAdminPermissions');
+const {
   listPlatformAdmins,
   createPlatformAdmin,
   updatePlatformAdmin,
@@ -34,12 +38,12 @@ router.use(requirePlatformAdmin);
  *       200:
  *         description: Array of platform admins.
  */
-router.get('/', listPlatformAdmins);
+router.get('/', requireAnyPlatformAdminPermission('users.view', 'roles.view'), listPlatformAdmins);
 
-router.get('/invite-roles', getPlatformAdminInviteRoles);
-router.post('/invite', generatePlatformAdminInvite);
-router.get('/invites', getPlatformAdminInvites);
-router.delete('/invites/:id', revokePlatformAdminInvite);
+router.get('/invite-roles', requirePlatformAdminPermission('users.manage'), getPlatformAdminInviteRoles);
+router.post('/invite', requirePlatformAdminPermission('users.manage'), generatePlatformAdminInvite);
+router.get('/invites', requirePlatformAdminPermission('users.view'), getPlatformAdminInvites);
+router.delete('/invites/:id', requirePlatformAdminPermission('users.manage'), revokePlatformAdminInvite);
 
 /**
  * @swagger
@@ -71,7 +75,7 @@ router.delete('/invites/:id', revokePlatformAdminInvite);
  *       201:
  *         description: Platform admin created.
  */
-router.post('/', createPlatformAdmin);
+router.post('/', requirePlatformAdminPermission('users.manage'), createPlatformAdmin);
 
 /**
  * @swagger
@@ -105,7 +109,7 @@ router.post('/', createPlatformAdmin);
  *       200:
  *         description: Platform admin updated.
  */
-router.put('/:id', updatePlatformAdmin);
+router.put('/:id', requirePlatformAdminPermission('users.manage'), updatePlatformAdmin);
 
 module.exports = router;
 

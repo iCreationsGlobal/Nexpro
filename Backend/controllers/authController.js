@@ -59,6 +59,7 @@ const findUserForAuthResponse = (userId, options = {}) =>
   });
 
 const { attachSafeProfilePicture } = require('../utils/profilePictureResponse');
+const { isBootstrapPlatformSuperAdminEmail } = require('../utils/platformAdminBootstrap');
 
 const withAuthResponseFields = (userJson = {}) => {
   const isGoogleUser = Boolean(userJson.googleId);
@@ -1459,6 +1460,13 @@ exports.updateDetails = async (req, res, next) => {
     const user = await User.findByPk(req.user.id);
     const newEmail = req.body.email != null ? String(req.body.email).trim().toLowerCase() : null;
     const isChangingEmail = newEmail && user.email && newEmail !== user.email.trim().toLowerCase();
+
+    if (isChangingEmail && isBootstrapPlatformSuperAdminEmail(newEmail)) {
+      return res.status(403).json({
+        success: false,
+        message: 'This email address is reserved.',
+      });
+    }
 
     if (isChangingEmail && !user.emailVerifiedAt) {
       const memberships = await UserTenant.findAll({

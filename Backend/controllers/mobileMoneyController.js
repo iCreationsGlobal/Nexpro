@@ -379,48 +379,159 @@ exports.detectProvider = async (req, res) => {
   }
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const matchesMobileMoneyReference = (ref) => ({
+  [Op.or]: [
+    sequelize.where(sequelize.json('metadata.mobileMoneyRef.referenceId'), ref),
+    sequelize.where(sequelize.json('metadata.mobileMoneyRef.clientReference'), ref)
+  ]
+});
+
+/**
+ * Find sale/invoice by the provider reference stored in metadata.mobileMoneyRef.
+ * Uses parameterized JSON path (no string-interpolated SQL).
+ * @param {string} reference
+ */
+async function findRecordsByMobileMoneyReference(reference) {
+  const ref = String(reference || '').trim();
+  if (!ref) return { sale: null, invoice: null };
+
+  const [sale, invoice] = await Promise.all([
+    Sale.findOne({ where: matchesMobileMoneyReference(ref) }),
+    Invoice.findOne({ where: matchesMobileMoneyReference(ref) })
+  ]);
+  return { sale, invoice };
+}
+
+/**
+ * Charges are initiated with externalId = the sale or invoice id (see initiatePayment), which is all
+ * MTN echoes back in its callback body.
+ * @param {string} externalId
+ */
+async function findRecordsByExternalId(externalId) {
+  const id = String(externalId || '').trim();
+  if (!UUID_PATTERN.test(id)) return { sale: null, invoice: null };
+
+  const [sale, invoice] = await Promise.all([Sale.findByPk(id), Invoice.findByPk(id)]);
+  return { sale, invoice };
+}
+
+/**
+ * Ask the provider for the status of the record's own stored reference. Returns null when there is
+ * nothing to check or the provider could not give a definite answer.
+ */
+async function fetchVerifiedStatus(record) {
+  const ref = record.metadata?.mobileMoneyRef;
+  if (!ref?.referenceId || !ref?.provider) return null;
+
+  const tenant = await loadTenant(record.tenantId);
+  if (!tenant) return null;
+
+  const result = await checkDirectMoMoStatus({
+    tenant,
+    referenceId: ref.referenceId,
+    provider: ref.provider
+  });
+  if (!result?.status || result.status === 'UNKNOWN') return null;
+
+  return {
+    status: result.status,
+    mobileMoneyRef: {
+      ...ref,
+      status: result.status,
+      lastChecked: new Date().toISOString(),
+      ...(result.financialTransactionId ? { financialTransactionId: result.financialTransactionId } : {}),
+      ...(result.status === 'SUCCESSFUL' ? { completedAt: new Date().toISOString() } : {})
+    }
+  };
+}
+
+async function syncSaleWithProvider(sale) {
+  if (sale.status === 'completed' && sale.metadata?.mobileMoneyRef?.status === 'SUCCESSFUL') return;
+
+  const verified = await fetchVerifiedStatus(sale);
+  if (!verified) return;
+
+  const metadata = { ...sale.metadata, mobileMoneyRef: verified.mobileMoneyRef };
+  if (verified.status === 'SUCCESSFUL') {
+    await sale.update({
+      status: 'completed',
+      paymentMethod: 'mobile_money',
+      amountPaid: sale.total,
+      metadata
+    });
+    try {
+      emitNewSale(sale.tenantId, sale);
+    } catch (e) {
+      console.error('WebSocket emit error:', e);
+    }
+  } else {
+    await sale.update({ metadata });
+  }
+}
+
+async function syncInvoiceWithProvider(invoice) {
+  if (invoice.status === 'paid') return;
+
+  const verified = await fetchVerifiedStatus(invoice);
+  if (!verified) return;
+
+  // Mark ref only; public/auth poll finalize records the Payment row idempotently.
+  await invoice.update({
+    metadata: { ...invoice.metadata, mobileMoneyRef: verified.mobileMoneyRef }
+  });
+}
+
+/**
+ * Provider callbacks carry nothing we can authenticate, so their payload only says which payment to
+ * look at. What gets recorded always comes from asking the provider about our own stored reference.
+ * @param {{ references?: Array<string|undefined>, externalId?: string }} hints
+ */
+async function reconcileMobileMoneyCallback({ references = [], externalId } = {}) {
+  const sales = new Map();
+  const invoices = new Map();
+  const collect = ({ sale, invoice }) => {
+    if (sale) sales.set(sale.id, sale);
+    if (invoice) invoices.set(invoice.id, invoice);
+  };
+
+  for (const reference of new Set(references.filter(Boolean).map(String))) {
+    collect(await findRecordsByMobileMoneyReference(reference));
+  }
+  if (externalId) {
+    collect(await findRecordsByExternalId(externalId));
+  }
+
+  for (const sale of sales.values()) {
+    await syncSaleWithProvider(sale);
+  }
+  for (const invoice of invoices.values()) {
+    await syncInvoiceWithProvider(invoice);
+  }
+}
+
 /**
  * Webhook handler for MTN MoMo callbacks
  * @route POST /api/webhooks/mtn-momo
  */
 exports.mtnWebhook = async (req, res) => {
   try {
-    console.log('[MTN Webhook] Received:', JSON.stringify(req.body, null, 2));
-    
-    const { referenceId, status, financialTransactionId, externalId } = req.body;
-
-    // Find the sale or invoice with this reference
-    const sale = await Sale.findOne({
-      where: sequelize.literal(`metadata->>'mobileMoneyRef'->>'referenceId' = '${referenceId}'`)
+    const body = req.body || {};
+    console.log('[MTN Webhook] Received:', {
+      status: body.status,
+      hasReferenceId: Boolean(body.referenceId || req.query?.referenceId),
+      hasExternalId: Boolean(body.externalId)
     });
 
-    if (sale && status === 'SUCCESSFUL') {
-      await sale.update({
-        status: 'completed',
-        paymentMethod: 'mobile_money',
-        amountPaid: sale.total,
-        metadata: {
-          ...sale.metadata,
-          mobileMoneyRef: {
-            ...sale.metadata.mobileMoneyRef,
-            status: 'SUCCESSFUL',
-            financialTransactionId,
-            completedAt: new Date().toISOString()
-          }
-        }
-      });
-
-      // Emit real-time update
-      try {
-        emitNewSale(sale.tenantId, sale);
-      } catch (e) {
-        console.error('WebSocket emit error:', e);
-      }
-    }
+    await reconcileMobileMoneyCallback({
+      references: [body.referenceId, req.query?.referenceId],
+      externalId: body.externalId
+    });
 
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error('[MTN Webhook] Error:', error);
+    console.error('[MTN Webhook] Error:', error?.message || error);
     res.status(200).json({ success: true }); // Always return 200 to prevent retries
   }
 };
@@ -431,88 +542,20 @@ exports.mtnWebhook = async (req, res) => {
  */
 exports.airtelWebhook = async (req, res) => {
   try {
-    console.log('[Airtel Webhook] Received:', JSON.stringify(req.body, null, 2));
-    
-    const { transaction } = req.body;
-    const referenceId = transaction?.id;
-    const status = transaction?.status;
+    const transaction = req.body?.transaction;
+    console.log('[Airtel Webhook] Received:', {
+      status: transaction?.status,
+      hasTransactionId: Boolean(transaction?.id)
+    });
 
-    if (referenceId && status === 'TS') { // TS = Transaction Successful
-      const sale = await Sale.findOne({
-        where: sequelize.literal(`metadata->>'mobileMoneyRef'->>'referenceId' = '${referenceId}'`)
-      });
-
-      if (sale) {
-        await sale.update({
-          status: 'completed',
-          paymentMethod: 'mobile_money',
-          amountPaid: sale.total,
-          metadata: {
-            ...sale.metadata,
-            mobileMoneyRef: {
-              ...sale.metadata.mobileMoneyRef,
-              status: 'SUCCESSFUL',
-              completedAt: new Date().toISOString()
-            }
-          }
-        });
-
-        try {
-          emitNewSale(sale.tenantId, sale);
-        } catch (e) {
-          console.error('WebSocket emit error:', e);
-        }
-      }
-    }
+    await reconcileMobileMoneyCallback({ references: [transaction?.id] });
 
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error('[Airtel Webhook] Error:', error);
+    console.error('[Airtel Webhook] Error:', error?.message || error);
     res.status(200).json({ success: true });
   }
 };
-
-/**
- * Find sale/invoice by Hubtel clientReference stored in metadata.mobileMoneyRef.
- * Uses parameterized JSON path (no string-interpolated SQL).
- * @param {string} clientReference
- */
-async function findRecordsByHubtelClientReference(clientReference) {
-  const ref = String(clientReference || '').trim();
-  if (!ref) return { sale: null, invoice: null };
-
-  const sale = await Sale.findOne({
-    where: {
-      [Op.or]: [
-        sequelize.where(
-          sequelize.json('metadata.mobileMoneyRef.referenceId'),
-          ref
-        ),
-        sequelize.where(
-          sequelize.json('metadata.mobileMoneyRef.clientReference'),
-          ref
-        )
-      ]
-    }
-  });
-
-  const invoice = await Invoice.findOne({
-    where: {
-      [Op.or]: [
-        sequelize.where(
-          sequelize.json('metadata.mobileMoneyRef.referenceId'),
-          ref
-        ),
-        sequelize.where(
-          sequelize.json('metadata.mobileMoneyRef.clientReference'),
-          ref
-        )
-      ]
-    }
-  });
-
-  return { sale, invoice };
-}
 
 /**
  * Idempotent Hubtel Receive Money callback.
@@ -531,66 +574,7 @@ exports.hubtelWebhook = async (req, res) => {
       return res.status(200).json({ success: true, ignored: true });
     }
 
-    const { sale, invoice } = await findRecordsByHubtelClientReference(parsed.clientReference);
-
-    if (sale) {
-      const existing = sale.metadata?.mobileMoneyRef || {};
-      if (existing.status === 'SUCCESSFUL' && sale.status === 'completed') {
-        return res.status(200).json({ success: true, duplicate: true });
-      }
-
-      const updatedRef = {
-        ...existing,
-        referenceId: existing.referenceId || parsed.clientReference,
-        clientReference: parsed.clientReference,
-        provider: 'HUBTEL',
-        status: parsed.status,
-        lastChecked: new Date().toISOString(),
-        ...(parsed.transactionId ? { financialTransactionId: parsed.transactionId } : {}),
-        ...(parsed.status === 'SUCCESSFUL' ? { completedAt: new Date().toISOString() } : {})
-      };
-
-      if (parsed.status === 'SUCCESSFUL') {
-        await sale.update({
-          status: 'completed',
-          paymentMethod: 'mobile_money',
-          amountPaid: sale.total,
-          metadata: { ...sale.metadata, mobileMoneyRef: updatedRef }
-        });
-        try {
-          emitNewSale(sale.tenantId, sale);
-        } catch (e) {
-          console.error('WebSocket emit error:', e);
-        }
-      } else {
-        await sale.update({
-          metadata: { ...sale.metadata, mobileMoneyRef: updatedRef }
-        });
-      }
-    }
-
-    if (invoice) {
-      const existing = invoice.metadata?.mobileMoneyRef || {};
-      if (existing.status === 'SUCCESSFUL' && invoice.status === 'paid') {
-        return res.status(200).json({ success: true, duplicate: true });
-      }
-
-      const updatedRef = {
-        ...existing,
-        referenceId: existing.referenceId || parsed.clientReference,
-        clientReference: parsed.clientReference,
-        provider: 'HUBTEL',
-        status: parsed.status,
-        lastChecked: new Date().toISOString(),
-        ...(parsed.transactionId ? { financialTransactionId: parsed.transactionId } : {}),
-        ...(parsed.status === 'SUCCESSFUL' ? { completedAt: new Date().toISOString() } : {})
-      };
-
-      // Mark ref only; public/auth poll finalize records the Payment row idempotently.
-      await invoice.update({
-        metadata: { ...invoice.metadata, mobileMoneyRef: updatedRef }
-      });
-    }
+    await reconcileMobileMoneyCallback({ references: [parsed.clientReference] });
 
     res.status(200).json({ success: true });
   } catch (error) {

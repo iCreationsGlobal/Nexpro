@@ -453,7 +453,10 @@ exports.handleSabitoCustomerWebhook = async (req, res) => {
 exports.handlePaystackWebhook = async (req, res) => {
   try {
     const signature = req.headers['x-paystack-signature'];
-    const rawBody = req.rawBody || (req.body ? JSON.stringify(req.body) : '');
+    // Paystack signs the exact bytes it sent; re-serialising req.body is only a fallback.
+    const rawBody = req.rawBody
+      ? req.rawBody.toString('utf8')
+      : (req.body ? JSON.stringify(req.body) : '');
     const body = typeof req.body === 'object' ? req.body : {};
 
     if (!paystackService.secretKey) {
@@ -461,12 +464,10 @@ exports.handlePaystackWebhook = async (req, res) => {
       return res.status(503).send('Service unavailable');
     }
 
-    if (signature && rawBody) {
-      const isValid = paystackService.verifyWebhookSignature(signature, rawBody);
-      if (!isValid) {
-        console.error('[Paystack Webhook] Invalid signature');
-        return res.status(401).send('Invalid signature');
-      }
+    // Paystack signs every webhook, so an unsigned call can't be from Paystack.
+    if (!signature || !rawBody || !paystackService.verifyWebhookSignature(signature, rawBody)) {
+      console.error('[Paystack Webhook] Missing or invalid signature');
+      return res.status(401).send('Invalid signature');
     }
 
     const event = body.event;

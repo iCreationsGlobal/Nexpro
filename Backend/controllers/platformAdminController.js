@@ -3,8 +3,25 @@ const { Op } = require('sequelize');
 const { User, InviteToken } = require('../models');
 const { getPlatformAdminInviteRoles, isValidPlatformAdminInviteRole } = require('../config/platformAdminInviteRoles');
 const { getFrontendBaseUrl } = require('../utils/frontendUrl');
+const {
+  isBootstrapPlatformSuperAdmin,
+  isBootstrapPlatformSuperAdminEmail
+} = require('../utils/platformAdminBootstrap');
 
 const generateToken = () => crypto.randomBytes(16).toString('hex');
+
+/** Super-admin addresses grant full access by email alone, so only a super admin may hand one out. */
+const rejectReservedEmail = (req, res, email) => {
+  if (isBootstrapPlatformSuperAdminEmail(email) && !isBootstrapPlatformSuperAdmin(req.user)) {
+    res.status(403).json({
+      success: false,
+      message: 'This email address is reserved.'
+    });
+    return true;
+  }
+  return false;
+};
+
 /**
  * Get roles available for platform admin invites.
  * @route   GET /api/platform-admins/invite-roles
@@ -40,6 +57,7 @@ exports.generatePlatformAdminInvite = async (req, res, next) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    if (rejectReservedEmail(req, res, normalizedEmail)) return;
     const existingUser = await User.findOne({ where: { email: normalizedEmail } });
     if (existingUser) {
       return res.status(400).json({
@@ -169,6 +187,7 @@ exports.createPlatformAdmin = async (req, res, next) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    if (rejectReservedEmail(req, res, normalizedEmail)) return;
     const existing = await User.findOne({ where: { email: normalizedEmail } });
 
     if (existing) {
@@ -209,6 +228,13 @@ exports.updatePlatformAdmin = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: 'Platform admin not found'
+      });
+    }
+
+    if (isBootstrapPlatformSuperAdmin(admin) && !isBootstrapPlatformSuperAdmin(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only a super admin can change a super admin's account."
       });
     }
 

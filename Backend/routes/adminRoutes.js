@@ -673,26 +673,26 @@ router.get('/reports/top-customers', requirePlatformAdminPermission('reports.vie
 /**
  * Admin Leads routes (for tracking potential customers/businesses)
  */
-router.get('/leads', getAdminLeads);
-router.get('/leads/stats', getAdminLeadStats);
-router.post('/leads/broadcast', broadcastAdminLeads);
-router.get('/leads/:id', getAdminLead);
-router.post('/leads', createAdminLead);
-router.put('/leads/:id', updateAdminLead);
-router.delete('/leads/:id', deleteAdminLead);
-router.post('/leads/:id/activities', addAdminLeadActivity);
-router.post('/leads/:id/convert-to-job', convertAdminLeadToJob);
+router.get('/leads', requirePlatformAdminPermission('leads.view'), getAdminLeads);
+router.get('/leads/stats', requirePlatformAdminPermission('leads.view'), getAdminLeadStats);
+router.post('/leads/broadcast', requirePlatformAdminPermission('leads.manage'), broadcastAdminLeads);
+router.get('/leads/:id', requirePlatformAdminPermission('leads.view'), getAdminLead);
+router.post('/leads', requirePlatformAdminPermission('leads.manage'), createAdminLead);
+router.put('/leads/:id', requirePlatformAdminPermission('leads.manage'), updateAdminLead);
+router.delete('/leads/:id', requirePlatformAdminPermission('leads.manage'), deleteAdminLead);
+router.post('/leads/:id/activities', requirePlatformAdminPermission('leads.manage'), addAdminLeadActivity);
+router.post('/leads/:id/convert-to-job', requirePlatformAdminPermission('leads.manage'), convertAdminLeadToJob);
 
 /**
  * Admin Jobs routes (for tracking software projects)
  */
-router.get('/jobs', getAdminJobs);
-router.get('/jobs/stats', getAdminJobStats);
-router.get('/jobs/:id', getAdminJob);
-router.post('/jobs', createAdminJob);
-router.put('/jobs/:id', updateAdminJob);
-router.patch('/jobs/:id/assign', assignAdminJob);
-router.delete('/jobs/:id', deleteAdminJob);
+router.get('/jobs', requirePlatformAdminPermission('jobs.view'), getAdminJobs);
+router.get('/jobs/stats', requirePlatformAdminPermission('jobs.view'), getAdminJobStats);
+router.get('/jobs/:id', requirePlatformAdminPermission('jobs.view'), getAdminJob);
+router.post('/jobs', requirePlatformAdminPermission('jobs.manage'), createAdminJob);
+router.put('/jobs/:id', requirePlatformAdminPermission('jobs.manage'), updateAdminJob);
+router.patch('/jobs/:id/assign', requirePlatformAdminPermission('jobs.manage'), assignAdminJob);
+router.delete('/jobs/:id', requirePlatformAdminPermission('jobs.manage'), deleteAdminJob);
 
 /**
  * Admin Expenses routes (platform-wide expense tracking)

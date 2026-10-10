@@ -3,7 +3,6 @@ const multer = require('multer');
 const { getPublicPlans } = require('../controllers/publicPricingController');
 const {
   getInvoiceByToken,
-  processPublicPayment,
   initializePaystackForInvoice,
   verifyPaystackReturnForPublicInvoice,
   initiateMobileMoneyForPublicInvoice,
@@ -187,7 +186,6 @@ router.get('/sales-agent-codes/:code/validate', async (req, res, next) => {
 
 // Public invoice routes (no authentication required)
 router.get('/invoices/:token', getInvoiceByToken);
-router.post('/invoices/:token/pay', processPublicPayment);
 router.post('/invoices/:token/initialize-paystack', initializePaystackForInvoice);
 router.post('/invoices/:token/verify-paystack', verifyPaystackReturnForPublicInvoice);
 router.post('/invoices/:token/mobile-money/initiate', initiateMobileMoneyForPublicInvoice);

@@ -8,6 +8,33 @@ const { validateSeatLimit } = require('../utils/seatLimitHelper');
 const ALLOWED_USER_ROLES = ['admin', 'manager', 'staff', 'driver'];
 const ADMIN_LIKE_ROLES = ['owner', 'admin'];
 
+/**
+ * Account fields a workspace admin may set on a teammate. Everything else on User — the platform-admin
+ * flag, active/lockout state, email verification, SSO links — is account-wide, so one workspace must
+ * never be able to write it.
+ */
+const TEAMMATE_PROFILE_FIELDS = ['name', 'email', 'profilePicture'];
+
+const pickTeammateProfileFields = (body) => {
+  const picked = {};
+  TEAMMATE_PROFILE_FIELDS.forEach((field) => {
+    if (body && Object.prototype.hasOwnProperty.call(body, field)) {
+      picked[field] = body[field];
+    }
+  });
+  return picked;
+};
+
+const belongsToOtherWorkspaces = async (userId, tenantId) =>
+  (await UserTenant.count({ where: { userId, tenantId: { [Op.ne]: tenantId } } })) > 0;
+
+/**
+ * An account that is also used outside this workspace (another workspace, or the platform admin
+ * console) is not this workspace's to sign in as, lock out or re-point at a new email address.
+ */
+const isSharedAccount = async (user, tenantId) =>
+  Boolean(user.isPlatformAdmin) || belongsToOtherWorkspaces(user.id, tenantId);
+
 const jsonError = (req, res, statusCode, error, errorCode) => {
   const requestId = req.id || req.headers?.['x-request-id'] || undefined;
   return res.status(statusCode).json({
@@ -159,18 +186,19 @@ exports.createUser = async (req, res, next) => {
       throw error;
     }
 
-    const { password, ...userData } = req.body;
-    const requestedRole = userData.role || 'staff';
+    const { password, role } = req.body || {};
+    const requestedRole = role || 'staff';
     if (!ALLOWED_USER_ROLES.includes(requestedRole)) {
       return res.status(400).json({
         success: false,
         message: `Invalid role. Expected one of: ${ALLOWED_USER_ROLES.join(', ')}`,
       });
     }
-    
-    // Create user
+
+    // Create user — account-wide flags (platform admin, active, verified) keep their defaults
     const user = await User.create({
-      ...userData,
+      ...pickTeammateProfileFields(req.body),
+      role: requestedRole,
       password: password // Will be hashed by User model hook
     });
 
@@ -229,10 +257,36 @@ exports.updateUser = async (req, res, next) => {
       });
     }
 
-    // Don't allow updating password through this route
-    const { password, interfaceMode, ...updateData } = req.body;
-    if (Object.prototype.hasOwnProperty.call(updateData, 'role')) {
-      const requestedRole = updateData.role || 'staff';
+    // Password, platform-admin and other account-wide fields are never writable through this route
+    const body = req.body || {};
+    const { interfaceMode } = body;
+    const updateData = pickTeammateProfileFields(body);
+    // The first-login screen clears its own flag here; nothing may set it back on.
+    if (body.isFirstLogin === false) {
+      updateData.isFirstLogin = false;
+    }
+
+    const requestedEmail =
+      typeof updateData.email === 'string' ? updateData.email.trim().toLowerCase() : updateData.email;
+    if (requestedEmail === String(user.email || '').trim().toLowerCase()) {
+      delete updateData.email;
+    } else if (updateData.email !== undefined) {
+      if (String(user.id) === String(req.user?.id)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Change your own email from your profile settings.'
+        });
+      }
+      if (await isSharedAccount(user, req.tenantId)) {
+        return res.status(403).json({
+          success: false,
+          message: "This person's sign-in email can't be changed from your workspace because their account is also used elsewhere."
+        });
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'role')) {
+      const requestedRole = body.role || 'staff';
       if (!ALLOWED_USER_ROLES.includes(requestedRole)) {
         return res.status(400).json({
           success: false,
@@ -385,6 +439,21 @@ exports.toggleUserStatus = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: 'User not found'
+      });
+    }
+
+    if (String(user.id) === String(req.user?.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "You can't deactivate your own account."
+      });
+    }
+
+    // isActive is account-wide: flipping it here would lock the person out of every other workspace too
+    if (await isSharedAccount(user, req.tenantId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'This account is also used outside your workspace. Remove the person from your workspace instead.'
       });
     }
 

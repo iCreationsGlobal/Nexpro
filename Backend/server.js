@@ -124,7 +124,7 @@ app.use(
     limit: '10mb',
     verify: (req, res, buf) => {
       const pathHint = `${req.originalUrl || ''} ${req.url || ''} ${req.path || ''}`;
-      if (req.method === 'POST' && /webhooks\/whatsapp/.test(pathHint)) {
+      if (req.method === 'POST' && /webhooks\/(whatsapp|paystack)/.test(pathHint)) {
         req.rawBody = buf;
       }
     }
