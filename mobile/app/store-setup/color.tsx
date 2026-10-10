@@ -1,14 +1,15 @@
-import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator } from 'react-native';
 
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { StoreSetupChrome } from '@/components/store/StoreSetupChrome';
 import { useAuth } from '@/context/AuthContext';
-import { useStoreSetup } from '@/context/StoreSetupContext';
+import { useStoreSetup, useStoreSetupEditing } from '@/context/StoreSetupContext';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { STORE_PRIMARY_FALLBACK } from '@/utils/onlineStoreDefaults';
 import { BRAND_GREEN } from '@/constants/brand';
 import { AppIcon } from '@/components/AppIcon';
+import { getErrorMessage } from '@/utils/errorMessages';
 
 const THEME_PRESETS = [
   { label: 'ABS Green', value: '#166534' },
@@ -28,10 +29,21 @@ const THEME_PRESETS = [
 export default function StoreSetupColorScreen() {
   const { hasFeature } = useAuth();
   const { textColor, mutedColor, borderColor } = useScreenColors();
-  const { gapFlags, defaults, settings, persistSoftAndAdvance } = useStoreSetup();
+  const { loading, gapFlags, defaults, settings, persistSoftAndAdvance, saveLiveEdit, closeEditor } =
+    useStoreSetup();
+  const editing = useStoreSetupEditing();
   const [selected, setSelected] = useState(
     () => String(settings?.primaryColor || defaults.primaryColor || STORE_PRIMARY_FALLBACK)
   );
+  const [saving, setSaving] = useState(false);
+  const seededFromSavedRef = useRef(false);
+
+  // Editors open before the saved settings arrive; start from the saved colour once they do.
+  useEffect(() => {
+    if (!editing || loading || seededFromSavedRef.current) return;
+    seededFromSavedRef.current = true;
+    if (settings?.primaryColor) setSelected(String(settings.primaryColor));
+  }, [editing, loading, settings?.primaryColor]);
 
   const persistAndAdvance = useCallback(
     (color: string) => {
@@ -40,9 +52,25 @@ export default function StoreSetupColorScreen() {
     [persistSoftAndAdvance]
   );
 
-  const onContinue = useCallback(() => {
+  const onContinue = useCallback(async () => {
+    if (editing) {
+      if (selected.toLowerCase() === String(settings?.primaryColor || '').toLowerCase()) {
+        closeEditor();
+        return;
+      }
+      setSaving(true);
+      try {
+        await saveLiveEdit({ primaryColor: selected });
+        closeEditor();
+      } catch (error) {
+        Alert.alert('Could not save', getErrorMessage(error, 'Failed to save brand color.'));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     persistAndAdvance(selected);
-  }, [persistAndAdvance, selected]);
+  }, [closeEditor, editing, persistAndAdvance, saveLiveEdit, selected, settings?.primaryColor]);
 
   const onSkip = useCallback(() => {
     persistAndAdvance(STORE_PRIMARY_FALLBACK);
@@ -52,17 +80,32 @@ export default function StoreSetupColorScreen() {
     return <FeatureAccessDenied message="Online store is not enabled for your workspace." />;
   }
 
+  if (editing && loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={BRAND_GREEN} />
+      </View>
+    );
+  }
+
   return (
     <StoreSetupChrome
       stepId="color"
       gapFlags={gapFlags}
-      onSkip={onSkip}
+      onSkip={editing ? undefined : onSkip}
       skipLabel="Skip"
-      onContinue={onContinue}
+      onContinue={() => {
+        void onContinue();
+      }}
+      continueLabel={editing ? 'Save' : 'Continue'}
+      continuing={saving}
+      editing={editing}
     >
-      <Text style={[styles.headline, { color: textColor }]}>Pick a brand color</Text>
+      <Text style={[styles.headline, { color: textColor }]}>{editing ? 'Brand color' : 'Pick a brand color'}</Text>
       <Text style={[styles.body, { color: mutedColor }]}>
-        Used for buttons and accents on your store. Skip to use ABS green.
+        {editing
+          ? 'Used for buttons and accents on your store.'
+          : 'Used for buttons and accents on your store. Skip to use ABS green.'}
       </Text>
 
       <View style={styles.grid}>
@@ -94,6 +137,7 @@ export default function StoreSetupColorScreen() {
 }
 
 const styles = StyleSheet.create({
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   headline: {
     fontSize: 28,
     fontWeight: '700',

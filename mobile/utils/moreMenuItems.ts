@@ -49,13 +49,13 @@ export function buildMoreMenuSections({
     ];
   }
 
-  const resolvedType = resolveBusinessType(businessType);
+  const resolvedType = resolveBusinessType(businessType ?? undefined);
   const isShop = resolvedType === 'shop';
   const isPharmacy = resolvedType === 'pharmacy';
   const isStudio = resolvedType === 'studio';
   const isRestaurant = shopType === SHOP_TYPES.RESTAURANT;
   const quotesOk =
-    hasFeature('quoteAutomation') && isQuotesEnabledForTenant(businessType, shopType);
+    hasFeature('quoteAutomation') && isQuotesEnabledForTenant(businessType ?? undefined, shopType ?? undefined);
 
   const primaryFocusId = focusAreas?.[0];
   const wantsOnlineOrdersTab = focusAreas?.includes('online_store') === true;
@@ -99,6 +99,9 @@ export function buildMoreMenuSections({
   }
   if (isRestaurant && hasFeature('orders')) {
     store.push({ id: 'orders', label: 'Orders', icon: 'cutlery', route: '/(tabs)/orders' });
+  }
+  if (hasFeature('watch')) {
+    store.push({ id: 'watch', label: 'Watch', icon: 'eye', route: '/(tabs)/watch' });
   }
   if (hasFeature('expenses')) {
     store.push({ id: 'expenses', label: 'Expenses', icon: 'minus-circle', route: '/(tabs)/expenses' });

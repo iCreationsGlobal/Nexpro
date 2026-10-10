@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text } from 'react-native';
+import { Text, type ColorValue } from 'react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import {
   AlertCircle,
@@ -189,7 +189,7 @@ export type AppIconName = keyof typeof ICON_MAP | 'logo-google';
 export type AppIconProps = {
   name: AppIconName;
   size?: number;
-  color?: string;
+  color?: ColorValue;
   strokeWidth?: number;
   style?: object;
 };

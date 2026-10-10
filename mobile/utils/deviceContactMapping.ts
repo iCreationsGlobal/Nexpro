@@ -64,7 +64,7 @@ export function mapContactToCustomerForm(contact: Contacts.Contact): CustomerFor
 /**
  * Map a device contact to a list row (import / picker).
  */
-export function mapContactToRow(contact: Contacts.Contact, index: number): DeviceContactRow | null {
+export function mapContactToRow(contact: Contacts.Contact & { id?: string }, index: number): DeviceContactRow | null {
   const mapped = mapContactToCustomerForm(contact);
   if (!mapped) return null;
 

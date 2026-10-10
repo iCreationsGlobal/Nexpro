@@ -36,6 +36,7 @@ import { useAuth } from '@/context/AuthContext';
 import { markIntroOnboardingComplete } from '@/utils/introOnboarding';
 import { getIntroCardLayout, INTRO_CARD_SHADOW } from '@/utils/introCardLayout';
 import { logger } from '@/utils/logger';
+import { useMarkInteractiveAfterStartup } from '@/hooks/useMarkInteractiveAfterStartup';
 
 const TITLE_COLOR = '#0f172a';
 const SUBTITLE_COLOR = '#6b7280';
@@ -132,6 +133,7 @@ function IntroCardStagePlain({ slide, stageHeight, stageWidth }: { slide: Splash
 }
 
 export default function IntroScreen() {
+  useMarkInteractiveAfterStartup();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();

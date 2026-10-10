@@ -4,7 +4,7 @@ import { isScanningEnabled, mergeScanningConfig } from '@/utils/posScanningConfi
 import { QUERY_STALE } from '@/utils/queryInvalidation';
 
 /**
- * Whether barcode/camera scanning is enabled for the workspace (opt-in).
+ * Whether barcode/camera scanning is enabled for the workspace (on unless explicitly disabled).
  */
 export function useScanningEnabled() {
   const { data, isLoading } = useQuery({

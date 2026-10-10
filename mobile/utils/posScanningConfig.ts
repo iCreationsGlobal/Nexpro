@@ -1,5 +1,5 @@
 export const SCANNING_CONFIG_DEFAULTS = {
-  enabled: false,
+  enabled: true,
   allowManualBarcodeEntry: true,
   allowExternalScanner: true,
 };

@@ -16,11 +16,12 @@ import { FormSheetModal } from '@/components/FormSheetModal';
 import { FormInput, FormLabel } from '@/components/FormField';
 import { StoreSetupChrome } from '@/components/store/StoreSetupChrome';
 import { useAuth } from '@/context/AuthContext';
-import { useStoreSetup, type StoreSetupProduct } from '@/context/StoreSetupContext';
+import { useStoreSetup, useStoreSetupEditing, type StoreSetupProduct } from '@/context/StoreSetupContext';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { storeService } from '@/services/storeService';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { getErrorMessage } from '@/utils/errorMessages';
+import { parseApiListResponse } from '@/utils/parseApiListResponse';
 import { resolveImageUrl } from '@/utils/fileUtils';
 import { BRAND_GREEN } from '@/constants/brand';
 import { FontFamily, FontSize } from '@/constants/typography';
@@ -72,7 +73,17 @@ function draftPublishable(draft: PublishDraft): { ok: boolean; reason?: string }
 export default function StoreSetupProductsScreen() {
   const { hasFeature } = useAuth();
   const { textColor, mutedColor, borderColor, cardBg } = useScreenColors();
-  const { gapFlags, products, productsLoading, ensureProductsLoaded, advanceFrom } = useStoreSetup();
+  const {
+    gapFlags,
+    products,
+    productsLoading,
+    ensureProductsLoaded,
+    advanceFrom,
+    closeEditor: closeStoreEditor,
+  } = useStoreSetup();
+  const editing = useStoreSetupEditing();
+  /** Live store: products already published online, which this screen leaves out. */
+  const [publishedProductIds, setPublishedProductIds] = useState<Set<string> | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, PublishDraft>>({});
   const [editingProduct, setEditingProduct] = useState<StoreSetupProduct | null>(null);
@@ -84,14 +95,40 @@ export default function StoreSetupProductsScreen() {
     void ensureProductsLoaded();
   }, [ensureProductsLoaded]);
 
+  useEffect(() => {
+    if (!editing) return;
+    let cancelled = false;
+    storeService
+      .getListings({ status: 'published', limit: 200 })
+      .then((res) => {
+        if (cancelled) return;
+        const listings = parseApiListResponse<{ productId?: string | null }>(res);
+        setPublishedProductIds(new Set(listings.map((l) => String(l.productId || '')).filter(Boolean)));
+      })
+      .catch(() => {
+        // Without listings, show every product; publishing again just updates the listing
+        if (!cancelled) setPublishedProductIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editing]);
+
   const rows = useMemo(
     () =>
-      products.map((product) => ({
-        product,
-        publishable: productPublishable(product),
-      })),
-    [products]
+      products
+        .filter((product) => !publishedProductIds?.has(product.id))
+        .map((product) => ({
+          product,
+          publishable: productPublishable(product),
+        })),
+    [products, publishedProductIds]
   );
+
+  const finish = useCallback(() => {
+    if (editing) closeStoreEditor();
+    else advanceFrom('products');
+  }, [advanceFrom, closeStoreEditor, editing]);
 
   const openEditor = useCallback(
     (product: StoreSetupProduct) => {
@@ -194,7 +231,7 @@ export default function StoreSetupProductsScreen() {
   const publishSelected = useCallback(async () => {
     const ids = [...selected];
     if (!ids.length) {
-      advanceFrom('products');
+      finish();
       return;
     }
 
@@ -224,13 +261,13 @@ export default function StoreSetupProductsScreen() {
           `${failureCount} could not be published. You can finish them later from the store.`
         );
       }
-      advanceFrom('products');
+      finish();
     } catch (error) {
       Alert.alert('Could not publish', getErrorMessage(error, 'Failed to publish products.'));
     } finally {
       setPublishing(false);
     }
-  }, [advanceFrom, drafts, products, selected]);
+  }, [drafts, finish, products, selected]);
 
   const onSkip = useCallback(() => {
     advanceFrom('products');
@@ -240,7 +277,7 @@ export default function StoreSetupProductsScreen() {
     return <FeatureAccessDenied message="Online store is not enabled for your workspace." />;
   }
 
-  if (productsLoading && !products.length) {
+  if ((productsLoading && !products.length) || (editing && !publishedProductIds)) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={BRAND_GREEN} />
@@ -255,23 +292,32 @@ export default function StoreSetupProductsScreen() {
     <StoreSetupChrome
       stepId="products"
       gapFlags={gapFlags}
-      onSkip={onSkip}
+      onSkip={editing ? undefined : onSkip}
       skipLabel="Skip for now"
       onContinue={() => {
         void publishSelected();
       }}
-      continueLabel={selected.size ? `Publish ${selected.size}` : 'Continue'}
+      continueLabel={selected.size ? `Publish ${selected.size}` : editing ? 'Done' : 'Continue'}
       continuing={publishing}
       hideFooter={false}
+      editing={editing}
     >
-      <Text style={[styles.headline, { color: textColor }]}>What will you sell?</Text>
+      <Text style={[styles.headline, { color: textColor }]}>
+        {editing ? 'Add products' : 'What will you sell?'}
+      </Text>
       <Text style={[styles.body, { color: mutedColor }]}>
-        Pick products from your stock. Review name, price, and photo before they go live. You can skip and add later.
+        {editing
+          ? 'Pick products from your stock to sell online. Review name, price, and photo before they go live.'
+          : 'Pick products from your stock. Review name, price, and photo before they go live. You can skip and add later.'}
       </Text>
 
       {!rows.length ? (
         <Text style={[styles.empty, { color: mutedColor }]}>
-          No active products yet. Skip and add stock later, then publish from the store.
+          {editing && products.length
+            ? 'All your active products are already on your online store.'
+            : editing
+              ? 'No active products yet. Add products to your stock first.'
+              : 'No active products yet. Skip and add stock later, then publish from the store.'}
         </Text>
       ) : (
         <View style={styles.list}>

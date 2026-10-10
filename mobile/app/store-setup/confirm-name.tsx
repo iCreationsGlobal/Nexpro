@@ -5,7 +5,7 @@ import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { FormLabel, FormInput } from '@/components/FormField';
 import { StoreSetupChrome } from '@/components/store/StoreSetupChrome';
 import { useAuth } from '@/context/AuthContext';
-import { useStoreSetup } from '@/context/StoreSetupContext';
+import { useStoreSetup, useStoreSetupEditing } from '@/context/StoreSetupContext';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { getErrorMessage } from '@/utils/errorMessages';
 
@@ -25,26 +25,35 @@ export default function StoreSetupConfirmNameScreen() {
     buildSmartDefaultsPayload,
     saveSettings,
     advanceFrom,
+    saveLiveEdit,
+    closeEditor,
   } = useStoreSetup();
+  const editing = useStoreSetupEditing();
 
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const fromSettings = String(settings?.displayName || '').trim();
+    if (editing) {
+      // Live store: start from the saved name, not the business-name default that loads first.
+      if (!loading) setName((prev) => prev || fromSettings);
+      return;
+    }
     const fromDefaults = String(defaults.displayName || '').trim();
     setName((prev) => prev || fromSettings || fromDefaults);
-  }, [defaults.displayName, settings?.displayName]);
+  }, [defaults.displayName, editing, loading, settings?.displayName]);
 
-  // Keep slug warm while the merchant edits the name.
+  // Keep slug warm while the merchant edits the name (a live store keeps its link).
   useEffect(() => {
+    if (editing) return;
     const trimmed = name.trim();
     if (!trimmed) return;
     const timer = setTimeout(() => {
       void resolveAvailableSlug(trimmed);
     }, 350);
     return () => clearTimeout(timer);
-  }, [name, resolveAvailableSlug]);
+  }, [editing, name, resolveAvailableSlug]);
 
   const onContinue = useCallback(async () => {
     const displayName = name.trim();
@@ -54,6 +63,13 @@ export default function StoreSetupConfirmNameScreen() {
     }
     setSaving(true);
     try {
+      if (editing) {
+        if (displayName !== String(settings?.displayName || '').trim()) {
+          await saveLiveEdit({ displayName });
+        }
+        closeEditor();
+        return;
+      }
       // Warm slug from cache/prefetch, then block only on the required PUT.
       // setup-status refresh inside saveSettings is fire-and-forget.
       void resolveAvailableSlug(displayName);
@@ -65,14 +81,24 @@ export default function StoreSetupConfirmNameScreen() {
     } finally {
       setSaving(false);
     }
-  }, [advanceFrom, buildSmartDefaultsPayload, name, resolveAvailableSlug, saveSettings]);
+  }, [
+    advanceFrom,
+    buildSmartDefaultsPayload,
+    closeEditor,
+    editing,
+    name,
+    resolveAvailableSlug,
+    saveLiveEdit,
+    saveSettings,
+    settings?.displayName,
+  ]);
 
   if (!hasFeature('paymentsExpenses')) {
     return <FeatureAccessDenied message="Online store is not enabled for your workspace." />;
   }
 
-  // Only block on first paint when we have no tenant default name yet.
-  if (loading && !name && !defaults.displayName) {
+  // Only block on first paint when we have no tenant default name yet (editing waits for the saved name).
+  if (editing ? loading : loading && !name && !defaults.displayName) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" />
@@ -85,13 +111,18 @@ export default function StoreSetupConfirmNameScreen() {
       stepId="confirm-name"
       gapFlags={gapFlags}
       onContinue={onContinue}
-      continueLabel="Continue"
+      continueLabel={editing ? 'Save' : 'Continue'}
       continueDisabled={!name.trim()}
       continuing={saving}
+      editing={editing}
     >
-      <Text style={[styles.headline, { color: textColor }]}>Confirm store name</Text>
+      <Text style={[styles.headline, { color: textColor }]}>
+        {editing ? 'Store name' : 'Confirm store name'}
+      </Text>
       <Text style={[styles.body, { color: mutedColor }]}>
-        Customers see this on your online store. You can change it later.
+        {editing
+          ? 'Customers see this on your online store. Your store link stays the same.'
+          : 'Customers see this on your online store. You can change it later.'}
       </Text>
       <View>
         <FormLabel>Store name</FormLabel>

@@ -33,6 +33,7 @@
     },
     "production": {
       "autoIncrement": true,
+      "uploadSourceMaps": true,
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.africanbusinesssuite.com",
         "EXPO_PUBLIC_ONLINE_STORE_URL": "https://store.absghana.com"

@@ -9,7 +9,7 @@ export default {
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
     splash: {
-      image: './assets/images/boot-symbol.png',
+      image: './assets/images/abs-boot-logo.png',
       resizeMode: 'contain',
       backgroundColor: '#00291f',
     },
@@ -47,7 +47,7 @@ export default {
       'expo-font',
       'expo-image',
       'expo-sharing',
-      ['expo-splash-screen', { backgroundColor: '#00291f', image: './assets/images/boot-symbol.png', imageWidth: 160, resizeMode: 'contain' }],
+      ['expo-splash-screen', { backgroundColor: '#00291f', image: './assets/images/abs-boot-logo.png', imageWidth: 200, resizeMode: 'contain' }],
       'expo-status-bar',
       'expo-web-browser',
       'expo-audio',

@@ -425,7 +425,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     (async () => {
       try {
-        const storedUser = await authService.getStoredUser();
+        const storedUser = await authService.getStoredUser() as User;
         const storedMemberships = normalizeMemberships(
           await authService.getStoredMemberships()
         ) as Membership[];

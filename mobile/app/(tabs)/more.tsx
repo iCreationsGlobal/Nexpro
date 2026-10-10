@@ -1,30 +1,14 @@
-import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
-
-import Colors from '@/constants/Colors';
-import { useTheme } from '@/context/ThemeContext';
+import React from 'react';
+import { MoreMenuSheet } from '@/components/MoreMenuSheet';
+import { usePathname, useRouter } from 'expo-router';
 
 /**
  * More is opened as a bottom sheet from the tab bar.
- * Deep links to /(tabs)/more land here and bounce back to Home.
+ * Deep links and the dashboard View all action open the same menu.
  */
 export default function MoreScreen() {
   const router = useRouter();
-  const { resolvedTheme } = useTheme();
-  const tint = Colors[resolvedTheme ?? 'light'].tint;
+  const pathname = usePathname();
 
-  useEffect(() => {
-    router.replace('/(tabs)/');
-  }, [router]);
-
-  return (
-    <View style={styles.wrap}>
-      <ActivityIndicator color={tint} />
-    </View>
-  );
+  return <MoreMenuSheet visible={pathname === '/more' || pathname === '/(tabs)/more'} onClose={() => router.replace('/(tabs)')} />;
 }
-
-const styles = StyleSheet.create({
-  wrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-});

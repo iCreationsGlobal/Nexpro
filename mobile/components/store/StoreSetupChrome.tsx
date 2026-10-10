@@ -40,10 +40,13 @@ type StoreSetupChromeProps = {
   continueDisabled?: boolean;
   continuing?: boolean;
   hideFooter?: boolean;
+  /** Editing a live store: no wizard progress, and Back returns to where the editor was opened. */
+  editing?: boolean;
 };
 
 /**
  * Flat wizard chrome: tappable full-step progress + back + content + Continue / Skip.
+ * In edit mode (live store) it is a plain editor: title, back, content, Save.
  */
 export function StoreSetupChrome({
   stepId,
@@ -58,10 +61,11 @@ export function StoreSetupChrome({
   continueDisabled,
   continuing,
   hideFooter,
+  editing = false,
 }: StoreSetupChromeProps) {
   const insets = useSafeAreaInsets();
   const { bg, textColor, mutedColor, borderColor, headerBg } = useScreenColors();
-  const { hasBasics, goToStep, goBackFrom } = useStoreSetup();
+  const { hasBasics, goToStep, goBackFrom, closeEditor } = useStoreSetup();
   const progress = getStepProgress(stepId);
   const title = STORE_SETUP_STEP_META[stepId]?.title || 'Store setup';
 
@@ -70,8 +74,12 @@ export function StoreSetupChrome({
       onBack();
       return;
     }
+    if (editing) {
+      closeEditor();
+      return;
+    }
     goBackFrom(stepId);
-  }, [goBackFrom, onBack, stepId]);
+  }, [closeEditor, editing, goBackFrom, onBack, stepId]);
 
   const steps = progress.steps;
 
@@ -107,52 +115,56 @@ export function StoreSetupChrome({
             <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
               {title}
             </Text>
-            <Text style={[styles.progress, { color: BRAND_GREEN }]}>
-              {progress.index} of {progress.total}
-            </Text>
+            {editing ? null : (
+              <Text style={[styles.progress, { color: BRAND_GREEN }]}>
+                {progress.index} of {progress.total}
+              </Text>
+            )}
           </View>
           <View style={styles.rightPlaceholder} />
         </View>
 
-        <View style={styles.segmentTrack}>
-          {segmentStates.map(({ step, reachable, isCurrent, isPast }) => {
-            const fill = isCurrent || isPast ? BRAND_GREEN : borderColor;
-            const label = STORE_SETUP_STEP_META[step]?.progressLabel || '';
-            return (
-              <Pressable
-                key={step}
-                onPress={() => {
-                  if (!reachable || isCurrent || continuing) return;
-                  goToStep(step);
-                }}
-                disabled={!reachable || isCurrent || continuing}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isCurrent, disabled: !reachable }}
-                accessibilityLabel={`${label} step${isCurrent ? ', current' : ''}${reachable ? '' : ', unlock after saving store name'}`}
-                hitSlop={{ top: 8, bottom: 8 }}
-                style={({ pressed }) => [
-                  styles.segmentHit,
-                  pressed && reachable && !isCurrent && styles.pressed,
-                  !reachable && styles.segmentLocked,
-                ]}
-              >
-                <View style={[styles.segment, { backgroundColor: fill }]} />
-                <Text
-                  style={[
-                    styles.segmentLabel,
-                    {
-                      color: isCurrent ? BRAND_GREEN : mutedColor,
-                      fontWeight: isCurrent ? '700' : '500',
-                    },
+        {editing ? null : (
+          <View style={styles.segmentTrack}>
+            {segmentStates.map(({ step, reachable, isCurrent, isPast }) => {
+              const fill = isCurrent || isPast ? BRAND_GREEN : borderColor;
+              const label = STORE_SETUP_STEP_META[step]?.progressLabel || '';
+              return (
+                <Pressable
+                  key={step}
+                  onPress={() => {
+                    if (!reachable || isCurrent || continuing) return;
+                    goToStep(step);
+                  }}
+                  disabled={!reachable || isCurrent || continuing}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isCurrent, disabled: !reachable }}
+                  accessibilityLabel={`${label} step${isCurrent ? ', current' : ''}${reachable ? '' : ', unlock after saving store name'}`}
+                  hitSlop={{ top: 8, bottom: 8 }}
+                  style={({ pressed }) => [
+                    styles.segmentHit,
+                    pressed && reachable && !isCurrent && styles.pressed,
+                    !reachable && styles.segmentLocked,
                   ]}
-                  numberOfLines={1}
                 >
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+                  <View style={[styles.segment, { backgroundColor: fill }]} />
+                  <Text
+                    style={[
+                      styles.segmentLabel,
+                      {
+                        color: isCurrent ? BRAND_GREEN : mutedColor,
+                        fontWeight: isCurrent ? '700' : '500',
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
       </View>
 
       <ScrollView

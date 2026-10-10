@@ -34,7 +34,9 @@ export function buildJobCreatePaymentPayload(form: {
   paymentReference?: string;
   paymentNotes?: string;
 }) {
-  const paymentStatus = form.paymentStatus || 'unpaid';
+  const paymentStatus: JobCreatePaymentStatus = form.paymentStatus === 'paid' || form.paymentStatus === 'deposit'
+    ? form.paymentStatus
+    : 'unpaid';
   if (paymentStatus === 'unpaid') {
     return { paymentStatus: 'unpaid' as const };
   }

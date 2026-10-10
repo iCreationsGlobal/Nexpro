@@ -1,4 +1,5 @@
 import { api } from './api';
+import type { BillingStatus } from '../utils/billingLock';
 import { parseJsonStrippingOversizedInlineDataUrls, sanitizeInlineImageField } from '../utils/stripOversizedInlineDataUrls';
 
 export type ProfilePayload = {
@@ -185,5 +186,11 @@ export const settingsService = {
   updateSimpleModeShowAdvanced: async (showAdvanced: boolean) => {
     const res = await api.patch('/settings/interface-mode', { showAdvanced });
     return res?.data?.data ?? res?.data ?? { showAdvanced };
+  },
+
+  /** Workspace billing state; reachable even while the workspace is locked. */
+  getSubscriptionStatus: async (): Promise<BillingStatus | null> => {
+    const res = await api.get('/subscription/status');
+    return res?.data?.data ?? res?.data ?? null;
   },
 };

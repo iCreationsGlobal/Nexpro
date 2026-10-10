@@ -9,6 +9,8 @@ export const HEADER_SEARCH_HIDDEN_ROUTES = new Set([
   'cart',
   'scan',
   'store-services',
+  'store-products',
+  'watch',
   // `store` enables header search only on the Orders hub tab via useRegisterPageSearch.
 ]);
 
@@ -28,6 +30,8 @@ export const TAB_ROUTE_SEARCH_DEFAULTS: Record<string, PageSearchConfig> = {
   'online-orders': { scope: 'online-orders', placeholder: SEARCH_PLACEHOLDERS.ONLINE_ORDERS },
   store: { scope: 'store', placeholder: SEARCH_PLACEHOLDERS.GLOBAL, enabled: false },
   'store-services': { scope: 'store-services', placeholder: SEARCH_PLACEHOLDERS.GLOBAL },
+  'store-products': { scope: 'store-products', placeholder: SEARCH_PLACEHOLDERS.GLOBAL },
+  watch: { scope: 'watch', placeholder: SEARCH_PLACEHOLDERS.GLOBAL },
 };
 
 /**

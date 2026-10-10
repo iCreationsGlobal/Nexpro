@@ -96,7 +96,6 @@ jest.mock('expo-contacts/legacy', () => ({
   isAvailableAsync: jest.fn(),
   getPermissionsAsync: jest.fn(),
   requestPermissionsAsync: jest.fn(),
-  requestPermissionsAsync: jest.fn(),
   getContactsAsync: jest.fn(),
   presentAccessPickerAsync: jest.fn(),
 }));
@@ -124,8 +123,8 @@ describe('deviceContacts picker guard', () => {
       accessPrivileges: 'limited',
       canAskAgain: true,
     } as ExpoContacts.ContactsPermissionResponse);
-    jest.mocked(ExpoContacts.getContactsAsync).mockResolvedValue({ data: [], hasNextPage: false });
-    jest.mocked(ExpoContacts.presentAccessPickerAsync).mockResolvedValue(undefined);
+    jest.mocked(ExpoContacts.getContactsAsync).mockResolvedValue({ data: [], hasNextPage: false, hasPreviousPage: false });
+    jest.mocked(ExpoContacts.presentAccessPickerAsync).mockResolvedValue([]);
   });
 
   it('loadDeviceContacts does not auto-present the access picker when empty', async () => {
@@ -139,8 +138,8 @@ describe('deviceContacts picker guard', () => {
     let resolvePresent: () => void = () => {};
     jest.mocked(ExpoContacts.presentAccessPickerAsync).mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          resolvePresent = resolve;
+        new Promise<string[]>((resolve) => {
+          resolvePresent = () => resolve([]);
         })
     );
 
@@ -180,7 +179,7 @@ describe('deviceContacts picker guard', () => {
     jest
       .mocked(ExpoContacts.presentAccessPickerAsync)
       .mockImplementationOnce(() => new Promise(() => {}))
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce([]);
 
     void presentLimitedAccessPicker();
     await Promise.resolve();

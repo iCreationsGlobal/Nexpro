@@ -513,7 +513,7 @@ export function buildPrintableInvoiceHtml(
   const tax = asRecord(organization.tax);
   const taxLabel = taxDisplay.isTaxInclusive
     ? taxDisplay.taxLabel
-    : `${String(tax.displayLabel || 'Tax')} (${formatDecimal(invoice.taxRate ?? 0, 0)}%)`;
+    : `${String(tax.displayLabel || 'Tax')} (${formatDecimal(moneyValue(invoice.taxRate), 0)}%)`;
   const subtotalLabel = taxDisplay.isTaxInclusive ? 'Subtotal (net)' : 'Subtotal';
   const totalAmount = moneyValue(invoice.totalAmount ?? invoice.total);
   const amountPaid = moneyValue(invoice.amountPaid ?? invoice.paidAmount);

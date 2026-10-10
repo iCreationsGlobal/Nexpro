@@ -42,8 +42,10 @@ import {
   getDeliveryStatusColors,
   getDeliveryStatusDisplayLabel,
 } from '@/utils/deliveryStatus';
+import { useMarkInteractiveAfterStartup } from '@/hooks/useMarkInteractiveAfterStartup';
 
 export default function DeliveriesScreen() {
+  useMarkInteractiveAfterStartup();
   const { activeTenantId, activeTenant, hasFeature, isDriver } = useAuth();
   const { activeShopId, activeStudioLocationId, scopeReady } = useWorkspaceScope();
   const { colors, bg, cardBg, borderColor, textColor, mutedColor, resolvedTheme } = useScreenColors();

@@ -56,6 +56,21 @@ describe('notification deep link resolver', () => {
     expect(resolveNotificationDeepLink({ link: '/store/orders/sale-3' })).toBe('/store-order/sale-3');
   });
 
+  it('routes rental reminders and damage approvals to the rental', () => {
+    expect(resolveNotificationDeepLink({ metadata: { rentalId: 'rental-1', productId: 'product-1' } })).toBe('/rental/rental-1');
+    expect(resolveNotificationDeepLink({ link: '/rentals/rental-2' })).toBe('/rental/rental-2');
+  });
+
+  it.each(['customers', 'expenses', 'invoices', 'jobs', 'leads', 'products', 'quotes', 'rentals', 'sales', 'tasks'])('opens the %s list when the notification has no entity ID', (tab) => {
+    expect(resolveNotificationDeepLink({ link: `/${tab}/?source=notification#latest` })).toBe(`/(tabs)/${tab}`);
+  });
+
+  it('preserves encoded IDs without double encoding and ignores malformed escapes', () => {
+    expect(resolveNotificationDeepLink({ link: '/jobs/job%202' })).toBe('/job/job%202');
+    expect(resolveNotificationDeepLink({ link: '/store/orders/sale%203' })).toBe('/store-order/sale%203');
+    expect(resolveNotificationDeepLink({ link: '/jobs/%invalid' })).toBeNull();
+  });
+
   it('falls back for missing, invalid, or unrelated payloads', () => {
     expect(resolveNotificationDeepLink(null)).toBeNull();
     expect(resolveNotificationDeepLink([])).toBeNull();

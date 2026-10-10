@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, usePathname, useRouter } from 'expo-router';
-import { DeviceEventEmitter, View, Pressable, StyleSheet, Text } from 'react-native';
+import { type ColorValue, DeviceEventEmitter, View, Pressable, StyleSheet, Text } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
@@ -23,7 +23,7 @@ function TabBarIcon({
   color,
 }: {
   name: AppIconName;
-  color: string;
+  color: ColorValue;
 }) {
   return <AppIcon name={name} size={24} color={color} style={{ marginBottom: -2 }} />;
 }
@@ -44,7 +44,7 @@ function SimpleTabIcon({ name, tone, focused }: { name: AppIconName; tone: Simpl
 
 /** Screens that exist in the tabs group but are not tabs in Simple Mode (reachable via More / links). */
 const SIMPLE_HIDDEN_TAB_SCREENS = [
-  'customers', 'invoices', 'orders', 'online-orders', 'store', 'store-services', 'products', 'jobs',
+  'customers', 'invoices', 'orders', 'online-orders', 'store', 'store-services', 'store-products', 'watch', 'products', 'jobs',
   'chat', 'cart', 'quotes', 'dealers', 'leads', 'tasks', 'rentals', 'deliveries',
 ] as const;
 
@@ -211,7 +211,7 @@ export default function TabLayout() {
           if (primaryFocus) {
             return {
               title: primaryFocus.label,
-              tabBarIcon: ({ color }: { color: string }) => (
+              tabBarIcon: ({ color }: { color: ColorValue }) => (
                 <TabBarIcon name={primaryFocus.icon} color={color} />
               ),
               tabBarButton: (props: any) => (
@@ -229,7 +229,7 @@ export default function TabLayout() {
           return hasFeature('crm')
             ? {
                 title: 'Customers',
-                tabBarIcon: ({ color }: { color: string }) => <TabBarIcon name="users" color={color} />,
+                tabBarIcon: ({ color }: { color: ColorValue }) => <TabBarIcon name="users" color={color} />,
               }
             : { href: null, title: 'Customers' };
         })()}
@@ -288,7 +288,7 @@ export default function TabLayout() {
           if (focusAreas.includes('online_store')) {
             return {
               title: 'Orders',
-              tabBarIcon: ({ color }: { color: string }) => <TabBarIcon name="shopping-cart" color={color} />,
+              tabBarIcon: ({ color }: { color: ColorValue }) => <TabBarIcon name="shopping-cart" color={color} />,
               tabBarButton: (props: any) => (
                 <Pressable
                   accessibilityRole="button"
@@ -304,7 +304,7 @@ export default function TabLayout() {
           return showInvoicesInTab
             ? {
                 title: 'Invoice',
-                tabBarIcon: ({ color }: { color: string }) => <TabBarIcon name="file-text" color={color} />,
+                tabBarIcon: ({ color }: { color: ColorValue }) => <TabBarIcon name="file-text" color={color} />,
               }
             : { href: null, title: 'Invoice' };
         })()}
@@ -338,6 +338,8 @@ export default function TabLayout() {
       <Tabs.Screen name="online-orders" options={{ href: null, title: 'Online Store' }} />
       <Tabs.Screen name="store" options={{ href: null, title: 'Online Store' }} />
       <Tabs.Screen name="store-services" options={{ href: null, title: 'Studio Services' }} />
+      <Tabs.Screen name="store-products" options={{ href: null, title: 'Store Products' }} />
+      <Tabs.Screen name="watch" options={{ href: null, title: 'Watch' }} />
       <Tabs.Screen name="products" options={{ href: null }} />
       <Tabs.Screen name="jobs" options={{ href: null }} />
       <Tabs.Screen
@@ -362,7 +364,7 @@ export default function TabLayout() {
           isDriver
             ? {
                 title: 'Deliveries',
-                tabBarIcon: ({ color }: { color: string }) => <TabBarIcon name="truck" color={color} />,
+                tabBarIcon: ({ color }: { color: ColorValue }) => <TabBarIcon name="truck" color={color} />,
               }
             : { href: null }
         }

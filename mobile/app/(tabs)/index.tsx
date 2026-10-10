@@ -28,7 +28,7 @@ import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
 import { dashboardService } from '@/services/dashboardService';
 import { assistantService } from '@/services/assistantService';
 import { authService } from '@/services/auth';
-import { CURRENCY, ORDER_STATUSES, resolveBusinessType, SHOP_TYPES, isQuotesEnabledForTenant } from '@/constants';
+import { CURRENCY, ORDER_STATUSES, resolveBusinessType, SHOP_TYPES } from '@/constants';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { saleService } from '@/services/saleService';
 import { isOnboardingComplete } from '@/utils/onboardingStatus';
@@ -43,8 +43,8 @@ import { useIsStoreSetupRoute } from '@/hooks/useIsStoreSetupRoute';
 import { useOnlineStoreOrderAttention } from '@/hooks/useOnlineStoreOrderAttention';
 import { getCustomerName, getOrderNumber } from '@/utils/marketplaceOrderStatus';
 import { useFocusAreas } from '@/hooks/useFocusAreas';
-import { getFocusAreaDefinition } from '@/constants/focusAreas';
 import { hasSeenFocusAreaPrompt, markFocusAreaPromptSeen } from '@/utils/focusAreaPrompt';
+import { useMarkInteractiveAfterStartup } from '@/hooks/useMarkInteractiveAfterStartup';
 
 type FilterType = 'today' | 'week' | 'month' | 'year';
 type ComparisonMetric = {
@@ -123,15 +123,6 @@ function formatShortDate(dateStr: string): string {
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
-
-const MAX_QUICK_ACTIONS = 3;
-
-type QuickAction = {
-  label: string;
-  icon: AppIconName;
-  route: string;
-  color: string;
-};
 
 type RecentSale = {
   id: string;
@@ -270,6 +261,7 @@ function getDueDateBadge(
 
 /** Simple Mode members get the essentials-only Home; everyone else the full dashboard. */
 export default function DashboardRoute() {
+  useMarkInteractiveAfterStartup();
   const { isSimple } = useSimpleMode();
   return isSimple ? <SimpleDashboard /> : <DashboardScreen />;
 }
@@ -294,7 +286,7 @@ function DashboardScreen() {
   );
   const showVerifyEmailBanner = useMemo(() => Boolean(user && !user.emailVerifiedAt), [user, user?.emailVerifiedAt]);
 
-  const { focusAreas, hasChosen: hasChosenFocusAreas, isLoading: focusAreasLoading } = useFocusAreas();
+  const { hasChosen: hasChosenFocusAreas, isLoading: focusAreasLoading } = useFocusAreas();
   const [focusPromptDismissedThisSession, setFocusPromptDismissedThisSession] = useState(false);
   const [seenFocusPromptOnDevice, setSeenFocusPromptOnDevice] = useState<boolean | null>(null);
   useEffect(() => {
@@ -362,14 +354,12 @@ function DashboardScreen() {
   const isStudio = resolvedType === 'studio';
   const shopType = activeTenant?.metadata?.shopType;
   const isRestaurant = shopType === SHOP_TYPES.RESTAURANT;
-  const canCreateQuote = hasFeature('quoteAutomation') && isQuotesEnabledForTenant(businessType, shopType);
   const showOnlineStore = (isShop || isPharmacy || isStudio) && hasFeature('paymentsExpenses');
 
   const {
     showBanner: showOnlineStoreBanner,
     pendingOrderCount: onlinePendingCount,
     latestOrder: latestOnlineOrder,
-    hasStoreSettings,
   } = useOnlineStoreOrderAttention({ enabled: showOnlineStore });
 
   const todayIso = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -411,53 +401,6 @@ function DashboardScreen() {
   const expenses = filteredPeriod?.expenses ?? currentMonth.expenses ?? 0;
   const profit = filteredPeriod?.profit ?? currentMonth.profit ?? revenue - expenses;
   const lowStockItems = shopData.lowStockItems ?? 0;
-
-  const quickActions = useMemo(() => {
-    const actions: QuickAction[] = [];
-    if (isShop || isPharmacy) {
-      if (isRestaurant && hasFeature('orders')) {
-        actions.push({ label: 'Kitchen orders', icon: 'cutlery', route: '/(tabs)/orders', color: '#ea580c' });
-      } else {
-        actions.push({ label: 'Add customer', icon: 'user-plus', route: '/(tabs)/customers?add=1', color: colors.tint });
-      }
-    }
-    if (isStudio) {
-      actions.push({ label: 'Add customer', icon: 'user-plus', route: '/(tabs)/customers?add=1', color: colors.tint });
-      if (canCreateQuote) {
-        actions.push({ label: 'New quote', icon: 'file-text-o', route: '/(tabs)/quotes', color: '#2563eb' });
-      }
-    }
-    if (hasFeature('expenses')) {
-      actions.push({ label: 'Add expense', icon: 'minus-circle', route: '/(tabs)/expenses', color: '#ea580c' });
-    }
-    if (showOnlineStore && hasStoreSettings) {
-      actions.push({ label: 'Store orders', icon: 'shopping-cart', route: '/(tabs)/store?section=orders', color: '#7c3aed' });
-    }
-    if (hasFeature('leadPipeline')) {
-      actions.push({ label: 'Add lead', icon: 'user-plus', route: '/(tabs)/leads', color: '#0891b2' });
-    }
-    if (hasFeature('deliveries')) {
-      actions.push({ label: 'Assign delivery', icon: 'truck', route: '/(tabs)/deliveries', color: '#0d9488' });
-    }
-    if (isShop && hasFeature('dealersAccount')) {
-      actions.push({ label: 'Dealer order', icon: 'briefcase', route: '/(tabs)/dealers?add=1', color: '#7c3aed' });
-    }
-
-    // Promote whichever of these match the user's "what matters most to you" picks, in pick order.
-    if (focusAreas.length === 0) return actions.slice(0, MAX_QUICK_ACTIONS);
-    const routeBase = (route: string) => route.split('?')[0];
-    const rank = new Map<string, number>();
-    focusAreas.forEach((id, index) => {
-      const def = getFocusAreaDefinition(id);
-      if (def && !rank.has(routeBase(def.route))) rank.set(routeBase(def.route), index);
-    });
-    const ranked = [...actions].sort((a, b) => {
-      const ra = rank.get(routeBase(a.route)) ?? Number.MAX_SAFE_INTEGER;
-      const rb = rank.get(routeBase(b.route)) ?? Number.MAX_SAFE_INTEGER;
-      return ra - rb;
-    });
-    return ranked.slice(0, MAX_QUICK_ACTIONS);
-  }, [isShop, isPharmacy, isStudio, isRestaurant, canCreateQuote, hasFeature, colors.tint, showOnlineStore, hasStoreSettings, focusAreas]);
 
   const recentSales = useMemo(
     () => (shopData.recentSales ?? []) as RecentSale[],
@@ -834,34 +777,6 @@ function DashboardScreen() {
           </View>
         </>
       )}
-
-      {/* Quick actions */}
-      <View style={styles.sectionHeaderRow}>
-        <Text style={[styles.sectionTitle, { color: textColor, marginBottom: 0 }]}>Quick Actions</Text>
-        <Pressable onPress={() => router.push('/(tabs)/more' as never)} hitSlop={8}>
-          <Text style={[styles.sectionLink, { color: colors.tint }]}>View all</Text>
-        </Pressable>
-      </View>
-      <View style={styles.actionsRow}>
-        {quickActions.map((action) => (
-          <Pressable
-            key={action.label}
-            onPress={() => router.push(action.route as never)}
-            style={({ pressed }) => [
-              styles.actionBtn,
-              { backgroundColor: cardBg, borderColor },
-              pressed && styles.pressed,
-            ]}
-          >
-            <View style={[styles.actionIconCircle, { backgroundColor: iconTint(action.color) }]}>
-              <AppIcon name={action.icon} size={22} color={action.color} />
-            </View>
-            <Text style={[styles.actionLabel, { color: textColor }]} numberOfLines={2}>
-              {action.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
 
       {/* Recent transactions (retail) */}
       {(isShop || isPharmacy) && recentSales.length > 0 && (
@@ -1341,32 +1256,6 @@ const styles = StyleSheet.create({
   },
   kitchenStatValue: { fontSize: 22, fontWeight: '700', marginBottom: 4 },
   kitchenStatLabel: { fontSize: 12, fontWeight: '500' },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 24,
-  },
-  actionBtn: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  actionIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionLabel: {
-    fontSize: 12,
-    marginTop: 8,
-    textAlign: 'center',
-  },
   pressed: {
     opacity: 0.8,
   },

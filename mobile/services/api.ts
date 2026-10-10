@@ -5,6 +5,7 @@ import * as Device from 'expo-device';
 import * as SecureStore from 'expo-secure-store';
 
 import { logger } from '@/utils/logger';
+import { billingStatusFromLockedResponse, notifySubscriptionLocked } from '@/utils/billingLock';
 import { STORAGE_KEYS } from '@/constants';
 import { parseJsonStrippingOversizedInlineDataUrls } from '@/utils/stripOversizedInlineDataUrls';
 
@@ -244,6 +245,11 @@ api.interceptors.response.use(
       logger.warn('API', `← ${status} ${url}:`, msg || error.message);
     } else {
       logger.error('API', `← ${status || 'ERR'} ${url}:`, msg || error.message);
+    }
+
+    if (status === 403) {
+      const lockedStatus = billingStatusFromLockedResponse(error.response?.data);
+      if (lockedStatus) notifySubscriptionLocked(lockedStatus);
     }
 
     if (status === 401) {

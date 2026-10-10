@@ -32,6 +32,19 @@ import { FontFamily } from '@/constants/typography';
 import { getCurrentNetworkOnline, registerReactQueryOnlineManager } from '@/utils/connectivity';
 import { observeSellerNotificationResponses, registerPushNotifications } from '@/utils/pushNotifications';
 import { logger } from '@/utils/logger';
+import { Observe, ObserveRoot, type ObserveErrorBoundaryFallbackProps } from '@/utils/observe';
+import { markStartupComplete } from '@/hooks/useMarkInteractiveAfterStartup';
+import { useBillingLock } from '@/hooks/useBillingLock';
+import { BillingLockedScreen } from '@/components/BillingLockedScreen';
+import { isBillingExemptPath } from '@/utils/billingLock';
+
+// EAS Observe: must run before any screen mounts; one call holds every option.
+// Personal free-text route params are kept out of exported navigation metrics.
+Observe.configure({
+  integrations: {
+    'expo-router': { filteredParams: ['email', 'customerName', 'prompt', 'search'] },
+  },
+});
 
 type RouteErrorBoundaryProps = {
   error: Error;
@@ -67,6 +80,11 @@ export function ErrorBoundary({ error, retry }: RouteErrorBoundaryProps) {
       </Pressable>
     </View>
   );
+}
+
+/** App-wide render-error fallback; Observe records the error with its component stack. */
+function RootErrorFallback({ error, resetError }: ObserveErrorBoundaryFallbackProps) {
+  return <ErrorBoundary error={error as Error} retry={resetError} />;
 }
 
 export const unstable_settings = {
@@ -174,7 +192,15 @@ function PushRegistrationOnActive() {
   return null;
 }
 
-export default function RootLayout() {
+export default function ObservedRootLayout() {
+  return (
+    <ObserveRoot errorBoundaryFallback={RootErrorFallback}>
+      <RootLayout />
+    </ObserveRoot>
+  );
+}
+
+function RootLayout() {
   const [loaded, error] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -248,11 +274,14 @@ function StartupOverlay({ fontsReady }: { fontsReady: boolean }) {
   // The PIN gate must be visible before it can unlock and mount the dashboard.
   const dashboard = !pinGateActive && segments[0] === '(tabs)' && (!segments[1] || String(segments[1]) === 'index');
   const startupData = useStartupData(destinationReady, dashboard, visible);
-  const ready = destinationReady && startupData.ready;
+  // A locked workspace's dashboard can never load; the billing lock screen takes over instead.
+  const { locked: billingLocked } = useBillingLock();
+  const ready = destinationReady && (startupData.ready || billingLocked);
   useEffect(() => {
     if (!ready || !visible) return;
     // Startup must not depend on a native animation completion callback.
     setVisible(false);
+    markStartupComplete();
   }, [ready, visible, opacity]);
   useEffect(() => {
     if (!visible) return;
@@ -288,6 +317,8 @@ function RootLayoutNav() {
   const pathname = usePathname();
   const { isDriver, user } = useAuth();
   const { isSimple, isRestricted, config: simpleModeConfig } = useSimpleMode();
+  const billingLock = useBillingLock();
+  const showBillingLock = billingLock.locked && !isBillingExemptPath(pathname);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
   const headerTint = Colors[resolvedTheme ?? 'light'].tint;
@@ -361,6 +392,15 @@ function RootLayoutNav() {
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack>
         </SimpleModeGateWrapper>
+        {showBillingLock && (
+          <View accessibilityViewIsModal style={[StyleSheet.absoluteFill, { zIndex: 1000, elevation: 50 }]}>
+            <BillingLockedScreen
+              billing={billingLock.billing}
+              onRecheck={() => { void billingLock.recheck(); }}
+              rechecking={billingLock.rechecking}
+            />
+          </View>
+        )}
       </View>
     </NavigationThemeProvider>
   );

@@ -1,11 +1,13 @@
-import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { FormLabel, FormInput } from '@/components/FormField';
 import { StoreSetupChrome } from '@/components/store/StoreSetupChrome';
 import { useAuth } from '@/context/AuthContext';
-import { useStoreSetup } from '@/context/StoreSetupContext';
+import { useStoreSetup, useStoreSetupEditing } from '@/context/StoreSetupContext';
+import { formatDisplayPhone } from '@/utils/displayPhone';
+import { getErrorMessage } from '@/utils/errorMessages';
 import { useScreenColors } from '@/hooks/useScreenColors';
 
 /**
@@ -15,16 +17,43 @@ import { useScreenColors } from '@/hooks/useScreenColors';
 export default function StoreSetupWhatsappScreen() {
   const { hasFeature } = useAuth();
   const { textColor, mutedColor } = useScreenColors();
-  const { gapFlags, defaults, settings, persistSoftAndAdvance } = useStoreSetup();
-  const [whatsapp, setWhatsapp] = useState(
-    () =>
-      String(settings?.whatsappNumber || settings?.contactPhone || defaults.whatsappNumber || defaults.contactPhone || '').trim()
+  const { loading, gapFlags, defaults, settings, persistSoftAndAdvance, saveLiveEdit, closeEditor } =
+    useStoreSetup();
+  const editing = useStoreSetupEditing();
+  const savedNumber = formatDisplayPhone(settings?.whatsappNumber || settings?.contactPhone);
+  const [whatsapp, setWhatsapp] = useState(() =>
+    editing
+      ? savedNumber
+      : formatDisplayPhone(
+          settings?.whatsappNumber || settings?.contactPhone || defaults.whatsappNumber || defaults.contactPhone
+        )
   );
+  const [saving, setSaving] = useState(false);
 
-  const onContinue = useCallback(() => {
-    const value = whatsapp.trim();
+  // Editors open before the saved settings arrive; start from the saved number once they do.
+  useEffect(() => {
+    if (editing && !loading) setWhatsapp((prev) => prev || savedNumber);
+  }, [editing, loading, savedNumber]);
+
+  const onContinue = useCallback(async () => {
+    const value = formatDisplayPhone(whatsapp);
     if (!value) {
       Alert.alert('WhatsApp required', 'Add a WhatsApp number so customers can reach you.');
+      return;
+    }
+    if (editing) {
+      // The contact phone can differ from WhatsApp (set on the web); only fill it when it's empty.
+      const changes: Record<string, unknown> = { whatsappNumber: value };
+      if (!String(settings?.contactPhone || '').trim()) changes.contactPhone = value;
+      setSaving(true);
+      try {
+        await saveLiveEdit(changes);
+        closeEditor();
+      } catch (error) {
+        Alert.alert('Could not save', getErrorMessage(error, 'Failed to save WhatsApp number.'));
+      } finally {
+        setSaving(false);
+      }
       return;
     }
     persistSoftAndAdvance(
@@ -32,18 +61,31 @@ export default function StoreSetupWhatsappScreen() {
       { whatsappNumber: value, contactPhone: value },
       { whatsappNumber: value, contactPhone: value }
     );
-  }, [persistSoftAndAdvance, whatsapp]);
+  }, [closeEditor, editing, persistSoftAndAdvance, saveLiveEdit, settings?.contactPhone, whatsapp]);
 
   if (!hasFeature('paymentsExpenses')) {
     return <FeatureAccessDenied message="Online store is not enabled for your workspace." />;
+  }
+
+  if (editing && loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
   }
 
   return (
     <StoreSetupChrome
       stepId="whatsapp"
       gapFlags={gapFlags}
-      onContinue={onContinue}
+      onContinue={() => {
+        void onContinue();
+      }}
+      continueLabel={editing ? 'Save' : 'Continue'}
       continueDisabled={!whatsapp.trim()}
+      continuing={saving}
+      editing={editing}
     >
       <Text style={[styles.headline, { color: textColor }]}>WhatsApp number</Text>
       <Text style={[styles.body, { color: mutedColor }]}>
@@ -65,6 +107,7 @@ export default function StoreSetupWhatsappScreen() {
 }
 
 const styles = StyleSheet.create({
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   headline: {
     fontSize: 28,
     fontWeight: '700',

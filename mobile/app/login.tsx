@@ -29,6 +29,7 @@ import { useScreenColors } from '@/hooks/useScreenColors';
 import { useFocusBorder } from '@/hooks/useFocusBorder';
 import { BRAND_GREEN } from '@/constants/brand';
 import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
+import { useMarkInteractiveAfterStartup } from '@/hooks/useMarkInteractiveAfterStartup';
 
 const ERROR_MESSAGES = {
   EMPTY_FIELDS: 'Please enter your email and password.',
@@ -43,6 +44,7 @@ const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value.trim());
 const AUTH_SESSION_MESSAGE_KEY = 'auth_session_message';
 
 export default function LoginScreen() {
+  useMarkInteractiveAfterStartup();
   const { colors, bg, textColor, mutedColor, borderColor } = useScreenColors();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

@@ -3,7 +3,7 @@ type NotificationPayload = Record<string, unknown>;
 export type NotificationDeepLinkRoute =
   | '/(tabs)/store?section=orders'
   | '/(tabs)/orders'
-  | '/(tabs)/products'
+  | `/(tabs)/${string}`
   | `/customer/${string}`
   | `/expense/${string}`
   | `/invoice/${string}`
@@ -11,11 +11,13 @@ export type NotificationDeepLinkRoute =
   | `/lead/${string}`
   | `/product/${string}`
   | `/quote/${string}`
+  | `/rental/${string}`
   | `/sale/${string}`
   | `/store-order/${string}`
   | `/task/${string}`;
 
 const DETAIL_KEYS = [
+  ['rentalId', '/rental'],
   ['productId', '/product'],
   ['saleId', '/sale'],
   ['invoiceId', '/invoice'],
@@ -28,6 +30,8 @@ const DETAIL_KEYS = [
 ] as const;
 
 const WEB_LINK_SEGMENTS: Record<string, string> = {
+  rentals: '/rental',
+  rental: '/rental',
   customers: '/customer',
   customer: '/customer',
   expenses: '/expense',
@@ -67,21 +71,33 @@ const buildDetailRoute = (prefix: string, id: string) => `${prefix}/${encodeURIC
 function routeFromLink(link: string): NotificationDeepLinkRoute | null {
   if (!link) return null;
 
-  const path = link.split('?')[0].replace(/^https?:\/\/[^/]+/i, '');
+  const path = link.split(/[?#]/)[0].replace(/^https?:\/\/[^/]+/i, '').replace(/\/+$/, '');
   const segments = path.split('/').filter(Boolean);
 
   if (segments[0] === 'store' && segments[1] === 'orders') {
-    return segments[2] ? buildDetailRoute('/store-order', segments[2]) : '/(tabs)/store?section=orders';
+    if (!segments[2]) return '/(tabs)/store?section=orders';
+    try {
+      return buildDetailRoute('/store-order', decodeURIComponent(segments[2]));
+    } catch {
+      return null;
+    }
   }
 
   const firstSegment = segments[0];
   const secondSegment = segments[1];
   if (firstSegment && secondSegment && WEB_LINK_SEGMENTS[firstSegment]) {
-    return buildDetailRoute(WEB_LINK_SEGMENTS[firstSegment], secondSegment);
+    try {
+      return buildDetailRoute(WEB_LINK_SEGMENTS[firstSegment], decodeURIComponent(secondSegment));
+    } catch {
+      return null;
+    }
   }
 
   if (path === '/orders') return '/(tabs)/orders';
-  if (path === '/products') return '/(tabs)/products';
+  if (segments.length === 1 && WEB_LINK_SEGMENTS[firstSegment]) {
+    const tab = firstSegment.endsWith('s') ? firstSegment : `${firstSegment}s`;
+    return `/(tabs)/${tab}`;
+  }
 
   return null;
 }

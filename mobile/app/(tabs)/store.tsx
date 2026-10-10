@@ -12,7 +12,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 
-import { AppIcon } from '@/components/AppIcon';
+import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { FilterChipRow } from '@/components/FilterChip';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
@@ -29,6 +29,7 @@ import { useRegisterPageSearch } from '@/hooks/useRegisterPageSearch';
 import { storeService } from '@/services/storeService';
 import { resolveBusinessType, STUDIO_LIKE_TYPES } from '@/constants';
 import { SEARCH_PLACEHOLDERS } from '@/constants/searchPlaceholders';
+import { formatDisplayPhone } from '@/utils/displayPhone';
 import { formatCurrency, formatInteger } from '@/utils/formatCurrency';
 import { resolveStoreLogoUrl } from '@/utils/onlineStoreDefaults';
 import { getApiErrorMessage } from '@/utils/parseApiListResponse';
@@ -49,6 +50,15 @@ const toCount = (value: unknown): number => {
 
 type HubTab = 'overview' | 'orders';
 
+type ManageRow = {
+  key: string;
+  label: string;
+  detail?: string;
+  icon: AppIconName;
+  href: string;
+  swatch?: string;
+};
+
 const HUB_TAB_OPTIONS: { value: HubTab; label: string }[] = [
   { value: 'overview', label: 'Overview' },
   { value: 'orders', label: 'Orders' },
@@ -63,7 +73,7 @@ function normalizeSectionParam(value: string | string[] | undefined): HubTab | n
 export default function StoreScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ section?: string | string[] }>();
-  const { activeTenant, activeTenantId, hasFeature } = useAuth();
+  const { activeTenant, activeTenantId, hasFeature, isManager } = useAuth();
   const { scopeReady } = useWorkspaceScope();
   const { colors, cardBg, borderColor, textColor, mutedColor, bg } = useScreenColors();
 
@@ -205,6 +215,71 @@ export default function StoreScreen() {
     ]
   );
 
+  // Settings saves need owner/admin/manager on the API; listings can be published by staff too.
+  const manageRows = useMemo<ManageRow[]>(() => {
+    const publishedCount = formatInteger(toCount(checklist.listingsCount));
+    const rows: ManageRow[] = [
+      isStudioStore
+        ? {
+            key: 'services',
+            label: 'Studio services',
+            detail: `${publishedCount} published`,
+            icon: 'cut-outline',
+            href: '/(tabs)/store-services',
+          }
+        : {
+            key: 'products',
+            label: 'Products',
+            detail: `${publishedCount} published`,
+            icon: 'package',
+            href: '/(tabs)/store-products',
+          },
+    ];
+    if (!isManager) return rows;
+
+    const contact = formatDisplayPhone(String(settings.whatsappNumber || settings.contactPhone || ''));
+    const primaryColor = String(settings.primaryColor || '').trim();
+    rows.push(
+      {
+        key: 'name',
+        label: 'Store name',
+        detail: String(settings.displayName || '').trim() || undefined,
+        icon: 'store',
+        href: '/store-setup/confirm-name?mode=edit',
+      },
+      {
+        key: 'whatsapp',
+        label: 'WhatsApp number',
+        detail: contact || 'Not set',
+        icon: 'phone',
+        href: '/store-setup/whatsapp?mode=edit',
+      },
+      {
+        key: 'logo',
+        label: 'Logo',
+        detail: settings.logoUrl ? 'Change your store logo' : 'Add a logo',
+        icon: 'image',
+        href: '/store-setup/logo?mode=edit',
+      },
+      {
+        key: 'color',
+        label: 'Brand color',
+        detail: primaryColor || undefined,
+        swatch: primaryColor || undefined,
+        icon: 'palette',
+        href: '/store-setup/color?mode=edit',
+      },
+      {
+        key: 'payments',
+        label: 'Payments',
+        detail: checklist.hasPaymentMethod ? 'Payouts connected' : 'Not connected',
+        icon: 'credit-card',
+        href: '/store-setup/payments?mode=edit',
+      }
+    );
+    return rows;
+  }, [checklist.hasPaymentMethod, checklist.listingsCount, isManager, isStudioStore, settings]);
+
   const openOnlineStore = useCallback(() => {
     if (!onlineStoreUrl) {
       Alert.alert('Store not ready', 'Finish online store setup to get your store link.');
@@ -287,7 +362,7 @@ export default function StoreScreen() {
           <View style={[styles.heroCard, { backgroundColor: cardBg, borderColor }]}>
             <Text style={[styles.heroTitle, { color: textColor }]}>{displayName}</Text>
             <Text style={[styles.heroBody, { color: mutedColor }]}>
-              Track online store performance and orders from mobile.
+              Track orders and manage your online store from mobile.
             </Text>
             {onlineStoreUrl ? (
               <Pressable
@@ -380,23 +455,36 @@ export default function StoreScreen() {
             )}
           </View>
 
-          {isStudioStore ? (
-            <>
-              <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: textColor }]}>Quick links</Text>
-              </View>
-              <View style={[styles.menuCard, { backgroundColor: cardBg, borderColor }]}>
-                <Pressable
-                  onPress={() => router.push('/(tabs)/store-services' as never)}
-                  style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.85 : 1 }]}
-                >
-                  <AppIcon name="cut-outline" size={20} color={colors.tint} />
-                  <Text style={[styles.menuLabel, { color: textColor }]}>Studio services</Text>
-                  <AppIcon name="chevron-right" size={14} color={mutedColor} />
-                </Pressable>
-              </View>
-            </>
-          ) : null}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: textColor }]}>Manage store</Text>
+          </View>
+          <View style={[styles.menuCard, { backgroundColor: cardBg, borderColor }]}>
+            {manageRows.map((row, index) => (
+              <Pressable
+                key={row.key}
+                onPress={() => router.push(row.href as never)}
+                accessibilityRole="button"
+                accessibilityLabel={row.detail ? `${row.label}, ${row.detail}` : row.label}
+                style={({ pressed }) => [
+                  styles.menuRow,
+                  index < manageRows.length - 1 && { borderBottomWidth: 1, borderBottomColor: borderColor },
+                  { opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <AppIcon name={row.icon} size={20} color={colors.tint} />
+                <View style={styles.menuTextCol}>
+                  <Text style={[styles.menuLabel, { color: textColor }]}>{row.label}</Text>
+                  {row.detail ? (
+                    <Text style={[styles.menuDetail, { color: mutedColor }]} numberOfLines={1}>
+                      {row.detail}
+                    </Text>
+                  ) : null}
+                </View>
+                {row.swatch ? <View style={[styles.swatch, { backgroundColor: row.swatch, borderColor }]} /> : null}
+                <AppIcon name="chevron-right" size={14} color={mutedColor} />
+              </Pressable>
+            ))}
+          </View>
         </ScrollView>
       )}
     </ScreenShell>
@@ -467,7 +555,10 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 16,
   },
-  menuLabel: { flex: 1, fontSize: 16, fontWeight: '500' },
+  menuTextCol: { flex: 1, minWidth: 0 },
+  menuLabel: { fontSize: 16, fontWeight: '500' },
+  menuDetail: { fontSize: 13, marginTop: 2 },
+  swatch: { width: 20, height: 20, borderRadius: 10, borderWidth: 1 },
   stateCard: { alignItems: 'center', justifyContent: 'center', gap: 8, padding: 22 },
   stateTitle: { fontSize: 15, fontWeight: '700' },
   stateText: { fontSize: 13, lineHeight: 18, textAlign: 'center' },

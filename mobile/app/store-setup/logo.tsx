@@ -7,7 +7,7 @@ import { AppIcon } from '@/components/AppIcon';
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { StoreSetupChrome } from '@/components/store/StoreSetupChrome';
 import { useAuth } from '@/context/AuthContext';
-import { useStoreSetup } from '@/context/StoreSetupContext';
+import { useStoreSetup, useStoreSetupEditing } from '@/context/StoreSetupContext';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { storeService } from '@/services/storeService';
 import { getErrorMessage } from '@/utils/errorMessages';
@@ -27,15 +27,20 @@ export default function StoreSetupLogoScreen() {
   const { hasFeature } = useAuth();
   const { textColor, mutedColor, borderColor, bg } = useScreenColors();
   const {
+    loading,
     defaults,
     settings,
     organization,
     gapFlags,
     persistSoftAndAdvance,
     advanceFrom,
+    saveLiveEdit,
+    closeEditor,
   } = useStoreSetup();
+  const editing = useStoreSetupEditing();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     // Prefer store settings, then org/tenant defaults (web resolveStoreLogoUrl order).
@@ -114,13 +119,29 @@ export default function StoreSetupLogoScreen() {
     ]);
   }, [chooseFromLibrary, takePhoto, uploading]);
 
-  const onContinue = useCallback(() => {
+  const onContinue = useCallback(async () => {
+    if (editing) {
+      if (!logoUrl || logoUrl === settings?.logoUrl) {
+        closeEditor();
+        return;
+      }
+      setSaving(true);
+      try {
+        await saveLiveEdit({ logoUrl });
+        closeEditor();
+      } catch (error) {
+        Alert.alert('Could not save', getErrorMessage(error, 'Failed to save logo.'));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     if (logoUrl) {
       persistSoftAndAdvance('logo', { logoUrl }, { logoUrl });
       return;
     }
     advanceFrom('logo');
-  }, [advanceFrom, logoUrl, persistSoftAndAdvance]);
+  }, [advanceFrom, closeEditor, editing, logoUrl, persistSoftAndAdvance, saveLiveEdit, settings?.logoUrl]);
 
   const onSkip = useCallback(() => {
     advanceFrom('logo');
@@ -130,21 +151,34 @@ export default function StoreSetupLogoScreen() {
     return <FeatureAccessDenied message="Online store is not enabled for your workspace." />;
   }
 
+  if (editing && loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={BRAND_GREEN} />
+      </View>
+    );
+  }
+
   const preview = logoUrl ? resolveImageUrl(logoUrl) : '';
 
   return (
     <StoreSetupChrome
       stepId="logo"
       gapFlags={gapFlags}
-      onSkip={onSkip}
+      onSkip={editing ? undefined : onSkip}
       skipLabel="Skip"
-      onContinue={onContinue}
-      continueLabel={logoUrl ? 'Continue' : 'Continue without logo'}
-      continuing={uploading}
+      onContinue={() => {
+        void onContinue();
+      }}
+      continueLabel={editing ? 'Save' : logoUrl ? 'Continue' : 'Continue without logo'}
+      continuing={uploading || saving}
+      editing={editing}
     >
-      <Text style={[styles.headline, { color: textColor }]}>Add your logo</Text>
+      <Text style={[styles.headline, { color: textColor }]}>{editing ? 'Store logo' : 'Add your logo'}</Text>
       <Text style={[styles.body, { color: mutedColor }]}>
-        Optional — your store looks more trustworthy with a logo. You can skip and add it later.
+        {editing
+          ? 'Customers see this on your online store.'
+          : 'Optional — your store looks more trustworthy with a logo. You can skip and add it later.'}
       </Text>
 
       <View style={styles.logoSection}>
@@ -188,6 +222,7 @@ export default function StoreSetupLogoScreen() {
 }
 
 const styles = StyleSheet.create({
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   headline: {
     fontSize: 28,
     fontWeight: '700',

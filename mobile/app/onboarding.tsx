@@ -35,6 +35,8 @@ import {
 import { BRAND_GREEN } from '@/constants/brand';
 import { FontFamily, FontSize } from '@/constants/typography';
 import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
+import { useMarkInteractiveAfterStartup } from '@/hooks/useMarkInteractiveAfterStartup';
+import { joinDialCode } from '@/utils/displayPhone';
 
 /** Icon name per business group (retail = cart; matches web concepts: Briefcase, Scissors, Car, UtensilsCrossed, Pill, Package). */
 function getBusinessGroupIconName(groupKey: string): AppIconName {
@@ -117,6 +119,7 @@ const STEPS: { id: StepId; title: string; subtitle: string }[] = [
 ];
 
 export default function OnboardingScreen() {
+  useMarkInteractiveAfterStartup();
   const insets = useSafeAreaInsets();
   const { user, refreshAuth } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
@@ -213,7 +216,7 @@ export default function OnboardingScreen() {
     if (companyLogo) {
       formData.append('companyLogo', { uri: companyLogo, name: 'logo.jpg', type: 'image/jpeg' } as any);
     }
-    const fullPhone = phoneCountryCode ? `${phoneCountryCode} ${companyPhone.trim()}` : companyPhone.trim();
+    const fullPhone = phoneCountryCode ? joinDialCode(phoneCountryCode, companyPhone) : companyPhone.trim();
     formData.append('companyPhone', fullPhone);
     if (companyEmail.trim()) formData.append('companyEmail', companyEmail.trim());
     if (companyWebsite.trim()) {

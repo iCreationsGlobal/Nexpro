@@ -1,15 +1,17 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator } from 'react-native';
 
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { FormLabel, FormInput } from '@/components/FormField';
 import { StoreSetupChrome } from '@/components/store/StoreSetupChrome';
 import { useAuth } from '@/context/AuthContext';
-import { useStoreSetup } from '@/context/StoreSetupContext';
+import { useStoreSetup, useStoreSetupEditing } from '@/context/StoreSetupContext';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { settingsService } from '@/services/settings';
 import { getErrorMessage } from '@/utils/errorMessages';
+import { resolvePaymentMethodsForSetup } from '@/utils/onlineStoreDefaults';
 import {
+  describePayoutDestination,
   DIRECT_MOMO_PROVIDERS,
   isValidDirectMomoPhone,
   normalizeDirectMomoPhone,
@@ -24,15 +26,22 @@ export default function StoreSetupPaymentsScreen() {
   const { hasFeature, user } = useAuth();
   const { textColor, mutedColor, borderColor } = useScreenColors();
   const {
+    loading,
     gapFlags,
     defaults,
     organization,
+    settings,
+    paymentCollection,
     paymentConfigured,
     buildSmartDefaultsPayload,
     saveSettings,
     setPaymentCollectionLocal,
     advanceFrom,
+    saveLiveEdit,
+    closeEditor,
   } = useStoreSetup();
+  const editing = useStoreSetupEditing();
+  const [changingWallet, setChangingWallet] = useState(false);
 
   const [businessName, setBusinessName] = useState(
     () => defaults.displayName || String(organization?.name || '')
@@ -72,8 +81,9 @@ export default function StoreSetupPaymentsScreen() {
   }, []);
 
   const onContinue = useCallback(async () => {
-    if (paymentConfigured) {
-      advanceFrom('payments');
+    if (paymentConfigured && !changingWallet) {
+      if (editing) closeEditor();
+      else advanceFrom('payments');
       return;
     }
 
@@ -113,6 +123,21 @@ export default function StoreSetupPaymentsScreen() {
       const updated = await settingsService.updatePaymentCollectionSettings(payload);
       setPaymentCollectionLocal(updated);
 
+      if (editing) {
+        // Mark online payments as set up without touching the rest of the live store.
+        const savedMethods = (settings?.metadata as { paymentMethods?: Record<string, { enabled?: boolean; configured?: boolean }> } | undefined)
+          ?.paymentMethods;
+        try {
+          await saveLiveEdit({
+            metadata: { paymentMethods: resolvePaymentMethodsForSetup(true, savedMethods || {}) },
+          });
+        } catch {
+          // Wallet is connected; the store's payment flags refresh on its next save
+        }
+        closeEditor();
+        return;
+      }
+
       // Soft-sync store payment metadata; do not block Continue on status refresh.
       void (async () => {
         try {
@@ -139,14 +164,19 @@ export default function StoreSetupPaymentsScreen() {
     advanceFrom,
     buildSmartDefaultsPayload,
     businessName,
+    changingWallet,
+    closeEditor,
     defaults.contactEmail,
+    editing,
     momoPhone,
     otp,
     password,
     paymentConfigured,
     provider,
+    saveLiveEdit,
     saveSettings,
     setPaymentCollectionLocal,
+    settings?.metadata,
     useOtp,
     user?.email,
   ]);
@@ -155,18 +185,36 @@ export default function StoreSetupPaymentsScreen() {
     return <FeatureAccessDenied message="Online store is not enabled for your workspace." />;
   }
 
-  if (paymentConfigured) {
+  if (editing && loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={BRAND_GREEN} />
+      </View>
+    );
+  }
+
+  if (paymentConfigured && !changingWallet) {
+    const destination = editing ? describePayoutDestination(paymentCollection) : null;
     return (
       <StoreSetupChrome
         stepId="payments"
         gapFlags={gapFlags}
-        onContinue={() => advanceFrom('payments')}
-        continueLabel="Continue"
+        onContinue={() => {
+          if (editing) closeEditor();
+          else advanceFrom('payments');
+        }}
+        continueLabel={editing ? 'Done' : 'Continue'}
+        onSkip={editing ? () => setChangingWallet(true) : undefined}
+        skipLabel="Change payout wallet"
+        editing={editing}
       >
         <Text style={[styles.headline, { color: textColor }]}>Payments ready</Text>
         <Text style={[styles.body, { color: mutedColor }]}>
           Your payout destination is already connected. Online store checkout can collect MoMo and card.
         </Text>
+        {destination ? (
+          <Text style={[styles.destination, { color: textColor }]}>Payouts go to {destination}</Text>
+        ) : null}
       </StoreSetupChrome>
     );
   }
@@ -176,13 +224,19 @@ export default function StoreSetupPaymentsScreen() {
       stepId="payments"
       gapFlags={gapFlags}
       onContinue={onContinue}
-      continueLabel="Connect MoMo"
+      onBack={changingWallet ? () => setChangingWallet(false) : undefined}
+      continueLabel={changingWallet ? 'Save wallet' : 'Connect MoMo'}
       continueDisabled={!canSubmit}
       continuing={saving}
+      editing={editing}
     >
-      <Text style={[styles.headline, { color: textColor }]}>Get paid</Text>
+      <Text style={[styles.headline, { color: textColor }]}>
+        {changingWallet ? 'Change payout wallet' : 'Get paid'}
+      </Text>
       <Text style={[styles.body, { color: mutedColor }]}>
-        Connect Mobile Money so customers can pay you online. Settlements go to this wallet in GHS.
+        {changingWallet
+          ? 'New online payments will settle to this Mobile Money wallet in GHS.'
+          : 'Connect Mobile Money so customers can pay you online. Settlements go to this wallet in GHS.'}
       </Text>
 
       <View>
@@ -280,6 +334,8 @@ export default function StoreSetupPaymentsScreen() {
 }
 
 const styles = StyleSheet.create({
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  destination: { fontSize: 16, fontWeight: '600' },
   headline: {
     fontSize: 28,
     fontWeight: '700',

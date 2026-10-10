@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '@/context/AuthContext';
@@ -28,6 +28,7 @@ import {
   type OnlineStoreDefaults,
 } from '@/utils/onlineStoreDefaults';
 import { isStoreSetupBackgroundNoiseQuery } from '@/utils/storeSetupQueryGate';
+import { buildLiveStoreEditPayload, canEditLiveStoreSettings } from '@/utils/storeSettingsEdit';
 import {
   buildGapFlags,
   canVisitSetupStep,
@@ -119,6 +120,13 @@ type StoreSetupContextValue = {
   /** Jump to any step when allowed (basics required after name). */
   goToStep: (step: StoreSetupStepId) => void;
   finishAndOpenStore: () => void;
+  /**
+   * Live store: save only the edited fields on top of the saved settings (never the first-run
+   * defaults), waiting for the result so errors can be shown.
+   */
+  saveLiveEdit: (changes: Record<string, unknown>) => Promise<void>;
+  /** Leave a live-store editor and return to where it was opened from. */
+  closeEditor: () => void;
 };
 
 const StoreSetupContext = createContext<StoreSetupContextValue | null>(null);
@@ -580,6 +588,26 @@ export function StoreSetupProvider({ children }: { children: React.ReactNode }) 
     router.replace('/(tabs)/store' as never);
   }, [queryClient, router]);
 
+  const saveLiveEdit = useCallback(
+    async (changes: Record<string, unknown>) => {
+      const saved = settingsRef.current;
+      if (!canEditLiveStoreSettings(saved)) {
+        throw new Error('Your store settings are still loading. Try again in a moment.');
+      }
+      await queueSettingsSave(buildLiveStoreEditPayload(saved as Record<string, unknown>, changes));
+    },
+    [queueSettingsSave]
+  );
+
+  const closeEditor = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['store'] });
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/store' as never);
+    }
+  }, [queryClient, router]);
+
   const value = useMemo<StoreSetupContextValue>(
     () => ({
       loading,
@@ -607,11 +635,14 @@ export function StoreSetupProvider({ children }: { children: React.ReactNode }) 
       goBackFrom,
       goToStep,
       finishAndOpenStore,
+      saveLiveEdit,
+      closeEditor,
     }),
     [
       advanceFrom,
       buildSmartDefaultsPayload,
       checklist,
+      closeEditor,
       defaults,
       ensureProductsLoaded,
       error,
@@ -631,6 +662,7 @@ export function StoreSetupProvider({ children }: { children: React.ReactNode }) 
       refresh,
       refreshSetupStatus,
       resolveAvailableSlug,
+      saveLiveEdit,
       saveSettings,
       setPaymentCollectionLocal,
       settings,
@@ -652,4 +684,14 @@ export function useStoreSetup(): StoreSetupContextValue {
     throw new Error('useStoreSetup must be used within StoreSetupProvider');
   }
   return ctx;
+}
+
+/**
+ * Setup steps double as editors once the store is live: opened with `?mode=edit` from the Store tab,
+ * or reached any other way after launch, so a live store never gets the first-run defaults saved over it.
+ */
+export function useStoreSetupEditing(): boolean {
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const { checklist } = useStoreSetup();
+  return mode === 'edit' || Boolean(checklist.launched);
 }
