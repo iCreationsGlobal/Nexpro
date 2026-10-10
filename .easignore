@@ -1,3 +1,8 @@
+# ABS builds archive the Git repository root, even when launched from mobile/.
+# Include only the standalone mobile workspace.
+/*
+!/mobile
+
 # This repo contains several apps. EAS builds should be run from mobile/,
 # but keep repo-root uploads small if the command is launched from here.
 
@@ -68,3 +73,9 @@ Thumbs.db
 *.key
 *.pem
 *.mobileprovision
+
+# Mobile native outputs and all local environment variants
+mobile/ios/
+mobile/android/
+mobile/.kotlin/
+**/.env*

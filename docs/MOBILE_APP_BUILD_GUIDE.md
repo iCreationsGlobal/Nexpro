@@ -213,7 +213,7 @@ cd /Users/us/Desktop/Development/Nexpro/mobile
 npm run build:ios
 ```
 
-The mobile project has its own `.easignore` so EAS does not upload local dependencies, generated Expo output, logs, native build folders, or local credentials. The repository root also has a defensive `.easignore` to keep accidental root-level uploads from including `Backend/`, `Frontend/`, `marketing-site/`, `e2e/`, `docs/`, `.git/`, or nested `node_modules/`.
+EAS archives the Git repository root even when run from `mobile/`. The repository-root `.easignore` therefore includes only `mobile/` and excludes dependencies, generated output, native build folders, all `.env*` files, and local credentials. `mobile/.easignore` provides equivalent exclusions if the app is copied into its own repository. Keep the repository-root allowlist intact; unrelated repository assets previously inflated the upload to 946 MB.
 
 If upload fails with `write EPIPE`, the connection to EAS/Google Cloud Storage was interrupted while streaming the archive. Retry on a stable WiFi connection, disable VPN/proxy if possible, and keep the archive small by checking that `.easignore` is present before rebuilding.
 
