@@ -80,6 +80,7 @@ import {
   ruleHasMessagingActions,
   scheduleFormFromConfig,
   defaultFrequencyForTrigger,
+  defaultIntervalDaysForTrigger,
   defaultDelayMinutesForTrigger,
   formatScheduleTimeDisplay,
   getEventTimingCopy,
@@ -4780,7 +4781,7 @@ export default function Automations() {
   const changeTriggerType = useCallback((triggerType) => {
     const defaultFrequency = defaultFrequencyForTrigger(triggerType);
     const scheduleSeed = defaultFrequency
-      ? { frequency: defaultFrequency }
+      ? { frequency: defaultFrequency, intervalDays: defaultIntervalDaysForTrigger(triggerType) }
       : supportsSendAfter(triggerType)
         ? { delayMinutes: defaultDelayMinutesForTrigger(triggerType) }
         : {};

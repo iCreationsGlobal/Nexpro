@@ -75,6 +75,9 @@ const FREQUENCY_COOLDOWN_HOURS = {
   monthly: 720,
 };
 
+/** Win-back repeats per customer at most this often while they stay inactive (a daily "we miss you" is spam). */
+const WIN_BACK_REPEAT_DAYS = 30;
+
 /**
  * Whether a rule's branch scope (shopId/studioLocationId) matches the subject/context
  * a trigger fired for. A rule with both fields null applies to all branches.
@@ -204,6 +207,7 @@ function getTemplates() {
       allowedBusinessTypes: ['shop', 'studio', 'pharmacy', 'rental'],
       defaultForBusiness: true,
       triggerConfig: { inactiveDays: 30 },
+      scheduleConfig: { frequency: 'every_n_days', intervalDays: WIN_BACK_REPEAT_DAYS, cooldownHours: WIN_BACK_REPEAT_DAYS * 24 },
       actionConfig: {
         actions: [{
           type: 'send_whatsapp',
@@ -1681,7 +1685,7 @@ async function processDueDelayedRuns({ now = new Date(), limit = MAX_DELAYED_RUN
 /**
  * Resolve schedule frequency / cooldown for a rule.
  * once / maxSends:1 → lifetime success gate; else frequency → cooldownHours;
- * fallback legacy cooldownHours, sticky empty → daily, else DEDUPE_WINDOW_HOURS.
+ * fallback legacy cooldownHours, win-back empty → every 30 days, other sticky empty → daily, else DEDUPE_WINDOW_HOURS.
  * @param {{ triggerType?: string, scheduleConfig?: object, actionConfig?: object }} rule
  * @returns {{ mode: 'lifetime'|'cooldown'|'dedupe', frequency: string|null, cooldownHours: number, maxSends: number, intervalDays: number|null }}
  */
@@ -1734,6 +1738,16 @@ function resolveRuleSchedule(rule) {
       cooldownHours: legacyCooldown,
       maxSends: 0,
       intervalDays: null,
+    };
+  }
+
+  if (rule?.triggerType === 'customer_inactive_days') {
+    return {
+      mode: 'cooldown',
+      frequency: 'every_n_days',
+      cooldownHours: WIN_BACK_REPEAT_DAYS * 24,
+      maxSends: 0,
+      intervalDays: WIN_BACK_REPEAT_DAYS,
     };
   }
 

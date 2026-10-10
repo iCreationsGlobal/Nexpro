@@ -1483,16 +1483,29 @@ export function defaultDelayMinutesForTrigger(triggerType) {
   return 0;
 }
 
+/** Win-back repeats per customer at most this often (matches the engine's WIN_BACK_REPEAT_DAYS). */
+export const WIN_BACK_REPEAT_DAYS = 30;
+
 /**
  * Default frequency for sticky triggers when creating a new rule.
- * Overdue defaults to weekly to avoid daily spam.
+ * Overdue defaults to weekly and win-back to every 30 days to avoid daily spam.
  * @param {string} triggerType
  * @returns {string}
  */
 export function defaultFrequencyForTrigger(triggerType) {
   if (triggerType === 'invoice_overdue' || triggerType === 'invoice_overdue_staff') return 'weekly';
+  if (triggerType === 'customer_inactive_days') return 'every_n_days';
   if (isStickyTrigger(triggerType)) return 'daily';
   return '';
+}
+
+/**
+ * Default repeat interval (days) to pair with an every_n_days default frequency.
+ * @param {string} triggerType
+ * @returns {number}
+ */
+export function defaultIntervalDaysForTrigger(triggerType) {
+  return triggerType === 'customer_inactive_days' ? WIN_BACK_REPEAT_DAYS : 1;
 }
 
 /**
@@ -1512,7 +1525,7 @@ export function buildScheduleConfigFromForm(form = {}, triggerType) {
       return schedule;
     }
     if (frequency === 'every_n_days') {
-      const intervalDays = Math.max(1, Math.min(365, Number(form.intervalDays) || 1));
+      const intervalDays = Math.max(1, Math.min(365, Number(form.intervalDays) || defaultIntervalDaysForTrigger(triggerType)));
       schedule.intervalDays = intervalDays;
       schedule.cooldownHours = intervalDays * 24;
       return schedule;
@@ -1571,8 +1584,16 @@ export function scheduleFormFromConfig(scheduleConfig = {}, triggerType = '') {
     };
   }
 
-  // Lazy normalize: sticky rules with empty schedule → daily (matches engine).
+  // Lazy normalize: sticky rules with empty schedule → daily, win-back → every 30 days (matches engine).
   // New overdue templates set weekly explicitly in scheduleConfig.
+  if (triggerType === 'customer_inactive_days' && !s.frequency && cooldownHours <= 0) {
+    return {
+      frequency: 'every_n_days',
+      intervalDays: String(WIN_BACK_REPEAT_DAYS),
+      cooldownDays: '',
+      delayMinutes,
+    };
+  }
   if (sticky && !s.frequency && cooldownHours <= 0) {
     return {
       frequency: 'daily',

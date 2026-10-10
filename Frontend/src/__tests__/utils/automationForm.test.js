@@ -226,6 +226,8 @@ describe('automationForm frequency / schedule', () => {
     expect(isStickyTrigger('rental_created')).toBe(false);
     expect(defaultFrequencyForTrigger('invoice_overdue')).toBe('weekly');
     expect(defaultFrequencyForTrigger('low_stock_detected')).toBe('daily');
+    expect(defaultFrequencyForTrigger('customer_inactive_days')).toBe('every_n_days');
+    expect(buildScheduleConfigFromForm({}, 'customer_inactive_days')).toMatchObject({ frequency: 'every_n_days', intervalDays: 30, cooldownHours: 720 });
   });
 
   it('maps frequency form fields to scheduleConfig cooldownHours / maxSends', () => {
@@ -254,7 +256,7 @@ describe('automationForm frequency / schedule', () => {
 
   it('lazily normalizes empty sticky schedule to daily (overdue weekly)', () => {
     expect(scheduleFormFromConfig({}, 'invoice_overdue').frequency).toBe('daily');
-    expect(scheduleFormFromConfig({}, 'customer_inactive_days').frequency).toBe('daily');
+    expect(scheduleFormFromConfig({}, 'customer_inactive_days')).toMatchObject({ frequency: 'every_n_days', intervalDays: '30' });
     expect(conditionFormFromConfig({}, { frequency: 'weekly', cooldownHours: 168 }, 'invoice_overdue').frequency).toBe('weekly');
     expect(defaultFrequencyForTrigger('invoice_overdue')).toBe('weekly');
   });

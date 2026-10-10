@@ -99,6 +99,20 @@ describe('automationEngineService frequency / schedule', () => {
     });
   });
 
+  describe('win-back repeat', () => {
+    it('repeats every 30 days per customer, including existing rules with no schedule saved', () => {
+      expect(getTemplateByKey('win_back_campaign').scheduleConfig).toMatchObject({
+        frequency: 'every_n_days',
+        intervalDays: 30,
+        cooldownHours: 720,
+      });
+      expect(resolveRuleSchedule({ triggerType: 'customer_inactive_days', scheduleConfig: {} }))
+        .toMatchObject({ mode: 'cooldown', frequency: 'every_n_days', cooldownHours: 720, intervalDays: 30 });
+      expect(resolveRuleSchedule({ triggerType: 'customer_inactive_days', scheduleConfig: { frequency: 'weekly' } }))
+        .toMatchObject({ cooldownHours: 168 });
+    });
+  });
+
   describe('overdue template default', () => {
     it('defaults overdue_invoice_reminder template to weekly', () => {
       const template = getTemplateByKey('overdue_invoice_reminder');
