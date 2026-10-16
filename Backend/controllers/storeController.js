@@ -73,7 +73,11 @@ const {
   paymentStatusForMarketplaceOrder,
 } = require('../utils/marketplaceOrderStatus');
 const { startHotPathTimer } = require('../utils/performanceLogger');
-const { applyStockChange } = require('../utils/productStockUtils');
+const {
+  applyStockChange,
+  getEffectiveProductSellingPrice,
+  lowestVariantPriceAttribute,
+} = require('../utils/productStockUtils');
 const { getRentalSettings } = require('../services/rentalSettingsService');
 const {
   buildPublicRentalListingFields,
@@ -3164,7 +3168,10 @@ exports.bulkPublishProductListings = async (req, res, next) => {
     }
 
     const [products, listings, slugRows] = await Promise.all([
-      Product.findAll({ where: applyTenantFilter(req.tenantId, { id: { [Op.in]: productIds } }) }),
+      Product.findAll({
+        where: applyTenantFilter(req.tenantId, { id: { [Op.in]: productIds } }),
+        attributes: { include: [lowestVariantPriceAttribute()] },
+      }),
       OnlineProductListing.findAll({
         where: applyTenantFilter(req.tenantId, { productId: { [Op.in]: productIds }, productVariantId: null }),
       }),
@@ -3192,12 +3199,20 @@ exports.bulkPublishProductListings = async (req, res, next) => {
           continue;
         }
 
+        // Variant products often price each variant and leave the parent at 0.
+        const pricedProduct = {
+          ...(typeof product.get === 'function' ? product.get({ plain: true }) : product),
+          sellingPrice: getEffectiveProductSellingPrice(product),
+        };
         if (existing) {
           const update = { status: 'published', images, publishedAt: existing.publishedAt || new Date() };
+          if (!(Number.parseFloat(existing.publicPrice) > 0)) {
+            update.publicPrice = resolveListingPublicPriceFromProduct({}, pricedProduct);
+          }
           assertListingPublishable({ ...existing.get({ plain: true }), ...update });
           await existing.update(update);
         } else {
-          const payload = listingPayloadFromBody({ status: 'published', images }, product);
+          const payload = listingPayloadFromBody({ status: 'published', images }, pricedProduct);
           assertListingPublishable(payload);
           await OnlineProductListing.create({
             ...payload,

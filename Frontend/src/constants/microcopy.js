@@ -380,7 +380,7 @@ export const EMPTY_STATES = {
   WATCH: {
     icon: 'Eye',
     title: 'No watch incidents yet',
-    description: 'Ingest counter activity from a phone MP4 or camera. ABS will compare it with recorded sales.',
+    description: 'Pair a Watch device with your shop camera below, or upload a short clip. ABS compares till activity with recorded sales.',
     primaryAction: 'Refresh',
   },
   WATCH_FILTERED: {

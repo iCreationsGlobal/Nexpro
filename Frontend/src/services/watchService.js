@@ -102,6 +102,33 @@ const watchService = {
    * @returns {Promise}
    */
   updateCamera: async (id, payload) => api.put(`/watch/cameras/${id}`, payload),
+
+  /**
+   * Latest still the Watch agent sent for a camera ({ dataUrl, capturedAt }).
+   * @param {string} id
+   * @returns {Promise}
+   */
+  getCameraSnapshot: async (id) => api.get(`/watch/cameras/${id}/snapshot`, { skipRetry: true }),
+
+  /**
+   * Paired Watch devices (shop computers running the agent) and pairings in progress.
+   * @returns {Promise}
+   */
+  listDevices: async () => api.get('/watch/devices'),
+
+  /**
+   * Start pairing a Watch device. The response holds the one-time pairing code.
+   * @param {{ name?: string }} payload
+   * @returns {Promise}
+   */
+  createDevicePairing: async (payload = {}) => api.post('/watch/devices', payload),
+
+  /**
+   * Remove a Watch device: its key stops working and its cameras are switched off.
+   * @param {string} id
+   * @returns {Promise}
+   */
+  revokeDevice: async (id) => api.post(`/watch/devices/${id}/revoke`),
 };
 
 export default watchService;

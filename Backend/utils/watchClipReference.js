@@ -31,6 +31,13 @@ const sanitizeClipReference = (raw, { tenantId } = {}) => {
     }
   }
 
+  // Clip in the Watch bucket (see services/watchClipStorage.js), scoped to this workspace
+  if (text.startsWith('storage:watch/')) {
+    if (tenantId && !text.startsWith(`storage:watch/${tenantId}/`)) return null;
+    if (!/^storage:watch\/[^/]+\/[^/]+$/.test(text)) return null;
+    return text;
+  }
+
   if (text.startsWith('/uploads/watch/')) {
     if (tenantId && !text.startsWith(`/uploads/watch/${tenantId}/`)) return null;
     if (!/^\/uploads\/watch\/[^/]+\/[^/]+$/.test(text)) return null;

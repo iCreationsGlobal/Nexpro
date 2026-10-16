@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { resolveImageUrl } from '../../utils/fileUtils';
 import { formatAmount } from '../../utils/formatNumber';
+import { getCatalogUnitPrice } from '../../utils/productStock';
 
 /** Stock label for a product row; products that don't track stock show nothing. */
 export const getSimpleStockLabel = (product) => {
@@ -116,7 +117,7 @@ export default function SimpleProductsList({
                     <p className="truncate font-medium text-foreground">{product.name}</p>
                     {stock ? <p className={`mt-0.5 text-sm font-medium ${stock.tone}`}>{stock.text}</p> : null}
                   </div>
-                  <p className="text-lg font-bold text-foreground">{formatAmount(product.sellingPrice)}</p>
+                  <p className="text-lg font-bold text-foreground">{formatAmount(getCatalogUnitPrice(product))}</p>
                   <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
                 </button>
               </li>

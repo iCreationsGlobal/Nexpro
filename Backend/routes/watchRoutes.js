@@ -13,6 +13,10 @@ const {
   attachWatchIncidentClip,
   processWatchUploadedClip,
   getWatchClipDetections,
+  listWatchDevices,
+  createWatchDevicePairing,
+  revokeWatchDevice,
+  getWatchCameraSnapshot,
 } = require('../controllers/watchController');
 const { protect, authorize } = require('../middleware/auth');
 const { tenantContext } = require('../middleware/tenant');
@@ -56,5 +60,9 @@ router.post('/reconcile', authorize('admin', 'manager'), reconcileWatch);
 router.get('/cameras', listWatchCameras);
 router.post('/cameras', authorize('admin', 'manager'), upsertWatchCamera);
 router.put('/cameras/:id', authorize('admin', 'manager'), upsertWatchCamera);
+router.get('/cameras/:id/snapshot', getWatchCameraSnapshot);
+router.get('/devices', listWatchDevices);
+router.post('/devices', authorize('admin', 'manager'), createWatchDevicePairing);
+router.post('/devices/:id/revoke', authorize('admin', 'manager'), revokeWatchDevice);
 
 module.exports = router;

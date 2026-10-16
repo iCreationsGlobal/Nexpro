@@ -149,6 +149,25 @@ describe('storeController bulkPublishProductListings', () => {
     expect(OnlineProductListing.create).not.toHaveBeenCalled();
   });
 
+  it('prices variant products from their variants when the parent price is 0', async () => {
+    const draft = {
+      productId: 'p2', status: 'draft', title: 'Shirt', publicPrice: '0.00', images: ['/s.jpg'], publishedAt: null,
+      get: () => ({ title: 'Shirt', publicPrice: '0.00', images: ['/s.jpg'] }),
+      update: jest.fn(),
+    };
+    Product.findAll.mockResolvedValue([
+      product({ id: 'p1', sellingPrice: '0.00', hasVariants: true, lowestVariantPrice: '120.00' }),
+      product({ id: 'p2', name: 'Shirt', sellingPrice: '0.00', hasVariants: true, lowestVariantPrice: '85.00' }),
+    ]);
+    OnlineProductListing.findAll.mockResolvedValueOnce([draft]).mockResolvedValueOnce([]);
+
+    const res = await run(['p1', 'p2']);
+
+    expect(res.json.mock.calls[0][0].data.published.map((p) => p.id)).toEqual(['p1', 'p2']);
+    expect(OnlineProductListing.create).toHaveBeenCalledWith(expect.objectContaining({ productId: 'p1', publicPrice: 120 }));
+    expect(draft.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'published', publicPrice: 85 }));
+  });
+
   it('rejects an empty or oversized selection', async () => {
     expect((await run([])).status).toHaveBeenCalledWith(400);
     expect((await run(Array.from({ length: 101 }, (_, i) => `p${i}`))).status).toHaveBeenCalledWith(400);

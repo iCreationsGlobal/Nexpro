@@ -19,6 +19,7 @@ const {
 } = require('./watchMatching');
 const { sanitizeClipReference } = require('../utils/watchClipReference');
 const { sanitizeStreamUrl } = require('../utils/watchStreamUrl');
+const { resolveClipUrl } = require('./watchClipStorage');
 
 const DECISION_TO_STATUS = {
   [REVIEW_DECISIONS.CONFIRM]: INCIDENT_STATUSES.CONFIRMED,
@@ -90,6 +91,15 @@ const serializeIncident = (incident, sale = null) => {
   };
 };
 
+/** Clips in the Watch bucket become short-lived playable URLs; other references pass through. */
+const withPlayableClips = async (incident) => ({
+  ...incident,
+  clipReference: await resolveClipUrl(incident.clipReference),
+  event: incident.event
+    ? { ...incident.event, clipReference: await resolveClipUrl(incident.event.clipReference) }
+    : incident.event,
+});
+
 /**
  * Persist new vision events, then reconcile against Sale.createdAt.
  * @param {{ tenantId: string, shopId?: string|null, events: object[], matchWindowMinutes?: number, clipReference?: string }} args
@@ -157,8 +167,20 @@ const ingestEvents = async ({ tenantId, shopId = null, events = [], matchWindowM
 };
 
 /**
+ * A sale flagged "no till activity" because its till event hadn't arrived yet (the Watch agent was
+ * offline and is catching up, or the event was still in flight). Unreviewed, it can be corrected.
+ */
+const isPrematureSaleFlag = (incident) => Boolean(
+  incident
+  && incident.kind === INCIDENT_KINDS.SALE_WITHOUT_EVENT
+  && !incident.eventId
+  && incident.status === INCIDENT_STATUSES.PENDING
+);
+
+/**
  * Match counter interactions to sales and flag camera misses.
- * Late-arriving POS sync can upgrade unmatched incidents to matched.
+ * Late-arriving POS sync can upgrade unmatched incidents to matched, and a late-arriving till
+ * event clears an unreviewed "sale without till activity" flag for its sale.
  * @param {{ tenantId: string, shopId?: string|null, startAt: Date, endAt: Date, matchWindowMinutes?: number }} args
  */
 const reconcilePeriod = async ({
@@ -218,6 +240,14 @@ const reconcilePeriod = async ({
   let created = 0;
   let updated = 0;
 
+  const dropPrematureSaleFlag = async (sale, replacement) => {
+    const premature = sale ? incidentBySaleId.get(sale.id) : null;
+    if (!isPrematureSaleFlag(premature) || premature === replacement) return;
+    await premature.destroy();
+    incidentBySaleId.set(sale.id, replacement);
+    updated += 1;
+  };
+
   for (const event of events) {
     if (!isCounterEventType(event.eventType)) continue;
     const match = findBestSaleMatch({
@@ -259,7 +289,14 @@ const reconcilePeriod = async ({
           status: shouldUpgrade ? INCIDENT_STATUSES.PENDING : existingIncident.status,
         });
         updated += 1;
+        await dropPrematureSaleFlag(sale, existingIncident);
       }
+    } else if (sale && isPrematureSaleFlag(incidentBySaleId.get(sale.id))) {
+      // The sale's "no till activity" flag came before this event did: it becomes the match
+      const premature = incidentBySaleId.get(sale.id);
+      await premature.update({ ...payload, status: INCIDENT_STATUSES.PENDING });
+      incidentByEventId.set(event.id, premature);
+      updated += 1;
     } else {
       const createdRow = await VisionIncident.create({
         ...payload,
@@ -426,7 +463,7 @@ const listIncidents = async ({
 
   return {
     success: true,
-    data: rows.map((row) => serializeIncident(row, row.sale)),
+    data: await Promise.all(rows.map((row) => withPlayableClips(serializeIncident(row, row.sale)))),
     pagination: { total: count, limit: Math.min(Number(limit) || 50, 100), offset: Number(offset) || 0 },
   };
 };
@@ -456,12 +493,25 @@ const listEvents = async ({
   };
 };
 
+/** Snapshot images load on their own (GET /api/watch/cameras/:id/snapshot), keeping lists light. */
+const serializeCamera = (camera) => {
+  const plain = camera.toJSON ? camera.toJSON() : camera;
+  const { snapshot, ...metadata } = plain.metadata || {};
+  return {
+    ...plain,
+    metadata: snapshot ? { ...metadata, snapshot: { capturedAt: snapshot.capturedAt || null } } : metadata,
+  };
+};
+
+/** Set by the Watch agent; owners edit names, roles and zones, not these. */
+const AGENT_OWNED_METADATA_KEYS = ['snapshot', 'localId', 'addedFromAgent'];
+
 const listCameras = async ({ tenantId, shopId = null } = {}) => {
   const rows = await VisionCamera.findAll({
     where: { tenantId, ...shopWhere(shopId) },
     order: [['createdAt', 'ASC']],
   });
-  return { success: true, data: rows };
+  return { success: true, data: rows.map(serializeCamera) };
 };
 
 const upsertCamera = async ({ tenantId, shopId = null, cameraId, payload = {}, userId } = {}) => {
@@ -472,6 +522,8 @@ const upsertCamera = async ({ tenantId, shopId = null, cameraId, payload = {}, u
       error: 'Stream URL must be rtsp://, rtsps://, http://, or https://',
     };
   }
+  const ownerMetadata = { ...(payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : {}) };
+  AGENT_OWNED_METADATA_KEYS.forEach((key) => delete ownerMetadata[key]);
   const body = {
     name: String(payload.name || '').trim(),
     role: payload.role || 'counter',
@@ -479,10 +531,7 @@ const upsertCamera = async ({ tenantId, shopId = null, cameraId, payload = {}, u
     streamUrl: sanitizeStreamUrl(rawStream),
     zones: Array.isArray(payload.zones) ? payload.zones : [],
     isActive: payload.isActive !== false,
-    metadata: {
-      ...(payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : {}),
-      updatedBy: userId || null,
-    },
+    metadata: { ...ownerMetadata, updatedBy: userId || null },
   };
   if (!body.name) {
     return { success: false, error: 'Camera name is required' };
@@ -491,12 +540,19 @@ const upsertCamera = async ({ tenantId, shopId = null, cameraId, payload = {}, u
   if (cameraId) {
     const existing = await VisionCamera.findOne({ where: { id: cameraId, tenantId } });
     if (!existing) return { success: false, error: 'Camera not found' };
-    await existing.update({ ...body, shopId: shopId || existing.shopId });
-    return { success: true, data: existing };
+    await existing.update({
+      ...body,
+      // A zone or name edit must not unlink the Watch agent or drop its snapshot / stream address
+      deviceId: payload.deviceId !== undefined ? body.deviceId : existing.deviceId,
+      streamUrl: payload.streamUrl !== undefined ? body.streamUrl : existing.streamUrl,
+      metadata: { ...(existing.metadata || {}), ...body.metadata },
+      shopId: shopId || existing.shopId,
+    });
+    return { success: true, data: serializeCamera(existing) };
   }
 
   const created = await VisionCamera.create({ ...body, tenantId, shopId });
-  return { success: true, data: created };
+  return { success: true, data: serializeCamera(created) };
 };
 
 module.exports = {
@@ -507,6 +563,7 @@ module.exports = {
   listIncidents,
   listEvents,
   listCameras,
+  serializeCamera,
   upsertCamera,
   normalizeIncomingEvent,
   countUniqueVisitorPeople,

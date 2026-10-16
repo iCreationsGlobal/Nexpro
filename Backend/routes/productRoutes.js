@@ -5,6 +5,7 @@ const {
   getProduct,
   getProductSales,
   adjustProductStock,
+  receiveStock,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -76,6 +77,9 @@ router.route('/bulk/store-listing')
 
 router.route('/bulk/stock')
   .put(bulkOperationLimiter, authorize('admin', 'manager', 'staff'), timeCrudAction('products.bulk_update_stock'), bulkUpdateStock);
+
+router.route('/receive')
+  .post(authorize('admin', 'manager', 'staff'), timeCrudAction('products.receive_stock'), receiveStock);
 
 router.route('/barcode/:barcode')
   .get(getProductByBarcode);

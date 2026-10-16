@@ -78,8 +78,9 @@ export const isProductOutOfStock = (product) => {
 
 /**
  * Catalog / tile unit price. When a variant is selected, use that variant's price.
- * When the parent price is 0, fall back to the lowest positive active-variant price.
- * @param {{ sellingPrice?: number | string | null, variants?: Array } | null | undefined} product
+ * When the parent price is 0, fall back to the lowest positive active-variant price
+ * (from loaded `variants`, or the list API's `lowestVariantPrice` when variants are not loaded).
+ * @param {{ sellingPrice?: number | string | null, lowestVariantPrice?: number | string | null, variants?: Array } | null | undefined} product
  * @param {{ sellingPrice?: number | string | null } | null} [variant]
  * @returns {number}
  */
@@ -93,9 +94,25 @@ export const getCatalogUnitPrice = (product, variant = null) => {
   const parentPrice = parsePrice(product?.sellingPrice);
   if (parentPrice > 0) return parentPrice;
 
-  const variantPrices = getActiveVariants(product)
-    .map((item) => parsePrice(item?.sellingPrice))
-    .filter((price) => price > 0);
+  const variantPrices = [
+    ...getActiveVariants(product).map((item) => parsePrice(item?.sellingPrice)),
+    parsePrice(product?.lowestVariantPrice),
+  ].filter((price) => price > 0);
   if (variantPrices.length === 0) return parentPrice;
   return Math.min(...variantPrices);
+};
+
+/**
+ * Selling value of the stock on hand. Variant products add up each active variant's
+ * quantity at that variant's own price (the parent price when the variant has none).
+ * @param {{ sellingPrice?: number | string | null, variants?: Array } | null | undefined} product
+ * @returns {number}
+ */
+export const getProductStockValue = (product) => {
+  const variants = getActiveVariants(product);
+  if (variants.length === 0) return getCatalogUnitPrice(product) * getProductStockQuantity(product);
+  return variants.reduce(
+    (total, variant) => total + getCatalogUnitPrice(product, variant) * Math.max(parseQuantity(variant?.quantityOnHand), 0),
+    0,
+  );
 };

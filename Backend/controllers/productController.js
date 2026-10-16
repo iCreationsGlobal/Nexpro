@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { Product, ProductVariant, ProductStockMovement, Shop, ProductCategory, Barcode, SaleItem, Sale, Customer, User, OnlineProductListing } = require('../models');
@@ -24,6 +25,8 @@ const {
   applyStockChange,
   attachShopStockToProducts,
   shopCatalogVisibilityLiteral,
+  lowestVariantPriceAttribute,
+  getEffectiveProductSellingPrice,
 } = require('../utils/productStockUtils');
 
 const PRODUCT_STAFF_SENSITIVE_FIELDS = [
@@ -465,6 +468,8 @@ exports.getProducts = async (req, res, next) => {
     const isActive = req.query.isActive;
     const isRentable = req.query.isRentable;
     const isSalable = req.query.isSalable;
+    const lowStock = req.query.lowStock === 'true';
+    const outOfStock = req.query.outOfStock === 'true';
     const includeVariants = req.query.includeVariants === 'true' || req.query.forPOS === 'true';
     const { order } = resolveProductListSort(req.query.sort || req.query.sortBy);
 
@@ -525,6 +530,29 @@ exports.getProducts = async (req, res, next) => {
       where[Op.and].push(searchCondition);
     }
 
+    // Same rules as getProductStats: low = above 0 but at or below the reorder level; out = 0 or less.
+    // Both together return either.
+    if (lowStock || outOfStock) {
+      const quantityCol = Product.sequelize.col('Product.quantityOnHand');
+      const stockConditions = [];
+      if (lowStock) {
+        stockConditions.push({
+          [Op.and]: [
+            Product.sequelize.where(quantityCol, Op.gt, 0),
+            Product.sequelize.where(quantityCol, Op.lte, Product.sequelize.col('Product.reorderLevel')),
+          ],
+        });
+      }
+      if (outOfStock) {
+        stockConditions.push(Product.sequelize.where(quantityCol, Op.lte, 0));
+      }
+      where.trackStock = { [Op.ne]: false };
+      where[Op.and] = Array.isArray(where[Op.and])
+        ? [...where[Op.and]]
+        : (where[Op.and] ? [where[Op.and]] : []);
+      where[Op.and].push({ [Op.or]: stockConditions });
+    }
+
     const { count, rows } = await Product.findAndCountAll({
       where,
       limit,
@@ -540,6 +568,7 @@ exports.getProducts = async (req, res, next) => {
             WHERE pv."productId" = "Product"."id"
               AND pv."isActive" = true
           )`), 'totalVariantStock'],
+          lowestVariantPriceAttribute(),
         ],
       },
       include: [
@@ -1032,6 +1061,113 @@ exports.adjustProductStock = async (req, res, next) => {
   }
 };
 
+const RECEIVE_STOCK_MAX_ITEMS = 200;
+
+const receiveStockError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
+
+/**
+ * @desc    Receive a delivery: add stock to many products and variants in one go.
+ *          All items are saved together or none are.
+ * @route   POST /api/products/receive
+ * @access  Private (admin, manager, staff)
+ */
+exports.receiveStock = async (req, res, next) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (!items.length || items.length > RECEIVE_STOCK_MAX_ITEMS) {
+    return res.status(400).json({
+      success: false,
+      message: items.length ? `Receive up to ${RECEIVE_STOCK_MAX_ITEMS} items at a time` : 'Add at least one item to receive',
+    });
+  }
+  if (items.some((item) => !item?.productId || !(parseQuantity(item.quantity) > 0))) {
+    return res.status(400).json({
+      success: false,
+      message: 'Every item needs a quantity greater than zero',
+    });
+  }
+
+  const reference = `receive:${crypto.randomUUID()}`;
+  const transaction = await Product.sequelize.transaction();
+  let transactionFinished = false;
+  try {
+    const received = [];
+    for (const item of items) {
+      // eslint-disable-next-line no-await-in-loop
+      const product = await Product.findOne({
+        where: applyTenantFilter(req.tenantId, { id: item.productId }),
+        transaction,
+      });
+      if (!product) {
+        throw receiveStockError(404, 'A product in this delivery was not found. Refresh and try again.');
+      }
+      assertShopRecordAccess(req, product);
+
+      let variant = null;
+      if (item.variantId) {
+        // eslint-disable-next-line no-await-in-loop
+        variant = await ProductVariant.findOne({
+          where: { id: item.variantId, productId: product.id },
+          transaction,
+        });
+        if (!variant) {
+          throw receiveStockError(404, `${product.name}: this variant was not found. Refresh and try again.`);
+        }
+      } else if (product.hasVariants) {
+        throw receiveStockError(400, `${product.name}: choose which variant arrived.`);
+      }
+      const label = variant ? `${product.name} — ${variant.name}` : product.name;
+      if (product.trackStock === false || variant?.trackStock === false) {
+        throw receiveStockError(400, `${label}: stock is not tracked for this item.`);
+      }
+
+      const shopId = req.body.shopId || product.shopId || req.shopFilterId || req.defaultShopId || null;
+      if (!shopId) {
+        throw receiveStockError(400, 'shopId is required to receive stock');
+      }
+      if (!userCanAccessShopId(req, shopId)) {
+        throw receiveStockError(403, 'You do not have access to this shop');
+      }
+
+      const quantity = parseQuantity(item.quantity);
+      // eslint-disable-next-line no-await-in-loop
+      const result = await applyStockChange({
+        tenantId: req.tenantId,
+        productId: product.id,
+        productVariantId: variant?.id || null,
+        shopId,
+        delta: quantity,
+        type: 'receive',
+        reason: 'Receive stock',
+        reference,
+        userId: req.user?.id || null,
+        metadata: { source: 'receiveStock' },
+        transaction,
+      });
+      received.push({
+        productId: product.id,
+        variantId: variant?.id || null,
+        name: label,
+        quantity,
+        previousQuantity: result.previousQuantity,
+        newQuantity: result.newQuantity,
+      });
+    }
+
+    await transaction.commit();
+    transactionFinished = true;
+    invalidateProductListCache(req.tenantId);
+    res.status(200).json({ success: true, data: { reference, received } });
+  } catch (error) {
+    if (!transactionFinished) {
+      await transaction.rollback();
+    }
+    if (error.statusCode && error.statusCode < 500) {
+      return res.status(error.statusCode).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 // @desc    Upload product image
 // @route   POST /api/products/upload-image
 // @access  Private
@@ -1090,7 +1226,7 @@ exports.getProductImageIndex = async (req, res, next) => {
 
     const products = await Product.findAll({
       where,
-      attributes: ['id', 'name', 'sku', 'barcode', 'imageUrl', 'sellingPrice', 'metadata'],
+      attributes: ['id', 'name', 'sku', 'barcode', 'imageUrl', 'sellingPrice', 'metadata', lowestVariantPriceAttribute()],
       order: [['name', 'ASC']],
     });
     const ids = products.map((p) => p.id);
@@ -1116,7 +1252,7 @@ exports.getProductImageIndex = async (req, res, next) => {
         barcode: plain.barcode || null,
         productCode: plain.metadata?.productCode ? String(plain.metadata.productCode).trim() || null : null,
         imageUrl: plain.imageUrl ? sanitizeInlineDataUrlForClient(plain.imageUrl) : null,
-        sellingPrice: Number(plain.sellingPrice) || 0,
+        sellingPrice: getEffectiveProductSellingPrice(plain),
         storeImages: readStoreImageSlots(plain.metadata),
         liveOnStore: liveIds.has(plain.id),
       };

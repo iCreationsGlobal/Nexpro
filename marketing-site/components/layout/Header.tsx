@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
+import { usePathname } from 'next/navigation'
 import { Menu, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { APP_URL, BRAND_ALTERNATE } from '@/lib/constants'
@@ -10,6 +11,7 @@ import { SHOW_PRICING } from '@/lib/featureFlags'
 import { usePublicConfig } from '@/context/PublicConfigContext'
 
 export function Header() {
+  const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
   const { selfSignupEnabled } = usePublicConfig()
 
@@ -32,7 +34,7 @@ export function Header() {
           </div>
           
           {/* Desktop navigation */}
-          <div className="hidden md:flex items-center space-x-6">
+          <div className="hidden lg:flex items-center space-x-5">
             <Link
               href="/"
               className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
@@ -68,6 +70,8 @@ export function Header() {
               </Link>
             )}
 
+            <Link href="/community" aria-current={pathname === '/community' ? 'page' : undefined} className={`text-sm font-medium transition-colors ${pathname === '/community' ? 'text-[#008b49] underline underline-offset-8' : 'text-gray-700 hover:text-gray-900'}`}>Our Community</Link>
+
             <Link href={`${APP_URL}/login`}>
               <Button variant="ghost" size="sm">Login</Button>
             </Link>
@@ -85,7 +89,7 @@ export function Header() {
           </div>
 
           {/* Mobile menu button */}
-          <div className="md:hidden">
+          <div className="lg:hidden">
             <button
               type="button"
               className="inline-flex items-center justify-center rounded-md p-2 text-gray-700 hover:bg-gray-100 hover:text-gray-900"
@@ -103,7 +107,7 @@ export function Header() {
         {/* Mobile menu - full screen, white background (mobile only) */}
         {mobileMenuOpen && (
           <div
-            className="fixed inset-0 z-[60] md:hidden flex flex-col bg-white h-screen"
+            className="fixed inset-0 z-[60] lg:hidden flex flex-col bg-white h-screen"
             style={{ minHeight: '100dvh' }}
           >
             <button
@@ -155,6 +159,7 @@ export function Header() {
                 </Link>
               )}
               <div className="border-t border-gray-200 pt-6 mt-4">
+                <Link href="/community" aria-current={pathname === '/community' ? 'page' : undefined} onClick={() => setMobileMenuOpen(false)} className="block text-lg font-medium text-[#008b49] py-2 mb-6">Our Community</Link>
                 <Link href={`${APP_URL}/login`} onClick={() => setMobileMenuOpen(false)}>
                   <Button
                     variant="outline"

@@ -42,6 +42,7 @@ jest.mock('../../../utils/productStockUtils', () => ({
   applyEffectiveProductQuantity: jest.fn((product) => product),
   attachShopStockToProducts: jest.fn(async (products) => products),
   shopCatalogVisibilityLiteral: jest.fn(),
+  lowestVariantPriceAttribute: jest.fn(() => ['lowestVariantPrice-sql', 'lowestVariantPrice']),
 }));
 
 jest.mock('../../../utils/paginationUtils', () => ({

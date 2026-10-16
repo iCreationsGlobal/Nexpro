@@ -467,6 +467,14 @@ const productService = {
   },
 
   /**
+   * Receive a delivery: add stock to many products/variants in one request. All items are
+   * saved together or none are.
+   * @param {Array<{ productId: string, variantId?: string, quantity: number }>} items
+   * @returns {Promise<Object>} - { reference, received }
+   */
+  receiveStock: async (items) => api.post('/products/receive', { items }),
+
+  /**
    * Adjust stock for a product variant (delta or set) and record a stock movement.
    * Parent product quantity is synced by the API.
    * @param {string} variantId

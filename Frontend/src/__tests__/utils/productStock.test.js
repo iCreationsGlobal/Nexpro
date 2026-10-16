@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getCatalogUnitPrice,
   getProductStockQuantity,
+  getProductStockValue,
   isProductOutOfStock,
   isVariantOutOfStock,
 } from '../../utils/productStock';
@@ -138,5 +139,29 @@ describe('getCatalogUnitPrice', () => {
       { sellingPrice: 0, variants: [{ sellingPrice: 12 }] },
       { sellingPrice: 18 },
     )).toBe(18);
+  });
+
+  it('falls back to the list API lowestVariantPrice when variants are not loaded', () => {
+    expect(getCatalogUnitPrice({ sellingPrice: '0.00', hasVariants: true, lowestVariantPrice: '45.00' })).toBe(45);
+    expect(getCatalogUnitPrice({ sellingPrice: '30.00', lowestVariantPrice: '45.00' })).toBe(30);
+  });
+});
+
+describe('getProductStockValue', () => {
+  it('multiplies price by stock for simple products', () => {
+    expect(getProductStockValue({ sellingPrice: 10, quantityOnHand: 4 })).toBe(40);
+  });
+
+  it('adds up each active variant at its own price, using the parent price when a variant has none', () => {
+    expect(getProductStockValue({
+      sellingPrice: 5,
+      hasVariants: true,
+      quantityOnHand: 0,
+      variants: [
+        { sellingPrice: 20, quantityOnHand: 2 },
+        { sellingPrice: null, quantityOnHand: 3 },
+        { sellingPrice: 100, quantityOnHand: 9, isActive: false },
+      ],
+    })).toBe(55);
   });
 });

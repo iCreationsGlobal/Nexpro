@@ -308,6 +308,8 @@ app.use('/api/mobile-money', mobileMoneyRoutes);
 // Variance Detection Routes
 app.use('/api/variance', varianceRoutes);
 app.use('/api/watch', watchRoutes);
+// ABS Watch agents (shop PC / Watch Box): device-key auth, not user sessions
+app.use('/api/watch-agent', require('./routes/watchAgentRoutes'));
 app.use('/api/user-workspace', userWorkspaceRoutes);
 app.use('/api/integrations/google-calendar', require('./routes/calendarRoutes'));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpecification));

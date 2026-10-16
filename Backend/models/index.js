@@ -71,6 +71,7 @@ const ExpiryAlert = require('./ExpiryAlert');
 // Retail Intelligence Models
 const FootTraffic = require('./FootTraffic');
 const VisionCamera = require('./VisionCamera');
+const WatchDevice = require('./WatchDevice');
 const VisionEvent = require('./VisionEvent');
 const VisionIncident = require('./VisionIncident');
 const StockCount = require('./StockCount');
@@ -889,6 +890,9 @@ VisionEvent.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
 VisionEvent.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 VisionEvent.belongsTo(VisionCamera, { foreignKey: 'cameraId', as: 'camera' });
 VisionCamera.hasMany(VisionEvent, { foreignKey: 'cameraId', as: 'events' });
+Tenant.hasMany(WatchDevice, { foreignKey: 'tenantId', as: 'watchDevices' });
+WatchDevice.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+WatchDevice.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 
 Tenant.hasMany(VisionIncident, { foreignKey: 'tenantId', as: 'visionIncidents' });
 VisionIncident.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
@@ -1173,6 +1177,7 @@ module.exports = {
   // Retail Intelligence
   FootTraffic,
   VisionCamera,
+  WatchDevice,
   VisionEvent,
   VisionIncident,
   StockCount,

@@ -192,6 +192,87 @@ describe('watchReconciliationService', () => {
     }));
   });
 
+  describe('a sale flagged before its till event arrived (agent catching up)', () => {
+    const event = {
+      id: 'event-1',
+      eventType: 'counter_interaction',
+      startedAt: new Date('2026-08-30T10:35:03.000Z'),
+      shopId: 'shop-1',
+      confidence: 0.9,
+    };
+    const sale = { id: 'sale-1', createdAt: new Date('2026-08-30T10:35:40.000Z'), status: 'completed', shopId: 'shop-1' };
+    const saleFlag = (overrides = {}) => ({
+      id: 'inc-sale',
+      kind: INCIDENT_KINDS.SALE_WITHOUT_EVENT,
+      saleId: 'sale-1',
+      eventId: null,
+      status: INCIDENT_STATUSES.PENDING,
+      metadata: {},
+      update: jest.fn().mockResolvedValue(undefined),
+      destroy: jest.fn().mockResolvedValue(undefined),
+      ...overrides,
+    });
+    const range = {
+      tenantId: 'tenant-1',
+      shopId: 'shop-1',
+      startAt: new Date('2026-08-30T10:00:00.000Z'),
+      endAt: new Date('2026-08-30T11:00:00.000Z'),
+    };
+
+    beforeEach(() => {
+      VisionEvent.findAll.mockResolvedValue([event]);
+      Sale.findAll.mockResolvedValue([sale]);
+      VisionIncident.create.mockImplementation(async (payload) => ({ id: 'inc-new', ...payload }));
+    });
+
+    it('turns the flag into the match instead of leaving a false alarm beside it', async () => {
+      const flag = saleFlag();
+      VisionIncident.findAll.mockResolvedValue([flag]);
+
+      const result = await reconcilePeriod(range);
+
+      expect(flag.update).toHaveBeenCalledWith(expect.objectContaining({
+        kind: INCIDENT_KINDS.MATCHED,
+        eventId: 'event-1',
+        saleId: 'sale-1',
+        status: INCIDENT_STATUSES.PENDING,
+      }));
+      expect(VisionIncident.create).not.toHaveBeenCalled();
+      expect(result.data).toMatchObject({ incidentsCreated: 0, incidentsUpdated: 1 });
+    });
+
+    it('removes the flag when the event already had an unmatched incident', async () => {
+      const flag = saleFlag();
+      const unmatched = {
+        id: 'inc-event',
+        eventId: 'event-1',
+        kind: INCIDENT_KINDS.UNMATCHED_INTERACTION,
+        saleId: null,
+        status: INCIDENT_STATUSES.PENDING,
+        metadata: {},
+        update: jest.fn().mockResolvedValue(undefined),
+      };
+      VisionIncident.findAll.mockResolvedValue([unmatched, flag]);
+
+      await reconcilePeriod(range);
+
+      expect(unmatched.update).toHaveBeenCalledWith(expect.objectContaining({ kind: INCIDENT_KINDS.MATCHED, saleId: 'sale-1' }));
+      expect(flag.destroy).toHaveBeenCalled();
+      expect(VisionIncident.create).not.toHaveBeenCalled();
+    });
+
+    it('leaves a flag the owner already reviewed', async () => {
+      const flag = saleFlag({ status: INCIDENT_STATUSES.CONFIRMED });
+      VisionIncident.findAll.mockResolvedValue([flag]);
+
+      await reconcilePeriod(range);
+
+      expect(flag.update).not.toHaveBeenCalled();
+      expect(flag.destroy).not.toHaveBeenCalled();
+      expect(VisionIncident.create).toHaveBeenCalledWith(expect.objectContaining({ kind: INCIDENT_KINDS.MATCHED, saleId: 'sale-1' }));
+    });
+  });
+
   it('skips duplicate client event ids on ingest', async () => {
     VisionEvent.findAll
       .mockResolvedValueOnce([{ id: 'existing', clientEventId: 'evt-1' }])

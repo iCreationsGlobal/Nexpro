@@ -7,7 +7,6 @@ import { useWorkspaceScope } from '../hooks/useWorkspaceScope';
 import watchService from '../services/watchService';
 import { showError, showSuccess } from '../utils/toast';
 import { parseWatchClipSource, WATCH_CLIP_ACCEPT, WATCH_CLIP_MAX_BYTES, WATCH_CLIP_MAX_MB } from '../utils/watchClipSource';
-import { buildWatchStreamCommand } from '../utils/watchStreamCommand';
 import { DATE_FORMATS, QUERY_CACHE, WATCH_INCIDENT_KINDS, WATCH_INCIDENT_STATUSES, WATCH_REVIEW_DECISIONS } from '../constants';
 import { EMPTY_STATES } from '../constants/microcopy';
 import { Button } from '@/components/ui/button';
@@ -24,6 +23,7 @@ import TableSkeleton from '../components/TableSkeleton';
 import WatchClipUploadCard from '../components/watch/WatchClipUploadCard';
 import WatchIncidentClip from '../components/watch/WatchIncidentClip';
 import WatchTillZoneEditor from '../components/watch/WatchTillZoneEditor';
+import WatchDevicesCard from '../components/watch/WatchDevicesCard';
 import { clampTillZone, DEFAULT_TILL_ZONE, tillZoneFromCamera } from '../utils/watchTillZone';
 
 const KIND_LABELS = {
@@ -48,9 +48,6 @@ const Watch = () => {
   const [kindFilter, setKindFilter] = useState('attention');
   const [reviewing, setReviewing] = useState(null);
   const [reviewNote, setReviewNote] = useState('');
-  const [cameraName, setCameraName] = useState('');
-  const [cameraRole, setCameraRole] = useState('counter');
-  const [cameraStreamUrl, setCameraStreamUrl] = useState('');
   const [lastClipUrl, setLastClipUrl] = useState('');
   const [tillZone, setTillZone] = useState(DEFAULT_TILL_ZONE);
   const [zoneCameraId, setZoneCameraId] = useState('');
@@ -90,6 +87,8 @@ const Watch = () => {
     queryFn: () => watchService.listCameras(),
     enabled: scopeReady && hasFeature('watch'),
     staleTime: QUERY_CACHE.STALE_TIME_STABLE,
+    // New cameras and fresher pictures from Watch devices show up without a reload
+    refetchInterval: 60000,
   });
 
   const summary = summaryData?.data || {};
@@ -106,16 +105,24 @@ const Watch = () => {
     setTillZone(tillZoneFromCamera(counterCameras[0]));
     return undefined;
   }, [counterCameras, zoneCameraId]);
+
+  const zoneCamera = useMemo(
+    () => cameras.find((camera) => camera.id === zoneCameraId) || null,
+    [cameras, zoneCameraId]
+  );
+  const snapshotTakenAt = zoneCamera?.metadata?.snapshot?.capturedAt || null;
+  const { data: snapshotData } = useQuery({
+    // A new picture has a new time, so it's fetched once and kept
+    queryKey: ['watch', 'snapshot', zoneCameraId, snapshotTakenAt],
+    queryFn: () => watchService.getCameraSnapshot(zoneCameraId),
+    enabled: canReview && !!zoneCameraId && !!snapshotTakenAt,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const snapshot = snapshotData?.data || null;
   const reviewClipSource = useMemo(
     () => (reviewing ? parseWatchClipSource(reviewing) : { type: 'none' }),
     [reviewing]
-  );
-  const streamCommand = useMemo(
-    () => buildWatchStreamCommand({
-      streamUrl: cameraStreamUrl.trim() || cameras.find((camera) => camera.streamUrl)?.streamUrl,
-      apiOrigin: 'http://localhost:5000',
-    }),
-    [cameraStreamUrl, cameras]
   );
 
   const {
@@ -200,41 +207,24 @@ const Watch = () => {
     attachClipMutation.mutate(file);
   }, [attachClipMutation]);
 
-  const cameraMutation = useMutation({
-    mutationFn: (payload) => watchService.createCamera(payload),
-    onSuccess: () => {
-      showSuccess('Camera saved');
-      setCameraName('');
-      setCameraStreamUrl('');
-      invalidateWatch();
-    },
-    onError: (error) => showError(error, 'Failed to save camera'),
-  });
-
   const tillZoneMutation = useMutation({
     mutationFn: async () => {
-      const zone = clampTillZone(tillZone);
-      if (zoneCameraId) {
-        const existing = cameras.find((camera) => camera.id === zoneCameraId);
-        return watchService.updateCamera(zoneCameraId, {
-          name: existing?.name || cameraName.trim() || 'Counter camera',
-          role: existing?.role || 'counter',
-          streamUrl: existing?.streamUrl,
-          zones: [zone],
-        });
+      if (!zoneCamera) {
+        throw new Error('Connect a counter camera first, then save its till zone.');
       }
-      if (!cameraName.trim()) {
-        throw new Error('Name the camera first, then save the till zone.');
-      }
-      return watchService.createCamera({
-        name: cameraName.trim(),
-        role: 'counter',
-        streamUrl: cameraStreamUrl.trim() || undefined,
-        zones: [zone],
+      // Name, role and on/off are sent back as they are; the camera's Watch device and picture stay linked
+      return watchService.updateCamera(zoneCamera.id, {
+        name: zoneCamera.name,
+        role: zoneCamera.role || 'counter',
+        isActive: zoneCamera.isActive !== false,
+        zones: [
+          clampTillZone(tillZone),
+          ...(Array.isArray(zoneCamera.zones) ? zoneCamera.zones.filter((zone) => zone?.type !== 'counter') : []),
+        ],
       });
     },
     onSuccess: () => {
-      showSuccess('Till zone saved');
+      showSuccess('Till zone saved. The Watch device uses it within a minute.');
       invalidateWatch();
     },
     onError: (error) => showError(error, 'Failed to save till zone'),
@@ -248,16 +238,6 @@ const Watch = () => {
       note: reviewNote.trim() || undefined,
     });
   }, [reviewing, reviewNote, reviewMutation]);
-
-  const handleSaveCamera = useCallback(() => {
-    if (!cameraName.trim()) return;
-    cameraMutation.mutate({
-      name: cameraName.trim(),
-      role: cameraRole,
-      streamUrl: cameraStreamUrl.trim() || undefined,
-      zones: cameraRole === 'counter' ? [clampTillZone(tillZone)] : [],
-    });
-  }, [cameraName, cameraRole, cameraStreamUrl, cameraMutation, tillZone]);
 
   const cards = useMemo(() => ([
     {
@@ -424,118 +404,72 @@ const Watch = () => {
         </CardContent>
       </Card>
 
-      <Card className="border border-gray-200">
-        <CardHeader>
-          <CardTitle>Cameras and zones</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Draw the till / register on a clip still. Walking into the shop is a visitor — lingering in this box is till time, not a confirmed sale.
-          </p>
-          <div className="space-y-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
-            <p className="text-sm text-gray-700">
-              Always-on detection runs on this machine or a shop PC. ABS stores events and optional short clips — not a live video feed.
+      <WatchDevicesCard
+        cameras={cameras}
+        canManage={canReview}
+        scopeKey={[activeTenantId, activeShopId]}
+        enabled={scopeReady}
+      />
+
+      {canReview && (
+        <Card className="border border-gray-200">
+          <CardHeader>
+            <CardTitle>Till zone</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Time spent in this box counts as till activity and is compared with recorded sales. Walking into the
+              shop is a visit, not till activity.
             </p>
-            <p className="text-xs text-gray-600">
-              From the Nexpro repo root:
-            </p>
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-gray-200 bg-white px-2 py-2 text-xs text-gray-800">
-              {streamCommand}
-            </pre>
-          </div>
-          {cameras.length > 0 && (
-            <ul className="space-y-2 text-sm">
-              {cameras.map((camera) => (
-                <li key={camera.id} className="rounded-md border border-gray-200 px-3 py-2">
-                  <span className="font-medium">{camera.name}</span>
-                  <span className="ml-2 text-gray-500">{camera.role}</span>
-                  {camera.streamUrl && (
-                    <p className="mt-1 truncate text-xs text-gray-500">{camera.streamUrl}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          {canReview && (
-            <div className="space-y-4">
-              {counterCameras.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Apply till zone to</Label>
-                  <Select
-                    value={zoneCameraId}
-                    onValueChange={(id) => {
-                      setZoneCameraId(id);
-                      const camera = cameras.find((row) => row.id === id);
-                      if (camera) setTillZone(tillZoneFromCamera(camera));
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Counter camera" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {counterCameras.map((camera) => (
-                        <SelectItem key={camera.id} value={camera.id}>{camera.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <WatchTillZoneEditor
-                clipUrl={lastClipUrl}
-                zone={tillZone}
-                onChange={setTillZone}
-              />
-              <div className="flex justify-end">
-                <Button
-                  onClick={() => tillZoneMutation.mutate()}
-                  disabled={tillZoneMutation.isPending || (!zoneCameraId && !cameraName.trim())}
-                >
-                  Save till zone
-                </Button>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-[1fr_160px] sm:items-end">
-                <div className="space-y-2">
-                  <Label htmlFor="watch-camera-name">Camera name</Label>
-                  <Input
-                    id="watch-camera-name"
-                    value={cameraName}
-                    onChange={(event) => setCameraName(event.target.value)}
-                    placeholder="Counter camera"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Role</Label>
-                  <Select value={cameraRole} onValueChange={setCameraRole}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="counter">Counter</SelectItem>
-                      <SelectItem value="entrance">Entrance</SelectItem>
-                      <SelectItem value="floor">Shop floor</SelectItem>
-                      <SelectItem value="exit">Exit</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+            {counterCameras.length > 1 && (
               <div className="space-y-2">
-                <Label htmlFor="watch-camera-stream">Stream URL (optional)</Label>
-                <Input
-                  id="watch-camera-stream"
-                  value={cameraStreamUrl}
-                  onChange={(event) => setCameraStreamUrl(event.target.value)}
-                  placeholder="rtsp://192.168.1.20/stream"
-                />
+                <Label>Counter camera</Label>
+                <Select
+                  value={zoneCameraId}
+                  onValueChange={(id) => {
+                    setZoneCameraId(id);
+                    const camera = cameras.find((row) => row.id === id);
+                    if (camera) setTillZone(tillZoneFromCamera(camera));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Counter camera" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {counterCameras.map((camera) => (
+                      <SelectItem key={camera.id} value={camera.id}>{camera.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="flex justify-end">
-                <Button onClick={handleSaveCamera} disabled={!cameraName.trim() || cameraMutation.isPending}>
-                  Add camera
-                </Button>
-              </div>
+            )}
+            {counterCameras.length === 1 && (
+              <p className="text-sm font-medium text-gray-900">{counterCameras[0].name}</p>
+            )}
+            <WatchTillZoneEditor
+              imageUrl={snapshot?.dataUrl || ''}
+              capturedAt={snapshot?.capturedAt || null}
+              clipUrl={lastClipUrl}
+              zone={tillZone}
+              onChange={setTillZone}
+            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+              {!zoneCamera && (
+                <p className="text-xs text-gray-600">
+                  Add a counter camera on a Watch device to save its zone. Uploaded clips use the box as drawn.
+                </p>
+              )}
+              <Button
+                onClick={() => tillZoneMutation.mutate()}
+                disabled={!zoneCamera}
+                loading={tillZoneMutation.isPending}
+              >
+                Save till zone
+              </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={!!reviewing} onOpenChange={(open) => !open && setReviewing(null)}>
         <DialogContent className="sm:w-[var(--modal-w-md)] sm:pt-6">

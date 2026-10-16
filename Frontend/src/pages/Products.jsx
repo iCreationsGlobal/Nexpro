@@ -185,7 +185,7 @@ import {
 } from '../constants';
 import { numberInputValue, handleNumberChange } from "../utils/formUtils";
 import { formatAmount, formatInteger } from "../utils/formatNumber";
-import { getProductStockQuantity } from "../utils/productStock";
+import { getCatalogUnitPrice, getProductStockQuantity, getProductStockValue } from "../utils/productStock";
 // =============================================
 // HELPER FUNCTIONS
 // =============================================
@@ -1941,7 +1941,7 @@ const Products = () => {
       : `📦 Stock: ${product.quantityOnHand} ${product.unit}\n`;
     const priceLine = isRental && product.isRentable !== false && product.rentalRatePerDay != null
       ? `💰 Rate: ${valueFormatter(product.rentalRatePerDay)}/day\n`
-      : `💰 Price: ${valueFormatter(product.sellingPrice)}\n`;
+      : `💰 Price: ${valueFormatter(getCatalogUnitPrice(product))}\n`;
     const message = encodeURIComponent(
       `🏷️ *${product.name}*\n\n` +
       priceLine +
@@ -2053,7 +2053,7 @@ const Products = () => {
       : [{
           key: 'sellingPrice',
           title: 'Price',
-          render: (value) => valueFormatter(value),
+          render: (_, record) => valueFormatter(getCatalogUnitPrice(record)),
         }]),
     {
       key: 'margin',
@@ -4255,7 +4255,7 @@ const Products = () => {
                 )}
                 {(!isRental || selectedProduct.isSalable) && (
                   <DescriptionItem label="Selling Price">
-                    {valueFormatter(selectedVariantDetail?.sellingPrice ?? selectedProduct?.sellingPrice)}
+                    {valueFormatter(getCatalogUnitPrice(selectedProduct, selectedVariantDetail))}
                   </DescriptionItem>
                 )}
                 {showWholesalePriceField
@@ -4391,7 +4391,7 @@ const Products = () => {
                     </DescriptionItem>
                     {canViewProductSensitiveFields && (
                       <DescriptionItem label="Stock Value">
-                        {valueFormatter((Number(selectedProduct?.sellingPrice ?? 0) || 0) * getProductStockQuantity(selectedProduct))}
+                        {valueFormatter(getProductStockValue(selectedProduct))}
                       </DescriptionItem>
                     )}
                   </>

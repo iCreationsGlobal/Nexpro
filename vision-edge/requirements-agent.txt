@@ -1,0 +1,4 @@
+# ABS Watch agent (abs_watch_agent.py): person detection + camera reading.
+# ultralytics brings PyTorch and NumPy. Also install ffmpeg (macOS: brew install ffmpeg) so clips play in browsers.
+ultralytics>=8.3.0
+opencv-python>=4.8

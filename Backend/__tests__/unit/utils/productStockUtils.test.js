@@ -2,6 +2,7 @@ const {
   sumActiveVariantQuantity,
   getEffectiveProductQuantityOnHand,
   applyEffectiveProductQuantity,
+  getEffectiveProductSellingPrice,
   resolveStockMovementType,
   shouldSyncDenormalizedQuantity,
   parseQuantity,
@@ -107,6 +108,29 @@ describe('productStockUtils', () => {
       });
       expect(product.quantityOnHand).toBe(40);
       expect(product.totalVariantStock).toBe(40);
+    });
+  });
+
+  describe('getEffectiveProductSellingPrice', () => {
+    it('uses the parent price when it is set', () => {
+      expect(getEffectiveProductSellingPrice({ sellingPrice: '25.00', lowestVariantPrice: '10.00' })).toBe(25);
+    });
+
+    it('falls back to the lowest variant price when the parent price is 0', () => {
+      expect(getEffectiveProductSellingPrice({ sellingPrice: '0.00', lowestVariantPrice: '12.50' })).toBe(12.5);
+      expect(getEffectiveProductSellingPrice({
+        sellingPrice: 0,
+        variants: [
+          { sellingPrice: '18.00', isActive: true },
+          { sellingPrice: '9.00', isActive: false },
+          { sellingPrice: '14.00' },
+        ],
+      })).toBe(14);
+    });
+
+    it('reads Sequelize instances and stays 0 when nothing has a price', () => {
+      expect(getEffectiveProductSellingPrice({ get: () => ({ sellingPrice: 0, lowestVariantPrice: '7.00' }) })).toBe(7);
+      expect(getEffectiveProductSellingPrice({ sellingPrice: null, lowestVariantPrice: null })).toBe(0);
     });
   });
 

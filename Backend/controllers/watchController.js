@@ -13,6 +13,12 @@ const { clampMatchWindowMinutes } = require('../services/watchMatching');
 const { processYoutubeClip } = require('../services/watchYoutubeDemoService');
 const { saveWatchClip, attachIncidentClip } = require('../services/watchClipService');
 const { processUploadedClip, readDetectionsSidecar } = require('../services/watchVisionEdgeService');
+const {
+  createPairing,
+  getCameraSnapshot,
+  listDevices,
+  revokeDevice,
+} = require('../services/watchDeviceService');
 
 const resolveShopId = (req) => req.shopFilterId || req.query.shopId || req.body?.shopId || null;
 
@@ -318,5 +324,65 @@ exports.upsertWatchCamera = async (req, res) => {
   } catch (error) {
     console.error('Watch camera save failed:', error);
     return res.status(500).json({ success: false, error: 'Failed to save camera' });
+  }
+};
+
+/**
+ * GET /api/watch/devices — paired Watch agents and pairings waiting for a code
+ */
+exports.listWatchDevices = async (req, res) => {
+  try {
+    return res.json(await listDevices({ tenantId: req.tenantId, shopId: resolveShopId(req) }));
+  } catch (error) {
+    console.error('Watch devices failed:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load Watch devices' });
+  }
+};
+
+/**
+ * POST /api/watch/devices — start pairing; the code is shown once
+ */
+exports.createWatchDevicePairing = async (req, res) => {
+  try {
+    const result = await createPairing({
+      tenantId: req.tenantId,
+      shopId: resolveShopId(req),
+      name: req.body?.name,
+      userId: req.user?.id,
+    });
+    if (!result.success) return res.status(400).json({ success: false, error: result.error });
+    return res.status(201).json(result);
+  } catch (error) {
+    console.error('Watch pairing failed:', error);
+    return res.status(500).json({ success: false, error: 'Failed to create a pairing code' });
+  }
+};
+
+/**
+ * POST /api/watch/devices/:id/revoke — the agent's key stops working immediately
+ */
+exports.revokeWatchDevice = async (req, res) => {
+  try {
+    const result = await revokeDevice({ tenantId: req.tenantId, deviceId: req.params.id });
+    if (!result.success) return res.status(result.status || 400).json({ success: false, error: result.error });
+    return res.json(result);
+  } catch (error) {
+    console.error('Watch device revoke failed:', error);
+    return res.status(500).json({ success: false, error: 'Failed to remove the Watch device' });
+  }
+};
+
+/**
+ * GET /api/watch/cameras/:id/snapshot — latest still for drawing zones
+ */
+exports.getWatchCameraSnapshot = async (req, res) => {
+  try {
+    const result = await getCameraSnapshot({ tenantId: req.tenantId, cameraId: req.params.id });
+    if (!result.success) return res.status(result.status || 400).json({ success: false, error: result.error });
+    res.set('Cache-Control', 'no-store');
+    return res.json(result);
+  } catch (error) {
+    console.error('Watch snapshot failed:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load the camera snapshot' });
   }
 };

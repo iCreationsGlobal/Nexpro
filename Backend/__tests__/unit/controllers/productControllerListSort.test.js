@@ -17,9 +17,10 @@ jest.mock('../../../models', () => ({
   Product: {
     findAndCountAll: jest.fn(),
     sequelize: {
+      col: jest.fn((name) => ({ col: name })),
       literal: jest.fn((value) => ({ literal: value })),
       cast: jest.fn((value, type) => ({ cast: value, type })),
-      where: jest.fn((attr, condition) => ({ where: attr, condition })),
+      where: jest.fn((attr, ...rest) => ({ where: attr, rest })),
     },
   },
   ProductVariant: {},
@@ -51,6 +52,7 @@ jest.mock('../../../utils/shopUtils', () => ({
 jest.mock('../../../utils/productStockUtils', () => ({
   applyEffectiveProductQuantity: jest.fn((product) => product),
   syncParentQuantityFromVariants: jest.fn().mockResolvedValue(undefined),
+  lowestVariantPriceAttribute: jest.fn(() => ['lowestVariantPrice-sql', 'lowestVariantPrice']),
 }));
 
 jest.mock('../../../utils/paginationUtils', () => ({
@@ -157,6 +159,43 @@ describe('productController list sort', () => {
           order: [['name', 'ASC'], ['id', 'ASC']],
         }),
       );
+    });
+  });
+
+  describe('stock filters', () => {
+    const { Op } = require('sequelize');
+    const listWhere = async (query) => {
+      await productController.getProducts({ tenantId: 't1', query, shopScoped: false }, mockRes(), jest.fn());
+      return Product.findAndCountAll.mock.calls[0][0].where;
+    };
+    // The stock clause is added after the search clause.
+    const stockClause = (where) => where[Op.and][where[Op.and].length - 1][Op.or];
+
+    it('ignores stock when no stock filter is set', async () => {
+      const where = await listWhere({});
+      expect(where.trackStock).toBeUndefined();
+      expect(where[Op.and]).toBeUndefined();
+    });
+
+    it('lowStock keeps tracked products above 0 and at or below their reorder level', async () => {
+      const where = await listWhere({ lowStock: 'true' });
+      expect(where.trackStock).toEqual({ [Op.ne]: false });
+      expect(stockClause(where)).toEqual([{
+        [Op.and]: [
+          { where: { col: 'Product.quantityOnHand' }, rest: [Op.gt, 0] },
+          { where: { col: 'Product.quantityOnHand' }, rest: [Op.lte, { col: 'Product.reorderLevel' }] },
+        ],
+      }]);
+    });
+
+    it('outOfStock keeps tracked products at 0 or less, and both together return either', async () => {
+      const out = await listWhere({ outOfStock: 'true' });
+      expect(stockClause(out)).toEqual([{ where: { col: 'Product.quantityOnHand' }, rest: [Op.lte, 0] }]);
+
+      Product.findAndCountAll.mockClear();
+      const both = await listWhere({ lowStock: 'true', outOfStock: 'true', search: 'soap' });
+      expect(stockClause(both)).toHaveLength(2);
+      expect(both[Op.and]).toHaveLength(2);
     });
   });
 });

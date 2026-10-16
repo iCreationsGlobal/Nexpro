@@ -23,6 +23,7 @@ import productService from '../services/productService';
 import storeService from '../services/storeService';
 import { resolveImageUrl } from '../utils/fileUtils';
 import { formatAmount, formatInteger } from '../utils/formatNumber';
+import { getCatalogUnitPrice } from '../utils/productStock';
 import { getErrorMessage, showError, showSuccess } from '../utils/toast';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -103,7 +104,7 @@ const getDefaultValues = (product, listing) => ({
   shortDescription: listing?.shortDescription || '',
   description: listing?.description || product?.description || '',
   salesCopy: listing?.salesCopy || '',
-  publicPrice: Number(listing?.publicPrice ?? product?.sellingPrice ?? 0),
+  publicPrice: Number(listing?.publicPrice ?? getCatalogUnitPrice(product)),
   compareAtPrice: listing?.compareAtPrice ?? '',
   inventoryPolicy: listing?.inventoryPolicy || (product?.trackStock === false ? 'continue' : 'track'),
   slug: listing?.slug || normalizeSlug(product?.name || 'product'),
@@ -214,7 +215,7 @@ const ProductSummary = ({ product }) => {
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Price</p>
-              <p className="font-medium">{formatAmount(product?.sellingPrice || 0)}</p>
+              <p className="font-medium">{formatAmount(getCatalogUnitPrice(product))}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Stock</p>

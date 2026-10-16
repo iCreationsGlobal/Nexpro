@@ -159,6 +159,44 @@ const applyEffectiveProductQuantity = (product) => {
   return plain;
 };
 
+/**
+ * Sequelize attribute: lowest positive selling price among the product's active variants,
+ * as `lowestVariantPrice` (null when no variant has a price).
+ * @returns {[object, string]}
+ */
+const lowestVariantPriceAttribute = () => [sequelize.literal(`(
+  SELECT MIN(pv."sellingPrice")
+  FROM product_variants pv
+  WHERE pv."productId" = "Product"."id"
+    AND pv."isActive" = true
+    AND pv."sellingPrice" > 0
+)`), 'lowestVariantPrice'];
+
+/**
+ * Catalog price for a product. Variant products often keep the price on each variant and
+ * leave the parent at 0, so a parent price of 0 falls back to the lowest positive active-variant
+ * price (from loaded `variants` or `lowestVariantPrice`). Mirrors the frontend getCatalogUnitPrice.
+ * @param {object} product
+ * @returns {number}
+ */
+const getEffectiveProductSellingPrice = (product) => {
+  if (!product) return 0;
+  const plain = typeof product.get === 'function' ? product.get({ plain: true }) : product;
+  const parsePrice = (value) => {
+    const price = Number.parseFloat(value);
+    return Number.isFinite(price) ? price : 0;
+  };
+
+  const parentPrice = parsePrice(plain.sellingPrice);
+  if (parentPrice > 0) return parentPrice;
+
+  const variantPrices = (Array.isArray(plain.variants) ? plain.variants : [])
+    .filter((variant) => variant?.isActive !== false)
+    .map((variant) => parsePrice(variant?.sellingPrice));
+  const lowest = [...variantPrices, parsePrice(plain.lowestVariantPrice)].filter((price) => price > 0);
+  return lowest.length ? Math.min(...lowest) : parentPrice;
+};
+
 const syncParentQuantityFromVariants = async (productId, transaction) => {
   const product = await Product.findByPk(productId, { transaction });
   if (!product?.hasVariants) return product;
@@ -664,6 +702,8 @@ module.exports = {
   sumActiveVariantQuantity,
   getEffectiveProductQuantityOnHand,
   applyEffectiveProductQuantity,
+  lowestVariantPriceAttribute,
+  getEffectiveProductSellingPrice,
   syncParentQuantityFromVariants,
   resolveStockMovementType,
   recordProductStockMovement,

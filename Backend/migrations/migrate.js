@@ -123,6 +123,7 @@ const addMetadataToCustomers = require('./add-metadata-to-customers');
 const createRentalModule = require('./create-rental-module');
 const createWatchModule = require('./create-watch-module');
 const addStreamUrlToVisionCameras = require('./add-stream-url-to-vision-cameras');
+const createWatchDevices = require('./create-watch-devices');
 const addRentalBusinessType = require('./add-rental-business-type');
 
 const migrate = async () => {
@@ -508,6 +509,8 @@ const migrate = async () => {
     // ABS Watch: cameras, physical-activity events, sale reconciliation incidents
     await createWatchModule();
     await addStreamUrlToVisionCameras.up();
+    // ABS Watch agents (device keys) + strip camera logins from saved stream URLs
+    await createWatchDevices.up();
 
     // Lead broadcast: leads.doNotContact + marketing_campaigns.audienceType
     const addLeadsMarketingBroadcast = require('./add-leads-marketing-broadcast');

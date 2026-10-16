@@ -9,6 +9,7 @@ import { Globe, ImagePlus, Loader2, Package, UploadCloud } from 'lucide-react';
 import storeService from '../../services/storeService';
 import { resolveImageUrl } from '../../utils/fileUtils';
 import { formatAmount } from '../../utils/formatNumber';
+import { getCatalogUnitPrice } from '../../utils/productStock';
 import { getErrorMessage, showError, showSuccess } from '../../utils/toast';
 import { isSabitoStoreEnabled } from '../../utils/sabitoStoreFeature';
 import StoreListingHomeSectionsField from './StoreListingHomeSectionsField';
@@ -239,7 +240,7 @@ const PublishToOnlineStoreDialog = ({
       title: existingListing?.title || nextProduct.name || '',
       shortDescription: existingListing?.shortDescription || '',
       description: existingListing?.description || nextProduct.description || '',
-      publicPrice: Number(existingListing?.publicPrice ?? nextProduct.sellingPrice ?? 0),
+      publicPrice: Number(existingListing?.publicPrice ?? getCatalogUnitPrice(nextProduct)),
       compareAtPrice: existingListing?.compareAtPrice ?? '',
       imagesText: formatListingImages(
         Array.isArray(existingListing?.images) && existingListing.images.length > 0
@@ -471,7 +472,7 @@ const PublishToOnlineStoreDialog = ({
                         <div className="min-w-0">
                           <p className="truncate font-medium">{product?.name || 'Product'}</p>
                           <p className="text-sm text-muted-foreground">
-                            {product?.sku || 'No SKU'} • {formatAmount(product?.sellingPrice || 0)}
+                            {product?.sku || 'No SKU'} • {formatAmount(getCatalogUnitPrice(product))}
                           </p>
                         </div>
                       </div>

@@ -54,45 +54,38 @@ def _reset_till_timer(state):
     state["interaction_emitted"] = False
 
 
-def build_events(
-    frames,
-    zones,
-    start_time=None,
-    fps=10,
-    dwell_seconds=DEFAULT_DWELL_SECONDS,
-    camera="cam_01",
-    miss_seconds=1.5,
-):
+class EventEngine:
     """
-    Convert per-frame detections into structured ABS events.
-
-    frames: iterable of {frame|t, detections: [{track_id, bbox, confidence}]}
-    zones: list of {name, type, x, y, w, h}
-    miss_seconds: drop a track (person_left) only after this many seconds unseen.
-        A short occlusion must not emit a second person_entered for the same track_id.
-    dwell_seconds: till linger required before counter_interaction (walk-ins stay person_entered).
+    Incremental version of build_events for an always-on camera: feed frames as they arrive and
+    get events back as they happen. Tracks stay open across calls, so a person standing at the
+    till while a batch is sent is still one visitor with one dwell timer.
     """
-    origin = _parse_start(start_time)
-    tracks = {}
-    events = []
-    counter_zones = [zone for zone in (zones or []) if zone.get("type") == "counter"]
-    gap_limit = max(0.0, float(miss_seconds if miss_seconds is not None else 1.5))
-    dwell_limit = max(0.0, float(dwell_seconds if dwell_seconds is not None else DEFAULT_DWELL_SECONDS))
 
-    for index, frame in enumerate(frames or []):
-        if "t" in frame:
-            moment = origin + timedelta(seconds=float(frame["t"]))
-        else:
-            moment = origin + timedelta(seconds=float(index) / float(fps or 10))
+    def __init__(self, zones, dwell_seconds=DEFAULT_DWELL_SECONDS, camera="cam_01", miss_seconds=1.5):
+        self.camera = camera
+        self.tracks = {}
+        self.gap_limit = max(0.0, float(miss_seconds if miss_seconds is not None else 1.5))
+        self.dwell_limit = max(0.0, float(dwell_seconds if dwell_seconds is not None else DEFAULT_DWELL_SECONDS))
+        self.set_zones(zones)
+
+    def set_zones(self, zones):
+        """Zones can change while running (owner edits them in ABS)."""
+        self.counter_zones = [zone for zone in (zones or []) if zone.get("type") == "counter"]
+
+    def process(self, moment, detections):
+        """Events triggered by one frame's detections at `moment` (timezone-aware datetime)."""
+        camera = self.camera
+        tracks = self.tracks
+        events = []
         seen = set()
-        for detection in frame.get("detections") or []:
+        for detection in detections or []:
             track_id = str(detection.get("track_id") or detection.get("id") or "")
             if not track_id:
                 continue
             seen.add(track_id)
             bbox = detection.get("bbox") or detection.get("box")
             confidence = float(detection.get("confidence") or 0.0)
-            in_counter = bool(find_zone(bbox, counter_zones, zone_type="counter"))
+            in_counter = bool(find_zone(bbox, self.counter_zones, zone_type="counter"))
             center = zone_center(bbox)
             state = tracks.get(track_id)
             if state is None:
@@ -128,7 +121,7 @@ def build_events(
                     state["counter_centers"].append(center)
                 dwell = (moment - state["counter_entered_at"]).total_seconds()
                 still = _center_stdev(state["counter_centers"]) <= STILLNESS_MAX_STDEV
-                if dwell >= dwell_limit and still:
+                if dwell >= self.dwell_limit and still:
                     state["interaction_emitted"] = True
                     events.append(_event(
                         "counter_interaction",
@@ -150,7 +143,7 @@ def build_events(
             if track_id in seen:
                 continue
             gap = (moment - state["last_seen"]).total_seconds()
-            if gap < gap_limit:
+            if gap < self.gap_limit:
                 continue
             tracks.pop(track_id)
             events.append(_event(
@@ -160,14 +153,49 @@ def build_events(
                 state["confidence"],
                 extra={"camera": camera},
             ))
+        return events
 
-    for track_id, state in list(tracks.items()):
-        events.append(_event(
-            "person_left",
-            track_id,
-            state["last_seen"],
-            state["confidence"],
-            extra={"camera": camera},
-        ))
+    def flush(self):
+        """Close every open track (end of a clip, or the camera going away)."""
+        events = []
+        for track_id, state in list(self.tracks.items()):
+            events.append(_event(
+                "person_left",
+                track_id,
+                state["last_seen"],
+                state["confidence"],
+                extra={"camera": self.camera},
+            ))
+        self.tracks = {}
+        return events
 
+
+def build_events(
+    frames,
+    zones,
+    start_time=None,
+    fps=10,
+    dwell_seconds=DEFAULT_DWELL_SECONDS,
+    camera="cam_01",
+    miss_seconds=1.5,
+):
+    """
+    Convert per-frame detections into structured ABS events.
+
+    frames: iterable of {frame|t, detections: [{track_id, bbox, confidence}]}
+    zones: list of {name, type, x, y, w, h}
+    miss_seconds: drop a track (person_left) only after this many seconds unseen.
+        A short occlusion must not emit a second person_entered for the same track_id.
+    dwell_seconds: till linger required before counter_interaction (walk-ins stay person_entered).
+    """
+    origin = _parse_start(start_time)
+    engine = EventEngine(zones, dwell_seconds=dwell_seconds, camera=camera, miss_seconds=miss_seconds)
+    events = []
+    for index, frame in enumerate(frames or []):
+        if "t" in frame:
+            moment = origin + timedelta(seconds=float(frame["t"]))
+        else:
+            moment = origin + timedelta(seconds=float(index) / float(fps or 10))
+        events.extend(engine.process(moment, frame.get("detections")))
+    events.extend(engine.flush())
     return events

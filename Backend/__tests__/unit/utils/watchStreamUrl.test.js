@@ -1,4 +1,4 @@
-const { sanitizeStreamUrl } = require('../../../utils/watchStreamUrl');
+const { sanitizeStreamUrl, stripStreamCredentials } = require('../../../utils/watchStreamUrl');
 
 describe('sanitizeStreamUrl', () => {
   it('keeps rtsp and http camera URLs', () => {
@@ -14,5 +14,19 @@ describe('sanitizeStreamUrl', () => {
     expect(sanitizeStreamUrl('/Users/us/clip.mp4')).toBeNull();
     expect(sanitizeStreamUrl('C:\\videos\\cam.mp4')).toBeNull();
     expect(sanitizeStreamUrl('')).toBeNull();
+  });
+});
+
+describe('camera logins in stream URLs', () => {
+  it('are removed before a URL is stored', () => {
+    expect(sanitizeStreamUrl('rtsp://admin:Secret123@192.168.1.20:554/Streaming/Channels/102'))
+      .toBe('rtsp://192.168.1.20:554/Streaming/Channels/102');
+    expect(sanitizeStreamUrl('http://user@cam.local/video')).toBe('http://cam.local/video');
+  });
+
+  it('are removed even when the password contains @, without touching the path', () => {
+    expect(stripStreamCredentials('rtsp://admin:p@ss@10.0.0.5/cam/realmonitor?channel=1&subtype=1'))
+      .toBe('rtsp://10.0.0.5/cam/realmonitor?channel=1&subtype=1');
+    expect(stripStreamCredentials('http://cam.local/video?tag=a@b')).toBe('http://cam.local/video?tag=a@b');
   });
 });

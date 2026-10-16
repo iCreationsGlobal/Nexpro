@@ -17,6 +17,7 @@ import storeService from '../../services/storeService';
 import { useDebounce } from '../../hooks/useDebounce';
 import { DEBOUNCE_DELAYS } from '../../constants';
 import { formatAmount } from '../../utils/formatNumber';
+import { getCatalogUnitPrice } from '../../utils/productStock';
 import { resolveImageUrl } from '../../utils/fileUtils';
 import { getErrorMessage, showError, showSuccess } from '../../utils/toast';
 import PublishToOnlineStoreDialog from './PublishToOnlineStoreDialog';
@@ -280,7 +281,7 @@ const StoreProductsPanel = ({ homeSections = [] }) => {
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
-                    <Badge variant="outline">{formatAmount(product.sellingPrice || 0)}</Badge>
+                    <Badge variant="outline">{formatAmount(getCatalogUnitPrice(product))}</Badge>
                     {alreadyListed ? (
                       <Badge variant="outline">On store</Badge>
                     ) : null}
