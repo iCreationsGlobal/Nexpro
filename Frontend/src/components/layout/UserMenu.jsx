@@ -24,6 +24,8 @@ import { resolveImageUrl } from '@/utils/fileUtils';
 import { isSabitoStoreEnabled } from '@/utils/sabitoStoreFeature';
 import TourButton from '@/components/tour/TourButton';
 import { useSimpleMode } from '@/hooks/useSimpleMode';
+import { useSignOut } from '@/hooks/useSignOut';
+import SignOutPendingDialog from './SignOutPendingDialog';
 
 /**
  * Avatar button with the account menu (tour, hint mode, profile, settings, Sabito, logout).
@@ -32,7 +34,8 @@ import { useSimpleMode } from '@/hooks/useSimpleMode';
  */
 export default function UserMenu({ compact = false }) {
   const navigate = useNavigate();
-  const { user, logout, isManager } = useAuth();
+  const { user, isManager } = useAuth();
+  const { requestSignOut, pendingCheck, confirmSignOut, cancelSignOut } = useSignOut();
   const simpleMode = useSimpleMode();
   const { hintMode, toggleHintMode } = useHintMode();
   const [open, setOpen] = useState(false);
@@ -47,6 +50,7 @@ export default function UserMenu({ compact = false }) {
   };
 
   return (
+    <>
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         {compact ? (
@@ -156,8 +160,7 @@ export default function UserMenu({ compact = false }) {
         <DropdownMenuItem
           onClick={() => {
             closeMenu();
-            logout();
-            navigate('/login');
+            requestSignOut();
           }}
           className="min-h-[44px]"
         >
@@ -166,5 +169,7 @@ export default function UserMenu({ compact = false }) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <SignOutPendingDialog pendingCheck={pendingCheck} onConfirm={confirmSignOut} onCancel={cancelSignOut} />
+    </>
   );
 }

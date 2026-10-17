@@ -603,10 +603,11 @@ const POSScanMode = ({
 
       if (result.success) {
         const saleObj = result.sale || {
-          id: result.localId,
-          saleNumber: `SALE-${result.localId || Date.now()}`,
+          id: null,
+          saleNumber: result.offlineReference || `SALE-${result.localId || Date.now()}`,
           total: totals.total,
-          items: cart
+          items: cart,
+          isOffline: Boolean(result.isQueued),
         };
 
         setCompletedSale(saleObj);
@@ -636,11 +637,8 @@ const POSScanMode = ({
         }
 
         haptic(result.isQueued ? 'notice' : 'success');
-        showSuccess(
-          result.isQueued
-            ? "No connection — sale saved on this device. It will sync when you're back online."
-            : 'Sale completed!'
-        );
+        // A sale saved offline is explained on the success screen itself.
+        if (!result.isQueued) showSuccess('Sale completed!');
       }
     } catch (error) {
       console.error('Payment processing error:', error);
@@ -1048,11 +1046,18 @@ const POSScanMode = ({
               <CheckCircle className={`${isMobile ? 'h-10 w-10' : 'h-12 w-12'} text-green-600`} />
             </div>
             
-            <h2 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold text-foreground ${isMobile ? 'mb-1' : 'mb-2'}`}>Sale Complete!</h2>
+            <h2 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold text-foreground ${isMobile ? 'mb-1' : 'mb-2'}`}>
+              {completedSale?.isOffline ? 'Sale saved on this device' : 'Sale Complete!'}
+            </h2>
             
             {completedSale && (
               <p className={`${isMobile ? 'text-sm' : ''} text-gray-600 ${isMobile ? 'mb-1' : 'mb-2'}`}>
-                Sale #{completedSale.saleNumber}
+                {completedSale.isOffline ? `Provisional ref. ${completedSale.saleNumber}` : `Sale #${completedSale.saleNumber}`}
+              </p>
+            )}
+            {completedSale?.isOffline && (
+              <p className={`${isMobile ? 'text-xs' : 'text-sm'} mb-3 max-w-sm text-center text-muted-foreground`}>
+                It will be sent to ABS when you're back online. Receipts can be sent from Sales once it has synced.
               </p>
             )}
             
@@ -1060,8 +1065,8 @@ const POSScanMode = ({
               {formatCurrency(totals.total)}
             </p>
 
-            {/* Receipt / SMS Status */}
-            {customerPhone && receiptChannelsAvailable?.sms && !automationReceiptCoverage?.sms && (
+            {/* Receipt / SMS Status (nothing is sent for a sale saved offline) */}
+            {!completedSale?.isOffline && customerPhone && receiptChannelsAvailable?.sms && !automationReceiptCoverage?.sms && (
               <div className={`${isMobile ? 'p-3' : 'p-4'} border ${isMobile ? 'rounded-md mb-4' : 'rounded-lg mb-6'} w-full max-w-sm ${
                 receiptSent ? 'bg-green-500/10 border-green-500/30' : 'bg-muted border-border'
               }`}>
@@ -1078,12 +1083,12 @@ const POSScanMode = ({
                 )}
               </div>
             )}
-            {!customerPhone && receiptChannelsAvailable?.sms && !automationReceiptCoverage?.sms && (
+            {!completedSale?.isOffline && !customerPhone && receiptChannelsAvailable?.sms && !automationReceiptCoverage?.sms && (
               <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-muted-foreground mb-2`}>
                 Add customer phone next time to receive receipt via SMS
               </p>
             )}
-            {automationReceiptCoverage?.sms && customerPhone && (
+            {!completedSale?.isOffline && automationReceiptCoverage?.sms && customerPhone && (
               <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-muted-foreground mb-2`}>
                 Receipt will be sent automatically via your sale automation.
               </p>

@@ -423,6 +423,12 @@ const PrintableReceipt = ({
               <img src={logoSource} alt={companyInfo.name} className="thermal-logo" onError={handleLogoError} />
             )}
             <div className="thermal-title">CASH RECEIPT</div>
+            {sale.isOffline && (
+              <div style={{ textAlign: 'center', fontWeight: 600, margin: '4px 0' }}>
+                PROVISIONAL - NOT YET SYNCED
+                <div style={{ fontWeight: 400 }}>Ref: {sale.saleNumber}</div>
+              </div>
+            )}
             <div className="thermal-business">
               <div style={{ fontWeight: 600 }}>{companyInfo.name}</div>
               {companyInfo.location && <div>Address: {companyInfo.location.replace(/\n/g, ', ')}</div>}
@@ -545,9 +551,14 @@ const PrintableReceipt = ({
               <div className="receipt-subtitle">{documentSubtitle}</div>
             )}
             <div className="receipt-number receipt-label-value-row">
-              <span><strong>Receipt #:</strong></span>
+              <span><strong>{sale.isOffline ? 'Provisional ref.:' : 'Receipt #:'}</strong></span>
               <span>{sale.saleNumber}</span>
             </div>
+            {sale.isOffline && (
+              <div className="receipt-number" style={{ fontWeight: 600 }}>
+                Provisional receipt - saved offline, not yet synced to ABS
+              </div>
+            )}
             <div className="receipt-number receipt-label-value-row">
               <span><strong>Date:</strong></span>
               <span>{dayjs(sale.createdAt).format('MMMM DD, YYYY')}</span>

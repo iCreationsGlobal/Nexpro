@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { discardPendingSale } from '@/services/offlineSalesQueue';
+import { discardPendingSale, offlineSaleReference } from '@/services/offlineSalesQueue';
 import { formatAmount } from '@/utils/formatNumber';
 import { DATE_FORMATS } from '@/constants';
 import { cn } from '@/lib/utils';
@@ -82,7 +82,8 @@ export default function PendingSalesBanner({ pending, syncing, onSyncNow }) {
                     {formatAmount(entry.total)} · {entry.itemCount} {entry.itemCount === 1 ? 'item' : 'items'}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {dayjs(entry.createdAt).format(DATE_FORMATS.DISPLAY_WITH_TIME)}
+                    {dayjs(entry.createdAt).format(DATE_FORMATS.DISPLAY_WITH_TIME)} · Receipt ref.{' '}
+                    {entry.reference || offlineSaleReference(entry.clientId)}
                   </p>
                   {entry.lastError ? <p className="mt-1 text-xs text-destructive">{entry.lastError}</p> : null}
                 </div>

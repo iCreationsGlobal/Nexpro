@@ -90,7 +90,13 @@ export const usePOS = () => {
     const payload = { ...saleData, clientId: saleData.clientId || newSaleClientId() };
     const saveOnDevice = () => {
       const entry = queueSale(payload, { tenantId: activeTenantId, userId: user.id, total });
-      return { success: true, sale: null, isQueued: true, localId: entry.clientId };
+      return {
+        success: true,
+        sale: null,
+        isQueued: true,
+        localId: entry.clientId,
+        offlineReference: entry.reference,
+      };
     };
 
     if (!isNavigatorOnline()) return saveOnDevice();

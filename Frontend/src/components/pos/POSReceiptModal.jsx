@@ -134,13 +134,16 @@ const POSReceiptModal = ({
 }) => {
   const printRef = useRef(null);
   const { posConfig } = usePOSConfig();
+  // Sale saved offline on a phone/tablet: only a provisional printed receipt is possible until it syncs.
+  const isOfflineSale = Boolean(sale?.isOffline);
 
-  const receiptMode = posConfig.receipt?.mode || 'ask';
+  const configuredMode = posConfig.receipt?.mode || 'ask';
+  const receiptMode = isOfflineSale && configuredMode === 'auto_send' ? 'ask' : configuredMode;
   const printConfig = posConfig.print || { format: 'a4' };
   // Hide SMS/email/WhatsApp when a sale_completed receipt automation already covers that channel; print stays.
   const enabledChannels = useMemo(
-    () => getEffectiveReceiptChannels(posConfig),
-    [posConfig]
+    () => (isOfflineSale ? ['print'] : getEffectiveReceiptChannels(posConfig)),
+    [posConfig, isOfflineSale]
   );
 
   const isCreditSale = sale?.paymentMethod === 'credit';
@@ -479,15 +482,22 @@ const POSReceiptModal = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CheckCircle className="h-5 w-5 text-green-600" />
-            Sale Complete!
+            {isOfflineSale ? 'Sale saved on this device' : 'Sale Complete!'}
           </DialogTitle>
         </DialogHeader>
         <DialogBody>
+        {isOfflineSale && (
+          <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            No connection right now. This sale will be sent to ABS when you're back online and get its
+            receipt number then. You can print a provisional receipt now; SMS, WhatsApp and email receipts
+            can be sent from Sales once it has synced.
+          </p>
+        )}
         {/* Sale summary */}
         <Card className="bg-green-50 border-green-200">
           <CardContent className="p-4">
             <div className="flex justify-between items-center mb-2">
-              <span className="text-muted-foreground">Sale Number</span>
+              <span className="text-muted-foreground">{isOfflineSale ? 'Provisional ref.' : 'Sale Number'}</span>
               <span className="font-mono font-medium">{sale?.saleNumber}</span>
             </div>
             <div className="flex justify-between items-center">

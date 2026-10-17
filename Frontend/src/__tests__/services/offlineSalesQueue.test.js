@@ -1,12 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 
 vi.mock('@/services/saleService', () => ({
   default: { syncBatch: vi.fn(), createSale: vi.fn() },
 }));
+const mockLogout = vi.fn();
+const mockNavigate = vi.fn();
 vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ activeTenantId: 't1', user: { id: 'u1' } }),
+  useAuth: () => ({ activeTenantId: 't1', user: { id: 'u1' }, logout: mockLogout }),
 }));
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useNavigate: () => mockNavigate,
+}));
+vi.mock('@/utils/toast', () => ({ showSuccess: vi.fn(), showError: vi.fn() }));
 const deviceMode = { isAppShell: true };
 vi.mock('@/hooks/useDeviceMode', () => ({
   useDeviceMode: () => deviceMode,
@@ -17,10 +24,12 @@ import saleService from '@/services/saleService';
 import {
   discardPendingSale,
   getPendingSales,
+  offlineSaleReference,
   queueSale,
   syncPendingSales,
 } from '@/services/offlineSalesQueue';
 import { usePOS } from '@/hooks/usePOS';
+import { useSignOut } from '@/hooks/useSignOut';
 
 // The shared test setup stubs localStorage so nothing is stored; these tests need a real store.
 const store = new Map();
@@ -94,6 +103,13 @@ describe('offlineSalesQueue', () => {
     expect(getPendingSales().length).toBe(1);
   });
 
+  it('gives each saved sale a short receipt reference, also kept in the sale metadata', () => {
+    expect(offlineSaleReference('web-1a2b3c4d-5e6f-7a8b-9c0d-112233445566')).toBe('OFF-1A2B3C4D');
+    const entry = queueSale({ ...SALE, clientId: 'web-abcdef12-0000', metadata: { paymentGroup: 'cash' } }, { tenantId: 't1', userId: 'u1' });
+    expect(entry.reference).toBe('OFF-ABCDEF12');
+    expect(entry.payload.metadata).toEqual({ paymentGroup: 'cash', offlineReference: 'OFF-ABCDEF12' });
+  });
+
   it('discards one sale', () => {
     queueSale({ ...SALE, clientId: 'a' }, { tenantId: 't1', userId: 'u1' });
     queueSale({ ...SALE, clientId: 'b' }, { tenantId: 't1', userId: 'u1' });
@@ -146,5 +162,49 @@ describe('usePOS processSale', () => {
     const { result: desktop } = renderHook(() => usePOS());
     await expect(desktop.current.processSale(SALE)).rejects.toThrow(/Internet connection required/);
     expect(getPendingSales().length).toBe(0);
+  });
+});
+
+describe('useSignOut', () => {
+  const setOnline = (online) => vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(online);
+
+  it('signs out straight away when nothing is waiting', async () => {
+    const { result } = renderHook(() => useSignOut());
+    await act(() => result.current.requestSignOut());
+    expect(mockLogout).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith('/login');
+  });
+
+  it('sends saved sales first and then signs out', async () => {
+    setOnline(true);
+    queueSale({ ...SALE, clientId: 'a' }, { tenantId: 't1', userId: 'u1' });
+    saleService.syncBatch.mockResolvedValue({ success: true, results: [{ clientId: 'a', id: 'sale-1' }] });
+    const { result } = renderHook(() => useSignOut());
+
+    await act(() => result.current.requestSignOut());
+
+    expect(saleService.syncBatch).toHaveBeenCalledTimes(1);
+    expect(mockLogout).toHaveBeenCalledTimes(1);
+    expect(getPendingSales().length).toBe(0);
+  });
+
+  it('asks before signing out when sales cannot be sent, and keeps them', async () => {
+    setOnline(false);
+    queueSale({ ...SALE, clientId: 'a' }, { tenantId: 't1', userId: 'u1' });
+    queueSale({ ...SALE, clientId: 'b' }, { tenantId: 't2', userId: 'u1' });
+    const { result } = renderHook(() => useSignOut());
+
+    await act(() => result.current.requestSignOut());
+
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(result.current.pendingCheck).toEqual({ step: 'confirm', count: 2, otherWorkspaces: 1 });
+
+    act(() => result.current.cancelSignOut());
+    expect(result.current.pendingCheck.step).toBe('idle');
+
+    await act(() => result.current.requestSignOut());
+    act(() => result.current.confirmSignOut());
+    expect(mockLogout).toHaveBeenCalledTimes(1);
+    expect(getPendingSales({ userId: 'u1' }).length).toBe(2);
   });
 });

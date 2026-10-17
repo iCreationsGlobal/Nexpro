@@ -277,14 +277,33 @@ test.describe('app shell', () => {
     await expect(pos.getByText('Offline').first()).toBeVisible();
     await pos.getByRole('button', { name: /checkout/i }).first().click();
     await page.getByRole('button', { name: 'Complete Sale' }).click();
-    await expect(page.getByText('sale saved on this device', { exact: false }).first()).toBeVisible();
 
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('abs:pending-sales') || '[]'));
     expect(saved).toHaveLength(1);
     expect(saved[0].clientId).toMatch(/^web-/);
+    expect(saved[0].reference).toMatch(/^OFF-[A-Z0-9]{8}$/);
 
+    // The customer still gets a (provisional) receipt: print only, with the offline reference.
+    const receipt = page.getByRole('dialog', { name: 'Sale saved on this device' });
+    await expect(receipt).toBeVisible();
+    await expect(receipt.getByText(saved[0].reference).first()).toBeVisible();
+    await expect(receipt.getByText('Print Receipt').first()).toBeVisible();
+    await expect(receipt.getByText('SMS Receipt')).toHaveCount(0);
+
+    // Back closes the receipt, then the point of sale.
+    await page.goBack();
+    await expect(receipt).toHaveCount(0);
     await page.goBack();
     await expect(page.getByRole('status').filter({ hasText: '1 sale saved on this device' })).toBeVisible();
+
+    // Signing out with an unsynced sale asks first.
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByRole('menuitem', { name: 'Logout' }).click();
+    const warning = page.getByRole('alertdialog');
+    await expect(warning).toContainText("1 sale haven't reached ABS yet");
+    await warning.getByRole('button', { name: 'Stay signed in' }).click();
+    await expect(warning).toHaveCount(0);
+    await expect(page).not.toHaveURL(/\/login/);
 
     await context.setOffline(false);
     await expect.poll(() => syncedClientIds).toContain(saved[0].clientId);

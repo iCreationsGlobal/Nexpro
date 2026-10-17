@@ -1181,9 +1181,32 @@ const POS = () => {
 
       if (result.success && result.isQueued) {
         // No connection: the sale is kept on this phone/tablet and syncs on its own later.
+        // The customer still gets a receipt now — a provisional one (printing works offline;
+        // SMS/WhatsApp/email need the server and can be sent from Sales once it has synced).
+        setCompletedSale({
+          ...saleData,
+          isOffline: true,
+          id: null,
+          saleNumber: result.offlineReference,
+          createdAt: new Date().toISOString(),
+          items: cart.map((item) => ({
+            ...item,
+            total: (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0) - (Number(item.discount) || 0),
+          })),
+          subtotal: cartTotals.subtotal,
+          discount: cartTotals.totalDiscount,
+          tax: cartTotals.taxAmount,
+          total: paymentDetails.total ?? cartTotals.total,
+          change: paymentDetails.change || 0,
+        });
+        setCustomerForReceipt(
+          selectedCustomer ||
+            (quickCustomerPhone ? { phone: quickCustomerPhone, name: quickCustomerName || '', email: '' } : null)
+        );
         setPaymentModalOpen(false);
+        // The receipt dialog explains what happened, so no separate toast.
+        setReceiptModalOpen(true);
         haptic('notice');
-        showSuccess("No connection — sale saved on this device. It will sync when you're back online.");
         clearCart();
         return;
       }

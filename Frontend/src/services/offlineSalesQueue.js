@@ -42,6 +42,16 @@ export function newSaleClientId() {
 }
 
 /**
+ * Short reference printed on the provisional receipt and kept in the sale's metadata, so the paper
+ * receipt can be matched to the sale once it has synced (e.g. "OFF-1A2B3C4D").
+ * @param {string} clientId
+ */
+export function offlineSaleReference(clientId) {
+  const compact = String(clientId || '').replace(/^web-/, '').replace(/[^a-zA-Z0-9]/g, '');
+  return `OFF-${compact.slice(0, 8).toUpperCase()}`;
+}
+
+/**
  * @param {{ tenantId?: string|null, userId?: string|null }} [scope]
  * @returns {Array<{ clientId: string, tenantId: string, userId: string, payload: object, total: number, itemCount: number, createdAt: string, lastError?: string }>}
  */
@@ -64,9 +74,14 @@ export function queueSale(payload, { tenantId, userId, total }) {
   );
   const entry = {
     clientId,
+    reference: offlineSaleReference(clientId),
     tenantId,
     userId,
-    payload: { ...payload, clientId },
+    payload: {
+      ...payload,
+      clientId,
+      metadata: { ...(payload.metadata || {}), offlineReference: offlineSaleReference(clientId) },
+    },
     total: Number(total) || estimatedTotal,
     itemCount: items.length,
     createdAt: new Date().toISOString(),
