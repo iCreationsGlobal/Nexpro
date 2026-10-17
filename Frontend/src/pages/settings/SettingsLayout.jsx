@@ -15,17 +15,18 @@ const SettingsLayout = ({ title, description, children }) => {
   return (
     <div className="px-0 md:px-0">
       <div className="mb-3 md:mb-6">
+        {/* Phones/tablets: the app header already has the back button and the title. */}
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="mb-2 -ml-2 text-muted-foreground hover:text-foreground"
+          className="mb-2 -ml-2 text-muted-foreground hover:text-foreground shell:hidden"
           onClick={() => navigate('/settings')}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Settings
         </Button>
-        <h2 className="text-xl md:text-2xl font-semibold mb-1 md:mb-2">{title}</h2>
+        <h2 className="text-xl md:text-2xl font-semibold mb-1 md:mb-2 shell:sr-only">{title}</h2>
         {description ? (
           <p className="text-xs md:text-sm text-muted-foreground">{description}</p>
         ) : null}

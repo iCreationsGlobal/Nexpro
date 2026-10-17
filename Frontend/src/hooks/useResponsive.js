@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useSyncExternalStore } from 'react';
 
 /**
  * Breakpoint constants for responsive design
@@ -18,36 +18,62 @@ export const DEVICE_TYPES = {
   DESKTOP: 'desktop',
 };
 
+const readWindowSize = () => ({
+  width: typeof window !== 'undefined' ? window.innerWidth : 1024,
+  height: typeof window !== 'undefined' ? window.innerHeight : 768,
+});
+
 /**
- * Enhanced responsive hook with breakpoint detection
+ * One window resize listener shared by every useResponsive caller (instead of one per component).
+ */
+const windowSizeStore = (() => {
+  let size = readWindowSize();
+  const listeners = new Set();
+
+  const refresh = () => {
+    const next = readWindowSize();
+    if (next.width === size.width && next.height === size.height) return;
+    size = next;
+    listeners.forEach((listener) => listener());
+  };
+
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      if (listeners.size === 1 && typeof window !== 'undefined') {
+        window.addEventListener('resize', refresh);
+        refresh();
+      }
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && typeof window !== 'undefined') {
+          window.removeEventListener('resize', refresh);
+        }
+      };
+    },
+    getSnapshot: () => size,
+  };
+})();
+
+const SERVER_WINDOW_SIZE = { width: 1024, height: 768 };
+
+/**
+ * Enhanced responsive hook with breakpoint detection.
+ * For the app-shell / phone layout decision use useDeviceMode() instead.
  * @param {Object} options - Configuration options
  * @param {number} options.mobileBreakpoint - Mobile breakpoint (default: 768)
  * @param {number} options.tabletBreakpoint - Tablet breakpoint (default: 1024)
  * @returns {Object} Responsive state object
  */
-export const useResponsive = ({ 
+export const useResponsive = ({
   mobileBreakpoint = BREAKPOINTS.MOBILE,
-  tabletBreakpoint = BREAKPOINTS.TABLET 
+  tabletBreakpoint = BREAKPOINTS.TABLET
 } = {}) => {
-  const [windowSize, setWindowSize] = useState({
-    width: typeof window !== 'undefined' ? window.innerWidth : 1024,
-    height: typeof window !== 'undefined' ? window.innerHeight : 768,
-  });
-
-  useEffect(() => {
-    const handleResize = () => {
-      setWindowSize({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-    };
-
-    window.addEventListener('resize', handleResize);
-    // Call once to set initial size
-    handleResize();
-
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  const windowSize = useSyncExternalStore(
+    windowSizeStore.subscribe,
+    windowSizeStore.getSnapshot,
+    () => SERVER_WINDOW_SIZE
+  );
 
   const responsive = useMemo(() => {
     const { width } = windowSize;
@@ -93,59 +119,86 @@ export const useTouchDevice = () => {
  * Hook for safe area insets (iOS notch support)
  * @returns {Object} Safe area insets
  */
-export const useSafeAreaInsets = () => {
-  const [insets, setInsets] = useState({
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-  });
+const ZERO_INSETS = Object.freeze({ top: 0, right: 0, bottom: 0, left: 0 });
 
-  useEffect(() => {
-    // Check if CSS environment variables are supported
-    const updateInsets = () => {
-      if (typeof CSS !== 'undefined' && CSS.supports('padding-top', 'env(safe-area-inset-top)')) {
-        // Get computed safe area insets from CSS
-        const testEl = document.createElement('div');
-        testEl.style.position = 'fixed';
-        testEl.style.visibility = 'hidden';
-        testEl.style.paddingTop = 'env(safe-area-inset-top)';
-        testEl.style.paddingRight = 'env(safe-area-inset-right)';
-        testEl.style.paddingBottom = 'env(safe-area-inset-bottom)';
-        testEl.style.paddingLeft = 'env(safe-area-inset-left)';
-        document.body.appendChild(testEl);
+const measureSafeAreaInsets = () => {
+  if (
+    typeof document === 'undefined' ||
+    !document.body ||
+    typeof CSS === 'undefined' ||
+    !CSS.supports('padding-top', 'env(safe-area-inset-top)')
+  ) {
+    return ZERO_INSETS;
+  }
+  const testEl = document.createElement('div');
+  testEl.style.position = 'fixed';
+  testEl.style.visibility = 'hidden';
+  testEl.style.paddingTop = 'env(safe-area-inset-top)';
+  testEl.style.paddingRight = 'env(safe-area-inset-right)';
+  testEl.style.paddingBottom = 'env(safe-area-inset-bottom)';
+  testEl.style.paddingLeft = 'env(safe-area-inset-left)';
+  document.body.appendChild(testEl);
 
-        const computed = window.getComputedStyle(testEl);
-        const top = parseInt(computed.paddingTop) || 0;
-        const right = parseInt(computed.paddingRight) || 0;
-        const bottom = parseInt(computed.paddingBottom) || 0;
-        const left = parseInt(computed.paddingLeft) || 0;
+  const computed = window.getComputedStyle(testEl);
+  const next = {
+    top: parseInt(computed.paddingTop) || 0,
+    right: parseInt(computed.paddingRight) || 0,
+    bottom: parseInt(computed.paddingBottom) || 0,
+    left: parseInt(computed.paddingLeft) || 0,
+  };
 
-        // Safely remove - avoid NotFoundError when React/StrictMode conflicts with DOM
-        try {
-          if (testEl.parentNode) {
-            testEl.parentNode.removeChild(testEl);
-          }
-        } catch {
-          // Ignore - element may have been removed by React reconciliation
-        }
-
-        setInsets({ top, right, bottom, left });
-      }
-    };
-
-    updateInsets();
-    window.addEventListener('resize', updateInsets);
-    window.addEventListener('orientationchange', updateInsets);
-
-    return () => {
-      window.removeEventListener('resize', updateInsets);
-      window.removeEventListener('orientationchange', updateInsets);
-    };
-  }, []);
-
-  return insets;
+  // Safely remove - avoid NotFoundError when React/StrictMode conflicts with DOM
+  try {
+    if (testEl.parentNode) {
+      testEl.parentNode.removeChild(testEl);
+    }
+  } catch {
+    // Ignore - element may have been removed by React reconciliation
+  }
+  return next;
 };
+
+/** Safe-area insets measured once per resize/rotation and shared by every caller. */
+const safeAreaStore = (() => {
+  let insets = ZERO_INSETS;
+  const listeners = new Set();
+
+  const refresh = () => {
+    const next = measureSafeAreaInsets();
+    if (
+      next.top === insets.top &&
+      next.right === insets.right &&
+      next.bottom === insets.bottom &&
+      next.left === insets.left
+    ) {
+      return;
+    }
+    insets = next;
+    listeners.forEach((listener) => listener());
+  };
+
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      if (listeners.size === 1 && typeof window !== 'undefined') {
+        window.addEventListener('resize', refresh);
+        window.addEventListener('orientationchange', refresh);
+        refresh();
+      }
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && typeof window !== 'undefined') {
+          window.removeEventListener('resize', refresh);
+          window.removeEventListener('orientationchange', refresh);
+        }
+      };
+    },
+    getSnapshot: () => insets,
+  };
+})();
+
+export const useSafeAreaInsets = () =>
+  useSyncExternalStore(safeAreaStore.subscribe, safeAreaStore.getSnapshot, () => ZERO_INSETS);
 
 /**
  * Get responsive value based on breakpoint

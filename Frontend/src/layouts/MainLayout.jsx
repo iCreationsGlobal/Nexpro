@@ -15,7 +15,17 @@ import ShopAccessBanner from '../components/ShopAccessBanner';
 import SupportAccessBanner from '../components/SupportAccessBanner';
 import AssistantChatPanel from '../components/AssistantChatPanel';
 import FloatingActionButton from '../components/FloatingActionButton';
-import { useResponsive, useSafeAreaInsets, BREAKPOINTS } from '../hooks/useResponsive';
+import { useSafeAreaInsets } from '../hooks/useResponsive';
+import { useDeviceMode } from '../hooks/useDeviceMode';
+import { useAppShellNav } from '../hooks/useAppShellNav';
+import { useShellScrollMemory } from '../hooks/useShellScrollMemory';
+import { useIsEditingText } from '../hooks/useIsEditingText';
+import AppHeader from '../components/layout/AppHeader';
+import AppTabBar, { APP_TAB_BAR_HEIGHT } from '../components/layout/AppTabBar';
+import MoreMenuSheet from '../components/layout/MoreMenuSheet';
+import ShellPullToRefresh from '../components/layout/ShellPullToRefresh';
+import { findActiveNavId, navBasePath } from '../config/appShellNav';
+import { getAppShellRouteMeta } from '../config/appShellRoutes';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../context/AuthContext';
@@ -44,10 +54,99 @@ function pageContextFromPath(pathname) {
   return undefined;
 }
 
+/**
+ * Phone/tablet chrome state: header meta, tabs, More sheet, scroll memory.
+ * Must run inside the workspace providers so the shop/studio scope is available.
+ */
+function useAppShellChrome(isAppShell) {
+  const location = useLocation();
+  const { tabItems, moreSections, destinations, isSimpleTiles } = useAppShellNav({ enabled: isAppShell });
+  const [moreOpen, setMoreOpen] = useState(false);
+  const isEditingText = useIsEditingText(isAppShell);
+
+  const meta = useMemo(
+    () => getAppShellRouteMeta(location.pathname, { destinations }),
+    [location.pathname, destinations]
+  );
+
+  const activeTabId = useMemo(() => {
+    const tabId = findActiveNavId(location.pathname, tabItems);
+    if (tabId) return tabId;
+    const inMore = findActiveNavId(location.pathname, moreSections.flatMap((section) => section.items));
+    return inMore && meta.kind === 'root' ? 'more' : null;
+  }, [location.pathname, tabItems, moreSections, meta.kind]);
+
+  const tabPaths = useMemo(
+    () => new Set(tabItems.filter((item) => item.to && !item.center).map((item) => navBasePath(item.to))),
+    [tabItems]
+  );
+  const isTabPath = useCallback((pathname) => tabPaths.has(pathname), [tabPaths]);
+  useShellScrollMemory({ enabled: isAppShell, isTabPath });
+
+  // Navigating closes the More sheet (e.g. a notification link while it is open).
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [location.pathname]);
+
+  return {
+    meta,
+    tabItems,
+    moreSections,
+    isSimpleTiles,
+    activeTabId,
+    moreOpen,
+    setMoreOpen,
+    tabBarHidden: meta.hideTabBar || isEditingText,
+  };
+}
+
+/**
+ * Sidebar layout on desktops; app shell (header, tab bar, More sheet) on phones and tablets.
+ * The page sits in the same place in both, so crossing the breakpoint never remounts it.
+ */
+function WorkspaceFrame({ isAppShell, collapsed, onCollapse, children }) {
+  const chrome = useAppShellChrome(isAppShell);
+  const { setMoreOpen } = chrome;
+  const openMore = useCallback(() => setMoreOpen(true), [setMoreOpen]);
+
+  return (
+    <div className="min-h-screen bg-background" data-layout={isAppShell ? 'app' : 'desktop'}>
+      {!isAppShell && <Sidebar collapsed={collapsed} onCollapse={onCollapse} />}
+      <div
+        className={cn(
+          'transition-all duration-300',
+          !isAppShell && (collapsed ? 'ml-20' : 'ml-64')
+        )}
+      >
+        {isAppShell ? <AppHeader meta={chrome.meta} /> : <Header />}
+        {children}
+      </div>
+      {isAppShell && (
+        <>
+          <ShellPullToRefresh />
+          <AppTabBar
+            items={chrome.tabItems}
+            activeId={chrome.activeTabId}
+            onOpenMore={openMore}
+            moreOpen={chrome.moreOpen}
+            hidden={chrome.tabBarHidden}
+          />
+          <MoreMenuSheet
+            open={chrome.moreOpen}
+            onOpenChange={chrome.setMoreOpen}
+            sections={chrome.moreSections}
+            simple={chrome.isSimpleTiles}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
 const MainLayout = () => {
   const location = useLocation();
   const safeAreaInsets = useSafeAreaInsets();
-  const { isMobile: isBelowTablet } = useResponsive({ mobileBreakpoint: BREAKPOINTS.TABLET });
+  const { isAppShell } = useDeviceMode();
   const {
     user,
     activeTenantId,
@@ -60,7 +159,7 @@ const MainLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const wasBelowTabletRef = useRef(isBelowTablet);
+  const wasAppShellRef = useRef(isAppShell);
 
   const assistantPageContext = useMemo(
     () => pageContextFromPath(location.pathname),
@@ -68,7 +167,9 @@ const MainLayout = () => {
   );
   const { isSimple } = useSimpleMode();
   // Simple Mode: no AI assistant.
-  const showAssistantFab = !isDriver && !isSimple && !assistantOpen && location.pathname !== '/ask-ai';
+  // Phones and tablets reach iBIS from the header, like the native app (no floating button).
+  const showAssistantFab =
+    !isAppShell && !isDriver && !isSimple && !assistantOpen && location.pathname !== '/ask-ai';
   const openAssistant = useCallback(() => setAssistantOpen(true), []);
 
   const showVerifyEmailBanner = useMemo(() => Boolean(needsEmailVerification), [needsEmailVerification]);
@@ -128,12 +229,12 @@ const MainLayout = () => {
   // Auto-expand only when transitioning from mobile/tablet to desktop.
   // Keep user's manual collapse state while already on desktop.
   useEffect(() => {
-    const wasBelowTablet = wasBelowTabletRef.current;
-    if (wasBelowTablet && !isBelowTablet && collapsed) {
+    const wasAppShell = wasAppShellRef.current;
+    if (wasAppShell && !isAppShell && collapsed) {
       setCollapsed(false);
     }
-    wasBelowTabletRef.current = isBelowTablet;
-  }, [isBelowTablet, collapsed]);
+    wasAppShellRef.current = isAppShell;
+  }, [isAppShell, collapsed]);
 
   // Navigating away while a Sheet/Dialog is open can leave body pointer-events locked.
   useEffect(() => {
@@ -145,20 +246,7 @@ const MainLayout = () => {
       <StudioLocationProvider>
       <ShopProvider>
       <NotificationWebSocketListener />
-      <div className="min-h-screen bg-background">
-        {/* Desktop Sidebar */}
-        {!isBelowTablet && (
-          <Sidebar collapsed={collapsed} onCollapse={setCollapsed} />
-        )}
-
-        {/* Main Content Area */}
-        <div
-          className={cn(
-            'transition-all duration-300',
-            !isBelowTablet && (collapsed ? 'ml-20' : 'ml-64')
-          )}
-        >
-          <Header />
+      <WorkspaceFrame isAppShell={isAppShell} collapsed={collapsed} onCollapse={setCollapsed}>
           <SupportAccessBanner />
           <ConnectionHealthBanner className="mx-4 mt-2 sm:mx-4 lg:mx-6" />
           {/* Email verification banner only in layout; onboarding banner is on Dashboard */}
@@ -211,19 +299,18 @@ const MainLayout = () => {
           <main
             className="w-full bg-muted/50 py-4 sm:py-6"
             style={{
-              paddingBottom:
-                safeAreaInsets.bottom > 0
+              paddingBottom: isAppShell
+                ? `calc(${APP_TAB_BAR_HEIGHT}px + 1.5rem + env(safe-area-inset-bottom, 0px))`
+                : safeAreaInsets.bottom > 0
                   ? `calc(1.5rem + ${safeAreaInsets.bottom}px)`
                   : undefined,
             }}
           >
-            <div className="min-h-[calc(100dvh-8rem)] px-4 sm:px-4 lg:px-6">
+            <div className={cn('min-h-[calc(100dvh-8rem)] px-4 sm:px-4', isAppShell ? 'md:px-6' : 'lg:px-6')}>
               {showBillingLock ? <BillingLockedScreen billing={billingStatus} /> : <Outlet />}
             </div>
           </main>
-        </div>
-
-      </div>
+      </WorkspaceFrame>
       {showAssistantFab && (
         <FloatingActionButton
           icon={MessageCircle}

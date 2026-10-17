@@ -54,6 +54,14 @@ npm run test:settings
 npm run test:full
 ```
 
+### Phone/tablet app shell (no backend needed):
+```bash
+npx playwright test -c playwright.mobile.config.js
+```
+Starts only the Frontend dev server; every API call is answered in the browser
+(`tests/helpers/mockApi.js`). Runs desktop, Pixel 7, iPhone 13, iPad Mini and
+iPad Pro landscape projects on Chromium.
+
 ### Debug tests:
 ```bash
 npm run test:debug

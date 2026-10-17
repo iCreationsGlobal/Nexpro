@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useDeviceMode } from './useDeviceMode';
+import { APP_REFRESH_EVENT } from '../utils/appRefresh';
 
 /**
  * Custom hook for pull-to-refresh functionality
@@ -13,8 +15,23 @@ export const usePullToRefresh = (onRefresh, options = {}) => {
   const {
     threshold = 80,
     resistance = 2.5,
-    enabled = true,
+    enabled: enabledOption = true,
   } = options;
+  // Phones and tablets: the app shell owns the gesture (one indicator, window scroll aware) and
+  // asks pages to refresh through APP_REFRESH_EVENT, so the page-level gesture stays off there.
+  const { isAppShell } = useDeviceMode();
+  const enabled = enabledOption && !isAppShell;
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
+
+  useEffect(() => {
+    if (!isAppShell) return undefined;
+    const handleAppRefresh = (event) => {
+      event.detail?.waitUntil?.(onRefreshRef.current?.());
+    };
+    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh);
+    return () => window.removeEventListener(APP_REFRESH_EVENT, handleAppRefresh);
+  }, [isAppShell]);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);

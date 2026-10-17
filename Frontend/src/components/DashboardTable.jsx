@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useResponsive, BREAKPOINTS } from '@/hooks/useResponsive';
+import { useDeviceMode } from '@/hooks/useDeviceMode';
 import { cn } from '@/lib/utils';
 import TableSkeleton from './TableSkeleton';
 import MobileCardView from './MobileCardView';
@@ -154,8 +154,8 @@ const DashboardTable = memo(({
   onViewModeChange,
   getCardImage
 }) => {
-  // Use 1024 breakpoint for card vs table - matches MainLayout sidebar (cards when sidebar hidden)
-  const { isMobile } = useResponsive({ mobileBreakpoint: BREAKPOINTS.TABLET });
+  // Cards wherever the app-style layout is used (phones and tablets) — matches MainLayout.
+  const { isAppShell: isMobile } = useDeviceMode();
   const [internalPagination, setInternalPagination] = useState({ current: 1, pageSize });
   const [internalViewMode, setInternalViewMode] = useState('table');
   const viewMode = onViewModeChange ? (controlledViewMode ?? 'table') : internalViewMode;

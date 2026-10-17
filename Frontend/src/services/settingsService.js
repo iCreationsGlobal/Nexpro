@@ -266,6 +266,12 @@ const getSidebarPreferences = async () => {
   return res?.data?.data ?? res?.data ?? { hiddenSidebarKeys: [] };
 };
 
+/** Per-user "what matters most to you" picks for the active workspace (set in the mobile app). */
+const getFocusAreas = async () => {
+  const res = await api.get('/settings/focus-areas');
+  return res?.data?.data ?? res?.data ?? { focusAreas: [], source: 'none' };
+};
+
 const updateSidebarPreferences = async (payload) => {
   const res = await api.patch('/settings/sidebar-preferences', payload);
   return res?.data?.data ?? res?.data ?? { hiddenSidebarKeys: [] };
@@ -337,6 +343,7 @@ export default {
   disconnectHubtelCollectionCredentials,
   getSidebarPreferences,
   updateSidebarPreferences,
+  getFocusAreas,
   getSmsTemplates,
   updateSmsTemplate,
   resetSmsTemplate,

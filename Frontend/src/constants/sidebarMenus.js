@@ -202,7 +202,7 @@ export const SIDEBAR_MENU_GROUPS = [
 
 /**
  * Whether a configurable sidebar key is relevant for the tenant's business type and features.
- * Mirrors visibility rules in Sidebar.jsx getMenuItems().
+ * Mirrors visibility rules in config/navigation.js getMenuItems().
  * @param {string} key
  * @param {{ businessType?: string|null, shopType?: string|null, hasFeature?: (key: string) => boolean, isPlatformAdmin?: boolean }} ctx
  * @returns {boolean}

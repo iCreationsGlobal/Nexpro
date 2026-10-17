@@ -5,6 +5,7 @@ import { ToastContainer } from 'react-toastify';
 import App from './App';
 import { QUERY_CACHE, APP_NAME } from './constants';
 import { clearChunkReloadAttempt } from './utils/chunkLoadError';
+import { useDeviceMode } from './hooks/useDeviceMode';
 import 'react-toastify/dist/ReactToastify.css';
 import './index.css';
 
@@ -36,11 +37,12 @@ const queryClient = new QueryClient({
   },
 });
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <QueryClientProvider client={queryClient}>
-    <App />
+/** Phones and tablets: toasts drop from the top like app notices, clear of the tab bar. */
+function AppToastContainer() {
+  const { isAppShell } = useDeviceMode();
+  return (
     <ToastContainer
-      position="bottom-right"
+      position={isAppShell ? 'top-center' : 'bottom-right'}
       autoClose={5000}
       hideProgressBar={false}
       closeButton
@@ -49,5 +51,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       theme="light"
       limit={4}
     />
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <QueryClientProvider client={queryClient}>
+    <App />
+    <AppToastContainer />
   </QueryClientProvider>
 );

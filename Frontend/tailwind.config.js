@@ -1,3 +1,15 @@
+const plugin = require("tailwindcss/plugin");
+
+/**
+ * Layout media queries. Keep in sync with src/hooks/useDeviceMode.js (a unit test checks).
+ * APP_SHELL_MEDIA: bottom tabs + app headers (under 1024px, or a touch-first tablet up to 1366px).
+ * DESKTOP_SHELL_MEDIA: the exact complement, where the sidebar layout is used.
+ */
+const PHONE_MEDIA = "(max-width: 767.98px)";
+const APP_SHELL_MEDIA = "(max-width: 1023.98px), (pointer: coarse) and (max-width: 1366px)";
+const DESKTOP_SHELL_MEDIA =
+  "(min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none), (min-width: 1366.02px)";
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
@@ -83,5 +95,14 @@ module.exports = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    require("tailwindcss-animate"),
+    // `shell:` = app-style layout (phones and tablets), `desk:` = sidebar layout.
+    plugin(({ addVariant }) => {
+      addVariant("shell", `@media ${APP_SHELL_MEDIA}`);
+      addVariant("desk", `@media ${DESKTOP_SHELL_MEDIA}`);
+    }),
+  ],
 }
+
+module.exports.layoutMedia = { PHONE_MEDIA, APP_SHELL_MEDIA, DESKTOP_SHELL_MEDIA };

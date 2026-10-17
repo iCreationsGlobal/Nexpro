@@ -708,6 +708,15 @@ useEffect(() => {
     }
   }, [location.state]);
 
+  // ?add=1 opens the new-job form (phone/tablet tab bar "Add Job" button, quick actions).
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('add') !== '1') return;
+    navigate(location.pathname, { replace: true });
+    setTimeout(() => {
+      handleAddJob();
+    }, 100);
+  }, [location.search]);
+
   // Check if coming from customer page with customerId query parameter
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
