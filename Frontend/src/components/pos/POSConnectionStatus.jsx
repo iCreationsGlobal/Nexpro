@@ -1,5 +1,6 @@
 /**
- * POSConnectionStatus — online/offline indicator (web is online-only for sales).
+ * POSConnectionStatus — online/offline indicator. Desktop sales are online-only; on phones/tablets
+ * (savesOffline) sales are kept on the device and synced later.
  */
 import { Wifi, WifiOff } from 'lucide-react';
 import {
@@ -13,9 +14,10 @@ import { ONLINE_REQUIRED_MESSAGE } from '@/utils/onlineRequired';
 /**
  * @param {Object} props
  * @param {boolean} props.isOnline
+ * @param {boolean} [props.savesOffline] - Offline sales are saved on this device
  * @param {string} [props.className]
  */
-const POSConnectionStatus = ({ isOnline, className = '' }) => {
+const POSConnectionStatus = ({ isOnline, savesOffline = false, className = '' }) => {
   const config = isOnline
     ? {
         icon: Wifi,
@@ -25,14 +27,23 @@ const POSConnectionStatus = ({ isOnline, className = '' }) => {
         textColor: 'text-green-700',
         borderColor: 'border-green-200',
       }
-    : {
-        icon: WifiOff,
-        label: 'Offline',
-        description: ONLINE_REQUIRED_MESSAGE,
-        bgColor: 'bg-red-50',
-        textColor: 'text-red-700',
-        borderColor: 'border-red-200',
-      };
+    : savesOffline
+      ? {
+          icon: WifiOff,
+          label: 'Offline',
+          description: "Sales are saved on this device and sync when you're back online.",
+          bgColor: 'bg-amber-50',
+          textColor: 'text-amber-800',
+          borderColor: 'border-amber-200',
+        }
+      : {
+          icon: WifiOff,
+          label: 'Offline',
+          description: ONLINE_REQUIRED_MESSAGE,
+          bgColor: 'bg-red-50',
+          textColor: 'text-red-700',
+          borderColor: 'border-red-200',
+        };
 
   const Icon = config.icon;
 

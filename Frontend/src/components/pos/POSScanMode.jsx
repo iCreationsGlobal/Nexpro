@@ -68,6 +68,7 @@ import {
 } from '../../utils/productStock';
 import { showSuccess, showError } from '../../utils/toast';
 import customerService from '../../services/customerService';
+import { haptic } from '../../utils/haptics';
 
 /**
  * Format currency value (handles string/number from API or form)
@@ -614,7 +615,8 @@ const POSScanMode = ({
         // Auto-send receipt via SMS only when integrated and not already handled by automation
         const canManualSmsReceipt =
           receiptChannelsAvailable?.sms && !automationReceiptCoverage?.sms;
-        if (customerPhone && saleObj.id && onSendReceipt && canManualSmsReceipt) {
+        // Saved offline (phones/tablets): nothing to send until it has synced.
+        if (customerPhone && saleObj.id && onSendReceipt && canManualSmsReceipt && !result.isQueued) {
           onSendReceipt(saleObj.id, {
             channels: ['sms'],
             phone: customerPhone
@@ -633,7 +635,12 @@ const POSScanMode = ({
             });
         }
 
-        showSuccess('Sale completed!');
+        haptic(result.isQueued ? 'notice' : 'success');
+        showSuccess(
+          result.isQueued
+            ? "No connection — sale saved on this device. It will sync when you're back online."
+            : 'Sale completed!'
+        );
       }
     } catch (error) {
       console.error('Payment processing error:', error);

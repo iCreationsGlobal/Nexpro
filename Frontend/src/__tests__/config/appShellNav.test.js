@@ -44,7 +44,6 @@ function shell({
     simpleMode,
     allMenuItems,
     menuItems,
-    hasFeature,
     focusAreas: sanitizeFocusAreaIds(focusAreas, businessType, hasFeature),
   });
   const moreSections = buildMoreMenuSections({ menuItems, tabItems, isDriver, simpleMode });
@@ -65,10 +64,13 @@ describe('buildTabBarItems (mirrors mobile/app/(tabs)/_layout.tsx)', () => {
     ]);
   });
 
-  it('pharmacy sells from the centre even without a Sales menu entry', () => {
-    const tabs = shell({ businessType: 'pharmacy' }).tabItems;
-    expect(tabs.find((tab) => tab.center)).toMatchObject({ label: 'Sell', to: '/sales?openPOS=1' });
-    expect(tabs.map((tab) => tab.id)).toContain('invoices');
+  it('pharmacy: no Sell button while the web point of sale is shop-only', () => {
+    expect(tabSummary(shell({ businessType: 'pharmacy' }).tabItems)).toEqual([
+      'Dashboard:/dashboard',
+      'Customers:/customers',
+      'Invoices:/invoices',
+      'More',
+    ]);
   });
 
   it('studio types add a job from the centre', () => {

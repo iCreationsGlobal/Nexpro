@@ -75,3 +75,42 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
+
+// Web push (sent by the backend next to the mobile app's pushes). Payload: { title, body, url, tag }.
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data?.text() || '' };
+  }
+  const url = typeof payload.url === 'string' && payload.url.startsWith('/') ? payload.url : '/dashboard';
+  event.waitUntil(
+    self.registration.showNotification(payload.title || 'ABS', {
+      body: payload.body || '',
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-96x96.png',
+      tag: payload.tag || undefined,
+      renotify: Boolean(payload.tag),
+      data: { url },
+    })
+  );
+});
+
+// Tapping a notification: bring ABS forward on the right page (or open it).
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const path = event.notification.data?.url;
+  const url = typeof path === 'string' && path.startsWith('/') ? path : '/dashboard';
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const open = windows.find((client) => new URL(client.url).origin === self.location.origin);
+      if (open) {
+        open.postMessage({ type: 'NAVIGATE', url });
+        return open.focus();
+      }
+      return self.clients.openWindow(url);
+    })()
+  );
+});

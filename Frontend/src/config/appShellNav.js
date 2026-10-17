@@ -102,7 +102,6 @@ const MORE_TAB = { id: 'more', label: 'More', icon: Menu, action: 'more' };
  * @param {{ isRestricted: boolean, config: object|null }} args.simpleMode
  * @param {Array} args.allMenuItems - Menu allowed by role and plan (before hide-from-menu choices)
  * @param {Array} args.menuItems - Menu as shown (Simple Mode: the flattened Simple Mode list)
- * @param {(key: string) => boolean} args.hasFeature
  * @param {string[]} [args.focusAreas] - Ranked focus-area ids (already sanitized)
  * @returns {Array<{ id: string, label: string, icon: unknown, to?: string, action?: 'more', center?: boolean, tone?: string }>}
  */
@@ -112,7 +111,6 @@ export function buildTabBarItems({
   simpleMode,
   allMenuItems = [],
   menuItems = [],
-  hasFeature = () => false,
   focusAreas = [],
 }) {
   if (isDriver) {
@@ -176,7 +174,8 @@ export function buildTabBarItems({
     if (paths.has('/jobs')) {
       centerTab = { id: 'add-job', label: 'Add Job', icon: Plus, to: '/jobs?add=1', center: true };
     }
-  } else if (hasFeature('paymentsExpenses')) {
+  } else if (paths.has('/sales')) {
+    // The web point of sale lives on the Sales page (shops; pharmacies have no web POS yet).
     centerTab = { id: 'sell', label: 'Sell', icon: ShoppingCart, to: '/sales?openPOS=1', center: true };
   }
 

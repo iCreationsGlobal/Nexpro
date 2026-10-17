@@ -7,7 +7,11 @@ const { applyShopFilter } = require('../utils/shopUtils');
 const { getPagination } = require('../utils/paginationUtils');
 const { invalidateNotificationsCache } = require('../middleware/cache');
 const { startHotPathTimer } = require('../utils/performanceLogger');
-const { dispatchExpoPushToUsers } = require('../services/pushNotificationService');
+const {
+  dispatchExpoPushToUsers,
+  getWebPushPublicKey,
+  isWebPushConfigured
+} = require('../services/pushNotificationService');
 
 const STOCK_ALERT_TYPES = {
   OUT_OF_STOCK: 'out_of_stock',
@@ -396,15 +400,44 @@ exports.getNotifications = async (req, res, next) => {
   }
 };
 
+/**
+ * Browser push subscription (PushSubscription.toJSON()) reduced to what web push needs.
+ * @param {unknown} raw
+ * @returns {{ endpoint: string, keys: { p256dh: string, auth: string } } | null}
+ */
+const normalizeWebPushSubscription = (raw) => {
+  const endpoint = typeof raw?.endpoint === 'string' ? raw.endpoint.trim() : '';
+  const p256dh = typeof raw?.keys?.p256dh === 'string' ? raw.keys.p256dh.trim() : '';
+  const auth = typeof raw?.keys?.auth === 'string' ? raw.keys.auth.trim() : '';
+  if (!/^https:\/\//.test(endpoint) || endpoint.length > 2048) return null;
+  if (!/^[A-Za-z0-9_-]{20,200}={0,2}$/.test(p256dh) || !/^[A-Za-z0-9_-]{8,100}={0,2}$/.test(auth)) return null;
+  return { endpoint, keys: { p256dh, auth } };
+};
+
+// @desc    Whether this server sends web push, and the public key browsers subscribe with
+// @route   GET /api/notifications/push/web-config
+exports.getWebPushConfig = async (req, res) => {
+  const enabled = isWebPushConfigured();
+  res.status(200).json({
+    success: true,
+    data: { enabled, publicKey: enabled ? getWebPushPublicKey() : null },
+  });
+};
+
 exports.registerPushToken = async (req, res, next) => {
   try {
-    const token = compact(req.body?.token, 512);
     const platform = compact(req.body?.platform, 20).toLowerCase();
+    if (!['ios', 'android', 'web'].includes(platform)) {
+      return res.status(400).json({ success: false, message: 'Platform must be ios, android or web.' });
+    }
+    // Web: the browser subscription is the "token" (stored with its keys; endpoint identifies it).
+    const subscription = platform === 'web' ? normalizeWebPushSubscription(req.body?.subscription) : null;
+    if (platform === 'web' && !subscription) {
+      return res.status(400).json({ success: false, message: 'A valid web push subscription is required.' });
+    }
+    const token = platform === 'web' ? subscription.endpoint : compact(req.body?.token, 512);
     if (!token) {
       return res.status(400).json({ success: false, message: 'Push token is required.' });
-    }
-    if (!['ios', 'android'].includes(platform)) {
-      return res.status(400).json({ success: false, message: 'Platform must be ios or android.' });
     }
 
     const user = await User.scope(null).findByPk(req.user.id, {
@@ -418,6 +451,7 @@ exports.registerPushToken = async (req, res, next) => {
     devices.unshift({
       token,
       platform,
+      ...(subscription ? { subscription } : {}),
       deviceName: compact(req.body?.deviceName, 120) || null,
       tenantId: req.tenantId || null,
       updatedAt: new Date().toISOString(),
@@ -429,6 +463,31 @@ exports.registerPushToken = async (req, res, next) => {
       message: 'Push token registered.',
       data: { deviceCount: saved.length },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Stop push to one device (web: the subscription endpoint; mobile: the Expo token)
+// @route   POST /api/notifications/push/unregister
+exports.unregisterPushToken = async (req, res, next) => {
+  try {
+    const token = compact(req.body?.token, 2048);
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Push token is required.' });
+    }
+    const user = await User.scope(null).findByPk(req.user.id, {
+      attributes: ['id', 'notificationPreferences']
+    });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+    const devices = getPushDevices(user);
+    const remaining = devices.filter((device) => device.token !== token);
+    if (remaining.length !== devices.length) {
+      await savePushDevices(req.user.id, remaining);
+    }
+    res.status(200).json({ success: true, data: { deviceCount: remaining.length } });
   } catch (error) {
     next(error);
   }

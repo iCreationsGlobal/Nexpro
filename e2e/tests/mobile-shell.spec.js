@@ -244,4 +244,51 @@ test.describe('app shell', () => {
     await expect(page.locator('[data-app-tab-bar]')).toBeVisible();
     await expect(page.getByRole('region', { name: 'Install the app' })).toHaveCount(0);
   });
+
+  test('phones keep selling offline and sync when the connection is back', async ({ page, context, baseURL }, testInfo) => {
+    test.skip(testInfo.project.name !== 'phone', 'one device is enough for the sales queue');
+    const syncedClientIds = [];
+    await openApp(page, baseURL, '/pos', {
+      responses: (path) => {
+        if (path === '/shops/access') {
+          return { shops: [{ id: 's1', name: 'Main shop', isDefault: true, isActive: true }], defaultShopId: 's1', canAccessAll: true };
+        }
+        if (path === '/products') {
+          return [{ id: 'p1', name: 'Paracetamol 500mg', sku: 'PARA-500', sellingPrice: 12.5, price: 12.5, quantityOnHand: 50, stockQuantity: 50, isActive: true }];
+        }
+        return undefined;
+      },
+    });
+    // The sync answer lists every sale as recorded (registered last, so it wins over the general mock).
+    await page.route('**/api/sales/sync', async (route) => {
+      const items = route.request().postDataJSON()?.items || [];
+      syncedClientIds.push(...items.map((item) => item.clientId));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, results: items.map((item, index) => ({ clientId: item.clientId, id: `sale-${index + 1}` })) }),
+      });
+    });
+
+    const pos = page.getByRole('dialog', { name: 'Point of Sale' });
+    await expect(pos).toBeVisible();
+    await pos.getByText('Paracetamol 500mg').first().click();
+    await context.setOffline(true);
+    await expect(pos.getByText('Offline').first()).toBeVisible();
+    await pos.getByRole('button', { name: /checkout/i }).first().click();
+    await page.getByRole('button', { name: 'Complete Sale' }).click();
+    await expect(page.getByText('sale saved on this device', { exact: false }).first()).toBeVisible();
+
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('abs:pending-sales') || '[]'));
+    expect(saved).toHaveLength(1);
+    expect(saved[0].clientId).toMatch(/^web-/);
+
+    await page.goBack();
+    await expect(page.getByRole('status').filter({ hasText: '1 sale saved on this device' })).toBeVisible();
+
+    await context.setOffline(false);
+    await expect.poll(() => syncedClientIds).toContain(saved[0].clientId);
+    await expect(page.getByRole('status').filter({ hasText: 'saved on this device' })).toHaveCount(0);
+    expect(await page.evaluate(() => localStorage.getItem('abs:pending-sales'))).toBeNull();
+  });
 });

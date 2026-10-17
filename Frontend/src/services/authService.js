@@ -1,5 +1,6 @@
 import api from './api';
 import { clearPersistedQueryCache } from '../lib/queryPersistence';
+import { forgetWebPushSubscriptionOnSignOut } from './webPushService';
 
 /**
  * Tenant id from a membership row (API or localStorage). Handles camelCase, snake_case, or nested tenant only.
@@ -60,6 +61,8 @@ const clearAuthStorage = () => {
   Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
   // Business data saved for offline launches belongs to this session only.
   clearPersistedQueryCache();
+  // So the next person on this device does not get this account's notifications.
+  forgetWebPushSubscriptionOnSignOut();
 };
 
 const setActiveTenantId = (tenantId) => {

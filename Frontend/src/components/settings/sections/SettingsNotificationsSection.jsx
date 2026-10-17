@@ -1,4 +1,5 @@
 import GoogleCalendarSettings from '../../tasks/GoogleCalendarSettings';
+import DevicePushCard from '../DevicePushCard';
 import { Bell, Loader2, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -27,6 +28,7 @@ const SettingsNotificationsSection = () => {
 
   return (
     <>
+    <DevicePushCard />
     <GoogleCalendarSettings />
     <Card className="border border-gray-200">
       <CardHeader>

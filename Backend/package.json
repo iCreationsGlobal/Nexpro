@@ -101,6 +101,7 @@
     "swagger-ui-express": "^5.0.1",
     "uuid": "^9.0.1",
     "validator": "^13.11.0",
+    "web-push": "^3.6.7",
     "xss": "^1.0.14"
   },
   "devDependencies": {

@@ -20,11 +20,14 @@ import { useDeviceMode } from '../hooks/useDeviceMode';
 import { useAppShellNav } from '../hooks/useAppShellNav';
 import { useShellScrollMemory } from '../hooks/useShellScrollMemory';
 import { useIsEditingText } from '../hooks/useIsEditingText';
+import { usePageTransition } from '../hooks/usePageTransition';
 import AppHeader from '../components/layout/AppHeader';
 import AppTabBar, { APP_TAB_BAR_HEIGHT } from '../components/layout/AppTabBar';
 import MoreMenuSheet from '../components/layout/MoreMenuSheet';
 import ShellPullToRefresh from '../components/layout/ShellPullToRefresh';
 import InstallAppCard from '../components/layout/InstallAppCard';
+import PendingSalesBanner from '../components/layout/PendingSalesBanner';
+import { useOfflineSalesSync } from '../hooks/useOfflineSalesSync';
 import { findActiveNavId, navBasePath } from '../config/appShellNav';
 import { getAppShellRouteMeta } from '../config/appShellRoutes';
 import { cn } from '@/lib/utils';
@@ -83,6 +86,8 @@ function useAppShellChrome(isAppShell) {
   );
   const isTabPath = useCallback((pathname) => tabPaths.has(pathname), [tabPaths]);
   useShellScrollMemory({ enabled: isAppShell, isTabPath });
+  const contentRef = useRef(null);
+  usePageTransition(contentRef, { enabled: isAppShell, isTabPath });
 
   return {
     meta,
@@ -93,6 +98,7 @@ function useAppShellChrome(isAppShell) {
     moreOpen,
     setMoreOpen,
     tabBarHidden: meta.hideTabBar || isEditingText,
+    contentRef,
   };
 }
 
@@ -115,7 +121,7 @@ function WorkspaceFrame({ isAppShell, collapsed, onCollapse, children }) {
         )}
       >
         {isAppShell ? <AppHeader meta={chrome.meta} /> : <Header />}
-        {children}
+        <div ref={chrome.contentRef}>{children}</div>
       </div>
       {isAppShell && (
         <>
@@ -167,6 +173,9 @@ const MainLayout = () => {
   const showAssistantFab =
     !isAppShell && !isDriver && !isSimple && !assistantOpen && location.pathname !== '/ask-ai';
   const openAssistant = useCallback(() => setAssistantOpen(true), []);
+
+  // Phones/tablets: sales taken offline are kept on the device and synced (services/offlineSalesQueue).
+  const offlineSales = useOfflineSalesSync({ enabled: isAppShell && !isDriver });
 
   const showVerifyEmailBanner = useMemo(() => Boolean(needsEmailVerification), [needsEmailVerification]);
   const isDashboardRoute = location.pathname === '/' || location.pathname === '/dashboard';
@@ -245,6 +254,13 @@ const MainLayout = () => {
       <WorkspaceFrame isAppShell={isAppShell} collapsed={collapsed} onCollapse={setCollapsed}>
           <SupportAccessBanner />
           <ConnectionHealthBanner className="mx-4 mt-2 sm:mx-4 lg:mx-6" />
+          {isAppShell && (
+            <PendingSalesBanner
+              pending={offlineSales.pending}
+              syncing={offlineSales.syncing}
+              onSyncNow={() => offlineSales.syncNow()}
+            />
+          )}
           {/* Email verification banner only in layout; onboarding banner is on Dashboard */}
           {showVerifyEmailInLayout && (
             <div className="mx-4 sm:mx-4 lg:mx-6 mt-2 rounded-lg border border-amber-600/50 bg-amber-500/10 p-3 sm:p-3 lg:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

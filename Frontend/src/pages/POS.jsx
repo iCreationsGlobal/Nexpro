@@ -48,6 +48,7 @@ import {
 // POS Components
 import POSCart from '../components/pos/POSCart';
 import SimplePOS from '../components/pos/SimplePOS';
+import { haptic } from '../utils/haptics';
 import { useSimpleMode } from '../hooks/useSimpleMode';
 import POSProductSearch from '../components/pos/POSProductSearch';
 import POSPaymentModal from '../components/pos/POSPaymentModal';
@@ -404,6 +405,7 @@ const POS = () => {
 
   const {
     isOnline,
+    canSellOffline,
     searchProducts,
     getProductByBarcode,
     resolveProductFromQRPayload,
@@ -1056,7 +1058,8 @@ const POS = () => {
 
   // Handle checkout: if quick-add phone/name filled but no selected customer, validate, find-or-create then open payment
   const handleCheckout = useCallback(async () => {
-    if (!guardOnline(showError)) return;
+    // Phones/tablets save non-dealer sales on the device when offline (dealer credit needs the server).
+    if (!(canSellOffline && !isDealerMode) && !guardOnline(showError)) return;
     if (cart.length === 0) {
       showError('Cart is empty');
       return;
@@ -1091,7 +1094,7 @@ const POS = () => {
     }
     setCartSheetOpen(false);
     setPaymentModalOpen(true);
-  }, [cart, selectedCustomer, quickCustomerPhone, quickCustomerName, handleFindOrCreateCustomer, isDealerMode, selectedDealer?.id]);
+  }, [cart, selectedCustomer, quickCustomerPhone, quickCustomerName, handleFindOrCreateCustomer, isDealerMode, selectedDealer?.id, canSellOffline]);
 
   const buildSaleItemPayload = useCallback((item) => {
     if (item.type === 'custom' || !item.productId) {
@@ -1171,7 +1174,19 @@ const POS = () => {
         saleData.sendToKitchen = paymentDetails.sendToKitchen ?? true;
       }
 
-      const result = await processSale(saleData);
+      const result = await processSale(saleData, {
+        allowOffline: !isDealerMode,
+        total: paymentDetails.total ?? cartTotals.total,
+      });
+
+      if (result.success && result.isQueued) {
+        // No connection: the sale is kept on this phone/tablet and syncs on its own later.
+        setPaymentModalOpen(false);
+        haptic('notice');
+        showSuccess("No connection — sale saved on this device. It will sync when you're back online.");
+        clearCart();
+        return;
+      }
 
       if (result.success) {
         refreshSaleQueries();
@@ -1217,6 +1232,7 @@ const POS = () => {
         );
         setReceiptModalOpen(!shouldSkipReceiptModal(posConfig));
 
+        haptic('success');
         if (isRestaurant && saleObj?.saleNumber && (paymentDetails.sendToKitchen ?? true)) {
           showSuccess(`Order placed! #${saleObj.saleNumber} has been sent to the kitchen.`);
         } else {
@@ -1278,7 +1294,7 @@ const POS = () => {
           delivery: delivery || { required: false, bandId: null, fee: 0 }
         };
 
-        const result = await processSale(saleData);
+        const result = await processSale(saleData, { allowOffline: false });
         const createdSale = result?.sale;
         if (!result.success || !createdSale?.id) {
           showError('Failed to start mobile money payment. Please try again.');
@@ -1549,7 +1565,7 @@ const POS = () => {
   // Handle process sale for scan mode
   const handleProcessSaleForScanMode = useCallback(async (saleData) => {
     const result = await processSale(saleData);
-    if (result?.success) {
+    if (result?.success && !result.isQueued) {
       refreshSaleQueries();
     }
     return result;
@@ -1679,7 +1695,7 @@ const POS = () => {
         products={allProducts} loading={productsLoading} error={productsError} onRetry={handleRefreshProducts}
         cart={cart} totals={cartTotals} onAdd={addToCart} onQuantity={updateCartItemQuantity}
         onClear={clearCart} onCheckout={handleCheckout} customer={selectedCustomer}
-        onCustomer={() => setCustomerDialogOpen(true)} isOnline={isOnline}
+        onCustomer={() => setCustomerDialogOpen(true)} isOnline={isOnline} canCheckoutOffline={canSellOffline}
         scanningEnabled={scanningEnabled} onScan={() => setScanModeOpen(true)}
         scanSignal={hardwareScanSignal}
       /> : <>
@@ -1717,7 +1733,7 @@ const POS = () => {
               )}
 
               <div className={`flex-shrink-0${scanningEnabled ? '' : ' ml-auto'}`}>
-                <POSConnectionStatus isOnline={isOnline} />
+                <POSConnectionStatus isOnline={isOnline} savesOffline={canSellOffline} />
               </div>
             </div>
             <div className="flex items-center justify-end gap-2">
@@ -1783,7 +1799,7 @@ const POS = () => {
               </Tooltip>
             )}
 
-            <POSConnectionStatus isOnline={isOnline} />
+            <POSConnectionStatus isOnline={isOnline} savesOffline={canSellOffline} />
 
             <Tooltip>
               <TooltipTrigger asChild>

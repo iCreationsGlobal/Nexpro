@@ -60,11 +60,23 @@ Not done from the original Phase 2 list (follow-ups):
 
 Checked with a production build + service worker in Chromium: manifest/icons served, app controlled by the SW, saved cache has customers but no auth data, offline deep link to `/customers` opens and shows the saved customer, logout empties the saved cache.
 
-## Next
+## Done — Phase 4 (polish)
 
-**Phase 4 — polish**: page transitions, skeletons, vibration, web push, offline sales queue. Plus the Phase 2 follow-ups above.
+- **Offline sales queue** (phones/tablets): POS sales taken with no connection — or whose request never got an answer — are saved on the device (`services/offlineSalesQueue.js`) and synced through the existing idempotent `POST /sales/sync`. Every app-shell sale carries a `clientId` from the first attempt, so a sale the server already got is never recorded twice. Sync runs on launch, on reconnect, when the app returns to the foreground and every minute while sales wait. A banner under the header shows waiting/syncing/failed sales with a list to retry or discard. Dealer sales and mobile money prompts stay online-only; desktop stays online-only. Queued sales survive sign-out (they sync when the same person signs in to the same workspace again).
+- **Web push**: backend stores browser subscriptions next to Expo tokens (`platform: 'web'`, endpoint as token) and sends them with the same notifications (`web-push`, VAPID). New `GET /notifications/push/web-config` and `POST /notifications/push/unregister`. Settings → Notifications gets "Notifications on this device" (hidden until the server has VAPID keys; iPhone needs the Home Screen app). The service worker shows pushes and opens the linked page; sign-out drops the browser subscription.
+  **To switch on:** `npx web-push generate-vapid-keys`, then set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (or `PLATFORM_EMAIL_FROM`) on the backend.
+- **Page transitions**: slide in for new pages, slide from the left going back, fade between tabs (Web Animations API on the content area; off with reduced motion and on desktop).
+- **Vibration**: completed sale, sale saved offline, pull-to-refresh trigger point (Android; the scanner already vibrated).
+- **Skeletons**: already in place for card lists and the dashboard; no change needed.
+- Pharmacies get no Sell button in the tab bar: the web POS lives on the shop-only Sales page.
+
+## Next (optional follow-ups)
+
+- Phase 2 leftovers: filter chips, infinite scroll in `MobileCardView`, native-style dashboard.
+- A web point of sale for pharmacies (today the pharmacy "Point of Sale" quick action opens a "shop only" page).
 
 ## Known issues found along the way
 - **Desktop:** header menus (account, bell) open off-screen when the page is scrolled. Cause: `html { overflow-y: scroll }` in `index.css` breaks Radix/floating-ui positioning. Fixed in the app shell only; on desktop, removing that rule fixes it (`* { scrollbar-gutter: stable }` already prevents layout shift) but changes the empty-scrollbar look on short pages.
 - Main tour copy still says "sidebar"; steps without a target are skipped, so phones get a shorter tour.
+- Pharmacy "Point of Sale" quick action (desktop sidebar and before this work) opens `/sales`, which shows "only available for shop business types".
 - `pages/Customers.jsx` calls `settingsService.getPrintConfig()`, which does not exist (throws when a customer is opened; the drawer still works). Likely meant `getPOSConfig()`.

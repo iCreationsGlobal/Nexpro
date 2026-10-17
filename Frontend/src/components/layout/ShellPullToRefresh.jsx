@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { requestAppRefresh } from '@/utils/appRefresh';
+import { haptic } from '@/utils/haptics';
 import { cn } from '@/lib/utils';
 
 const TRIGGER_DISTANCE = 64;
@@ -37,12 +38,12 @@ export default function ShellPullToRefresh({ topOffset = 56 }) {
   const queryClient = useQueryClient();
   const [distance, setDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const gesture = useRef({ active: false, startX: 0, startY: 0, distance: 0 });
+  const gesture = useRef({ active: false, startX: 0, startY: 0, distance: 0, armed: false });
   const refreshingRef = useRef(false);
 
   useEffect(() => {
     const reset = () => {
-      gesture.current = { active: false, startX: 0, startY: 0, distance: 0 };
+      gesture.current = { active: false, startX: 0, startY: 0, distance: 0, armed: false };
       setDistance(0);
     };
 
@@ -50,7 +51,7 @@ export default function ShellPullToRefresh({ topOffset = 56 }) {
       if (refreshingRef.current || event.touches.length !== 1) return;
       if (window.scrollY > 0 || isOverlayOpen() || isInsideScrolledArea(event.target)) return;
       const touch = event.touches[0];
-      gesture.current = { active: true, startX: touch.clientX, startY: touch.clientY, distance: 0 };
+      gesture.current = { active: true, startX: touch.clientX, startY: touch.clientY, distance: 0, armed: false };
     };
 
     const onTouchMove = (event) => {
@@ -64,6 +65,11 @@ export default function ShellPullToRefresh({ topOffset = 56 }) {
         return;
       }
       state.distance = Math.min(dy * RESISTANCE, MAX_DISTANCE);
+      // A tick when the pull is far enough to refresh on release (once per pull).
+      if (!state.armed && state.distance >= TRIGGER_DISTANCE) {
+        state.armed = true;
+        haptic('tick');
+      }
       setDistance(state.distance);
     };
 

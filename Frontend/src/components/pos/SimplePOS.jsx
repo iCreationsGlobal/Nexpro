@@ -14,7 +14,7 @@ function ProductPicture({ product, className = '' }) {
   </div>;
 }
 
-export default function SimplePOS({ products, loading, error, onRetry, cart, totals, onAdd, onQuantity, onClear, onCheckout, customer, onCustomer, isOnline, onScan, scanningEnabled, scanSignal = 0 }) {
+export default function SimplePOS({ products, loading, error, onRetry, cart, totals, onAdd, onQuantity, onClear, onCheckout, customer, onCustomer, isOnline, canCheckoutOffline = false, onScan, scanningEnabled, scanSignal = 0 }) {
   const [search, setSearch] = useState('');
   // A barcode scanner types into whatever has focus; after a scan adds the item, clear the
   // digits it left in the search box so the full product list comes back.
@@ -58,7 +58,7 @@ export default function SimplePOS({ products, loading, error, onRetry, cart, tot
           <Button variant="outline" onClick={onCustomer} className="h-12 w-full justify-start gap-3"><Users className="h-6 w-6" /><span className="truncate">{customer?.name || customer?.company || 'Customer (optional)'}</span></Button>
           {totals.taxAmount > 0 && <p className="flex justify-between text-sm"><span>{totals.taxLabel}</span><span>{formatAmount(totals.taxAmount)}</span></p>}
           <div className="flex flex-wrap items-center justify-between gap-2 text-2xl font-bold"><span>Total</span><span className="text-green-700">{formatAmount(totals.total)}</span></div>
-          <Button disabled={!cart.length || !isOnline} onClick={onCheckout} className="h-20 w-full gap-3 rounded-xl bg-green-700 text-2xl font-bold hover:bg-green-800"><Banknote className="h-9 w-9" />Take Payment</Button>
+          <Button disabled={!cart.length || (!isOnline && !canCheckoutOffline)} onClick={onCheckout} className="h-20 w-full gap-3 rounded-xl bg-green-700 text-2xl font-bold hover:bg-green-800"><Banknote className="h-9 w-9" />Take Payment</Button>
         </div>
       </section>
     </div>

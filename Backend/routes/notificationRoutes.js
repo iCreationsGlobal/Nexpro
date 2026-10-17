@@ -9,7 +9,9 @@ const {
   markNotificationRead,
   markAllNotificationsRead,
   getNotificationSummary,
-  registerPushToken
+  getWebPushConfig,
+  registerPushToken,
+  unregisterPushToken
 } = require('../controllers/notificationController');
 
 const router = express.Router();
@@ -21,7 +23,9 @@ router.use(studioLocationContext);
 
 // Cache summary for 60s to reduce repeated DB hits (same user/tenant)
 router.get('/summary', cacheMiddleware(30, generateNotificationSummaryKey), getNotificationSummary);
+router.get('/push/web-config', getWebPushConfig);
 router.post('/push/register', registerPushToken);
+router.post('/push/unregister', unregisterPushToken);
 router.post('/mark-all-read', markAllNotificationsRead);
 router.put('/:id/read', markNotificationRead);
 router.get('/', getNotifications);

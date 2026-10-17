@@ -26,10 +26,9 @@ export function useAppShellNav({ enabled = true } = {}) {
         simpleMode,
         allMenuItems,
         menuItems,
-        hasFeature: hasWorkspaceFeature,
         focusAreas,
       }),
-    [businessType, isDriver, simpleMode, allMenuItems, menuItems, hasWorkspaceFeature, focusAreas]
+    [businessType, isDriver, simpleMode, allMenuItems, menuItems, focusAreas]
   );
 
   const moreSections = useMemo(

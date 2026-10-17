@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, lazy, Suspense } from 'react';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -273,6 +273,21 @@ const SSOHandler = () => {
   return null;
 };
 
+/** Tapping a push notification while ABS is open: the service worker asks us to go to its page. */
+const ServiceWorkerNavigation = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return undefined;
+    const onMessage = (event) => {
+      const url = event.data?.type === 'NAVIGATE' ? event.data.url : null;
+      if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')) navigate(url);
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [navigate]);
+  return null;
+};
+
 // Component to handle mobile gestures and fixes inside Router context
 const MobileEnhancements = () => {
   // Enable swipe-back gesture for mobile navigation
@@ -292,6 +307,7 @@ function AppContent() {
       }}
     >
       <MobileEnhancements />
+      <ServiceWorkerNavigation />
       <SSOHandler />
       <Suspense fallback={null}>
         <TourProvider>
