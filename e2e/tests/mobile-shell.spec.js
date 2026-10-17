@@ -29,8 +29,28 @@ async function openApp(page, baseURL, path = '/dashboard', options = {}) {
   await expect(page.locator('header').first()).toBeVisible();
 }
 
+test.describe('installed app', () => {
+  test('manifest: rotates on tablets, maskable icons, working shortcuts', async ({ request, baseURL }) => {
+    const manifest = await (await request.get(`${baseURL}/manifest.json`)).json();
+    expect(manifest.id).toBe('/');
+    expect(manifest.orientation).toBeUndefined();
+    expect(manifest.icons.filter((icon) => icon.purpose === 'maskable').length).toBeGreaterThanOrEqual(2);
+    expect(manifest.shortcuts.map((shortcut) => shortcut.url)).toEqual(['/pos', '/dashboard']);
+    for (const src of [...manifest.icons.map((icon) => icon.src), '/icons/apple-touch-icon.png']) {
+      expect((await request.get(`${baseURL}${src}`)).status(), src).toBe(200);
+    }
+  });
+});
+
 test.describe('desktop', () => {
   test.beforeEach(({}, testInfo) => test.skip(!isDesktop(testInfo), 'desktop only'));
+
+  test('does not keep fetched data on the device', async ({ page, baseURL }) => {
+    await openApp(page, baseURL, '/customers', withCustomer);
+    await expect(page.getByText('Kofi Mensah').first()).toBeVisible();
+    await page.waitForTimeout(1500);
+    expect(await page.evaluate(() => localStorage.getItem('abs-query-cache'))).toBeNull();
+  });
 
   test('keeps the sidebar and has no tab bar', async ({ page, baseURL }) => {
     await openApp(page, baseURL);
@@ -155,9 +175,8 @@ test.describe('app shell', () => {
     const detail = openOverlays(page).first();
     await expect(detail).toBeVisible();
     if (isPhone(testInfo)) {
-      // Phones: a full-screen page with its own back button.
-      const box = await detail.boundingBox();
-      expect(box.width).toBe(page.viewportSize().width);
+      // Phones: a full-screen page with its own back button (measured once it has slid in).
+      await expect.poll(async () => Math.round((await detail.boundingBox())?.width ?? 0)).toBe(page.viewportSize().width);
       await expect(detail.getByRole('button', { name: 'Back' })).toBeVisible();
     }
     await page.goBack();
@@ -197,5 +216,32 @@ test.describe('app shell', () => {
   test('/pos opens the point of sale', async ({ page, baseURL }) => {
     await openApp(page, baseURL, '/pos');
     await expect(page.getByRole('dialog', { name: 'Point of Sale' })).toBeVisible();
+  });
+
+  test('keeps fetched data on the device and wipes it at sign-out', async ({ page, baseURL }) => {
+    await openApp(page, baseURL, '/customers', withCustomer);
+    await expect(page.getByText('Kofi Mensah').first()).toBeVisible();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('abs-query-cache') || '')).toContain('Kofi Mensah');
+    expect(await page.evaluate(() => localStorage.getItem('abs-query-cache'))).not.toContain('"auth"');
+
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByRole('menuitem', { name: 'Logout' }).click();
+    await expect(page).toHaveURL(/\/login/);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('abs-query-cache') || '')).not.toContain('Kofi Mensah');
+  });
+
+  test('invites iPhone users to install once', async ({ page, baseURL }, testInfo) => {
+    test.skip(testInfo.project.name !== 'iphone', 'iOS install instructions');
+    await openApp(page, baseURL);
+    const card = page.getByRole('region', { name: 'Install the app' });
+    await expect(card).toBeVisible();
+    await card.getByRole('button', { name: 'Install' }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await card.getByRole('button', { name: 'Not now' }).click();
+    await expect(card).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator('[data-app-tab-bar]')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Install the app' })).toHaveCount(0);
   });
 });

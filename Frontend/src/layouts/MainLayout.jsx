@@ -24,6 +24,7 @@ import AppHeader from '../components/layout/AppHeader';
 import AppTabBar, { APP_TAB_BAR_HEIGHT } from '../components/layout/AppTabBar';
 import MoreMenuSheet from '../components/layout/MoreMenuSheet';
 import ShellPullToRefresh from '../components/layout/ShellPullToRefresh';
+import InstallAppCard from '../components/layout/InstallAppCard';
 import { findActiveNavId, navBasePath } from '../config/appShellNav';
 import { getAppShellRouteMeta } from '../config/appShellRoutes';
 import { cn } from '@/lib/utils';
@@ -291,6 +292,7 @@ const MainLayout = () => {
           )}
           <ShopAccessBanner />
           <BillingGraceBanner billing={billingStatus} />
+          {isAppShell && isDashboardRoute && !isSimple && <InstallAppCard />}
           <main
             className="w-full bg-muted/50 py-4 sm:py-6"
             style={{

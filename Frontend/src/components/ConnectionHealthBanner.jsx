@@ -3,6 +3,7 @@ import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 import { Loader2, WifiOff } from 'lucide-react';
 
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { useDeviceMode } from '../hooks/useDeviceMode';
 import { cn } from '@/lib/utils';
 
 const SLOW_REQUEST_DELAY_MS = 7000;
@@ -13,6 +14,8 @@ const SLOW_REQUEST_DELAY_MS = 7000;
  */
 const ConnectionHealthBanner = ({ className = '' }) => {
   const { isOnline } = useOnlineStatus();
+  // Phones and tablets keep fetched data on the device (lib/queryPersistence), so pages still show it.
+  const { isAppShell: showsSavedData } = useDeviceMode();
   const fetchingCount = useIsFetching();
   const mutatingCount = useIsMutating();
   const hasNetworkActivity = fetchingCount + mutatingCount > 0;
@@ -38,7 +41,9 @@ const ConnectionHealthBanner = ({ className = '' }) => {
         icon: WifiOff,
         className: 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200',
         title: "You're offline",
-        message: 'Reconnect to continue, or use the mobile app for offline work.',
+        message: showsSavedData
+          ? "You're seeing what was last saved on this device. Reconnect to make changes."
+          : 'Reconnect to continue, or use the mobile app for offline work.',
       };
     }
 
@@ -54,7 +59,7 @@ const ConnectionHealthBanner = ({ className = '' }) => {
     }
 
     return null;
-  }, [isOnline, showSlowRequest]);
+  }, [isOnline, showSlowRequest, showsSavedData]);
 
   if (!config) return null;
 

@@ -49,11 +49,20 @@ Not done from the original Phase 2 list (follow-ups):
 - Filter chips instead of filter sheets, and infinite scroll in `MobileCardView` (both need per-page work; lists still page with Previous/Next).
 - Native-style Dashboard redesign (the current phone dashboard already has period tabs, 2×2 stats, AI insight and recent sales).
 
+## Done — Phase 3 (installed app)
+
+- **Manifest**: `id`, no portrait lock (tablets rotate), dedicated maskable icons (logo inside Android's safe zone), shortcuts `/pos` and `/dashboard` (dead `/foot-traffic` removed).
+- **iOS**: full-bleed 180px `apple-touch-icon.png` (no black corners) and 22 launch screens (`public/splash/`, phones + iPads in both orientations, not precached). Regenerate with `node scripts/generate-icons.js maskable apple splash`.
+- **Offline launch** (`src/sw.js`): page loads go to the network as before; offline or after 4 s the precached app shell is served, so the installed app opens and deep links work without a connection.
+- **Saved data between launches** (`lib/queryPersistence.js`, phones/tablets only): React Query cache saved to localStorage for 24 h, capped at ~3 MB, never saving auth/profile/products/billing/tours. Wiped on every sign-out (`authService.clearAuthStorage`) and at startup without a session. Bump `PERSISTED_CACHE_BUSTER` when cached response shapes change.
+- Offline banner on phones/tablets now says saved data is shown and changes need a connection.
+- One-time "Install the app" card on the phone/tablet dashboard (dismissible; Install app stays in More).
+
+Checked with a production build + service worker in Chromium: manifest/icons served, app controlled by the SW, saved cache has customers but no auth data, offline deep link to `/customers` opens and shows the saved customer, logout empties the saved cache.
+
 ## Next
 
-**Phase 3 — PWA**: manifest (drop portrait lock, `id`, remove `/foot-traffic` shortcut, maskable icons, screenshots), 180px touch icon, SPA navigation fallback + offline page in `sw.js`, persisted query cache.
-
-**Phase 4 — polish**: page transitions, skeletons, vibration, web push, offline sales queue.
+**Phase 4 — polish**: page transitions, skeletons, vibration, web push, offline sales queue. Plus the Phase 2 follow-ups above.
 
 ## Known issues found along the way
 - **Desktop:** header menus (account, bell) open off-screen when the page is scrolled. Cause: `html { overflow-y: scroll }` in `index.css` breaks Radix/floating-ui positioning. Fixed in the app shell only; on desktop, removing that rule fixes it (`* { scrollbar-gutter: stable }` already prevents layout shift) but changes the empty-scrollbar look on short pages.

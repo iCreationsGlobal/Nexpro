@@ -1,4 +1,5 @@
 import api from './api';
+import { clearPersistedQueryCache } from '../lib/queryPersistence';
 
 /**
  * Tenant id from a membership row (API or localStorage). Handles camelCase, snake_case, or nested tenant only.
@@ -57,6 +58,8 @@ const persistAuthPayload = (payload = {}) => {
 
 const clearAuthStorage = () => {
   Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+  // Business data saved for offline launches belongs to this session only.
+  clearPersistedQueryCache();
 };
 
 const setActiveTenantId = (tenantId) => {

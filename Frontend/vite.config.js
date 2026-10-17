@@ -146,6 +146,8 @@ export default defineConfig(({ mode }) => {
             '**/tour/**',
             '**/African focused woman*',
             '**/html2pdf*.js',
+            // iOS launch screens: one per device size, fetched only when the app is added to the home screen
+            '**/splash/**',
           ],
           maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         },
