@@ -1674,7 +1674,7 @@ const POS = () => {
   }
 
   return (
-    <div className={`flex flex-col h-full min-h-0 bg-muted/50 ${isSimplePOS ? '' : 'pt-3 pl-3 sm:pt-4 sm:pl-4 md:pt-6 md:pl-6'}`}>
+    <div className={`flex flex-col h-full min-h-0 bg-muted/50 ${isSimplePOS ? '' : 'pt-3 pl-3 pr-3 sm:pt-4 sm:pl-4 sm:pr-4 md:pt-6 md:pl-6 md:pr-6 lg:pr-0'}`}>
       {isSimplePOS ? <SimplePOS
         products={allProducts} loading={productsLoading} error={productsError} onRetry={handleRefreshProducts}
         cart={cart} totals={cartTotals} onAdd={addToCart} onQuantity={updateCartItemQuantity}

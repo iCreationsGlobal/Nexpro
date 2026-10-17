@@ -48,6 +48,10 @@ const Watch = () => {
   const [kindFilter, setKindFilter] = useState('attention');
   const [reviewing, setReviewing] = useState(null);
   const [reviewNote, setReviewNote] = useState('');
+  const startReview = useCallback((incident) => {
+    setReviewing(incident);
+    setReviewNote(incident.reviewNote || '');
+  }, []);
   const [lastClipUrl, setLastClipUrl] = useState('');
   const [tillZone, setTillZone] = useState(DEFAULT_TILL_ZONE);
   const [zoneCameraId, setZoneCameraId] = useState('');
@@ -353,53 +357,82 @@ const Watch = () => {
                 : EMPTY_STATES.WATCH_FILTERED.description}
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Activity</TableHead>
-                  <TableHead>ABS sale</TableHead>
-                  <TableHead>Confidence</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <div className="shell:hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Activity</TableHead>
+                      <TableHead>ABS sale</TableHead>
+                      <TableHead>Confidence</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {incidents.map((incident) => (
+                      <TableRow key={incident.id}>
+                        <TableCell>{dayjs(incident.startedAt).format(DATE_FORMATS.DISPLAY_WITH_TIME)}</TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <Badge variant="outline">{KIND_LABELS[incident.kind] || incident.kind}</Badge>
+                            <p className="text-xs text-gray-600">{incident.copy}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {incident.sale?.saleNumber || (incident.saleId ? 'Sale recorded' : 'Not found')}
+                        </TableCell>
+                        <TableCell>
+                          {incident.confidence != null ? `${Math.round(Number(incident.confidence) * 100)}%` : '—'}
+                        </TableCell>
+                        <TableCell>{STATUS_LABELS[incident.status] || incident.status}</TableCell>
+                        <TableCell className="text-right">
+                          {canReview && incident.status === WATCH_INCIDENT_STATUSES.PENDING ? (
+                            <Button size="sm" onClick={() => startReview(incident)}>
+                              Review
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-gray-500">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              {/* Phones and tablets: one card per incident. */}
+              <ul className="hidden space-y-3 shell:block">
                 {incidents.map((incident) => (
-                  <TableRow key={incident.id}>
-                    <TableCell>{dayjs(incident.startedAt).format(DATE_FORMATS.DISPLAY_WITH_TIME)}</TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <Badge variant="outline">{KIND_LABELS[incident.kind] || incident.kind}</Badge>
-                        <p className="text-xs text-gray-600">{incident.copy}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {incident.sale?.saleNumber || (incident.saleId ? 'Sale recorded' : 'Not found')}
-                    </TableCell>
-                    <TableCell>
-                      {incident.confidence != null ? `${Math.round(Number(incident.confidence) * 100)}%` : '—'}
-                    </TableCell>
-                    <TableCell>{STATUS_LABELS[incident.status] || incident.status}</TableCell>
-                    <TableCell className="text-right">
-                      {canReview && incident.status === WATCH_INCIDENT_STATUSES.PENDING ? (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setReviewing(incident);
-                            setReviewNote(incident.reviewNote || '');
-                          }}
-                        >
-                          Review
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-gray-500">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
+                  <li key={incident.id} className="rounded-lg border border-border bg-card p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <Badge variant="outline">{KIND_LABELS[incident.kind] || incident.kind}</Badge>
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {STATUS_LABELS[incident.status] || incident.status}
+                      </span>
+                    </div>
+                    {incident.copy ? <p className="mt-2 text-sm text-foreground">{incident.copy}</p> : null}
+                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                      <dt className="text-muted-foreground">Time</dt>
+                      <dd className="text-right">{dayjs(incident.startedAt).format(DATE_FORMATS.DISPLAY_WITH_TIME)}</dd>
+                      <dt className="text-muted-foreground">ABS sale</dt>
+                      <dd className="text-right">
+                        {incident.sale?.saleNumber || (incident.saleId ? 'Sale recorded' : 'Not found')}
+                      </dd>
+                      <dt className="text-muted-foreground">Confidence</dt>
+                      <dd className="text-right">
+                        {incident.confidence != null ? `${Math.round(Number(incident.confidence) * 100)}%` : '—'}
+                      </dd>
+                    </dl>
+                    {canReview && incident.status === WATCH_INCIDENT_STATUSES.PENDING ? (
+                      <Button className="mt-3 w-full" onClick={() => startReview(incident)}>
+                        Review
+                      </Button>
+                    ) : null}
+                  </li>
                 ))}
-              </TableBody>
-            </Table>
+              </ul>
+            </>
           )}
         </CardContent>
       </Card>

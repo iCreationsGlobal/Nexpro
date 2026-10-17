@@ -83,11 +83,6 @@ function useAppShellChrome(isAppShell) {
   const isTabPath = useCallback((pathname) => tabPaths.has(pathname), [tabPaths]);
   useShellScrollMemory({ enabled: isAppShell, isTabPath });
 
-  // Navigating closes the More sheet (e.g. a notification link while it is open).
-  useEffect(() => {
-    setMoreOpen(false);
-  }, [location.pathname]);
-
   return {
     meta,
     tabItems,

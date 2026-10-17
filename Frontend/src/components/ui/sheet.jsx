@@ -4,8 +4,13 @@ import { cva } from "class-variance-authority"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useBackClosableOpen } from "@/hooks/useBackToClose"
 
-const Sheet = SheetPrimitive.Root
+/** Sheet root. On phones and tablets the back button closes it (see useBackToClose). */
+const Sheet = ({ open, defaultOpen, onOpenChange, disableBackClose, ...props }) => {
+  const [isOpen, setOpen] = useBackClosableOpen({ open, defaultOpen, onOpenChange, disableBackClose })
+  return <SheetPrimitive.Root open={isOpen} onOpenChange={setOpen} {...props} />
+}
 
 const SheetTrigger = SheetPrimitive.Trigger
 
@@ -48,7 +53,7 @@ const sheetVariants = cva(
 const SHEET_SEPARATOR_FULL_BLEED =
   "[&_[role=separator]]:-mx-6 [&_[role=separator]]:w-[calc(100%+3rem)] [&_[role=separator]]:min-w-[calc(100%+3rem)] [&_hr]:-mx-6 [&_hr]:w-[calc(100%+3rem)] [&_hr]:min-w-[calc(100%+3rem)]";
 
-const SheetContent = React.forwardRef(({ side = "right", className, children, showOverlay = true, ...props }, ref) => (
+const SheetContent = React.forwardRef(({ side = "right", className, children, showOverlay = true, hideClose = false, ...props }, ref) => (
   <SheetPortal>
     {showOverlay && <SheetOverlay />}
     <SheetPrimitive.Content
@@ -57,10 +62,10 @@ const SheetContent = React.forwardRef(({ side = "right", className, children, sh
       {...props}
     >
       {children}
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-full bg-muted w-8 h-8 flex items-center justify-center transition-all duration-200 hover:bg-muted/80 hover:scale-110 opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none group">
+      {!hideClose && <SheetPrimitive.Close className="absolute right-4 top-4 rounded-full bg-muted w-8 h-8 flex items-center justify-center transition-all duration-200 hover:bg-muted/80 hover:scale-110 opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none group">
         <X className="h-4 w-4 transition-transform duration-200 group-hover:rotate-[-90deg]" />
         <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
+      </SheetPrimitive.Close>}
     </SheetPrimitive.Content>
   </SheetPortal>
 ))

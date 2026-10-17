@@ -355,6 +355,7 @@ function MarketingOverview() {
 
       <CreateCampaignDialog
         open={isCampaignDialogOpen}
+        urlDriven
         mode={campaignDialogMode}
         campaignId={campaignDialogMode === 'edit' ? editCampaignId : undefined}
         onOpenChange={(open) => {
@@ -578,6 +579,7 @@ function CampaignList() {
 
       <CreateCampaignDialog
         open={isCampaignDialogOpen}
+        urlDriven
         mode={campaignDialogMode}
         campaignId={campaignDialogMode === 'edit' ? editCampaignId : undefined}
         onOpenChange={(open) => {
@@ -1366,11 +1368,15 @@ function CampaignWizardContent({ campaignId, mode = 'create', onCancel, onComple
   );
 }
 
-function CreateCampaignDialog({ open, mode = 'create', campaignId, onOpenChange, onComplete }) {
+/**
+ * @param {boolean} [urlDriven] - Open state comes from ?campaign= in the URL, which already gives
+ *   the back button its behaviour, so the dialog does not add its own back entry.
+ */
+function CreateCampaignDialog({ open, mode = 'create', campaignId, onOpenChange, onComplete, urlDriven = false }) {
   const isEdit = mode === 'edit';
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} disableBackClose={urlDriven}>
       <DialogContent
         className="[--modal-w:min(1100px,94vw)] [--modal-min-h:720px] [--modal-max-h:95dvh]"
         aria-describedby="create-campaign-dialog-description"

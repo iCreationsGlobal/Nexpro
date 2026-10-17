@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useResponsive } from '@/hooks/useResponsive';
-import { Pencil, Trash2, Printer, CheckCircle, Download, X, FileText, Share2, Archive, Loader2, MoreVertical } from 'lucide-react';
+import { Pencil, Trash2, Printer, CheckCircle, Download, X, FileText, Share2, Archive, Loader2, MoreVertical, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SecondaryButton } from '@/components/ui/secondary-button';
 import { 
@@ -136,20 +136,33 @@ const DetailsDrawer = ({
     </Descriptions>
   );
 
+  const handleClose = () => {
+    onClose?.();
+    onOpenChange?.(false);
+  };
+  const contentRef = useRef(null);
+
   return (
     <>
       <Sheet open={open} onOpenChange={(isOpen) => {
-        if (!isOpen) {
-          onClose?.();
-          onOpenChange?.(false);
-        }
+        if (!isOpen) handleClose();
       }}>
+        {/* Phones: a full-screen detail page sliding in from the right, like the native app. */}
         <SheetContent
-          side={isMobile ? 'bottom' : 'right'}
+          ref={contentRef}
+          side="right"
+          hideClose={isMobile}
+          tabIndex={isMobile ? -1 : undefined}
+          onOpenAutoFocus={(event) => {
+            if (!isMobile) return;
+            // Focus the page, not the back button, so no focus ring shows when it opens.
+            event.preventDefault();
+            contentRef.current?.focus({ preventScroll: true });
+          }}
           className={cn(
             'shadow-none flex flex-col overflow-x-hidden p-0',
             isMobile
-              ? 'inset-x-0 bottom-0 top-auto h-[94dvh] max-h-[94dvh] w-full max-w-full rounded-t-2xl rounded-b-none border-t'
+              ? 'inset-y-0 right-0 h-[100dvh] max-h-[100dvh] w-full min-w-0 max-w-full sm:max-w-full rounded-none border-0 outline-none'
               : 'rounded-lg w-full max-w-[calc(100vw-16px)]'
           )}
           style={
@@ -169,25 +182,44 @@ const DetailsDrawer = ({
                 }
           }
         >
-          {isMobile && (
-            <div className="flex shrink-0 justify-center pt-3 pb-1" aria-hidden>
-              <div className="h-1 w-10 rounded-full bg-gray-300" />
-            </div>
-          )}
-          <div className="flex-shrink-0">
-            <div className={cn('px-4 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-6', isMobile && 'pr-14')}>
-              <SheetHeader>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 text-left">
-                    <SheetTitle className={cn(isMobile && 'text-xl')}>{title}</SheetTitle>
-                    <SheetDescription className="mt-1 text-left">{description}</SheetDescription>
+          {isMobile ? (
+            <div className="flex-shrink-0 border-b border-border bg-card" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+              <SheetHeader className="space-y-0">
+                <div className="flex h-14 items-center gap-2 px-2">
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    className="flex h-11 w-11 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-full border border-border bg-card p-0 text-foreground active:bg-muted"
+                    aria-label="Back"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <div className="min-w-0 flex-1 text-left">
+                    <SheetTitle className="truncate text-[17px] leading-tight">{title}</SheetTitle>
+                    {description ? (
+                      <SheetDescription className="truncate text-left text-xs">{description}</SheetDescription>
+                    ) : null}
                   </div>
-                  {extra && <div className="flex flex-wrap gap-2">{extra}</div>}
                 </div>
+                {extra && <div className="flex flex-wrap gap-2 px-4 pb-3">{extra}</div>}
               </SheetHeader>
             </div>
-            <div className="border-b border-gray-200 w-full" aria-hidden />
-          </div>
+          ) : (
+            <div className="flex-shrink-0">
+              <div className="px-4 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-6">
+                <SheetHeader>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 text-left">
+                      <SheetTitle>{title}</SheetTitle>
+                      <SheetDescription className="mt-1 text-left">{description}</SheetDescription>
+                    </div>
+                    {extra && <div className="flex flex-wrap gap-2">{extra}</div>}
+                  </div>
+                </SheetHeader>
+              </div>
+              <div className="border-b border-gray-200 w-full" aria-hidden />
+            </div>
+          )}
 
           <div className="overflow-y-auto overflow-x-hidden flex-1" style={{ minHeight: 0 }}>
             {children != null && children !== false ? (
@@ -243,7 +275,10 @@ const DetailsDrawer = ({
           </div>
 
           {showActions && (primaryAction || secondaryAction || moreMenuItems.length > 0) ? (
-            <div className="flex-shrink-0 border-t border-border bg-background">
+            <div
+              className="flex-shrink-0 border-t border-border bg-background"
+              style={isMobile ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}
+            >
               <div
                 className={cn(
                   'flex gap-3',
@@ -350,8 +385,11 @@ const DetailsDrawer = ({
             </AlertDialog>
           )}
           {showActions && !primaryAction && moreMenuItems.length === 0 && (onEdit || onDelete || onDownload || onPrint || onMarkPaid || extraActions.length > 0) && (
-            <div className="flex-shrink-0 bg-background border-t border-border">
-              <div className="p-6 flex flex-wrap gap-2 justify-end">
+            <div
+              className="flex-shrink-0 bg-background border-t border-border"
+              style={isMobile ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}
+            >
+              <div className={cn('flex flex-wrap gap-2 justify-end', isMobile ? 'p-4' : 'p-6')}>
                 {onDownload && (
                   <Tooltip>
                     <TooltipTrigger asChild>

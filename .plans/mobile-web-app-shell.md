@@ -34,22 +34,28 @@
 - `e2e/tests/mobile-shell.spec.js` — `cd e2e && npx playwright test -c playwright.mobile.config.js`. No backend: API calls are answered in the browser. Projects: desktop, Pixel 7, iPhone 13, iPad Mini, iPad Pro 11 landscape (Chromium).
 - Desktop screenshots before/after were pixel-identical.
 
+## Done — Phase 2 (screens behave like native)
+
+- **Back closes overlays** (`hooks/useBackToClose.js`): every Dialog, Sheet and AlertDialog adds a history entry while open in the app shell, so the Android back button / iOS back gesture closes it instead of leaving the page — including the full-screen POS. Closing another way pops the entry; nested overlays close one at a time. URL-driven dialogs opt out with `disableBackClose` (Marketing campaign dialog).
+- **Tap a card to open it**: inside phone/tablet cards, `ActionColumn` hands its View action to the card (`components/cardTapContext.js`) — no full-width View buttons. Taps on buttons/links inside a card still do their own thing.
+- **Detail drawers are full-screen pages on phones** (slide in from the right, round back button, title, sticky actions, safe areas). Tablets/desktop keep the side panel.
+- **Forms are bottom sheets on phones**: base `DialogContent` below 640px is a 94%-height sheet (was full screen) — covers Rentals, Materials and every other plain dialog without page changes.
+- **Confirmations are action sheets on phones**: `AlertDialogContent` below 640px rises from the bottom with full-width buttons.
+- `/pos` redirects to the point of sale (fixes the manifest shortcut); POS content no longer runs off the right edge below 1024px.
+- Watch incidents are cards on phones/tablets; other wide tables scroll sideways inside their card.
+- Desktop dialogs, drawers and confirms checked pixel-identical before/after.
+
+Not done from the original Phase 2 list (follow-ups):
+- Filter chips instead of filter sheets, and infinite scroll in `MobileCardView` (both need per-page work; lists still page with Previous/Next).
+- Native-style Dashboard redesign (the current phone dashboard already has period tabs, 2×2 stats, AI insight and recent sales).
+
 ## Next
 
-**Phase 2 — screens behave like native**
-1. Back button closes sheets (history entry per open sheet/drawer/filter).
-2. Lists: tap card to open (`onCardClick`), filter chips, infinite scroll in `MobileCardView`.
-3. DetailsDrawer → full-screen page with back header + sticky actions in the app shell.
-4. Rentals (12 dialogs incl. checkout) and Materials (6) → `MobileFormDialog`.
-5. POS as a `/pos` route in the app shell; fix POS header overflow on phones (Online pill / Stay open switch run off-screen — existed before).
-6. Native-style mobile Dashboard.
-7. Confirmations as bottom action sheets.
-8. Remaining raw tables (Watch, Messages, settings Billing/Payments/Delivery rules) → cards.
-
-**Phase 3 — PWA**: manifest (drop portrait lock, `id`, fix `/pos` and `/foot-traffic` shortcuts, maskable icons, screenshots), 180px touch icon, SPA navigation fallback + offline page in `sw.js`, persisted query cache.
+**Phase 3 — PWA**: manifest (drop portrait lock, `id`, remove `/foot-traffic` shortcut, maskable icons, screenshots), 180px touch icon, SPA navigation fallback + offline page in `sw.js`, persisted query cache.
 
 **Phase 4 — polish**: page transitions, skeletons, vibration, web push, offline sales queue.
 
 ## Known issues found along the way
 - **Desktop:** header menus (account, bell) open off-screen when the page is scrolled. Cause: `html { overflow-y: scroll }` in `index.css` breaks Radix/floating-ui positioning. Fixed in the app shell only; on desktop, removing that rule fixes it (`* { scrollbar-gutter: stable }` already prevents layout shift) but changes the empty-scrollbar look on short pages.
 - Main tour copy still says "sidebar"; steps without a target are skipped, so phones get a shorter tour.
+- `pages/Customers.jsx` calls `settingsService.getPrintConfig()`, which does not exist (throws when a customer is opened; the drawer still works). Likely meant `getPOSConfig()`.

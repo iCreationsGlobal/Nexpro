@@ -18,20 +18,26 @@ const ALL_FEATURES = [
  * @param {string} [options.role] - owner, manager, staff, driver
  * @param {'full'|'simple'} [options.interfaceMode]
  * @param {string[]} [options.focusAreas] - Ranked focus-area ids
+ * @param {string[]} [options.features] - Plan features switched on (default: all)
+ * @param {(path: string) => unknown} [options.responses] - Data for specific API paths ('/customers', …)
  */
+export { ALL_FEATURES };
+
 export async function mockWorkspaceApi(page, {
   baseURL,
   businessType = 'shop',
   role = 'owner',
   interfaceMode = 'full',
   focusAreas = [],
+  features = ALL_FEATURES,
+  responses = () => undefined,
 }) {
   const tenant = {
     id: 't1',
     name: 'Test Shop',
     businessType,
     plan: 'pro',
-    effectiveFeatureFlags: Object.fromEntries(ALL_FEATURES.map((key) => [key, true])),
+    effectiveFeatureFlags: Object.fromEntries(features.map((key) => [key, true])),
     metadata: { onboarding: { completedAt: '2026-01-01T00:00:00Z' } },
     billingStatus: { canAccessApp: true, billingStatus: 'active' },
   };
@@ -67,8 +73,11 @@ export async function mockWorkspaceApi(page, {
     if (!url.pathname.startsWith('/api')) return route.fulfill({ status: 204, body: '' });
 
     const path = url.pathname.replace(/^\/api/, '');
+    const provided = responses(path);
     let data = [];
-    if (path.startsWith('/auth/bootstrap') || path.startsWith('/auth/me')) {
+    if (provided !== undefined) {
+      data = provided;
+    } else if (path.startsWith('/auth/bootstrap') || path.startsWith('/auth/me')) {
       data = { user, memberships: [membership], activeTenantId: 't1', activeTenant: tenant, workspace: null, access: {}, settings: {}, tenantRole: role };
     } else if (path.startsWith('/settings/focus-areas')) {
       data = { focusAreas, source: focusAreas.length ? 'user' : 'none' };

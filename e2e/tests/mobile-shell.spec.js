@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockWorkspaceApi } from './helpers/mockApi.js';
+import { mockWorkspaceApi, ALL_FEATURES } from './helpers/mockApi.js';
 
 /**
  * Phones and tablets get the app shell (bottom tabs, More sheet, app headers) like the native app;
@@ -9,6 +9,19 @@ import { mockWorkspaceApi } from './helpers/mockApi.js';
 const tabBar = (page) => page.locator('[data-app-tab-bar]');
 const tabLabels = (page) => tabBar(page).locator('li').allInnerTexts();
 const isDesktop = (testInfo) => testInfo.project.name === 'desktop';
+const isPhone = (testInfo) => ['phone', 'iphone'].includes(testInfo.project.name);
+const openOverlays = (page) => page.locator('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]');
+
+const CUSTOMER = { id: 'c1', name: 'Kofi Mensah', phone: '0244000000', email: 'kofi@example.com', isActive: true, createdAt: '2026-09-01T10:00:00Z' };
+/** One customer in the list, without shop scoping (no shop to pick). */
+const withCustomer = {
+  features: ALL_FEATURES.filter((key) => key !== 'shopsModule'),
+  responses: (path) => {
+    if (path === '/customers') return [CUSTOMER];
+    if (path === '/customers/c1') return CUSTOMER;
+    return undefined;
+  },
+};
 
 async function openApp(page, baseURL, path = '/dashboard', options = {}) {
   await mockWorkspaceApi(page, { baseURL, ...options });
@@ -110,6 +123,79 @@ test.describe('app shell', () => {
     await openApp(page, baseURL);
     await tabBar(page).getByRole('link', { name: 'Sell' }).click();
     await expect(page).toHaveURL(/\/sales/);
+    await expect(page.getByRole('dialog', { name: 'Point of Sale' })).toBeVisible();
+  });
+
+  test('back closes the More sheet without leaving the page', async ({ page, baseURL }) => {
+    await openApp(page, baseURL);
+    await tabBar(page).getByRole('button', { name: 'More' }).click();
+    await expect(openOverlays(page)).toHaveCount(1);
+    await page.goBack();
+    await expect(openOverlays(page)).toHaveCount(0);
+    await expect(page).toHaveURL(/\/dashboard$/);
+  });
+
+  test('closing a sheet another way leaves history as it was', async ({ page, baseURL }) => {
+    await openApp(page, baseURL);
+    await tabBar(page).getByRole('link', { name: 'Customers' }).click();
+    await expect(page).toHaveURL(/\/customers$/);
+    await tabBar(page).getByRole('button', { name: 'More' }).click();
+    await expect(openOverlays(page)).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(openOverlays(page)).toHaveCount(0);
+    await page.goBack();
+    await expect(page).toHaveURL(/\/dashboard$/);
+  });
+
+  test('tapping a card opens the record; back closes it', async ({ page, baseURL }, testInfo) => {
+    await openApp(page, baseURL, '/customers', withCustomer);
+    await expect(page.getByText('Kofi Mensah').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'View', exact: true })).toHaveCount(0);
+    await page.getByText('Kofi Mensah').first().click();
+    const detail = openOverlays(page).first();
+    await expect(detail).toBeVisible();
+    if (isPhone(testInfo)) {
+      // Phones: a full-screen page with its own back button.
+      const box = await detail.boundingBox();
+      expect(box.width).toBe(page.viewportSize().width);
+      await expect(detail.getByRole('button', { name: 'Back' })).toBeVisible();
+    }
+    await page.goBack();
+    await expect(openOverlays(page)).toHaveCount(0);
+    await expect(page).toHaveURL(/\/customers$/);
+  });
+
+  test('confirmations rise from the bottom on phones; back cancels only the confirm', async ({ page, baseURL }, testInfo) => {
+    await openApp(page, baseURL, '/customers', withCustomer);
+    await page.getByText('Kofi Mensah').first().click();
+    await openOverlays(page).first().getByRole('button', { name: /more/i }).click();
+    await page.getByRole('menuitem', { name: /delete/i }).click();
+    const confirm = page.getByRole('alertdialog');
+    await expect(confirm).toBeVisible();
+    if (isPhone(testInfo)) {
+      const viewport = page.viewportSize();
+      // Measured once the slide-up animation has finished.
+      await expect.poll(async () => {
+        const box = await confirm.boundingBox();
+        return box && [Math.round(box.y + box.height), Math.round(box.width)];
+      }).toEqual([viewport.height, viewport.width]);
+    }
+    await page.goBack();
+    await expect(confirm).toHaveCount(0);
+    await expect(openOverlays(page)).toHaveCount(1);
+  });
+
+  test('back closes the point of sale', async ({ page, baseURL }) => {
+    await openApp(page, baseURL);
+    await tabBar(page).getByRole('link', { name: 'Sell' }).click();
+    await expect(page.getByRole('dialog', { name: 'Point of Sale' })).toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole('dialog', { name: 'Point of Sale' })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/sales/);
+  });
+
+  test('/pos opens the point of sale', async ({ page, baseURL }) => {
+    await openApp(page, baseURL, '/pos');
     await expect(page.getByRole('dialog', { name: 'Point of Sale' })).toBeVisible();
   });
 });

@@ -357,6 +357,8 @@ function AppContent() {
             <Route path="deliveries" element={<FeatureRoute featureKey="deliveries"><Deliveries /></FeatureRoute>} />
             <Route path="sales" element={<FeatureRoute featureKey="paymentsExpenses"><Sales /></FeatureRoute>} />
             <Route path="sales/returns" element={<FeatureRoute featureKey="paymentsExpenses"><Sales /></FeatureRoute>} />
+            {/* Point of sale opens full screen on the Sales page (home-screen shortcut, links). */}
+            <Route path="pos" element={<Navigate to="/sales?openPOS=1" replace />} />
             <Route path="orders" element={<FeatureRoute featureKey="orders"><Orders /></FeatureRoute>} />
             <Route path="quotes" element={<FeatureRoute featureKey="quoteAutomation"><Quotes /></FeatureRoute>} />
             <Route path="invoices" element={<FeatureRoute featureKey="invoices"><Invoices /></FeatureRoute>} />

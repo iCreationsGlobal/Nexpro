@@ -7,6 +7,12 @@ import { ChevronLeft, ChevronRight, ChevronRight as ChevronRightIcon } from 'luc
 import { cn } from '@/lib/utils';
 import SwipeableCard from './SwipeableCard';
 import { useResponsive } from '@/hooks/useResponsive';
+import { useDeviceMode } from '@/hooks/useDeviceMode';
+import { CardTapContext } from './cardTapContext';
+
+/** Taps on these inside a card do their own thing instead of opening the record. */
+const INTERACTIVE_IN_CARD =
+  'button, a, input, select, textarea, label, [role="button"], [role="checkbox"], [role="switch"], [role="menuitem"], [role="combobox"], [data-no-card-tap]';
 import {
   Popover,
   PopoverContent,
@@ -57,6 +63,7 @@ const MobileCardView = memo(({
   showLabelsInCardView = false,
 }) => {
   const { isMobile } = useResponsive();
+  const { isAppShell } = useDeviceMode();
   const [internalPagination, setInternalPagination] = useState({ current: 1, pageSize });
   const longPressTimer = useRef(null);
   const longPressTarget = useRef(null);
@@ -306,15 +313,24 @@ const MobileCardView = memo(({
         const cardImageUrl = getCardImage ? getCardImage(item) : null;
         const columnLabel = (col) => col.label ?? col.title ?? col.key;
 
+        // Phones/tablets: ActionColumn puts its View action here, so the whole card opens the record.
+        const tapTarget = isAppShell ? { open: null } : null;
+        const tappable = Boolean(onCardClick || (tapTarget && actionsColumn));
+        const handleCardClick = (event) => {
+          if (event.target instanceof Element && event.target.closest(INTERACTIVE_IN_CARD)) return;
+          if (onCardClick) onCardClick(item, index);
+          else tapTarget?.open?.();
+        };
+
         const cardContent = (
+          <CardTapContext.Provider key={item.id || item.key || index} value={tapTarget}>
           <Card 
-            key={item.id || item.key || index}
             className={cn(
               "transition-colors overflow-hidden border",
-              onCardClick && "cursor-pointer hover:bg-muted active:bg-muted/80",
+              tappable && "cursor-pointer hover:bg-muted active:bg-muted/80",
               hasItemQuickActions && "select-none" // Prevent text selection during long press
             )}
-            onClick={() => onCardClick && onCardClick(item, index)}
+            onClick={handleCardClick}
             onTouchStart={(e) => handleTouchStart(e, item, index)}
             onTouchEnd={handleTouchEnd}
             onTouchMove={handleTouchMove}
@@ -352,7 +368,7 @@ const MobileCardView = memo(({
                   </div>
                   {/* Actions - full width View Details */}
                   {actionsColumn && (
-                    <div className="mt-2 pt-2 border-t">
+                    <div className="mt-2 pt-2 border-t empty:hidden">
                       {actionsColumn.render && actionsColumn.render(null, item, index)}
                     </div>
                   )}
@@ -426,7 +442,7 @@ const MobileCardView = memo(({
                     </div>
                   )}
                   {actionsColumn && (
-                    <div className="mt-3 pt-3 -mx-4 px-4 border-t border-gray-200">
+                    <div className="mt-3 pt-3 -mx-4 px-4 border-t border-gray-200 [&:has(>div:empty)]:hidden">
                       <div className={cn("flex gap-2", isMobile ? "w-full flex-col" : "justify-end")}>
                         {actionsColumn.render && actionsColumn.render(null, item, index)}
                       </div>
@@ -441,6 +457,7 @@ const MobileCardView = memo(({
               )}
             </CardContent>
           </Card>
+          </CardTapContext.Provider>
         );
 
         // Wrap content (quick actions handled separately via state)

@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useContext } from 'react';
 import { Button } from '@/components/ui/button';
 import { SecondaryButton } from '@/components/ui/secondary-button';
 import {
@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Eye, MoreVertical } from 'lucide-react';
 import { useResponsive } from '@/hooks/useResponsive';
 import { cn } from '@/lib/utils';
+import { CardTapContext } from './cardTapContext';
 
 /**
  * Reusable Action Column Component for Tables
@@ -20,6 +21,13 @@ import { cn } from '@/lib/utils';
  */
 const ActionColumn = memo(({ onView, record, extraActions = [] }) => {
   const { isMobile } = useResponsive();
+  const cardTap = useContext(CardTapContext);
+
+  // Inside a phone/tablet card: tapping the card opens the record (no separate View button).
+  if (cardTap && onView) {
+    cardTap.open = () => onView(record);
+    return null;
+  }
 
   const viewButton = (
     <SecondaryButton

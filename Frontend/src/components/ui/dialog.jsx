@@ -3,8 +3,16 @@ import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useBackClosableOpen } from "@/hooks/useBackToClose"
 
-const Dialog = DialogPrimitive.Root
+/**
+ * Dialog root. On phones and tablets the back button closes it (see useBackToClose);
+ * pass `disableBackClose` for dialogs whose open state lives in the URL.
+ */
+const Dialog = ({ open, defaultOpen, onOpenChange, disableBackClose, ...props }) => {
+  const [isOpen, setOpen] = useBackClosableOpen({ open, defaultOpen, onOpenChange, disableBackClose })
+  return <DialogPrimitive.Root open={isOpen} onOpenChange={setOpen} {...props} />
+}
 
 const DialogTrigger = DialogPrimitive.Trigger
 
@@ -49,9 +57,11 @@ const DialogContent = React.forwardRef(({ className, children, onInteractOutside
           // Mobile & Desktop: flex column so DialogBody scrolls; header/footer fixed; content scrolls behind footer
           "fixed z-[110] flex flex-col w-full border border-border bg-background duration-200",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-          "inset-0 w-[100vw] min-h-[100dvh] max-h-[100dvh] overflow-hidden rounded-none pt-5 pb-5 gap-0",
+          // Phones: bottom sheet (like the native app's form sheets), clear of the home indicator
+          "inset-x-0 bottom-0 top-auto w-[100vw] h-[94dvh] max-h-[94dvh] overflow-hidden rounded-t-2xl rounded-b-none pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] gap-0",
+          "max-sm:data-[state=open]:slide-in-from-bottom max-sm:data-[state=closed]:slide-out-to-bottom",
           // Desktop: centered modal
-          "sm:inset-auto sm:left-[50%] sm:top-[2.5vh] sm:translate-x-[-50%] sm:translate-y-0",
+          "sm:inset-auto sm:left-[50%] sm:top-[2.5vh] sm:translate-x-[-50%] sm:translate-y-0 sm:h-auto",
           "sm:w-[var(--modal-w)] sm:min-w-[min(90vw,20rem)] sm:min-h-[var(--modal-min-h)] sm:max-h-[var(--modal-max-h)] sm:rounded-lg sm:pt-8 sm:pb-6 sm:gap-0",
           "sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95",
           "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%]",
