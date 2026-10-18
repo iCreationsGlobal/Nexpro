@@ -2,7 +2,8 @@
 #
 # deploy-contabo.sh
 #
-# Deploy ABS API code on the Contabo VPS: git pull, migrate, restart nexpro-backend.
+# Deploy ABS API code on the Contabo VPS: back up the database, git pull, migrate,
+# restart nexpro-backend.
 # From your laptop it asks for the SSH password, then runs the deploy over SSH.
 #
 # Usage (from your laptop):
@@ -16,7 +17,8 @@
 #   --local                 Run on this machine (no SSH)
 #   --remote                Force SSH to CONTABO_HOST
 #   --branch=NAME           Git branch to pull (default: main)
-#   --skip-migrate          Skip Backend npm install + migrate
+#   --skip-migrate          Skip Backend npm install + migrate (and the backup)
+#   --skip-backup           Skip the database backup taken before migrating
 #   --skip-restart          Pull only; do not restart the API
 #   --no-health-check       Skip curl /health after restart
 #   --build-apps            Also build Frontend + storefront on the VPS (slow; dashboard is usually Vercel)
@@ -31,6 +33,7 @@
 #                           Optional: brew install hudochenkov/sshpass/sshpass so the password
 #                           is passed to SSH without a second prompt.
 #   NEXPRO_REPO_ROOT        Override repo root on the target
+#   NEXPRO_BACKUP_DIR       Where backups go on the target (default: ~/nexpro-backups)
 #   API_URL
 #
 set -euo pipefail
@@ -50,6 +53,7 @@ GIT_BRANCH="main"
 FORCE_LOCAL=false
 FORCE_REMOTE=false
 DO_MIGRATE=true
+DO_BACKUP=true
 DO_RESTART=true
 DO_HEALTH_CHECK=true
 DO_BUILD_APPS=false
@@ -57,7 +61,7 @@ DO_BUILD_APPS=false
 ASKPASS_FILE=""
 
 usage() {
-  sed -n '3,34p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,37p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 log() { printf '%s\n' "$*"; }
@@ -79,6 +83,7 @@ parse_args() {
       --remote) FORCE_REMOTE=true; shift ;;
       --branch=*) GIT_BRANCH="${1#*=}"; shift ;;
       --skip-migrate) DO_MIGRATE=false; shift ;;
+      --skip-backup) DO_BACKUP=false; shift ;;
       --skip-restart) DO_RESTART=false; shift ;;
       --no-health-check) DO_HEALTH_CHECK=false; shift ;;
       --build-apps) DO_BUILD_APPS=true; shift ;;
@@ -161,6 +166,30 @@ restart_backend() {
   "${sysctl[@]}" --no-pager --full status nexpro-backend || true
 }
 
+# Dump the database the API uses before migrations change it. Stops the deploy if it fails.
+backup_database() {
+  local env_file="$REPO_ROOT/Backend/.env"
+  [[ -f "$env_file" ]] || die "Missing $env_file, so the database can't be backed up. Use --skip-backup to deploy anyway."
+  local db_url
+  db_url="$(grep -E '^DATABASE_URL=' "$env_file" | tail -n 1 | cut -d= -f2- | sed -E "s/^['\"]//; s/['\"]$//")"
+  [[ -n "$db_url" ]] || die "DATABASE_URL is not set in $env_file. Use --skip-backup to deploy anyway."
+  command -v pg_dump >/dev/null 2>&1 \
+    || die "pg_dump not found. Install it (apt install postgresql-client) or use --skip-backup."
+
+  local dir="${NEXPRO_BACKUP_DIR:-$HOME/nexpro-backups}"
+  mkdir -p "$dir"
+  chmod 700 "$dir"
+  local file
+  file="$dir/abs-$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD).dump"
+  log "Backing up the database to $file ..."
+  if ! pg_dump "$db_url" --format=custom --no-owner --file="$file"; then
+    rm -f "$file"
+    die "Database backup failed, so nothing was deployed. (A pg_dump older than the database server fails.) Use --skip-backup to deploy anyway."
+  fi
+  log "Backup saved ($(du -h "$file" | cut -f1))."
+  log "Restore with: pg_restore --clean --if-exists --no-owner -d \"\$DATABASE_URL\" $file"
+}
+
 smoke_test_health() {
   local health_url="${API_URL%/}/health"
   log "Smoke test: curl -fsS ${health_url}"
@@ -192,6 +221,10 @@ run_local_deploy() {
   log "Branch: $GIT_BRANCH"
   log "Before: $(git log -1 --oneline)"
   log "Remote: $(git remote get-url origin 2>/dev/null || echo '(none)')"
+
+  if [[ "$DO_MIGRATE" == true && "$DO_BACKUP" == true ]]; then
+    backup_database
+  fi
 
   local dirty
   dirty="$(git status --porcelain --untracked-files=no || true)"
@@ -243,6 +276,7 @@ run_remote() {
 
   local -a remote_args=(--local "--branch=$GIT_BRANCH" "--api-url=$API_URL")
   [[ "$DO_MIGRATE" != true ]] && remote_args+=(--skip-migrate)
+  [[ "$DO_BACKUP" != true ]] && remote_args+=(--skip-backup)
   [[ "$DO_RESTART" != true ]] && remote_args+=(--skip-restart)
   [[ "$DO_HEALTH_CHECK" != true ]] && remote_args+=(--no-health-check)
   [[ "$DO_BUILD_APPS" == true ]] && remote_args+=(--build-apps)
