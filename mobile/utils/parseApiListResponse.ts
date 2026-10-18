@@ -1,5 +1,3 @@
-import { getAiProviderErrorMessage } from '@/utils/aiProviderErrors';
-
 /**
  * Extract a list payload from standard ABS API responses:
  * `{ success, data: T[] }` or occasional double-wrapped `{ data: { data: T[] } }`.
@@ -24,9 +22,6 @@ export function parseApiListResponse<T>(response: unknown): T[] {
  * Read axios/API error message for display.
  */
 export function getApiErrorMessage(error: unknown, fallback: string): string {
-  const aiMessage = getAiProviderErrorMessage(error);
-  if (aiMessage) return aiMessage;
-
   if (!error || typeof error !== 'object') return fallback;
   const err = error as {
     message?: string;

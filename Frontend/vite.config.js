@@ -98,7 +98,7 @@ function localBackendProxyPlugin(envUrl) {
             console.warn(
               `[vite] Proxy error for ${key}${reqUrl ? ` ${reqUrl}` : ''} → ${target}: ${err?.message || err}`
             );
-            if (!shouldRetargetAfterProxyError({ err, reqUrl })) {
+            if (!shouldRetargetAfterProxyError({ err })) {
               return;
             }
             refreshTarget('proxy-error');
@@ -176,16 +176,10 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: devApiTarget,
           changeOrigin: true,
-          // Watch YOLO (and similar long POSTs) often run 60s+. Default proxy idle
-          // close looks like axios "Network Error" → "check your internet".
-          timeout: 360000,
-          proxyTimeout: 360000,
         },
         '/uploads': {
           target: devApiTarget,
           changeOrigin: true,
-          timeout: 360000,
-          proxyTimeout: 360000,
         },
       },
     },

@@ -40,13 +40,6 @@ const TEMPLATES = {
     example:
       'Hi {{1}}, you have a payment overdue: Account: {{2}}. Amount due: {{3}}. Due date: {{4}}. Use the Pay now button to complete payment.'
   },
-  payment_received: {
-    name: 'payment_received',
-    language: 'en',
-    description: 'Thank customer after a payment is recorded',
-    parameters: ['customerName', 'invoiceNumber', 'amount', 'businessName'],
-    example: 'Hi {{1}}, thank you! We received {{3}} for invoice {{2}}. — {{4}}'
-  },
   low_stock_alert: {
     name: 'low_stock_alert',
     language: 'en',
@@ -68,82 +61,12 @@ const TEMPLATES = {
     parameters: ['customerName', 'orderNumber', 'amount', 'businessName'],
     example: 'Hello {{1}}, your order {{2}} for {{3}} from {{4}} has been received.'
   },
-  review_request: {
-    name: 'review_request',
-    language: 'en',
-    description: 'Ask customer to leave a review after service or sale',
-    parameters: ['customerName', 'businessName', 'reviewLink'],
-    example: 'Hi {{1}}, thank you for choosing {{2}}! We would love your feedback: {{3}}'
-  },
   job_completed: {
     name: 'job_completed',
     language: 'en',
     description: 'Notify customer when a job or service is completed',
     parameters: ['customerName', 'jobNumber', 'businessName'],
     example: 'Hi {{1}}, your job {{2}} is complete. — {{3}}'
-  },
-  birthday_greeting: {
-    name: 'birthday_greeting',
-    language: 'en',
-    description: 'Send a birthday greeting to a customer',
-    parameters: ['customerName'],
-    example: 'Happy birthday {{1}}! Wishing you a wonderful day.'
-  },
-  win_back: {
-    name: 'win_back',
-    language: 'en',
-    description: 'Win-back message for inactive customers',
-    parameters: ['customerName', 'businessName'],
-    example: 'Hi {{1}}, we miss you at {{2}}! Come back soon.'
-  },
-  quote_follow_up: {
-    name: 'quote_follow_up',
-    language: 'en',
-    description: 'Follow up on a quote with no response',
-    parameters: ['customerName', 'quoteNumber', 'businessName'],
-    example: 'Hi {{1}}, just checking in on quote {{2}} from {{3}}.'
-  },
-  welcome_customer: {
-    name: 'welcome_customer',
-    language: 'en',
-    description: 'Welcome a newly created customer',
-    parameters: ['customerName', 'businessName'],
-    example: 'Hi {{1}}, welcome to {{2}}! We look forward to serving you.'
-  },
-  new_lead_alert: {
-    name: 'new_lead_alert',
-    language: 'en',
-    description: 'Alert staff when a new lead is added',
-    parameters: ['leadName', 'leadSource', 'businessName'],
-    example: 'New lead: {{1}} from {{2}}. — {{3}}'
-  },
-  lead_follow_up: {
-    name: 'lead_follow_up',
-    language: 'en',
-    description: 'Follow up a lead with no recent contact',
-    parameters: ['leadName', 'noContactDays', 'businessName'],
-    example: 'Follow up {{1}} — no contact for {{2}} days. — {{3}}'
-  },
-  prescription_refill: {
-    name: 'prescription_refill',
-    language: 'en',
-    description: 'Remind a customer that a prescription refill is due',
-    parameters: ['customerName', 'prescriptionNumber', 'refillDueDate', 'businessName'],
-    example: 'Hi {{1}}, prescription {{2}} refill is due {{3}}. — {{4}}'
-  },
-  low_profit_alert: {
-    name: 'low_profit_alert',
-    language: 'en',
-    description: 'Alert staff when a sale has a low profit margin',
-    parameters: ['saleNumber', 'profitMarginFormatted', 'businessName'],
-    example: 'Low margin sale {{1}}: {{2}}. — {{3}}'
-  },
-  daily_sales_summary: {
-    name: 'daily_sales_summary',
-    language: 'en',
-    description: 'Daily sales recap for shop owners',
-    parameters: ['date', 'totalSalesFormatted', 'transactionCount', 'businessName'],
-    example: 'Daily sales ({{1}}): {{2}} from {{3}} transactions. — {{4}}'
   }
 };
 
@@ -288,7 +211,7 @@ function getTemplate(templateName) {
 }
 
 /**
- * Catalog for Settings and Automations UI (Meta template names to create).
+ * Catalog for the WhatsApp settings UI (Meta template names to create).
  * @returns {Array<{ name: string, language: string, description: string, parameters: string[], example: string }>}
  */
 function listTemplates() {

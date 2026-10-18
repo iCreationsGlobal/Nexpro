@@ -37,7 +37,6 @@ export default function SmartReportSalesTab({ snapshot, periodLabel, isStudio, i
     salesByCategory,
     topCustomers,
     customerSegments,
-    customerInsights,
     comparisonLabel,
     operations,
   } = snapshot;
@@ -221,7 +220,7 @@ export default function SmartReportSalesTab({ snapshot, periodLabel, isStudio, i
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
           <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base font-semibold">Customer Segmentation</CardTitle>
@@ -267,23 +266,6 @@ export default function SmartReportSalesTab({ snapshot, periodLabel, isStudio, i
               <p className="mt-2 text-xs">Returning customer count is not currently tracked.</p>
             )}
             <Button variant="link" className="h-auto p-0 text-xs text-primary mt-4">View Acquisition Report</Button>
-          </CardContent>
-        </Card>
-
-        <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
-          <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base font-semibold">Customer Insights</CardTitle>
-            <Button variant="link" className="h-auto p-0 text-xs text-primary">View All Insights</Button>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <ul className="space-y-3 text-sm text-muted-foreground">
-              {customerInsights.map((item, idx) => (
-                <li key={idx} className="flex gap-2">
-                  <span className="text-primary shrink-0">•</span>
-                  <span>{item.text}</span>
-                </li>
-              ))}
-            </ul>
           </CardContent>
         </Card>
       </div>

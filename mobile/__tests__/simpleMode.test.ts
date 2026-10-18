@@ -18,7 +18,7 @@ describe('Simple Mode config', () => {
   });
 
   it('blocks everything else', () => {
-    for (const path of ['/invoices', '/(tabs)/jobs', '/lead/1', '/notifications', '/(tabs)/chat', '/quotes-new']) {
+    for (const path of ['/invoices', '/(tabs)/jobs', '/lead/1', '/notifications', '/(tabs)/quotes', '/quotes-new']) {
       expect(isSimpleModePathAllowed(shop, path)).toBe(false);
     }
   });

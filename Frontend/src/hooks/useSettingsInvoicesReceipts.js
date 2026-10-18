@@ -206,7 +206,7 @@ export const useSettingsInvoicesReceipts = () => {
 
   const notificationChannels = notificationChannelsData ?? {};
   const autoSendInvoice = notificationChannels.autoSendInvoiceToCustomer !== false;
-  const autoSendReceipt = notificationChannels.autoSendReceiptToCustomer === true;
+  const autoSendReceipt = notificationChannels.autoSendReceiptToCustomer !== false;
   const sendPaymentReminderEmail = notificationChannels.sendPaymentReminderEmail === true;
   const sendInvoicePaidConfirmationToCustomer =
     notificationChannels.sendInvoicePaidConfirmationToCustomer !== false;

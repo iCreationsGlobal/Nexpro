@@ -1,11 +1,9 @@
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Lock, Sparkles } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
+import { ChevronLeft, Lock } from 'lucide-react';
 import { useSmartSearch } from '@/context/SmartSearchContext';
 import { useSimpleMode } from '@/hooks/useSimpleMode';
 import { useWorkspaceBrand } from '@/hooks/useWorkspaceNav';
 import { lockSimpleMode } from '@/components/simple/SimpleModePinGate';
-import { IBIS_ASK_LABEL } from '@/constants/ibis';
 import NotificationBell from '@/components/NotificationBell';
 import SidebarScopeSwitcher from '@/components/SidebarScopeSwitcher';
 import AppLogo from '@/components/AppLogo';
@@ -39,7 +37,7 @@ function goBack(navigate, fallback) {
 
 /**
  * Header for phones and tablets.
- * - root pages (tab bar / More destinations): logo and workspace, iBIS, notifications, account
+ * - root pages (tab bar / More destinations): logo and workspace, notifications, account
  * - inner pages: back button and title
  * Both show the page's search field when the page registered one.
  * @param {object} props
@@ -47,7 +45,6 @@ function goBack(navigate, fallback) {
  */
 export default function AppHeader({ meta }) {
   const navigate = useNavigate();
-  const { isDriver } = useAuth();
   const simpleMode = useSimpleMode();
   const { pageConfig } = useSmartSearch();
   const { appName, primaryColor, orgName, subtitle, showScopeSwitcher } = useWorkspaceBrand();
@@ -55,16 +52,6 @@ export default function AppHeader({ meta }) {
 
   const actions = (
     <div className="flex flex-shrink-0 items-center gap-2">
-      {!isDriver && !simpleMode.isSimple && (
-        <button
-          type="button"
-          onClick={() => navigate('/ask-ai')}
-          className={headerIconButtonClass}
-          aria-label={IBIS_ASK_LABEL}
-        >
-          <Sparkles className="h-5 w-5" />
-        </button>
-      )}
       {!simpleMode.isSimple && (
         <div data-tour="header-notifications" className="inline-flex">
           <NotificationBell />

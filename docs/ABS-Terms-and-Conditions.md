@@ -1,7 +1,7 @@
 # Terms and Conditions
 
 **Effective Date:** May 2026  
-**Last Updated:** May 2026
+**Last Updated:** October 2026
 
 These Terms and Conditions (“Terms”) govern your access to and use of ABS and related websites, applications, services, software, features, integrations, support, and infrastructure provided by iCreations / iCreations Digital Group (“ABS”, “we”, “us”, or “our”).
 
@@ -13,7 +13,7 @@ If you do not agree to these Terms, you must not access or use ABS.
 
 For purposes of these Terms:
 
-**“ABS”** means the multi-tenant business management platform, including its web application, mobile access, APIs, cloud services, AI features, integrations, support services, and related products.
+**“ABS”** means the multi-tenant business management platform, including its web application, mobile access, APIs, cloud services, integrations, support services, and related products.
 
 **“Customer”** or **“Tenant”** means the business, organisation, or individual that creates, owns, pays for, or controls a workspace on ABS.
 
@@ -25,11 +25,11 @@ For purposes of these Terms:
 
 **“Enterprise License”** means a paid one-time enterprise software license that gives the Customer lifetime access to the core ABS software for the selected workspace and plan tier, subject to these Terms, fair use, platform availability, payment obligations, storage limits, and any required Cloud Infrastructure Plan from the second year onward.
 
-**“Cloud Infrastructure Plan”** means the annual plan payable after the first year for cloud hosting, backups and recovery, updates, security maintenance, AI infrastructure, WhatsApp integrations, technical support, and included cloud storage.
+**“Cloud Infrastructure Plan”** means the annual plan payable after the first year for cloud hosting, backups and recovery, updates, security maintenance, WhatsApp integrations, technical support, and included cloud storage.
 
 **“Customer Data”** means business data, records, files, uploads, documents, transaction information, inventory, customer records, employee records, reports, invoices, expenses, payroll information, job or delivery data, communications data, and other content submitted to ABS by or on behalf of a Customer or User.
 
-**“Third-Party Services”** means external services connected to or used with ABS, including payment processors, WhatsApp providers, email services, SMS providers, AI model providers, hosting providers, accounting tools, analytics tools, or other integrations.
+**“Third-Party Services”** means external services connected to or used with ABS, including payment processors, WhatsApp providers, email services, SMS providers, hosting providers, accounting tools, analytics tools, or other integrations.
 
 ## 2. Acceptance of Terms
 
@@ -60,7 +60,7 @@ We may request verification of identity, business registration, ownership, tax i
 
 ## 4. Account, Tenant, and Workspace
 
-Each Customer may have one or more workspaces, depending on the plan and configuration approved by ABS. A workspace may include branches, users, business settings, customer data, files, automations, integrations, reports, and other platform features.
+Each Customer may have one or more workspaces, depending on the plan and configuration approved by ABS. A workspace may include branches, users, business settings, customer data, files, message settings, integrations, reports, and other platform features.
 
 The Customer is responsible for:
 
@@ -101,8 +101,8 @@ ABS is a business management platform that may include, depending on your plan, 
 5. Invoicing, receipts, and payment tracking;
 6. Accounting, expenses, and financial summaries;
 7. Payroll and employee management;
-8. AI reports, insights, and smart analytics;
-9. WhatsApp automation and messaging workflows;
+8. Business reports and analytics;
+9. Automatic receipts, invoices, quotes, payment confirmations, reminders, and order, job, and rental notices sent by SMS, WhatsApp, or email where turned on by the Customer;
 10. Email, SMS, and communication tools;
 11. Multi-role team access and permissions;
 12. Delivery, job, and order tracking;
@@ -124,9 +124,9 @@ ABS may offer one-time Enterprise License plans. A one-time Enterprise License g
 3. The Customer remains within the applicable user, branch, storage, and fair use limits;
 4. Required annual Cloud Infrastructure Plan fees are paid from the second year onward;
 5. The platform remains available and is not discontinued, replaced, suspended, or terminated in accordance with these Terms;
-6. The Customer does not claim ownership of ABS source code, intellectual property, infrastructure, algorithms, AI systems, designs, trademarks, or platform technology.
+6. The Customer does not claim ownership of ABS source code, intellectual property, infrastructure, algorithms, designs, trademarks, or platform technology.
 
-The Enterprise License is a license to use ABS. It is not a sale of the ABS software, source code, intellectual property, brand, architecture, databases, AI models, infrastructure, or proprietary technology.
+The Enterprise License is a license to use ABS. It is not a sale of the ABS software, source code, intellectual property, brand, architecture, databases, infrastructure, or proprietary technology.
 
 ## 8. Enterprise Plan Tiers
 
@@ -137,23 +137,23 @@ Unless otherwise agreed in writing, the following Enterprise License plans apply
 **One-time license fee:** GHS 10,000  
 **Included:** 1 User, 1 Branch, 20GB cloud storage, full enterprise features for the selected workspace.
 
-After the first year, the Customer must pay an annual Cloud Infrastructure Plan of **GHS 600 per year**, which includes secure cloud hosting, backups and recovery, updates, security maintenance, AI infrastructure, WhatsApp integrations, technical support, and 20GB storage.
+After the first year, the Customer must pay an annual Cloud Infrastructure Plan of **GHS 600 per year**, which includes secure cloud hosting, backups and recovery, updates, security maintenance, WhatsApp integrations, technical support, and 20GB storage.
 
 ### 8.2 ABS Enterprise Business
 
 **One-time license fee:** GHS 20,000  
 **Included:** Up to 5 Users, up to 5 Branches, 50GB cloud storage, full enterprise features for the selected workspace.
 
-After the first year, the Customer must pay an annual Cloud Infrastructure Plan of **GHS 1,200 per year**, which includes secure cloud hosting, backups and recovery, updates, security maintenance, AI infrastructure, WhatsApp integrations, technical support, and 50GB storage.
+After the first year, the Customer must pay an annual Cloud Infrastructure Plan of **GHS 1,200 per year**, which includes secure cloud hosting, backups and recovery, updates, security maintenance, WhatsApp integrations, technical support, and 50GB storage.
 
-The GHS 20,000 Business plan provides lifetime access to the core ABS software for the selected workspace and Business tier, but it does not include unlimited cloud hosting, unlimited storage, unlimited support, unlimited AI usage, unlimited WhatsApp usage, ownership of source code, or perpetual free maintenance. Continued use of hosted cloud services after the first year requires payment of the annual Cloud Infrastructure Plan.
+The GHS 20,000 Business plan provides lifetime access to the core ABS software for the selected workspace and Business tier, but it does not include unlimited cloud hosting, unlimited storage, unlimited support, unlimited WhatsApp usage, ownership of source code, or perpetual free maintenance. Continued use of hosted cloud services after the first year requires payment of the annual Cloud Infrastructure Plan.
 
 ### 8.3 ABS Enterprise Pro
 
 **One-time license fee:** GHS 30,000  
 **Included:** Up to 10 Users, up to 10 Branches, 100GB cloud storage, full enterprise features for the selected workspace.
 
-After the first year, the Customer must pay an annual Cloud Infrastructure Plan of **GHS 2,400 per year**, which includes secure cloud hosting, backups and recovery, updates, security maintenance, AI infrastructure, WhatsApp integrations, priority technical support, and 100GB storage.
+After the first year, the Customer must pay an annual Cloud Infrastructure Plan of **GHS 2,400 per year**, which includes secure cloud hosting, backups and recovery, updates, security maintenance, WhatsApp integrations, priority technical support, and 100GB storage.
 
 ## 9. Annual Cloud Infrastructure Plan
 
@@ -165,10 +165,9 @@ The Cloud Infrastructure Plan may include:
 2. Backups and recovery systems;
 3. Platform updates;
 4. Security maintenance;
-5. AI infrastructure;
-6. WhatsApp integration infrastructure;
-7. Technical support;
-8. Included cloud storage for the selected plan.
+5. WhatsApp integration infrastructure;
+6. Technical support;
+7. Included cloud storage for the selected plan.
 
 Failure to pay the Cloud Infrastructure Plan may result in reduced functionality, suspension of hosted services, restricted access, loss of integrations, or termination in accordance with these Terms.
 
@@ -187,7 +186,7 @@ If a Customer exceeds the included storage limit, ABS may:
 5. Reduce performance of storage-heavy features;
 6. Suspend storage-related functionality if the excess usage is not resolved.
 
-ABS may apply fair use limits to protect platform performance, security, and availability. Fair use limits may apply to AI requests, WhatsApp automation, email or SMS activity, file uploads, API calls, reports, exports, background jobs, branches, users, transactions, and integrations.
+ABS may apply fair use limits to protect platform performance, security, and availability. Fair use limits may apply to WhatsApp, email, or SMS activity, file uploads, API calls, reports, exports, background jobs, branches, users, transactions, and integrations.
 
 You must not use ABS in a way that places unreasonable load on the platform, attempts to bypass usage limits, resells access without permission, or interferes with other customers.
 
@@ -241,7 +240,7 @@ The Customer grants ABS a limited right to host, process, transmit, store, back 
 1. Provide and improve ABS;
 2. Operate platform features;
 3. Generate reports and analytics;
-4. Support AI insights and automations;
+4. Send receipts, invoices, reminders, and other messages the Customer has turned on;
 5. Provide customer support;
 6. Maintain security and backups;
 7. Comply with law;
@@ -271,33 +270,15 @@ You must not use ABS to:
 8. Interfere with platform security, rate limits, monitoring, or infrastructure;
 9. Resell, sublicense, or commercially exploit ABS without written permission;
 10. Use ABS to process data you do not have permission to process;
-11. Use AI features to generate unlawful, misleading, discriminatory, or harmful content;
-12. Use ABS for illegal financial activity, money laundering, fraud, or unauthorised payment processing.
+11. Use ABS for illegal financial activity, money laundering, fraud, or unauthorised payment processing.
 
 ABS may investigate suspected misuse and may suspend or terminate access where necessary.
 
-## 18. AI Features and Disclaimers
-
-ABS may provide AI-powered reports, insights, summaries, recommendations, forecasts, chat features, document interpretation, business suggestions, automation assistance, and analytics.
-
-AI outputs may be inaccurate, incomplete, outdated, biased, or unsuitable for your specific business circumstances. AI outputs are provided for assistance only and should not be treated as professional advice, financial advice, legal advice, tax advice, accounting advice, medical advice, employment advice, or a substitute for human judgment.
-
-You are responsible for reviewing AI outputs before relying on them or sharing them with others.
-
-ABS may use third-party AI providers or infrastructure to provide AI features. Where Customers provide their own API keys for AI services, the Customer is responsible for:
-
-1. The third-party provider’s fees;
-2. API key security;
-3. Usage limits;
-4. Compliance with the provider’s terms;
-5. Outputs generated through that provider;
-6. Any suspension or failure of that provider’s service.
-
-ABS does not guarantee that AI features will always be available, accurate, or suitable for any particular purpose.
-
-## 19. WhatsApp, Email, SMS, and Payment Integrations
+## 18. WhatsApp, Email, SMS, and Payment Integrations
 
 ABS may support integrations with WhatsApp, email, SMS, payment processors, banks, mobile money providers, card processors, and related communication or financial services.
+
+Where the Customer turns them on in the workspace settings, ABS may send automatic messages on the Customer’s behalf, such as sale receipts, invoices, quotes, payment confirmations, overdue invoice reminders, and order, job, and rental notices, by SMS, WhatsApp, or email. The Customer may turn these messages, and the channels used to send them, on or off at any time.
 
 These integrations may depend on third-party providers, network availability, approval processes, API limits, message templates, business verification, payment settlement rules, and third-party terms.
 
@@ -313,7 +294,7 @@ The Customer is responsible for:
 
 ABS is not responsible for third-party message delivery failures, payment delays, chargebacks, account restrictions, provider outages, rejected templates, or policy enforcement by WhatsApp, email, SMS, or payment providers.
 
-## 20. POS, Inventory, Accounting, Payroll, and Business Records
+## 19. POS, Inventory, Accounting, Payroll, and Business Records
 
 ABS may include tools for POS, inventory, invoicing, accounting, expenses, payroll, employee records, reports, analytics, job tracking, delivery tracking, and branch management.
 
@@ -330,7 +311,7 @@ The Customer is responsible for:
 
 ABS is not responsible for losses caused by inaccurate records, incorrect settings, missing entries, user mistakes, misclassification, stock discrepancies, payroll errors, tax errors, or reliance on unverified reports.
 
-## 21. Backups, Availability, Support, and Maintenance
+## 20. Backups, Availability, Support, and Maintenance
 
 ABS uses reasonable measures to provide secure hosting, backups, updates, maintenance, and support according to the applicable plan. However, ABS does not guarantee uninterrupted, error-free, or always-available service.
 
@@ -350,7 +331,7 @@ ABS may update, modify, suspend, replace, or discontinue features for security, 
 
 Support is provided according to the applicable plan and may be delivered through phone, email, WhatsApp, chat, remote session, ticketing system, or other channels. Priority support applies only where expressly included in the Customer’s plan.
 
-## 22. Security
+## 21. Security
 
 ABS uses reasonable technical and organisational measures designed to protect the platform and Customer Data. However, no system is completely secure.
 
@@ -367,7 +348,7 @@ Customers and Users are responsible for:
 
 ABS may take emergency security actions, including suspending accounts, disabling integrations, resetting credentials, restricting access, or blocking activity where necessary to protect the platform, Customer Data, Users, or third parties.
 
-## 23. Suspension and Termination
+## 22. Suspension and Termination
 
 ABS may suspend or terminate access to ABS, a workspace, or specific features if:
 
@@ -384,7 +365,7 @@ Where reasonable, ABS may provide notice and an opportunity to resolve the issue
 
 Customers may stop using ABS at any time, but stopping use does not automatically cancel unpaid fees or entitle the Customer to a refund.
 
-## 24. Data Export and Deletion
+## 23. Data Export and Deletion
 
 Customers may request export of Customer Data, subject to technical feasibility, account standing, data format availability, applicable law, and identity verification.
 
@@ -394,9 +375,9 @@ Deletion from active systems may not immediately remove data from backups, logs,
 
 The Customer is responsible for exporting needed records before cancellation, termination, or deletion.
 
-## 25. Intellectual Property
+## 24. Intellectual Property
 
-ABS and its licensors own all rights, title, and interest in and to the ABS platform, including software, source code, object code, architecture, workflows, designs, user interfaces, trademarks, logos, documentation, templates, reports, algorithms, AI systems, models, infrastructure, databases, know-how, trade secrets, and related intellectual property.
+ABS and its licensors own all rights, title, and interest in and to the ABS platform, including software, source code, object code, architecture, workflows, designs, user interfaces, trademarks, logos, documentation, templates, reports, algorithms, models, infrastructure, databases, know-how, trade secrets, and related intellectual property.
 
 These Terms do not transfer any ABS intellectual property to the Customer or User.
 
@@ -404,11 +385,11 @@ Subject to these Terms and payment of applicable fees, ABS grants the Customer a
 
 You must not copy, modify, reproduce, distribute, sell, lease, sublicense, reverse engineer, create derivative works from, or attempt to extract the source code or proprietary technology of ABS unless expressly permitted in writing by ABS.
 
-## 26. Feedback
+## 25. Feedback
 
 If you provide suggestions, ideas, requests, improvements, or feedback about ABS, you grant ABS the right to use that feedback without restriction or compensation. This does not give ABS ownership of your Customer Data.
 
-## 27. Third-Party Services
+## 26. Third-Party Services
 
 ABS may rely on or integrate with Third-Party Services. Your use of Third-Party Services may be subject to separate terms, privacy policies, fees, approvals, limits, and availability.
 
@@ -425,7 +406,7 @@ ABS is not responsible for:
 
 ABS may change, replace, suspend, or remove integrations where necessary.
 
-## 28. Disclaimers
+## 27. Disclaimers
 
 ABS is provided on an “as is” and “as available” basis to the maximum extent permitted by law.
 
@@ -433,17 +414,16 @@ ABS does not guarantee that:
 
 1. The platform will be uninterrupted or error-free;
 2. All defects will be corrected immediately;
-3. AI outputs will be accurate or complete;
-4. Reports will be suitable for all business decisions;
-5. Integrations will always remain available;
-6. Messages will always be delivered;
-7. Payments will always be successful or instant;
-8. Data loss or security incidents will never occur;
-9. The platform will meet every Customer requirement.
+3. Reports will be suitable for all business decisions;
+4. Integrations will always remain available;
+5. Messages will always be delivered;
+6. Payments will always be successful or instant;
+7. Data loss or security incidents will never occur;
+8. The platform will meet every Customer requirement.
 
 You are responsible for independent review and verification of business-critical information.
 
-## 29. Limitation of Liability
+## 28. Limitation of Liability
 
 To the maximum extent permitted by law, ABS will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, including loss of profit, loss of revenue, loss of business opportunity, loss of goodwill, loss of data, business interruption, or cost of substitute services.
 
@@ -451,7 +431,7 @@ To the maximum extent permitted by law, ABS’s total liability arising out of o
 
 Nothing in these Terms excludes liability that cannot be excluded under applicable law.
 
-## 30. Indemnity
+## 29. Indemnity
 
 You agree to indemnify and hold harmless ABS, its directors, employees, contractors, affiliates, agents, and service providers from and against claims, losses, damages, liabilities, penalties, costs, and expenses arising from:
 
@@ -459,12 +439,12 @@ You agree to indemnify and hold harmless ABS, its directors, employees, contract
 2. Your misuse of ABS;
 3. Your Customer Data;
 4. Your violation of law or third-party rights;
-5. Your messages, automations, or communications;
+5. Your messages, notifications, or communications;
 6. Your payment, payroll, tax, accounting, or employment activities;
 7. Your use of Third-Party Services;
 8. Unauthorised activity caused by your Users, credentials, settings, or integrations.
 
-## 31. Changes to Terms
+## 30. Changes to Terms
 
 ABS may update these Terms from time to time. We may notify Customers through the platform, email, website notice, invoice notice, or other reasonable means.
 
@@ -472,7 +452,7 @@ Updated Terms will take effect on the effective date stated in the updated versi
 
 If a change materially affects your rights or obligations, we will use reasonable efforts to provide advance notice where practical.
 
-## 32. Changes to Pricing and Plans
+## 31. Changes to Pricing and Plans
 
 ABS may update pricing, plan names, limits, included features, Cloud Infrastructure Plan fees, storage fees, support terms, and usage limits from time to time.
 
@@ -480,29 +460,29 @@ Pricing changes will not retroactively change a fully paid one-time Enterprise L
 
 Where possible, ABS will provide reasonable notice before renewal price changes take effect.
 
-## 33. Assignment
+## 32. Assignment
 
 You may not assign or transfer your rights or obligations under these Terms without ABS’s prior written consent.
 
 ABS may assign or transfer these Terms in connection with a merger, acquisition, restructuring, sale of assets, financing, change of control, or transfer of business operations.
 
-## 34. Force Majeure
+## 33. Force Majeure
 
 ABS will not be responsible for delay or failure to perform due to events beyond its reasonable control, including natural disasters, internet failures, power outages, labour disputes, government action, war, civil unrest, cyberattacks, provider outages, payment network failures, telecommunications failures, or other force majeure events.
 
-## 35. Governing Law and Dispute Resolution
+## 34. Governing Law and Dispute Resolution
 
 These Terms are governed by the laws of the Republic of Ghana.
 
 The parties will first attempt to resolve disputes through good-faith discussions. If a dispute cannot be resolved informally, it may be submitted to the competent courts of Ghana, unless the parties agree in writing to mediation or arbitration.
 
-## 36. Notices
+## 35. Notices
 
 ABS may send notices by email, in-app notification, dashboard alert, invoice message, website notice, WhatsApp message, or other contact details associated with the Customer’s account.
 
 Customers are responsible for keeping contact details accurate and up to date.
 
-## 37. Contact Information
+## 36. Contact Information
 
 For questions about these Terms, please contact:
 

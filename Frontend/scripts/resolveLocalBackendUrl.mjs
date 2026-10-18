@@ -90,21 +90,6 @@ const isLocalHostname = (hostname) =>
 
 const PRODUCTION_API_HOSTS = new Set(['api.africanbusinesssuite.com']);
 
-/** Long POSTs that must not trigger a proxy port flap. */
-export const LONG_WATCH_PROXY_PATHS = [
-  '/api/watch/clips/process',
-  '/api/watch/demo-clip',
-];
-
-/**
- * @param {string} [url]
- * @returns {boolean}
- */
-export function isLongWatchProxyPath(url) {
-  const path = String(url || '').split('?')[0];
-  return path.includes('/watch/clips/process') || path.includes('/watch/demo-clip');
-}
-
 /**
  * @param {Error|{ code?: string, message?: string }} [err]
  * @returns {boolean}
@@ -121,15 +106,13 @@ export function isTransientProxyError(err) {
 }
 
 /**
- * Hang-up on Watch detect must not retarget 5001↔5002. Only ECONNREFUSED / dead backend should.
+ * A hang-up must not retarget 5001↔5002. Only ECONNREFUSED / dead backend should.
  *
- * @param {{ err?: Error, reqUrl?: string }} args
+ * @param {{ err?: Error }} args
  * @returns {boolean}
  */
-export function shouldRetargetAfterProxyError({ err, reqUrl } = {}) {
-  if (isLongWatchProxyPath(reqUrl)) return false;
-  if (isTransientProxyError(err)) return false;
-  return true;
+export function shouldRetargetAfterProxyError({ err } = {}) {
+  return !isTransientProxyError(err);
 }
 
 /**

@@ -6,6 +6,7 @@ const {
   getTenantDefaultHiddenSidebarKeys,
 } = require('../services/sidebarPreferenceHelper');
 const { JOB_INVOICE_DEFAULTS } = require('../services/jobCustomerTrackingService');
+const { isAutoSendReceiptPreferenceOn } = require('../services/receiptDeliveryService');
 const {
   DEFAULT_RENTAL_SETTINGS,
   normalizeRentalSettings,
@@ -17,7 +18,7 @@ const {
 
 const CUSTOMER_NOTIFICATION_DEFAULTS = {
   autoSendInvoiceToCustomer: true,
-  autoSendReceiptToCustomer: false,
+  autoSendReceiptToCustomer: true,
   sendPaymentReminderEmail: false,
   sendInvoicePaidConfirmationToCustomer: true,
   acceptOnlinePayments: false,
@@ -88,7 +89,7 @@ const buildJobInvoicePayload = (value = {}) => ({
 
 const buildCustomerNotificationPayload = (value = {}) => ({
   autoSendInvoiceToCustomer: value.autoSendInvoiceToCustomer !== false,
-  autoSendReceiptToCustomer: value.autoSendReceiptToCustomer === true,
+  autoSendReceiptToCustomer: isAutoSendReceiptPreferenceOn(value),
   sendPaymentReminderEmail: value.sendPaymentReminderEmail === true,
   sendInvoicePaidConfirmationToCustomer: value.sendInvoicePaidConfirmationToCustomer !== false,
   acceptOnlinePayments: value.acceptOnlinePayments === true,

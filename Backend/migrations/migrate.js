@@ -50,7 +50,6 @@ const addMetadataToUserTasks = require('./add-metadata-to-user-tasks');
 const addStartDateToUserTasks = require('./add-startDate-to-user-tasks');
 const addShopIdToUserTasks = require('./add-shop-id-to-user-tasks');
 const createTenantAccessAudits = require('./create-tenant-access-audits');
-const createAutomationsTables = require('./create-automations-tables');
 const backfillTenantBusinessClassificationDefaults = require('./backfill-tenant-business-classification-defaults');
 const addDeliveryStatusToJobsAndSales = require('./add-delivery-status-to-jobs-and-sales');
 const addDeliveryRequiredToJobs = require('./add-delivery-required-to-jobs');
@@ -114,16 +113,12 @@ const makeDealersTenantWide = require('./make-dealers-tenant-wide');
 const createTenantPlatformSmsUsage = require('./create-tenant-platform-sms-usage');
 const addPlatformSmsSettings = require('./add-platform-sms-settings');
 const createAbsCredits = require('./create-abs-credits');
-const addBranchFieldsToAutomationRules = require('./add-branch-fields-to-automation-rules');
 const addCustomDomainToOnlineStoreSettings = require('./add-custom-domain-to-online-store-settings');
 const addSoftDeleteFieldsToSales = require('./add-soft-delete-fields-to-sales');
 const addReceiptSentToSaleActivitiesType = require('./add-receipt-sent-to-sale-activities-type');
 const createSalesAgentTables = require('./create-sales-agent-tables');
 const addMetadataToCustomers = require('./add-metadata-to-customers');
 const createRentalModule = require('./create-rental-module');
-const createWatchModule = require('./create-watch-module');
-const addStreamUrlToVisionCameras = require('./add-stream-url-to-vision-cameras');
-const createWatchDevices = require('./create-watch-devices');
 const addRentalBusinessType = require('./add-rental-business-type');
 
 const migrate = async () => {
@@ -290,20 +285,10 @@ const migrate = async () => {
     const addSupportPermissions = require('./add-support-permissions');
     await addSupportPermissions();
 
-    const addAutomationsPermission = require('./add-automations-permission-to-platform-admin');
-    await addAutomationsPermission();
-
-    // Automations V1 tables
-    await createAutomationsTables.up({ closeConnection: false });
-
-    // Delayed event-driven automation runs (Send after / delayMinutes)
-    const createAutomationDelayedRuns = require('./create-automation-delayed-runs');
-    await createAutomationDelayedRuns.up({ closeConnection: false });
-
     // Customer communication consent and WhatsApp webhook/send event history
     await addCommunicationConsentAndWhatsAppEvents.up({ closeConnection: false });
 
-    // Customer date of birth for birthday automations
+    // Customer date of birth (kept for Lynk birthday messages)
     await addCustomerDateOfBirth.up({ closeConnection: false });
 
     // Persisted marketing campaigns and broadcast history
@@ -423,9 +408,6 @@ const migrate = async () => {
     await addPlatformSmsSettings.up({ closeConnection: false });
     await createAbsCredits.up({ closeConnection: false });
 
-    // Branch-specific automations: null shopId/studioLocationId = applies to all branches
-    await addBranchFieldsToAutomationRules();
-
     // "Online Store" custom domain product (customer-owned domain -> single-store template)
     await addCustomDomainToOnlineStoreSettings();
 
@@ -506,12 +488,6 @@ const migrate = async () => {
     // + expenses.damageReportId FK
     await createRentalModule();
 
-    // ABS Watch: cameras, physical-activity events, sale reconciliation incidents
-    await createWatchModule();
-    await addStreamUrlToVisionCameras.up();
-    // ABS Watch agents (device keys) + strip camera logins from saved stream URLs
-    await createWatchDevices.up();
-
     // Lead broadcast: leads.doNotContact + marketing_campaigns.audienceType
     const addLeadsMarketingBroadcast = require('./add-leads-marketing-broadcast');
     await addLeadsMarketingBroadcast({ closeConnection: false });
@@ -528,6 +504,10 @@ const migrate = async () => {
     // maintain on every invoice write)
     const fixDuplicateInvoicePaymentTokenIndexes = require('./fix-duplicate-invoice-payment-token-indexes');
     await fixDuplicateInvoicePaymentTokenIndexes({ closeConnection: false });
+
+    // AI, advanced automations and ABS Watch moved to Lynk: drop their tables and stored settings
+    const dropAiAutomationsAndWatch = require('./drop-ai-automations-and-watch');
+    await dropAiAutomationsAndWatch({ closeConnection: false });
 
     console.log('\n✅ Database migration completed successfully!');
     console.log('📊 Incremental schema updates applied.');

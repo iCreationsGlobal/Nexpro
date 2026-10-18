@@ -70,8 +70,6 @@ const inviteRoutes = require('./routes/inviteRoutes');
 const tenantRoutes = require('./routes/tenantRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const assistantRoutes = require('./routes/assistantRoutes');
-const analysisRoutes = require('./routes/analysisRoutes');
-const automationRoutes = require('./routes/automationRoutes');
 const materialsRoutes = require('./routes/materialsRoutes');
 const equipmentRoutes = require('./routes/equipmentRoutes');
 const leadRoutes = require('./routes/leadRoutes');
@@ -108,7 +106,6 @@ const stockCountRoutes = require('./routes/stockCountRoutes');
 const mobileMoneyRoutes = require('./routes/mobileMoneyRoutes');
 // Variance Detection Routes
 const varianceRoutes = require('./routes/varianceRoutes');
-const watchRoutes = require('./routes/watchRoutes');
 const userWorkspaceRoutes = require('./routes/userWorkspaceRoutes');
 const swaggerUi = require('swagger-ui-express');
 const openapiSpecification = require('./docs/openapi');
@@ -263,8 +260,6 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/invites', inviteRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/assistant', assistantRoutes);
-app.use('/api/analysis', analysisRoutes);
-app.use('/api/automations', automationRoutes);
 app.use('/api/materials', materialsRoutes);
 app.use('/api/inventory', materialsRoutes); // backward compat; remove after frontend/mobile use /api/materials
 app.use('/api/equipment', equipmentRoutes);
@@ -307,9 +302,6 @@ app.use('/api/stock-counts', stockCountRoutes);
 app.use('/api/mobile-money', mobileMoneyRoutes);
 // Variance Detection Routes
 app.use('/api/variance', varianceRoutes);
-app.use('/api/watch', watchRoutes);
-// ABS Watch agents (shop PC / Watch Box): device-key auth, not user sessions
-app.use('/api/watch-agent', require('./routes/watchAgentRoutes'));
 app.use('/api/user-workspace', userWorkspaceRoutes);
 app.use('/api/integrations/google-calendar', require('./routes/calendarRoutes'));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpecification));
@@ -426,8 +418,6 @@ if (!IS_VERCEL_SERVERLESS) {
     }
     if (config.nodeEnv === 'development') {
       console.log(`[Server] Running in ${config.nodeEnv} mode on port ${port}`);
-      const openaiKey = process.env.OPENAI_API_KEY?.trim();
-      console.log(`[Server] OpenAI: ${openaiKey ? 'configured' : 'not set (AI features disabled)'}`);
       const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
       console.log(
         `[Server] Google OAuth (GOOGLE_CLIENT_ID): ${googleClientId ? `${googleClientId.substring(0, 20)}...` : 'not set (Google sign-in button hidden)'}`
@@ -477,21 +467,12 @@ if (!IS_VERCEL_SERVERLESS) {
       console.error('[Server] Failed to start rental notification service:', error);
     }
     try {
-      require('./services/autoTaskSchedulerService').start();
       require('./services/googleCalendarService').start();
       if (config.nodeEnv === 'development') {
-        console.log('[Server] ✅ Auto task scheduler service started');
+        console.log('[Server] ✅ Google Calendar sync service started');
       }
     } catch (error) {
-      console.error('[Server] Failed to start auto task scheduler service:', error);
-    }
-    try {
-      require('./services/automationSchedulerService').start();
-      if (config.nodeEnv === 'development') {
-        console.log('[Server] ✅ Automation scheduler service started');
-      }
-    } catch (error) {
-      console.error('[Server] Failed to start automation scheduler service:', error);
+      console.error('[Server] Failed to start Google Calendar sync service:', error);
     }
     try {
       require('./services/marketingCampaignSchedulerService').start();
@@ -554,7 +535,7 @@ if (!IS_VERCEL_SERVERLESS) {
         };
         server.once('error', onError);
         server.once('listening', onListening);
-        // Incoming sockets: no idle timeout. requestTimeout covers the full Watch YOLO POST.
+        // Incoming sockets: no idle timeout; long requestTimeout for slow uploads and exports.
         server.timeout = 0;
         server.requestTimeout = 6 * 60 * 1000;
         server.headersTimeout = 6 * 60 * 1000 + 10 * 1000;

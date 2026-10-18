@@ -30,7 +30,6 @@ const {
   getFastestMovingItems,
   getRevenueByChannel,
   getVatReport,
-  generateAIAnalysis,
   getOverviewPhase1,
   getOverviewPhase2,
   getOverviewExtendedKpis
@@ -40,7 +39,6 @@ const { tenantContext } = require('../middleware/tenant');
 const { shopContext } = require('../middleware/shopContext');
 const { studioLocationContext } = require('../middleware/studioLocationContext');
 const { cacheMiddleware, generateReportCacheKey } = require('../middleware/cache');
-const { exportLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
@@ -93,8 +91,6 @@ router.get('/rental/late-returns', requireFeature('rentals'), reportCache, getRe
 router.get('/rental/utilization', requireFeature('rentals'), reportCache, getUtilizationReport);
 router.get('/rental/damage-trends', requireFeature('rentals'), reportCache, getDamageTrendsReport);
 router.get('/rental/smart-report', requireFeature('rentals'), reportCache, getRentalSmartReport);
-
-router.post('/ai-analysis', exportLimiter, generateAIAnalysis); // Rate-limited; no cache for POST
 
 module.exports = router;
 

@@ -172,7 +172,7 @@ export const PLANS = [
       'Everything in Starter',
       'Up to 3 users',
       'Up to 3 branches/locations/shops',
-      'Advanced reporting & automation',
+      'Advanced reporting',
       'Inventory controls & vendor price lists',
       'Priority support with SLA'
     ],
@@ -180,7 +180,7 @@ export const PLANS = [
       'Up to 3 users',
       'Up to 3 branches/locations/shops',
       'Inventory controls & vendor price lists',
-      'Automated reminders & notifications',
+      'Payment reminders & customer notifications',
       'Priority support'
     ],
     popular: true,
@@ -368,7 +368,7 @@ export const KEY_FEATURES = [
   },
   {
     name: 'Reports & analytics',
-    description: 'Reports and AI-powered insights on revenue, expenses, and performance.',
+    description: 'Clear reports on revenue, expenses, profit, and performance.',
     icon: 'BarChart3'
   },
   {

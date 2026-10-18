@@ -204,7 +204,7 @@ Must include (see `Backend/env.example` + configure scripts):
 | `ONLINE_STORE_URL` | `https://store.absghana.com` |
 | `STOREFRONT_CNAME_TARGET` | `store.absghana.com` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Web client; authorized origins = all prod hosts |
-| Paystack live keys, WhatsApp, OpenAI, platform email encryption key, Sabito keys | as today on Vercel `shopwise_backend` — copy once, do not dual-write |
+| Paystack live keys, WhatsApp, platform email encryption key, Sabito keys | as today on Vercel `shopwise_backend` — copy once, do not dual-write |
 
 Schedulers (`SABITO_SYNC_*`, marketplace payouts, reminders) **will run** on Contabo Node. They do **not** run on Vercel serverless (`DEPLOYMENT.md` §7). Confirm you want them on for prod (you do).
 

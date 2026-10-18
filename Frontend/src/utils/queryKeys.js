@@ -59,7 +59,6 @@ export const queryKeys = {
     all: ['dashboard'],
     summary: (tenantId, shopId, studioLocationId, params = {}) => ['dashboard', tenantId, shopId, studioLocationId, params],
     overview: (tenantId, shopId, studioLocationId, params = {}) => ['dashboard', 'overview', tenantId, shopId, studioLocationId, params],
-    aiInsight: (tenantId, shopId, studioLocationId, params = {}) => ['dashboard', 'ai-insight', tenantId, shopId, studioLocationId, params],
   },
   orders: {
     all: ['orders'],

@@ -1,3 +1,0 @@
-# Optional. The event engine runs from detections JSON with no extra packages.
-# ultralytics>=8.3.0
-# yt-dlp>=2024.8.0

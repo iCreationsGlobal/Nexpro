@@ -83,11 +83,7 @@ pnpm-lock.yaml
 
 .vercel
 
-# Local Watch test clips (YouTube downloads and phone recordings)
-vision-edge/videos/**
-!vision-edge/videos/.gitkeep
-
-# Local YOLO weights (downloaded on first --yolo / --youtube run)
+# Model weights (never commit)
 *.pt
 
 # Env files and backups of them — only examples are committed

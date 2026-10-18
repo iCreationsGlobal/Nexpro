@@ -70,10 +70,6 @@ const DrugInteraction = require('./DrugInteraction');
 const ExpiryAlert = require('./ExpiryAlert');
 // Retail Intelligence Models
 const FootTraffic = require('./FootTraffic');
-const VisionCamera = require('./VisionCamera');
-const WatchDevice = require('./WatchDevice');
-const VisionEvent = require('./VisionEvent');
-const VisionIncident = require('./VisionIncident');
 const StockCount = require('./StockCount');
 const StockCountItem = require('./StockCountItem');
 const StockTransfer = require('./StockTransfer');
@@ -90,9 +86,6 @@ const UserChecklistItem = require('./UserChecklistItem');
 const TenantAccessAudit = require('./TenantAccessAudit');
 const SupportTicket = require('./SupportTicket');
 const SupportAccessSession = require('./SupportAccessSession');
-const AutomationRule = require('./AutomationRule');
-const AutomationRun = require('./AutomationRun');
-const AutomationDelayedRun = require('./AutomationDelayedRun');
 const WhatsAppMessageEvent = require('./WhatsAppMessageEvent');
 const MarketingCampaign = require('./MarketingCampaign');
 const MarketingCampaignRecipient = require('./MarketingCampaignRecipient');
@@ -880,29 +873,6 @@ Shop.hasMany(FootTraffic, { foreignKey: 'shopId', as: 'footTraffic' });
 FootTraffic.belongsTo(User, { foreignKey: 'recordedBy', as: 'recorder' });
 User.hasMany(FootTraffic, { foreignKey: 'recordedBy', as: 'recordedTraffic' });
 
-Tenant.hasMany(VisionCamera, { foreignKey: 'tenantId', as: 'visionCameras' });
-VisionCamera.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
-VisionCamera.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
-Shop.hasMany(VisionCamera, { foreignKey: 'shopId', as: 'visionCameras' });
-
-Tenant.hasMany(VisionEvent, { foreignKey: 'tenantId', as: 'visionEvents' });
-VisionEvent.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
-VisionEvent.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
-VisionEvent.belongsTo(VisionCamera, { foreignKey: 'cameraId', as: 'camera' });
-VisionCamera.hasMany(VisionEvent, { foreignKey: 'cameraId', as: 'events' });
-Tenant.hasMany(WatchDevice, { foreignKey: 'tenantId', as: 'watchDevices' });
-WatchDevice.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
-WatchDevice.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
-
-Tenant.hasMany(VisionIncident, { foreignKey: 'tenantId', as: 'visionIncidents' });
-VisionIncident.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
-VisionIncident.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
-VisionIncident.belongsTo(VisionEvent, { foreignKey: 'eventId', as: 'event' });
-VisionEvent.hasMany(VisionIncident, { foreignKey: 'eventId', as: 'incidents' });
-VisionIncident.belongsTo(Sale, { foreignKey: 'saleId', as: 'sale' });
-Sale.hasMany(VisionIncident, { foreignKey: 'saleId', as: 'watchIncidents' });
-VisionIncident.belongsTo(User, { foreignKey: 'reviewedBy', as: 'reviewer' });
-
 // Stock transfer relationships
 Tenant.hasMany(StockTransfer, { foreignKey: 'tenantId', as: 'stockTransfers' });
 StockTransfer.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
@@ -941,20 +911,6 @@ SupportAccessSession.belongsTo(User, { foreignKey: 'adminUserId', as: 'adminUser
 SupportAccessSession.belongsTo(SupportTicket, { foreignKey: 'supportTicketId', as: 'supportTicket' });
 SupportTicket.hasMany(SupportAccessSession, { foreignKey: 'supportTicketId', as: 'supportSessions' });
 
-Tenant.hasMany(AutomationRule, { foreignKey: 'tenantId', as: 'automationRules' });
-AutomationRule.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
-AutomationRule.hasMany(AutomationRun, { foreignKey: 'ruleId', as: 'runs' });
-AutomationRun.belongsTo(AutomationRule, { foreignKey: 'ruleId', as: 'rule' });
-Tenant.hasMany(AutomationRun, { foreignKey: 'tenantId', as: 'automationRuns' });
-AutomationRun.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
-AutomationRule.hasMany(AutomationDelayedRun, { foreignKey: 'ruleId', as: 'delayedRuns' });
-AutomationDelayedRun.belongsTo(AutomationRule, { foreignKey: 'ruleId', as: 'rule' });
-Shop.hasMany(AutomationRule, { foreignKey: 'shopId', as: 'automationRules' });
-AutomationRule.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
-StudioLocation.hasMany(AutomationRule, { foreignKey: 'studioLocationId', as: 'automationRules' });
-AutomationRule.belongsTo(StudioLocation, { foreignKey: 'studioLocationId', as: 'studioLocation' });
-Tenant.hasMany(AutomationDelayedRun, { foreignKey: 'tenantId', as: 'automationDelayedRuns' });
-AutomationDelayedRun.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
 Tenant.hasMany(WhatsAppMessageEvent, { foreignKey: 'tenantId', as: 'whatsAppMessageEvents' });
 WhatsAppMessageEvent.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
 Tenant.hasMany(MarketingCampaign, { foreignKey: 'tenantId', as: 'marketingCampaigns' });
@@ -1176,10 +1132,6 @@ module.exports = {
   ExpiryAlert,
   // Retail Intelligence
   FootTraffic,
-  VisionCamera,
-  WatchDevice,
-  VisionEvent,
-  VisionIncident,
   StockCount,
   StockCountItem,
   StockTransfer,
@@ -1196,9 +1148,6 @@ module.exports = {
   TenantAccessAudit,
   SupportTicket,
   SupportAccessSession,
-  AutomationRule,
-  AutomationRun,
-  AutomationDelayedRun,
   WhatsAppMessageEvent,
   MarketingCampaign,
   MarketingCampaignRecipient,

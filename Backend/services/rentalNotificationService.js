@@ -15,7 +15,10 @@ const {
 } = require('../models');
 const emailService = require('./emailService');
 const emailTemplates = require('./emailTemplates');
+const smsService = require('./smsService');
+const { isChannelEnabledForEvent } = require('./messageDeliveryRulesService');
 const { getTenantLogoUrl } = require('../utils/tenantLogo');
+const { formatCedi } = require('../utils/formatNumber');
 const { getFrontendBaseUrlFromEnv } = require('../utils/frontendUrl');
 const {
   getPreferencesForUsers,
@@ -36,6 +39,13 @@ const NOTIFICATION_TYPES = {
   DAMAGE_PENDING: 'rental_damage_pending',
   PRE_BOOKING_REQUEST: 'rental_pre_booking_request',
   PAYMENT_PROMISED: 'rental_payment_promised',
+};
+
+/** Customer lifecycle messages → message delivery rule event keys. */
+const RENTAL_LIFECYCLE_EVENT_KEYS = {
+  created: 'rental_created',
+  checked_out: 'rental_checked_out',
+  returned: 'rental_returned',
 };
 
 const ACTIVE_RENTAL_STATUSES = ['confirmed', 'active', 'overdue'];
@@ -248,16 +258,8 @@ const sendCustomerRentalReminder = async ({
     return { sent: false, skipped: true, reason: 'duplicate' };
   }
 
-  try {
-    const { shouldUseAutomationInsteadOfBuiltIn } = require('./customerNotificationBridgeService');
-    const templateKey = reminderType === 'overdue'
-      ? 'rental_overdue_reminder'
-      : 'rental_due_reminder';
-    if (await shouldUseAutomationInsteadOfBuiltIn(rental.tenantId, templateKey)) {
-      return { sent: false, skipped: true, reason: 'automation_rule' };
-    }
-  } catch (_bridgeError) {
-    // Keep built-in reminder if the automation bridge is unavailable.
+  if (!(await isChannelEnabledForEvent(rental.tenantId, 'rental_due', 'email'))) {
+    return { sent: false, skipped: true, reason: 'channel_disabled' };
   }
 
   const customer = rental.customer;
@@ -303,6 +305,107 @@ const sendCustomerRentalReminder = async ({
   });
 
   return { sent: true, skipped: false };
+};
+
+const formatShortDate = (value) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const buildRentalLifecycleSms = (event, { customerName, businessName, startDate, endDate, total, balance, invoiceNumber }) => {
+  const invoicePart = invoiceNumber ? ` Invoice ${invoiceNumber}.` : '';
+  switch (event) {
+    case 'checked_out':
+      return `Hi ${customerName}, your rental items are out. Due back ${endDate}. — ${businessName}`;
+    case 'returned':
+      return `Hi ${customerName}, we recorded your return. Balance ${balance}.${invoicePart} — ${businessName}`;
+    default:
+      return `Hi ${customerName}, your rental is booked from ${startDate} to ${endDate}. Total ${total}.${invoicePart} — ${businessName}`;
+  }
+};
+
+/**
+ * Customer confirmation, handover and return messages, sent once per rental and event.
+ * Uses the rental_created / rental_checked_out / rental_returned delivery rules. SMS and
+ * email only: WhatsApp needs an approved template, which these messages don't have.
+ * @param {{ rental: object, invoice?: object|null, event: 'created'|'checked_out'|'returned' }} params
+ * @returns {Promise<{ sent: boolean, skipped: boolean, reason?: string, channels?: string[] }>}
+ */
+const sendRentalLifecycleMessage = async ({ rental, invoice = null, event }) => {
+  const eventKey = RENTAL_LIFECYCLE_EVENT_KEYS[event];
+  if (!eventKey || !rental?.id || !rental?.tenantId) {
+    return { sent: false, skipped: true, reason: 'invalid_payload' };
+  }
+  const dedupeKey = `${eventKey}:${rental.id}`;
+  if (wasCustomerNotificationSent(rental, dedupeKey)) {
+    return { sent: false, skipped: true, reason: 'duplicate' };
+  }
+  const customer = rental.customer;
+  if (!customer) {
+    return { sent: false, skipped: true, reason: 'no_customer' };
+  }
+
+  const tenantId = rental.tenantId;
+  const [smsAllowed, emailAllowed] = await Promise.all([
+    isChannelEnabledForEvent(tenantId, eventKey, 'sms'),
+    isChannelEnabledForEvent(tenantId, eventKey, 'email'),
+  ]);
+  const smsPhone = smsAllowed && customer.smsConsent !== false
+    ? smsService.validatePhoneNumber(customer.phone)
+    : null;
+  const customerEmail = emailAllowed ? String(customer.email || '').trim() : '';
+  if (!smsPhone && !customerEmail) {
+    return { sent: false, skipped: true, reason: 'no_channel' };
+  }
+
+  const invoiceId = invoice?.id || rental.metadata?.invoiceId || null;
+  const latestInvoice = invoiceId
+    ? await Invoice.findByPk(invoiceId, { attributes: ['id', 'invoiceNumber', 'balance'] })
+    : null;
+  const invoiceNumber = latestInvoice?.invoiceNumber || invoice?.invoiceNumber || null;
+  const balance = latestInvoice
+    ? Number(latestInvoice.balance || 0)
+    : Math.max(0, Number(rental.totalDue || 0) - Number(rental.amountPaid || 0));
+  const company = await getCompanyBranding(tenantId);
+  const channels = [];
+
+  if (smsPhone && await smsService.getResolvedConfig(tenantId)) {
+    const message = buildRentalLifecycleSms(event, {
+      customerName: customer.name || customer.company || 'Customer',
+      businessName: company.name,
+      startDate: formatShortDate(rental.startDate),
+      endDate: formatShortDate(rental.endDate),
+      total: formatCedi(rental.totalDue ?? rental.amount),
+      balance: formatCedi(balance),
+      invoiceNumber,
+    });
+    const smsResult = await smsService.sendMessage(tenantId, smsPhone, message);
+    if (smsResult?.success) channels.push('sms');
+    else console.error(`${LOG_PREFIX} ${eventKey} SMS failed for rental ${rental.id}:`, smsResult?.error);
+  }
+
+  if (customerEmail && await emailService.getConfig(tenantId)) {
+    const { subject, html, text } = emailTemplates.rentalLifecycleNotification(
+      event,
+      rental,
+      customer,
+      rental.items || [],
+      company,
+      { invoiceNumber, balance }
+    );
+    const emailResult = await emailService.sendMessage(tenantId, customerEmail, subject, html, text);
+    if (emailResult?.success) channels.push('email');
+    else console.error(`${LOG_PREFIX} ${eventKey} email failed for rental ${rental.id}:`, emailResult?.error);
+  }
+
+  if (channels.length === 0) {
+    return { sent: false, skipped: true, reason: 'send_failed' };
+  }
+
+  await appendCustomerNotificationLog(rental, { key: dedupeKey, type: eventKey, channels });
+  return { sent: true, skipped: false, channels };
 };
 
 /**
@@ -636,4 +739,5 @@ module.exports.notifyDamageReportCreated = notifyDamageReportCreated;
 module.exports.notifyPreBookingCreated = notifyPreBookingCreated;
 module.exports.processScheduledReminders = processScheduledReminders;
 module.exports.sendCustomerRentalReminder = sendCustomerRentalReminder;
+module.exports.sendRentalLifecycleMessage = sendRentalLifecycleMessage;
 module.exports.notifyManagers = notifyManagers;

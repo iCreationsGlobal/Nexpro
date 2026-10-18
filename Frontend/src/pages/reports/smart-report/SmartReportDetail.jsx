@@ -10,31 +10,15 @@ import SmartReportSalesTab from './SmartReportSalesTab';
 import SmartReportExpensesTab from './SmartReportExpensesTab';
 import SmartReportCashFlowTab from './SmartReportCashFlowTab';
 import SmartReportInventoryTab from './SmartReportInventoryTab';
-import SmartReportRecommendationsTab from './SmartReportRecommendationsTab';
-import SmartReportGenericTab from './SmartReportGenericTab';
 import SmartReportRentalsTab from './SmartReportRentalsTab';
 import SmartReportRentalOverviewTab from './SmartReportRentalOverviewTab';
 import SmartReportRentalInventoryTab from './SmartReportRentalInventoryTab';
 import SmartReportRentalHistoryTab from './SmartReportRentalHistoryTab';
 import { resolveSmartReportTabs } from './smartReportTypeUtils';
-import { SMART_REPORT_GENERATION_MODES } from './smartReportConstants';
-import {
-  formatSmartReportPeriodLabel,
-  getSmartReportSnapshot,
-  getTabAiSummary,
-  getTabFooterLink,
-} from './smartReportUtils';
+import { formatSmartReportPeriodLabel, getSmartReportSnapshot } from './smartReportUtils';
 
-/**
- * Prefer AI Insights for free-text reports when that tab exists; otherwise first tab.
- * @param {Array<{ id: string }>} tabs
- * @param {Object} report
- */
-function getInitialSmartReportTab(tabs, report) {
-  const preferAi =
-    report?.generationMode === SMART_REPORT_GENERATION_MODES.FREE_TEXT
-    && tabs.some((tab) => tab.id === 'ai-insights');
-  if (preferAi) return 'ai-insights';
+/** First visible tab, falling back to Executive Summary. */
+function getInitialSmartReportTab(tabs) {
   return tabs[0]?.id || 'executive';
 }
 
@@ -54,7 +38,7 @@ export default function SmartReportDetail({
     [report, isShop, isPharmacy, isStudio, isRental]
   );
 
-  const [activeTab, setActiveTab] = useState(() => getInitialSmartReportTab(visibleTabs, report));
+  const [activeTab, setActiveTab] = useState(() => getInitialSmartReportTab(visibleTabs));
   const [feedback, setFeedback] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const contentRef = useRef(null);
@@ -62,27 +46,20 @@ export default function SmartReportDetail({
 
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.id === activeTab)) {
-      setActiveTab(getInitialSmartReportTab(visibleTabs, report));
+      setActiveTab(getInitialSmartReportTab(visibleTabs));
     }
-  }, [visibleTabs, activeTab, report]);
+  }, [visibleTabs, activeTab]);
 
   useEffect(() => {
     const reportId = report?.id;
     if (reportId && reportId !== initializedReportIdRef.current) {
       initializedReportIdRef.current = reportId;
-      setActiveTab(getInitialSmartReportTab(visibleTabs, report));
+      setActiveTab(getInitialSmartReportTab(visibleTabs));
     }
   }, [report, visibleTabs]);
 
   const snapshot = useMemo(() => getSmartReportSnapshot(report), [report]);
   const periodLabel = useMemo(() => formatSmartReportPeriodLabel(report), [report]);
-  const footerSummary = useMemo(() => getTabAiSummary(activeTab, snapshot), [activeTab, snapshot]);
-  const footerLink = useMemo(() => {
-    const link = getTabFooterLink(activeTab);
-    if (!link?.tabId) return link;
-    if (visibleTabs.some((tab) => tab.id === link.tabId)) return link;
-    return null;
-  }, [activeTab, visibleTabs]);
 
   const handleShare = useCallback(async () => {
     const text = `${report?.title || 'Smart Report'} — ${periodLabel}`;
@@ -151,10 +128,6 @@ export default function SmartReportDetail({
       case 'rental-late-returns':
       case 'rental-damage':
         return <SmartReportRentalsTab {...props} tabId={activeTab} />;
-      case 'recommendations':
-        return <SmartReportRecommendationsTab {...props} />;
-      case 'ai-insights':
-        return <SmartReportGenericTab {...props} />;
       default:
         return <SmartReportExecutiveTab {...props} />;
     }
@@ -176,13 +149,7 @@ export default function SmartReportDetail({
         <div className="py-6">{renderTab()}</div>
       </div>
 
-      <SmartReportFooter
-        summary={footerSummary}
-        feedback={feedback}
-        onFeedback={setFeedback}
-        seeMoreLabel={footerLink?.label}
-        onSeeMore={footerLink?.tabId ? () => setActiveTab(footerLink.tabId) : undefined}
-      />
+      <SmartReportFooter feedback={feedback} onFeedback={setFeedback} />
     </div>
   );
 }

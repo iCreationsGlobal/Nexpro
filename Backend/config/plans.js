@@ -102,7 +102,7 @@ const plans = [
       'Everything in Starter',
       'Up to 3 users',
       'Up to 3 branches/locations/shops',
-      'Advanced reporting & automation',
+      'Advanced reporting & data exports',
       'Priority support with SLA'
     ],
     marketing: {
@@ -111,7 +111,7 @@ const plans = [
         'Up to 3 users',
         'Up to 3 branches/locations/shops',
         'Materials controls & vendor price lists',
-        'Automated reminders & notifications',
+        'Invoice reminders & customer receipts',
         'Priority support'
       ],
       featureFlags: getFeatureFlagsForPlan('professional'),

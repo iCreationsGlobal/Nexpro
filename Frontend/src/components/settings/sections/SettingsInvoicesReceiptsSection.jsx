@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -80,11 +81,12 @@ const SettingsInvoicesReceiptsSection = () => {
           <CardDescription className="text-xs md:text-sm">
             When to automatically notify customers via Email, WhatsApp, or SMS (using your configured channels).
             {' '}
-            <a href="/automations" className="text-[#166534] underline underline-offset-2">
-              Managed in Automations
-            </a>
+            Choose the channels for each message in
             {' '}
-            after migration.
+            <Link to="/settings/delivery-rules" className="text-[#166534] underline underline-offset-2">
+              Delivery rules
+            </Link>
+            .
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

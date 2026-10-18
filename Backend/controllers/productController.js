@@ -28,6 +28,7 @@ const {
   lowestVariantPriceAttribute,
   getEffectiveProductSellingPrice,
 } = require('../utils/productStockUtils');
+const { emitBusinessEvent } = require('../services/businessEvents');
 
 const PRODUCT_STAFF_SENSITIVE_FIELDS = [
   'costPrice',
@@ -1743,6 +1744,9 @@ exports.updateProduct = async (req, res, next) => {
 
     // Defer low stock alert so response is sent immediately
     if (reorderLevel > 0 && newQuantity <= reorderLevel && newQuantity < oldQuantity) {
+      emitBusinessEvent(req.tenantId, Number(newQuantity) <= 0 ? 'stock.out' : 'stock.low', {
+        productId: product.id,
+      });
       const productForAlert = product;
       const tenantIdForAlert = req.tenantId;
       setImmediate(() => {
@@ -1756,73 +1760,30 @@ exports.updateProduct = async (req, res, next) => {
             const config = await whatsappService.getConfig(tenantIdForAlert);
 
             if (config && tenant) {
-              const {
-                shouldUseAutomationInsteadOfBuiltIn,
-                TEMPLATE_KEYS,
-              } = require('../services/customerNotificationBridgeService');
-              const skipBuiltInWa = await shouldUseAutomationInsteadOfBuiltIn(
-                tenantIdForAlert,
-                TEMPLATE_KEYS.LOW_STOCK_ON_CHANGE
-              ) || await shouldUseAutomationInsteadOfBuiltIn(
-                tenantIdForAlert,
-                TEMPLATE_KEYS.OUT_OF_STOCK_ALERT
-              ) || await shouldUseAutomationInsteadOfBuiltIn(
-                tenantIdForAlert,
-                TEMPLATE_KEYS.LOW_STOCK_ALERT
-              );
+              const adminUsers = await UserTenant.findAll({
+                where: {
+                  tenantId: tenantIdForAlert,
+                  role: { [Op.in]: ['admin', 'manager', 'owner'] }
+                },
+                include: [{ model: require('../models').User, as: 'user', attributes: ['id', 'name', 'email'] }]
+              });
 
-              if (!skipBuiltInWa) {
-                const adminUsers = await UserTenant.findAll({
-                  where: {
-                    tenantId: tenantIdForAlert,
-                    role: { [Op.in]: ['admin', 'manager', 'owner'] }
-                  },
-                  include: [{ model: require('../models').User, as: 'user', attributes: ['id', 'name', 'email'] }]
-                });
-
-                for (const adminUser of adminUsers) {
-                  if (adminUser.user && adminUser.user.phone) {
-                    const phoneNumber = whatsappService.validatePhoneNumber(adminUser.user.phone);
-                    if (phoneNumber) {
-                      const parameters = whatsappTemplates.prepareLowStockAlert(productForAlert);
-                      await whatsappService.sendMessage(
-                        tenantIdForAlert,
-                        phoneNumber,
-                        'low_stock_alert',
-                        parameters
-                      ).catch(error => {
-                        console.error('[Product] WhatsApp low stock alert failed:', error);
-                      });
-                    }
+              for (const adminUser of adminUsers) {
+                if (adminUser.user && adminUser.user.phone) {
+                  const phoneNumber = whatsappService.validatePhoneNumber(adminUser.user.phone);
+                  if (phoneNumber) {
+                    const parameters = whatsappTemplates.prepareLowStockAlert(productForAlert);
+                    await whatsappService.sendMessage(
+                      tenantIdForAlert,
+                      phoneNumber,
+                      'low_stock_alert',
+                      parameters
+                    ).catch(error => {
+                      console.error('[Product] WhatsApp low stock alert failed:', error);
+                    });
                   }
                 }
               }
-            }
-            try {
-              const taskAutomationService = require('../services/taskAutomationService');
-              await taskAutomationService.createLowStockTask({
-                item: {
-                  id: productForAlert.id,
-                  name: productForAlert.name,
-                  quantityOnHand: Number(newQuantity) || 0,
-                  reorderLevel: Number(reorderLevel) || 0
-                },
-                tenantId: tenantIdForAlert,
-                triggeredBy: req.user?.id || null
-              });
-            } catch (taskErr) {
-              console.error('[Product] Low stock task automation failed:', taskErr?.message);
-            }
-            try {
-              const { runStockChangeAutomations } = require('../services/automationEngineService');
-              await runStockChangeAutomations({
-                tenantId: tenantIdForAlert,
-                product: { ...productForAlert.toJSON?.() || productForAlert, quantityOnHand: Number(newQuantity) || 0, reorderLevel: Number(reorderLevel) || 0 },
-                stockEvent: 'auto',
-                actorUserId: req.user?.id || null,
-              });
-            } catch (automationErr) {
-              console.error('[Product] Stock change automations failed:', automationErr?.message);
             }
           } catch (error) {
             console.error('[Product] WhatsApp low stock alert error:', error);

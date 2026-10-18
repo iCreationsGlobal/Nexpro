@@ -16,7 +16,7 @@ describe('tenantEntitlements', () => {
 
   it('uses canonical professional flags when no db plan row exists', () => {
     const flags = buildBaseFeatureFlags('professional', null);
-    expect(flags.automations).toBe(true);
+    expect(flags.marketing).toBe(true);
     expect(flags.apiAccess).toBe(false);
     expect(flags.studioLocationsModule).toBe(true);
   });
@@ -32,7 +32,7 @@ describe('tenantEntitlements', () => {
     });
     expect(flags.crm).toBe(false);
     expect(flags.apiAccess).toBe(true);
-    expect(flags.automations).toBe(true);
+    expect(flags.marketing).toBe(true);
   });
 
   it('applies the admin Feature Table matrix to trial plans too, not just paid plans', () => {
@@ -40,12 +40,12 @@ describe('tenantEntitlements', () => {
       marketing: {
         featureFlags: {
           crm: false,
-          automations: false,
+          marketing: false,
         },
       },
     });
     expect(flags.crm).toBe(false);
-    expect(flags.automations).toBe(false);
+    expect(flags.marketing).toBe(false);
     // Canonical trial features the matrix didn't touch stay enabled.
     expect(flags.expenses).toBe(true);
   });
@@ -64,7 +64,7 @@ describe('tenantEntitlements', () => {
       name: 'Trial',
       marketing: {
         featureFlags: {
-          automations: true,
+          marketing: true,
           apiAccess: false,
         },
       },
@@ -80,7 +80,7 @@ describe('tenantEntitlements', () => {
       metadata: {
         entitlements: {
           featureOverrides: {
-            automations: false,
+            marketing: false,
             apiAccess: true,
           },
         },
@@ -89,17 +89,43 @@ describe('tenantEntitlements', () => {
 
     expect(entitlements.baseFeatureFlags).toEqual({
       ...getFeatureFlagsForPlan('trial'),
-      automations: true,
+      marketing: true,
       apiAccess: false,
     });
     expect(entitlements.featureOverrides).toEqual({
-      automations: false,
+      marketing: false,
       apiAccess: true,
     });
-    expect(entitlements.effectiveFeatureFlags.automations).toBe(false);
+    expect(entitlements.effectiveFeatureFlags.marketing).toBe(false);
     expect(entitlements.effectiveFeatureFlags.apiAccess).toBe(true);
-    expect(entitlements.enabledFeatures).not.toContain('automations');
+    expect(entitlements.enabledFeatures).not.toContain('marketing');
     expect(entitlements.enabledFeatures).toContain('apiAccess');
+  });
+
+  it('ignores stored flags and overrides for removed features (automations, watch)', async () => {
+    SubscriptionPlan.findOne.mockResolvedValue({
+      id: 'plan-pro',
+      planId: 'professional',
+      name: 'Professional',
+      marketing: { featureFlags: { automations: true, watch: true, crm: true } },
+    });
+
+    const entitlements = await getTenantEffectiveEntitlements({
+      id: 'tenant-legacy',
+      plan: 'professional',
+      businessType: 'shop',
+      metadata: {
+        entitlements: { featureOverrides: { automations: true, watch: true, apiAccess: true } },
+      },
+    });
+
+    for (const key of ['automations', 'watch']) {
+      expect(entitlements.baseFeatureFlags).not.toHaveProperty(key);
+      expect(entitlements.featureOverrides).not.toHaveProperty(key);
+      expect(entitlements.effectiveFeatureFlags).not.toHaveProperty(key);
+      expect(entitlements.enabledFeatures).not.toContain(key);
+    }
+    expect(entitlements.featureOverrides).toEqual({ apiAccess: true });
   });
 
   it('falls back to canonical self-service limits when no db plan row exists', async () => {

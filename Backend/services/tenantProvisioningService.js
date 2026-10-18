@@ -86,7 +86,6 @@ const buildRentalWorkspaceManifest = ({
       defaultShopId: defaultBranchId,
       rentalSettingsSeeded: true,
       categoriesSeeded: Boolean(provisioned.categoriesSeeded),
-      automationsSeeded: Boolean(provisioned.automationsSeeded),
       ...provisioned,
     },
   };

@@ -13,7 +13,7 @@ Use this document to **smoke-test and regression-test** African Business Suite a
 | **Web app URL** | Production URL, staging, or `http://localhost:5173` |
 | **API** | `VITE_API_URL` must point at the matching backend; CORS configured |
 | **Browser** | Chrome, Firefox, Safari, or Edge (latest) |
-| **Plans** | Use a plan that includes the modules you need (e.g. **Starter+** for orders, **Professional** for automations/shops where enabled). Trial may omit some features. |
+| **Plans** | Use a plan that includes the modules you need (e.g. **Starter+** for orders, **Professional** for shops where enabled). Trial may omit some features. |
 
 ### Accounts to prepare
 
@@ -70,7 +70,7 @@ Run these once per test tenant (any type).
 ### Data & Reports (manager+)
 
 - [ ] **Reports → Overview** loads; date filters work.
-- [ ] **Smart report / Compliance** (as applicable) load.
+- [ ] **Smart report / Compliance** (as applicable) load; Smart report shows the selected period's figures.
 - [ ] **Export data** — manager+ only; staff blocked.
 
 ### Settings (manager+)
@@ -112,7 +112,7 @@ Run these once per test tenant (any type).
 
 - [ ] **Shops** — only if multi-shop feature and UI flag allow; list/load.
 - [ ] **Marketing** — manager+; draft or send test campaign per your policy.
-- [ ] **Automations** — manager+; list rules (create only if you have test data).
+- [ ] **Built-in messages** (Settings → Delivery rules) — manager+; turn a message (e.g. sale receipt) on/off and change its SMS / WhatsApp / email switches; saves and persists after refresh.
 
 ### Public / customer (optional)
 

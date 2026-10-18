@@ -133,8 +133,6 @@ const storeService = {
     return imageUrls[0] || '';
   },
 
-  generateBanner: async (payload) => api.post('/store/banner/generate', payload),
-
   getServiceListings: async (params = {}) => {
     const query = buildQuery(params);
     return api.get(query ? `/store/service-listings?${query}` : '/store/service-listings');

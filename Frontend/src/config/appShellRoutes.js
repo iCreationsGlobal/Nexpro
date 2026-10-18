@@ -1,4 +1,3 @@
-import { IBIS_ASK_LABEL } from '@/constants/ibis';
 import { SETTINGS_HUB_CARDS } from '@/utils/settingsRoutes';
 import { isNavPathActive, navBasePath } from '@/config/appShellNav';
 
@@ -6,7 +5,7 @@ import { isNavPathActive, navBasePath } from '@/config/appShellNav';
  * Header and tab-bar behaviour per route in the phone/tablet app shell.
  *
  * - root: a destination on the tab bar or in the More sheet → app header (logo, workspace,
- *   iBIS, bell, avatar, page search).
+ *   bell, avatar, page search).
  * - inner: anything reached from a root (settings sections, editors, profile…) → back button
  *   and title, like the native app's stack pages.
  */
@@ -26,7 +25,6 @@ const ROOT_PREFIXES = ['/messages', '/marketing', '/store/dashboard', '/reports'
 const INNER_ROUTES = [
   [/^\/profile$/, 'Profile', '/settings'],
   [/^\/settings$/, 'Settings', '/dashboard'],
-  [/^\/ask-ai$/, IBIS_ASK_LABEL, '/dashboard'],
   [/^\/settings\/([^/]+)$/, (match) => SETTINGS_TITLES[match[1]] || 'Settings', '/settings'],
   [/^\/sales\/returns$/, 'Returns', '/sales'],
   [/^\/dealers\/[^/]+\/prices$/, 'Dealer prices', '/dealers'],

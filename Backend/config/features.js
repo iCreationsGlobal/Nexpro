@@ -238,18 +238,6 @@ const FEATURE_CATALOG = [
     }
   },
   {
-    key: 'watch',
-    name: 'ABS Watch',
-    description: 'Compare physical shop activity with recorded sales',
-    category: 'analytics',
-    routes: ['/watch'],
-    requiredForModules: [],
-    marketingCopy: {
-      highlight: 'Know what is happening in your shop even when you are not there',
-      perk: 'Physical activity vs recorded sales'
-    }
-  },
-  {
     key: 'reports',
     name: 'Dashboards & Reporting Suite',
     description: 'Advanced analytics and custom reports',
@@ -394,18 +382,6 @@ const FEATURE_CATALOG = [
     }
   },
   {
-    key: 'automations',
-    name: 'Automations',
-    description: 'Configure workflow automations',
-    category: 'operations',
-    routes: ['/automations'],
-    requiredForModules: [],
-    marketingCopy: {
-      highlight: 'Automate repetitive operations',
-      perk: 'Automation rules'
-    }
-  },
-  {
     key: 'dedicatedSupport',
     name: 'Dedicated Support Manager',
     description: 'Priority support with dedicated account manager',
@@ -535,7 +511,6 @@ const PLAN_FEATURE_KEYS = {
     'pharmacyOps',
     'materials',
     'rentals',
-    'watch',
     'reports',
     'graEvat',
     'notifications',
@@ -544,7 +519,6 @@ const PLAN_FEATURE_KEYS = {
     'accounting',
     'payroll',
     'advancedReporting',
-    'automations',
   ],
   enterprise: FEATURE_CATALOG.map((feature) => feature.key),
 };
@@ -553,6 +527,17 @@ PLAN_FEATURE_KEYS.launch = PLAN_FEATURE_KEYS.starter;
 PLAN_FEATURE_KEYS.scale = PLAN_FEATURE_KEYS.professional;
 
 const featureKeys = () => FEATURE_CATALOG.map((feature) => feature.key);
+
+const KNOWN_FEATURE_KEYS = new Set(featureKeys());
+
+/** Drop flags for keys no longer in the catalog (stored plans/overrides can outlive removed features). */
+const pickKnownFeatureFlags = (flags) => {
+  if (!flags || typeof flags !== 'object') return {};
+  return Object.entries(flags).reduce((acc, [key, value]) => {
+    if (KNOWN_FEATURE_KEYS.has(key)) acc[key] = value;
+    return acc;
+  }, {});
+};
 
 const buildFeatureFlags = (enabledFeatureKeys = []) => {
   const enabled = new Set(enabledFeatureKeys);
@@ -641,6 +626,7 @@ module.exports = {
   STORAGE_PRICING,
   PLAN_FEATURE_KEYS,
   buildFeatureFlags,
+  pickKnownFeatureFlags,
   getFeatureByKey,
   getFeaturesForPlan,
   getFeatureFlagsForPlan,

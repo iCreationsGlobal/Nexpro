@@ -3,14 +3,17 @@ const { generateRentalInvoice, syncRentalInvoice, computeRentalTotalDue } = requ
 const { cancelUnpaidRentalInvoice } = require('./rentalInvoicePaymentService');
 const { updateCustomerBalance } = require('./customerBalanceService');
 const { invalidateInvoiceListCache, invalidateAfterMutation } = require('../middleware/cache');
-const {
-  runRentalCreatedAutomations,
-  runRentalCreatedStaffAutomations,
-  runRentalCheckedOutAutomations,
-  runRentalReturnedAutomations,
-  runRentalReturnedStaffAutomations,
-  runRentalCancelledAutomations,
-} = require('./automationEngineService');
+const { sendRentalLifecycleMessage } = require('./rentalNotificationService');
+const { emitBusinessEvent } = require('./businessEvents');
+
+/** Post-rental events that notify the customer and report a business event. */
+const RENTAL_EVENT_MESSAGES = {
+  created: { message: 'created', businessEvent: 'rental.created' },
+  prebooking_confirmed: { message: 'created', businessEvent: 'rental.created' },
+  checkout: { message: 'checked_out', businessEvent: 'rental.checked_out' },
+  returned: { message: 'returned', businessEvent: 'rental.returned' },
+  cancelled: { message: null, businessEvent: 'rental.cancelled' },
+};
 
 const RENTAL_AUTOMATION_INCLUDES = [
   { model: RentalItem, as: 'items', include: [{ model: Product, as: 'product' }] },
@@ -35,8 +38,8 @@ const invalidateRentalCaches = (tenantId) => {
 };
 
 /**
- * Post-commit rental side effects (invoice, AR, automations).
- * @param {{ event: string, rentalId?: string, rental?: object, tenantId?: string, userId?: string|null }} params
+ * Post-commit rental side effects (invoice, AR, customer message, business event).
+ * @param {{ event: string, rentalId?: string, rental?: object, tenantId?: string }} params
  * @returns {Promise<{ skipped?: boolean, invoice?: object|null, created?: boolean }>}
  */
 const runPostRentalAutomation = async ({
@@ -44,7 +47,6 @@ const runPostRentalAutomation = async ({
   rentalId = null,
   rental = null,
   tenantId = null,
-  userId = null,
 } = {}) => {
   const resolvedId = rentalId || rental?.id;
   if (!resolvedId) return { skipped: true, reason: 'missing_rental' };
@@ -91,27 +93,28 @@ const runPostRentalAutomation = async ({
 
   invalidateRentalCaches(resolvedTenantId);
 
-  try {
-    const automationPayload = {
-      tenantId: resolvedTenantId,
-      rental: resolvedRental,
-      invoice: invoiceResult.invoice,
-      actorUserId: userId,
-    };
-
-    if (event === 'created' || event === 'prebooking_confirmed') {
-      await runRentalCreatedAutomations(automationPayload);
-      await runRentalCreatedStaffAutomations(automationPayload);
-    } else if (event === 'checkout') {
-      await runRentalCheckedOutAutomations(automationPayload);
-    } else if (event === 'returned') {
-      await runRentalReturnedAutomations(automationPayload);
-      await runRentalReturnedStaffAutomations(automationPayload);
-    } else if (event === 'cancelled') {
-      await runRentalCancelledAutomations(automationPayload);
+  const eventConfig = RENTAL_EVENT_MESSAGES[event];
+  if (eventConfig) {
+    emitBusinessEvent(resolvedTenantId, eventConfig.businessEvent, {
+      rentalId: resolvedRental.id,
+      customerId: resolvedRental.customerId || null,
+      invoiceId: invoiceResult.invoice?.id || null,
+    });
+    if (eventConfig.message) {
+      try {
+        // The invoice step writes rental.metadata on its own instance; reload before logging the send.
+        if (typeof resolvedRental.reload === 'function') {
+          await resolvedRental.reload({ include: RENTAL_AUTOMATION_INCLUDES });
+        }
+        await sendRentalLifecycleMessage({
+          rental: resolvedRental,
+          invoice: invoiceResult.invoice,
+          event: eventConfig.message,
+        });
+      } catch (messageError) {
+        console.error('[rentalAutomation] Customer message failed', resolvedRental.id, messageError);
+      }
     }
-  } catch (automationError) {
-    console.error('[rentalAutomation] Engine failed', resolvedRental.id, automationError);
   }
 
   return invoiceResult;

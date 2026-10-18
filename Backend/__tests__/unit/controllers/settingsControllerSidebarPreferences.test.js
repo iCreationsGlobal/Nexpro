@@ -25,10 +25,6 @@ jest.mock('../../../utils/taxConfig', () => ({
   warmTaxConfigCache: jest.fn(),
 }));
 
-jest.mock('../../../utils/taskAutomationConfig', () => ({
-  normalizeTaskAutomation: jest.fn((value) => value || {}),
-}));
-
 jest.mock('../../../config/customerSourceOptions', () => ({
   getCustomerSourceOptions: jest.fn(() => []),
 }));
@@ -115,7 +111,7 @@ describe('settingsController sidebar preferences', () => {
 
   describe('getSidebarPreferences', () => {
     it('returns tenant defaults for read-only support access without membership', async () => {
-      getTenantDefaultHiddenSidebarKeys.mockReturnValue(['reports', 'automations']);
+      getTenantDefaultHiddenSidebarKeys.mockReturnValue(['reports', 'marketing']);
 
       const req = {
         isSupportAccess: true,
@@ -123,7 +119,7 @@ describe('settingsController sidebar preferences', () => {
         tenantId: 'tenant-1',
         tenant: {
           businessType: 'shop',
-          metadata: { defaultHiddenSidebarKeys: ['reports', 'automations'] },
+          metadata: { defaultHiddenSidebarKeys: ['reports', 'marketing'] },
         },
       };
       const res = buildRes();
@@ -137,7 +133,7 @@ describe('settingsController sidebar preferences', () => {
       expect(res.body).toEqual({
         success: true,
         data: {
-          hiddenSidebarKeys: ['reports', 'automations'],
+          hiddenSidebarKeys: ['reports', 'marketing'],
           source: 'tenant_default',
         },
       });

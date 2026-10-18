@@ -140,7 +140,6 @@ const POSReceiptModal = ({
   const configuredMode = posConfig.receipt?.mode || 'ask';
   const receiptMode = isOfflineSale && configuredMode === 'auto_send' ? 'ask' : configuredMode;
   const printConfig = posConfig.print || { format: 'a4' };
-  // Hide SMS/email/WhatsApp when a sale_completed receipt automation already covers that channel; print stays.
   const enabledChannels = useMemo(
     () => (isOfflineSale ? ['print'] : getEffectiveReceiptChannels(posConfig)),
     [posConfig, isOfflineSale]
@@ -519,13 +518,13 @@ const POSReceiptModal = ({
 
         <Separator />
 
-        {/* Delivery options - only show channels not handled by automations (print always available) */}
+        {/* Delivery options - configured channels that are set up (print needs no integration) */}
         <div className="space-y-3">
           <h4 className="font-medium text-foreground">Send {docLabel}</h4>
 
           {enabledChannels.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              Receipt delivery is handled automatically. You can close this dialog.
+              No receipt channels are set up. You can close this dialog.
             </p>
           )}
           

@@ -1,4 +1,3 @@
-import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import PhoneNumberInput from '../../PhoneNumberInput';
 import FileUpload from '../../FileUpload';
@@ -9,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Descriptions as ShadcnDescriptions, DescriptionItem } from '@/components/ui/descriptions';
@@ -26,7 +24,6 @@ import { SHOP_TYPE_LABELS, CURRENCIES } from '../../../constants';
 import { useSettingsOrganization } from '../../../hooks/useSettingsOrganization';
 
 const SettingsOrganizationSection = () => {
-  const navigate = useNavigate();
   const {
     activeTenant,
     canManageOrganization,
@@ -653,28 +650,6 @@ const SettingsOrganizationSection = () => {
             )}
           />
         </div>
-        </div>
-
-        <div className="border-t border-border pt-4 mt-4 md:pt-6 md:mt-6 md:-mx-6 md:px-6">
-          <h3 className="text-sm font-medium mb-2 md:mb-4">Automations</h3>
-          <Alert className="border-border">
-            <AlertTitle>Automation behavior moved</AlertTitle>
-            <AlertDescription className="space-y-3">
-              <p>
-                Configure rule triggers, conditions, and actions in the dedicated Automations page.
-                Provider credentials stay in Settings.
-              </p>
-              <div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => navigate('/automations')}
-                >
-                  Open Automations
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
         </div>
 
         <div className="border-t border-border pt-4 mt-4 md:pt-6 md:mt-6 md:-mx-6 md:px-6">

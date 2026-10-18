@@ -333,8 +333,8 @@ export default function SettingsScreen() {
               <Text style={[styles.linkLabel, { color: textColor }]}>Use Simple Mode</Text>
               <Text style={[styles.linkSubtitle, { color: mutedColor }]}>
                 Only the essentials: Home, Sales, Expenses, Customers, Products and Reports. No
-                notifications or AI. Unlocks with a 4-digit PIN on this phone. Only changes the
-                app for you.
+                notifications. Unlocks with a 4-digit PIN on this phone. Only changes the app for
+                you.
               </Text>
             </View>
             {switchingInterfaceMode ? (

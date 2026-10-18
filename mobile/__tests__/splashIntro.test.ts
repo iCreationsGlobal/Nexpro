@@ -1,8 +1,8 @@
 import { SPLASH_INTRO_SLIDES } from '@/config/splashIntro';
 
 describe('splashIntro slides', () => {
-  it('defines five onboarding screens with titles and placeholders', () => {
-    expect(SPLASH_INTRO_SLIDES).toHaveLength(5);
+  it('defines four onboarding screens with titles and placeholders', () => {
+    expect(SPLASH_INTRO_SLIDES).toHaveLength(4);
 
     const ids = SPLASH_INTRO_SLIDES.map((slide) => slide.id);
     expect(ids).toEqual([
@@ -10,7 +10,6 @@ describe('splashIntro slides', () => {
       'smart-pos',
       'quotations',
       'online-store',
-      'abs-watch',
     ]);
 
     for (const slide of SPLASH_INTRO_SLIDES) {
@@ -20,8 +19,5 @@ describe('splashIntro slides', () => {
       expect(slide.smallCardPlaceholder.trim().length).toBeGreaterThan(0);
       expect(slide.largeCardImage).toBeTruthy();
     }
-
-    const watch = SPLASH_INTRO_SLIDES.find((slide) => slide.id === 'abs-watch');
-    expect(watch?.smallCardVariant).toBe('unusual-activity');
   });
 });

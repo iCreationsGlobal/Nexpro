@@ -110,7 +110,7 @@ const SettingsWhatsAppSection = () => {
             <Alert className="mb-3 md:mb-6 py-2 px-3 md:py-4 md:px-4">
               <AlertTitle className="text-sm md:text-base">WhatsApp Integration</AlertTitle>
               <AlertDescription className="text-xs md:text-sm">
-                Configure WhatsApp Business API to send automated notifications from Automations (invoices, receipts, reminders, and more). You&apos;ll need a WhatsApp Business Account in Meta Business Manager first.
+                Configure WhatsApp Business API to send automatic notifications (invoices, receipts, reminders, and more). You&apos;ll need a WhatsApp Business Account in Meta Business Manager first.
               </AlertDescription>
             </Alert>
 
@@ -322,7 +322,7 @@ const SettingsWhatsAppSection = () => {
               <AlertDescription>
                 <div className="space-y-3">
                   <p>
-                    Meta only delivers template messages. Create these UTILITY templates (English) in Meta Business Manager, then pick the same names in Automations.
+                    Meta only delivers template messages. Create these UTILITY templates (English) in Meta Business Manager with exactly these names.
                   </p>
                   <ul className="text-xs md:text-sm space-y-1 list-disc list-inside">
                     {templateCatalog.map((template) => (

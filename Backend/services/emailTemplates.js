@@ -1259,7 +1259,7 @@ const emailOtpCode = ({
 };
 
 /**
- * Audience-aware disclaimer for automation / marketing plain emails.
+ * Audience-aware disclaimer for marketing plain emails.
  * @param {string} companyName - Escaped company name
  * @param {string} [audience] - 'customer' (default) or 'internal' / 'staff'
  * @returns {string}
@@ -1276,7 +1276,7 @@ const marketingPlainMessageDisclaimer = (companyName, audience = 'customer') => 
 };
 
 /**
- * Marketing broadcast / automation plain-text body, tenant-branded card.
+ * Marketing broadcast plain-text body, tenant-branded card.
  * @param {string} plainBody
  * @param {Object} [company] - { name, primaryColor, logoUrl, audience }
  *   audience: 'customer' (default) | 'lead' | 'internal' | 'staff' — controls footer disclaimer
@@ -1854,6 +1854,85 @@ const rentalDueReminder = (rental, customer, items = [], company = {}, reminderT
 };
 
 /**
+ * Customer email for rental confirmation, handover and return.
+ * @param {'created'|'checked_out'|'returned'} event
+ * @param {Object} rental
+ * @param {Object} customer
+ * @param {Array} items - Rental items with product
+ * @param {Object} company
+ * @param {{ invoiceNumber?: string|null, balance?: number }} [amounts]
+ * @returns {{ subject: string, html: string, text: string }}
+ */
+const rentalLifecycleNotification = (event, rental, customer, items = [], company = {}, amounts = {}) => {
+  const rawCustomerName = customer?.name || customer?.company || 'Valued Customer';
+  const customerName = escapeHtml(rawCustomerName);
+  const companyName = company.name || 'African Business Suite';
+  const primaryColor = company.primaryColor || EMAIL_DESIGN.primaryColor;
+  const logoUrl = company.logo || '';
+  const d = EMAIL_DESIGN;
+  const startDateLabel = formatDate(rental?.startDate);
+  const endDateLabel = formatDate(rental?.endDate);
+  const invoiceNumber = amounts.invoiceNumber || null;
+  const total = formatCedi(rental?.totalDue ?? rental?.amount ?? 0);
+  const balance = formatCedi(amounts.balance ?? 0);
+  const itemNames = (items || []).map((row) => row?.product?.name || 'Rental item');
+  const itemList = itemNames.length > 3
+    ? `${itemNames.slice(0, 3).join(', ')} +${itemNames.length - 3} more`
+    : itemNames.join(', ');
+
+  let heading;
+  let bodyMessage;
+  let subject;
+  let rows;
+  switch (event) {
+    case 'checked_out':
+      heading = 'Your rental is out';
+      bodyMessage = 'Your rental items have been handed over.';
+      subject = `Your rental is out — due ${endDateLabel}`;
+      rows = [['Due back', endDateLabel], ['Items', itemList]];
+      break;
+    case 'returned':
+      heading = 'Rental returned';
+      bodyMessage = 'We recorded the return of your rental.';
+      subject = invoiceNumber ? `Rental returned — ${invoiceNumber}` : `Rental returned — ${companyName}`;
+      rows = [['Invoice', invoiceNumber], ['Balance', balance]];
+      break;
+    default:
+      heading = 'Rental confirmed';
+      bodyMessage = `Your rental is confirmed from ${startDateLabel} to ${endDateLabel}.`;
+      subject = invoiceNumber ? `Rental confirmed — ${invoiceNumber}` : `Rental confirmed — ${companyName}`;
+      rows = [['Items', itemList], ['Total', total], ['Balance', balance], ['Invoice', invoiceNumber]];
+  }
+  rows = rows.filter(([, value]) => value);
+
+  const rowHtml = rows
+    .map(([label, value]) => `<tr><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};"><strong>${label}</strong></td><td style="padding: 12px; border-bottom: 1px solid ${d.borderColor};">${escapeHtml(String(value))}</td></tr>`)
+    .join('');
+
+  const inner = `
+    <h1 style="margin: 0 0 24px 0; font-size: ${d.headingSize}; font-weight: bold; color: ${d.headingColor}; line-height: 1.3;">${heading}</h1>
+    <p style="margin: 0 0 16px 0; font-size: ${d.bodySize}; line-height: 1.6; color: ${d.bodyColor}; text-align: center;">Hi ${customerName},</p>
+    <p style="margin: 0 0 24px 0; font-size: ${d.bodySize}; line-height: 1.6; color: ${d.bodyColor}; text-align: center;">${escapeHtml(bodyMessage)}</p>
+    ${rowHtml ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">${rowHtml}</table>` : ''}
+    <p style="margin: 0; font-size: ${d.footnoteSize}; color: ${d.footerColor};">Thank you, ${escapeHtml(companyName)}.</p>
+  `;
+  const html = sellfyCardTemplate(inner, { companyName, primaryColor, logoUrl });
+
+  const text = [
+    `Hi ${rawCustomerName},`,
+    '',
+    bodyMessage,
+    '',
+    ...rows.map(([label, value]) => `${label}: ${value}`),
+    '',
+    'Thank you,',
+    companyName,
+  ].join('\n');
+
+  return { subject, html, text };
+};
+
+/**
  * Staff alert for rental operational events (damage, overdue, pre-booking).
  * @param {Object} params
  * @returns {{ subject: string, html: string, text: string }}
@@ -2033,6 +2112,7 @@ module.exports = {
   invoicePaidConfirmation,
   paymentReminder,
   rentalDueReminder,
+  rentalLifecycleNotification,
   rentalStaffAlert,
   quoteNotification,
   quoteAcceptedNotifyTenant,

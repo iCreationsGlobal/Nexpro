@@ -70,7 +70,7 @@ const SettingsSimpleModeSection = () => {
       <CardHeader>
         <CardTitle className="text-base md:text-2xl">Simple Mode</CardTitle>
         <CardDescription className="text-xs md:text-sm">
-          Only the essentials: Dashboard, Sales, Expenses, Customers, Products and Reports. No AI,
+          Only the essentials: Dashboard, Sales, Expenses, Customers, Products and Reports. No
           notifications or alerts. Unlock with a 4-digit PIN on this device.
         </CardDescription>
       </CardHeader>

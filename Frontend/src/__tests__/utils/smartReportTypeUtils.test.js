@@ -78,6 +78,5 @@ describe('getDefaultSmartReportTypeSelection', () => {
       'sales',
     ]);
     expect(selected).not.toContain('inventory');
-    expect(selected).not.toContain('ai-insights');
   });
 });

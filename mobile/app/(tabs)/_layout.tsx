@@ -44,8 +44,8 @@ function SimpleTabIcon({ name, tone, focused }: { name: AppIconName; tone: Simpl
 
 /** Screens that exist in the tabs group but are not tabs in Simple Mode (reachable via More / links). */
 const SIMPLE_HIDDEN_TAB_SCREENS = [
-  'customers', 'invoices', 'orders', 'online-orders', 'store', 'store-services', 'store-products', 'watch', 'products', 'jobs',
-  'chat', 'cart', 'quotes', 'dealers', 'leads', 'tasks', 'rentals', 'deliveries',
+  'customers', 'invoices', 'orders', 'online-orders', 'store', 'store-services', 'store-products', 'products', 'jobs',
+  'cart', 'quotes', 'dealers', 'leads', 'tasks', 'rentals', 'deliveries',
 ] as const;
 
 /** Stable header component — avoids remounting Header on every TabLayout render (notification poll spam). */
@@ -339,17 +339,8 @@ export default function TabLayout() {
       <Tabs.Screen name="store" options={{ href: null, title: 'Online Store' }} />
       <Tabs.Screen name="store-services" options={{ href: null, title: 'Studio Services' }} />
       <Tabs.Screen name="store-products" options={{ href: null, title: 'Store Products' }} />
-      <Tabs.Screen name="watch" options={{ href: null, title: 'Watch' }} />
       <Tabs.Screen name="products" options={{ href: null }} />
       <Tabs.Screen name="jobs" options={{ href: null }} />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          href: null,
-          headerShown: false,
-          title: 'Ayebia',
-        }}
-      />
       <Tabs.Screen name="cart" options={{ href: null }} />
       <Tabs.Screen name="expenses" options={{ href: null }} />
       <Tabs.Screen name="quotes" options={{ href: null }} />

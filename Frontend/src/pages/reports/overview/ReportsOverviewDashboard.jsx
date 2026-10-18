@@ -18,16 +18,12 @@ import OverviewSecondaryKpiCard from './OverviewSecondaryKpiCard';
 import MiniSparkline from './MiniSparkline';
 import RevenueExpensesTrendChart from './RevenueExpensesTrendChart';
 import RevenueByCategoryChart from './RevenueByCategoryChart';
-import AIQuickInsightsCard from './AIQuickInsightsCard';
 import TopCustomersTable from './TopCustomersTable';
 import ProfitLossSummaryCard from './ProfitLossSummaryCard';
 import CashFlowSummaryCard from './CashFlowSummaryCard';
 import OutstandingPaymentsList from './OutstandingPaymentsList';
 import BusinessHealthFooter from './BusinessHealthFooter';
-import { buildAskAiUrl } from '../../../utils/buildAskAiUrl';
-import { formatPeriodLabel } from '../../../utils/formatPeriodLabel';
 import {
-  buildOverviewInsights,
   buildProfitSparkline,
   buildRevenueByCategory,
   buildRevenueExpenseTrend,
@@ -55,16 +51,6 @@ export default function ReportsOverviewDashboard({
 }) {
   const navigate = useNavigate();
   const isRetail = isShop || isPharmacy;
-
-  const askAiUrl = useMemo(
-    () => buildAskAiUrl({
-      from: 'reports',
-      startDate: dateRange?.[0]?.format('YYYY-MM-DD'),
-      endDate: dateRange?.[1]?.format('YYYY-MM-DD'),
-      periodLabel: formatPeriodLabel(dateFilter, dateRange),
-    }),
-    [dateFilter, dateRange]
-  );
 
   const {
     revenue,
@@ -153,26 +139,6 @@ export default function ReportsOverviewDashboard({
       return rev > 0 ? ((rev - (d.expenses || 0)) / rev) * 100 : 0;
     });
   }, [trendData]);
-
-  const insights = useMemo(
-    () => buildOverviewInsights({
-      totalRevenue,
-      // Use operating expenses (not the COGS-inclusive totalExpenses) so this insight reflects
-      // controllable overhead rather than COGS, which naturally scales with sales volume.
-      totalExpenses: operatingExpenses,
-      revenueChange: comparison.totalRevenue ?? 0,
-      expenseChange: comparison.operatingExpenses ?? 0,
-      topCustomers,
-      outstanding,
-      collectionRate: current.collectionRate ?? 0,
-      isShop,
-      isPharmacy,
-      isRental,
-      productSales,
-      rentalOverview: rental
-    }),
-    [totalRevenue, operatingExpenses, comparison, topCustomers, outstanding, current.collectionRate, isShop, isPharmacy, isRental, productSales, rental]
-  );
 
   const overdueInvoices = useMemo(
     () => getOverdueInvoices(outstanding?.invoices, 5),
@@ -310,25 +276,19 @@ export default function ReportsOverviewDashboard({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-4 mb-4">
-        <div className="lg:col-span-6">
+        <div className="lg:col-span-8">
           <RevenueExpensesTrendChart
             data={trendData}
             title={trendChartTitle}
             revenueSeriesName={isRental ? 'Collected' : 'Revenue'}
           />
         </div>
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-4">
           <RevenueByCategoryChart
             data={categoryData}
             totalRevenue={totalRevenue}
             title={categoryChartTitle}
             onViewFullReport={() => navigate('/compliance/statements')}
-          />
-        </div>
-        <div className="lg:col-span-3">
-          <AIQuickInsightsCard
-            insights={insights}
-            onViewAll={() => navigate(askAiUrl)}
           />
         </div>
       </div>

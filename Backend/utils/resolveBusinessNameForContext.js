@@ -18,7 +18,7 @@ const BRANCH_ID_KEYS_BY_TYPE = {
 const BRANCH_ATTRIBUTES = ['id', 'name', 'email', 'phone', 'address', 'city', 'state', 'country', 'postalCode', 'logoUrl'];
 
 /**
- * Extract branch id hints from automation / messaging context.
+ * Extract branch id hints from messaging context.
  * @param {object} context
  * @returns {{ shopId: string|null, studioLocationId: string|null, pharmacyId: string|null }}
  */
@@ -138,7 +138,7 @@ async function loadBranchesForContext(tenantId, businessType, branchIds) {
 }
 
 /**
- * Resolve customer-facing business and branch names for messaging/automation context.
+ * Resolve customer-facing business and branch names for messaging context.
  * Single-branch tenants use workspace organization name; multi-branch tenants use the
  * specific branch when one is available in context.
  *

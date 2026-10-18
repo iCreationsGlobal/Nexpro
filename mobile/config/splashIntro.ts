@@ -1,7 +1,6 @@
 /** Marketing intro slides shown once before login / workspace onboarding. */
 
 export type SplashIntroSmallCardVariant =
-  | 'unusual-activity'
   | 'adapts'
   | 'payment-success'
   | 'whatsapp-share'
@@ -31,7 +30,6 @@ export type SplashIntroSlide = {
 
 /** Native overlapping status chips (reliable on device vs padded PNGs). */
 export const NATIVE_CHIP_VARIANTS: SplashIntroSmallCardVariant[] = [
-  'unusual-activity',
   'adapts',
   'payment-success',
   'whatsapp-share',
@@ -39,7 +37,7 @@ export const NATIVE_CHIP_VARIANTS: SplashIntroSmallCardVariant[] = [
 ];
 
 /**
- * Five-screen ABS product intro.
+ * Four-screen ABS product intro.
  */
 export const SPLASH_INTRO_SLIDES: SplashIntroSlide[] = [
   {
@@ -90,20 +88,6 @@ export const SPLASH_INTRO_SLIDES: SplashIntroSlide[] = [
     smallCardPlaceholder: 'New online order',
     smallCardVariant: 'new-order',
     largeCardImage: require('@/assets/intro/online-store-large.png'),
-    smallCardImage: null,
-    largeCardTiltDeg: -6,
-    smallCardTiltDeg: 3,
-  },
-  {
-    id: 'abs-watch',
-    title: 'Keep Your Shop in Sight',
-    subtitle:
-      'Connect CCTV to flag unusual activity,\nthen compare customer visits\nwith recorded sales and payments.',
-    largeCardPlaceholder: 'ABS Watch card',
-    smallCardPlaceholder: 'Unusual activity detected',
-    /** Native chip — padded PNG was nearly invisible on device. */
-    smallCardVariant: 'unusual-activity',
-    largeCardImage: require('@/assets/intro/watch-large.png'),
     smallCardImage: null,
     largeCardTiltDeg: -6,
     smallCardTiltDeg: 3,

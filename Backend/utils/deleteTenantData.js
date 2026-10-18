@@ -70,15 +70,11 @@ const {
   StockCount,
   StockCountItem,
   FootTraffic,
-  VisionIncident,
-  VisionEvent,
-  VisionCamera,
   SubscriptionPayment,
   SupportTicket,
   SupportAccessSession,
   DeliveryEvent,
   SystemHealthIssue,
-  AutomationDelayedRun,
   MarketplaceOrderPayment,
   MarketplaceLedgerEntry,
   MarketplacePayout,
@@ -107,8 +103,6 @@ const {
   UserChecklist,
   UserChecklistItem,
   TenantAccessAudit,
-  AutomationRun,
-  AutomationRule,
   WhatsAppMessageEvent,
   MarketingCampaign,
   RecurringJournal,
@@ -280,9 +274,6 @@ async function deleteTenantData(tenantId, transaction = null, resetOptions = {})
     console.warn(`[deleteTenantData] SaleReturn.findAll: ${err.message}`);
   }
 
-  await del(AutomationDelayedRun, { tenantId: id }, options);
-  await del(AutomationRun, { tenantId: id }, options);
-  await del(AutomationRule, { tenantId: id }, options);
   await del(WhatsAppMessageEvent, { tenantId: id }, options);
   await del(MarketingCampaign, { tenantId: id }, options);
   if (recurringJournalIds.length) {
@@ -421,9 +412,6 @@ async function deleteTenantData(tenantId, transaction = null, resetOptions = {})
   await del(SystemHealthIssue, { tenantId: id }, options);
   await del(StockCount, { tenantId: id }, options);
   await del(FootTraffic, { tenantId: id }, options);
-  await del(VisionIncident, { tenantId: id }, options);
-  await del(VisionEvent, { tenantId: id }, options);
-  await del(VisionCamera, { tenantId: id }, options);
   if (!preserveWorkspace) {
     await del(Shop, { tenantId: id }, options);
   }

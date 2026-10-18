@@ -100,9 +100,6 @@ export function buildMoreMenuSections({
   if (isRestaurant && hasFeature('orders')) {
     store.push({ id: 'orders', label: 'Orders', icon: 'cutlery', route: '/(tabs)/orders' });
   }
-  if (hasFeature('watch')) {
-    store.push({ id: 'watch', label: 'Watch', icon: 'eye', route: '/(tabs)/watch' });
-  }
   if (hasFeature('expenses')) {
     store.push({ id: 'expenses', label: 'Expenses', icon: 'minus-circle', route: '/(tabs)/expenses' });
   }

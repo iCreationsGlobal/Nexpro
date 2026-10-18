@@ -146,14 +146,6 @@ function ComposePanel() {
   const overview = overviewResponse?.data;
   const groups = groupsResponse?.data?.groups || [];
 
-  const birthdayMutation = useMutation({
-    mutationFn: () => messagesService.setupBirthdayMessaging(),
-    onSuccess: (response) => {
-      showSuccess(response?.message || 'Birthday SMS enabled');
-    },
-    onError: (error) => handleApiError(error, 'Could not enable birthday SMS'),
-  });
-
   const dryRunMutation = useMutation({
     mutationFn: () =>
       messagesService.composeSms({
@@ -190,25 +182,6 @@ function ComposePanel() {
   return (
     <div className="space-y-4">
       <CreditsBanner summary={overview?.credits} senderId={overview?.senderId} />
-      <Alert>
-        <Megaphone className="h-4 w-4" />
-        <AlertTitle>Birthday messages</AlertTitle>
-        <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <span>
-            One-click setup creates an automation that texts customers on their birthday using {'{{name}}'}.
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={birthdayMutation.isPending}
-            onClick={() => birthdayMutation.mutate()}
-          >
-            {birthdayMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Enable birthday SMS
-          </Button>
-        </AlertDescription>
-      </Alert>
       <Card style={CARD_BORDER}>
         <CardHeader>
           <CardTitle>Compose SMS</CardTitle>
@@ -726,7 +699,7 @@ function HistoryPanel() {
     <Card style={CARD_BORDER}>
       <CardHeader>
         <CardTitle>SMS history</CardTitle>
-        <CardDescription>Delivery outcomes from compose, campaigns, and automations.</CardDescription>
+        <CardDescription>Delivery outcomes from compose, campaigns, and automatic messages.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {isLoading ? (

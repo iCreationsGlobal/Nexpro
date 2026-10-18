@@ -13,9 +13,9 @@ import { sanitizeFocusAreaIds } from '@/config/focusAreas';
 import { APP_SHELL_MEDIA_QUERY, PHONE_MEDIA_QUERY } from '@/hooks/useDeviceMode';
 
 const ALL_FEATURES = [
-  'crm', 'products', 'paymentsExpenses', 'invoices', 'expenses', 'dealersAccount', 'orders', 'watch',
+  'crm', 'products', 'paymentsExpenses', 'invoices', 'expenses', 'dealersAccount', 'orders',
   'jobAutomation', 'quoteAutomation', 'leadPipeline', 'tasks', 'deliveries', 'rentals', 'materials',
-  'automations', 'marketing', 'vendors', 'payroll', 'accounting', 'reports', 'advancedReporting',
+  'marketing', 'vendors', 'payroll', 'accounting', 'reports', 'advancedReporting',
   'graEvat', 'roleManagement', 'shopsModule', 'pharmacyOps', 'pricingTemplates', 'studioLocationsModule',
 ];
 

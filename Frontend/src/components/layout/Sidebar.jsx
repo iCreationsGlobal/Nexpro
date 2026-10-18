@@ -42,12 +42,11 @@ export function Sidebar({ collapsed, onCollapse }) {
     if (!import.meta.env.DEV) return;
     const flags = activeTenant?.effectiveFeatureFlags || {};
     const enabled = Object.entries(flags).filter(([, v]) => v === true).map(([k]) => k).sort();
-    console.log('[Sidebar][features] tenantId=%s plan=%s enabledCount=%s crm=%s automations=%s menuKeys=%j enabled=%j',
+    console.log('[Sidebar][features] tenantId=%s plan=%s enabledCount=%s crm=%s menuKeys=%j enabled=%j',
       activeTenant?.id || 'n/a',
       activeTenant?.plan || 'n/a',
       enabled.length,
       hasFeature('crm'),
-      hasFeature('automations'),
       menuItems.map((item) => item.key),
       enabled
     );

@@ -66,13 +66,6 @@ jest.mock('../../../services/notificationService', () => ({
 jest.mock('../../../services/orderCustomerNotificationService', () => ({
   notifyOrderCreatedForCustomer: jest.fn(),
 }));
-jest.mock('../../../services/automationEngineService', () => ({
-  runReviewRequestAutomations: jest.fn(),
-  runSaleCompletedAutomations: jest.fn(),
-  runOrderCreatedAutomations: jest.fn(),
-  runLowProfitMarginAutomations: jest.fn(),
-  runStockChangeAutomations: jest.fn(),
-}));
 jest.mock('../../../services/deliverySettingsService', () => ({
   resolveDeliveryForSale: jest.fn(),
 }));

@@ -15,7 +15,6 @@ import {
   Monitor,
   Package,
   Smartphone,
-  Sparkles,
   UploadCloud,
 } from 'lucide-react';
 
@@ -51,7 +50,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import StoreListingHomeSectionsField from '../components/store/StoreListingHomeSectionsField';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 const INVENTORY_POLICIES = [
   { value: 'track', label: 'Track inventory', description: 'Use the product stock count for availability.' },
@@ -315,15 +314,6 @@ const DescriptionToolbar = () => (
         {item}
       </Button>
     ))}
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="ml-auto h-8" disabled>
-          <Sparkles className="mr-2 h-4 w-4" />
-          Generate with AI
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>Coming soon</TooltipContent>
-    </Tooltip>
   </div>
 );
 
@@ -659,15 +649,6 @@ const StoreListingEditor = () => {
               <Card className="border border-border">
                 <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <CardTitle className="text-base">Store Listing</CardTitle>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button type="button" variant="outline" size="sm" disabled>
-                        <Sparkles className="mr-2 h-4 w-4" />
-                        Generate with AI
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Coming soon</TooltipContent>
-                  </Tooltip>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <FormField

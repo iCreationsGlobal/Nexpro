@@ -15,7 +15,6 @@ export const LOCKED_SIDEBAR_KEYS = [
   '/invoices',
   '/expenses',
   '/rentals',
-  '/watch',
 ];
 
 /** Optional sidebar route keys users may hide. */
@@ -37,7 +36,6 @@ export const CONFIGURABLE_SIDEBAR_KEYS = [
   '/reviews',
   '/deliveries',
   '/tasks',
-  '/automations',
   '/leads',
   '/messages',
   '/marketing',
@@ -78,7 +76,6 @@ const ADVANCED_CHILD_KEYS = [
   '/reviews',
   '/deliveries',
   '/tasks',
-  '/automations',
   '/leads',
   '/messages',
   '/marketing',
@@ -153,7 +150,6 @@ export const SIDEBAR_MENU_GROUPS = [
       { key: '/reviews', label: 'Reviews' },
       { key: '/deliveries', label: 'Deliveries' },
       { key: '/tasks', label: 'Tasks' },
-      { key: '/automations', label: 'Automations', managerOnly: true },
       { key: '/leads', label: 'Leads' },
       { key: '/messages', label: 'Messages', managerOnly: true },
       { key: '/marketing', label: 'Marketing', managerOnly: true },
@@ -268,8 +264,6 @@ export const isConfigurableSidebarKeyForTenant = (key, ctx = {}) => {
       return hasFeature('deliveries');
     case '/tasks':
       return !isPlatformAdmin && hasFeature('tasks');
-    case '/automations':
-      return hasFeature('automations');
     case '/leads':
       return !isPlatformAdmin && hasFeature('leadPipeline');
     case '/messages':

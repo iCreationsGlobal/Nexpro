@@ -6,7 +6,6 @@ import {
   buildRevenueExpenseTrend,
   buildSparklineSeries,
 } from '../overview/overviewUtils';
-import { formatAmount } from '../../../utils/formatNumber';
 
 const pct = (part, total) => (total > 0 ? ((part / total) * 100) : 0);
 const num = (v) => parseFloat(v) || 0;
@@ -97,7 +96,6 @@ export function buildSmartReportSnapshot({
   financialPositionData,
   revenueByChannelData,
   prescriptionData,
-  aiAnalysis,
   comparison,
   isShop,
   isPharmacy,
@@ -366,48 +364,6 @@ export function buildSmartReportSnapshot({
     ];
   })();
 
-  const expenseInsights = [];
-  if (expenseCategories[0]) {
-    expenseInsights.push({
-      icon: 'inventory',
-      text: `${expenseCategories[0].category} accounts for ${expenseCategories[0].percent.toFixed(1)}% of total expenses.`,
-    });
-  }
-  if (expenseChange > 5) {
-    expenseInsights.push({ icon: 'trend', text: `Total expenses increased by ${expenseChange.toFixed(1)}% compared to the previous period.` });
-  } else if (expenseChange < -3) {
-    expenseInsights.push({ icon: 'trend', text: `Expenses decreased by ${Math.abs(expenseChange).toFixed(1)}% — good cost control.` });
-  }
-  if (expenseToRevenue > 80) {
-    expenseInsights.push({ icon: 'ratio', text: `Expenses are ${expenseToRevenue.toFixed(1)}% of revenue. Review high-cost categories.` });
-  }
-  if (expenseInsights.length === 0) {
-    expenseInsights.push({ icon: 'info', text: 'Expense levels are stable for this period.' });
-  }
-
-  const revenueNoun = isRental ? 'Collections' : 'Revenue';
-  const revenueNounLower = isRental ? 'collections' : 'revenue';
-  const aiSummary = aiAnalysis?.summary
-    || (revenueChange > 0
-      ? `Your financial performance is strong this period. ${revenueNoun} grew by ${revenueChange.toFixed(1)}% and profitability improved across key metrics.`
-      : `Review ${revenueNounLower} drivers and expense categories to improve performance next period.`);
-
-  const executiveAiInsight = aiAnalysis?.quickInsight
-    || (revenueChange > 0
-      ? `Great job! Your ${revenueNounLower} grew by ${revenueChange.toFixed(1)}% this period.${expenseChange > 10 ? ' Expenses also increased — review slow-moving cost categories.' : ''}`
-      : `${revenueNoun} changed by ${revenueChange.toFixed(1)}% this period. Focus on top customers and expense control.`);
-
-  const salesAiSummary = revenueChange > 0
-    ? `${isRental ? 'Collections' : 'Sales'} grew by ${revenueChange.toFixed(1)}% this period, driven by strong ${isRental ? 'invoice collections' : isShop || isPharmacy ? 'product sales' : 'service revenue'} and customer activity.`
-    : `${isRental ? 'Collection' : 'Sales'} activity for this period — monitor trends and follow up with top customers.`;
-
-  const expensesAiSummary = expenseChange > 0
-    ? `Total expenses increased by ${expenseChange.toFixed(1)}% this period.${expenseCategories[0] ? ` ${expenseCategories[0].category} remains the highest cost driver at ${expenseCategories[0].percent.toFixed(1)}% of total expenses.` : ''}`
-    : `Expenses are ${expenseToRevenue.toFixed(1)}% of revenue for this period.`;
-
-  const recommendationsRaw = aiAnalysis?.recommendations || [];
-  const aiInsightPoints = aiAnalysis?.keyFindings || aiAnalysis?.insights || [];
-
   const inventoryProducts = (productSalesData?.products || []).map((p) => ({
     name: p.productName,
     sku: p.sku,
@@ -536,20 +492,6 @@ export function buildSmartReportSnapshot({
       { name: 'Payments to Vendors', value: vendorPayments, color: '#ea580c' },
       { name: 'Other Payments', value: otherPayments, color: '#9333ea' },
     ].map((item) => ({ ...item, percent: pct(item.value, cashOutflow) })).filter((i) => i.value > 0),
-    insights: [
-      netCashFlow >= 0
-        ? { icon: 'check', text: 'Net cash flow is positive, indicating healthy liquidity for this period.' }
-        : { icon: 'alert', text: 'Net cash flow is negative — review outflows and collection timing.' },
-      inflowChange > 0
-        ? { icon: 'trend', text: `Cash inflow grew by ${inflowChange.toFixed(1)}% compared to the previous period.` }
-        : null,
-      expenseCategories[0]
-        ? { icon: 'inventory', text: `${expenseCategories[0].category} is a major outflow driver at ${expenseCategories[0].percent.toFixed(1)}% of expenses.` }
-        : null,
-      outstanding > 0
-        ? { icon: 'wallet', text: `${formatAmount(outstandingData?.totalOutstanding)} outstanding — follow up to improve cash collections.` }
-        : null,
-    ].filter(Boolean),
   };
 
   const stockSummary = phase2Data?.productStockSummary || phase2Data?.materialsSummary || {};
@@ -623,139 +565,6 @@ export function buildSmartReportSnapshot({
     prevInventoryValue,
   };
 
-  const cashFlowAiSummary = netCashFlow >= 0
-    ? `Cash flow is healthy with strong operating performance. Net cash flow reached ${netCashFlow >= 0 ? 'positive' : 'negative'} levels this period.`
-    : 'Cash outflows exceeded inflows this period. Review collections and discretionary spending.';
-
-  const inventoryAiSummary = lowStockItems.length > 0
-    ? `${lowStockItems.length} item${lowStockItems.length > 1 ? 's are' : ' is'} running low and need restocking soon.${inventoryCategoryDonut.slices[0] ? ` ${inventoryCategoryDonut.slices[0].name} represents a significant share of inventory value.` : ''}`
-    : 'Inventory levels are stable for this period. Monitor turnover and reorder points.';
-
-  const REC_CATEGORY_MAP = [
-    { match: /revenue|sales|margin|price|customer/i, category: 'Increase Revenue' },
-    { match: /cost|expense|vendor|reduce|save/i, category: 'Reduce Costs' },
-    { match: /efficien|process|automation|workflow|stock/i, category: 'Improve Efficiency' },
-    { match: /cash|payment|collection|outstanding|invoice/i, category: 'Optimize Cash Flow' },
-  ];
-
-  const categorizeRecommendation = (text = '') => {
-    const hit = REC_CATEGORY_MAP.find((c) => c.match.test(text));
-    return hit?.category || 'Improve Efficiency';
-  };
-
-  const normalizeRecommendation = (rec, idx, revenueTotal) => {
-    if (typeof rec === 'string') {
-      return {
-        id: `rec-${idx}`,
-        title: rec,
-        description: '',
-        impactLevel: idx < 2 ? 'high' : 'medium',
-        impactValue: revenueTotal * (idx < 2 ? 0.08 : 0.04),
-        effort: idx < 3 ? 'Medium' : 'Low',
-        category: categorizeRecommendation(rec),
-      };
-    }
-    const title = rec.action || rec.recommendation || rec.finding || rec.opportunity || rec.risk || 'Recommendation';
-    const description = rec.reasoning || rec.impact || rec.mitigation || rec.potentialImpact || rec.recommendation || '';
-    const priority = (rec.priority || rec.severity || '').toLowerCase();
-    return {
-      id: `rec-${idx}`,
-      title,
-      description,
-      impactLevel: priority.includes('high') ? 'high' : 'medium',
-      impactValue: revenueTotal * (priority.includes('high') ? 0.1 : 0.05),
-      effort: priority.includes('high') ? 'Low' : 'Medium',
-      category: categorizeRecommendation(`${title} ${description}`),
-    };
-  };
-
-  const derivedRecommendations = [
-    ...recommendationsRaw,
-    ...(aiAnalysis?.growthOpportunities || []).map((o) => ({
-      priority: 'Medium',
-      action: o.opportunity,
-      impact: o.potentialImpact,
-      reasoning: (o.actionSteps || []).join(' '),
-    })),
-    ...(aiAnalysis?.riskAssessment || []).map((r) => ({
-      priority: r.severity || 'Medium',
-      action: r.risk,
-      impact: r.severity,
-      reasoning: r.mitigation,
-    })),
-    ...(aiAnalysis?.strategicSuggestions || []).map((s) => ({
-      priority: 'Medium',
-      action: s,
-      impact: 'Strategic',
-      reasoning: '',
-    })),
-    ...(expenseToRevenue > 80 ? [{
-      priority: 'High',
-      action: 'Reduce expense-to-revenue ratio',
-      impact: `Expenses are ${expenseToRevenue.toFixed(1)}% of revenue`,
-      reasoning: 'Review top expense categories and negotiate vendor terms.',
-    }] : []),
-    ...(topCustomers[0]?.percent > 25 ? [{
-      priority: 'Medium',
-      action: `Diversify revenue beyond ${topCustomers[0].name}`,
-      impact: `Top customer is ${topCustomers[0].percent.toFixed(1)}% of revenue`,
-      reasoning: 'Reduce customer concentration risk by expanding your customer base.',
-    }] : []),
-    ...(lowStockItems.length > 0 ? [{
-      priority: 'High',
-      action: 'Restock low inventory items',
-      impact: `${lowStockItems.length} items below reorder level`,
-      reasoning: 'Prevent stockouts on items with active sales demand.',
-    }] : []),
-  ];
-
-  const topRecommendations = derivedRecommendations
-    .map((rec, idx) => normalizeRecommendation(rec, idx, revenue))
-    .filter((rec, idx, arr) => arr.findIndex((r) => r.title === rec.title) === idx)
-    .slice(0, 12);
-
-  const recByCategory = Object.entries(
-    topRecommendations.reduce((acc, rec) => {
-      acc[rec.category] = (acc[rec.category] || 0) + 1;
-      return acc;
-    }, {})
-  ).map(([name, count], index) => ({
-    name,
-    value: count,
-    color: REPORT_CHART_COLORS[index % REPORT_CHART_COLORS.length],
-  }));
-
-  const highPriorityCount = topRecommendations.filter((r) => r.impactLevel === 'high').length;
-  const potentialImpactTotal = topRecommendations.reduce((s, r) => s + num(r.impactValue), 0);
-
-  const recommendationsDetail = {
-    summary: {
-      total: topRecommendations.length,
-      highPriority: highPriorityCount,
-      potentialImpact: potentialImpactTotal,
-      effortLabel: 'Medium',
-      progressPercent: 0,
-      implementedCount: 0,
-    },
-    topRecommendations,
-    byCategory: { slices: recByCategory, total: topRecommendations.length },
-    implementation: {
-      slices: [
-        { name: 'Not Started', value: topRecommendations.length, color: REPORT_CHART_COLORS[4] },
-      ],
-      total: topRecommendations.length,
-    },
-    engineMeta: {
-      dataPoints: 15,
-      confidence: aiAnalysis ? 92 : 75,
-      confidenceLabel: aiAnalysis ? 'High' : 'Moderate',
-    },
-    aiSummary: aiAnalysis?.performanceAnalysis
-      || `Based on your current performance, implementing the top recommendations could improve profitability and operational efficiency.`,
-  };
-
-  const recommendationsAiSummary = recommendationsDetail.aiSummary;
-
   return {
     kpis: {
       revenue: { value: revenue, change: revenueChange, sparkline: revenueSparkline, sourceLabel: sourceMeta.revenue.subLabel },
@@ -823,27 +632,8 @@ export function buildSmartReportSnapshot({
       outstanding: outstandingDetail,
     },
     customerSegments,
-    customerInsights: [
-      topCustomers[0] ? { icon: 'star', text: `Your top customer contributed ${topCustomers[0].percent.toFixed(1)}% of ${isRental ? 'collections' : 'total revenue'}.` } : null,
-      customerSegments[0] ? { icon: 'users', text: `Top 20% customers contributed ${customerSegments[0].percent.toFixed(1)}% of ${isRental ? 'collections' : 'total sales'}.` } : null,
-      newCustomers > 0 ? { icon: 'user-plus', text: `${newCustomers} new customers acquired this period.` } : null,
-      hasReturningCustomerData && returningCustomers > 0 ? { icon: 'repeat', text: `${returningCustomers} returning customers drove repeat revenue.` } : null,
-    ].filter(Boolean),
-    expenseInsights,
     inventoryProducts,
     inventoryDetail,
-    recommendationsDetail,
-    aiSummary,
-    executiveAiInsight,
-    salesAiSummary,
-    expensesAiSummary,
-    cashFlowAiSummary,
-    inventoryAiSummary,
-    recommendationsAiSummary,
-    recommendations: topRecommendations,
-    aiInsightPoints: aiInsightPoints.length > 0
-      ? aiInsightPoints
-      : [aiAnalysis?.performanceAnalysis, ...(aiAnalysis?.strategicSuggestions || [])].filter(Boolean),
     rental: isRental && rentalData ? {
       hireBooked: num(rentalData.revenue?.totalRevenue),
       rentalAmount: num(rentalData.revenue?.totalRentalAmount),
@@ -871,9 +661,6 @@ export function buildSmartReportSnapshot({
       lowStockAlerts: rentalData.lowStockAlerts || [],
       inventoryByBranch: rentalData.inventoryByBranch || [],
     } : null,
-    rentalAiSummary: isRental && rentalData
-      ? `Hire booked is ${formatAmount(num(rentalData.revenue?.totalRevenue))} across ${num(rentalData.revenue?.rentalCount)} hires. Fleet utilization is ${num(rentalData.utilization?.overallUtilizationRate).toFixed(1)}% with ${num(rentalData.lateReturns?.summary?.lateReturnCount)} late returns and ${formatAmount(num(rentalData.damageTrends?.totalCost))} in damage cost.`
-      : null,
     outstanding,
     outstandingDetail,
     collectedRevenue,

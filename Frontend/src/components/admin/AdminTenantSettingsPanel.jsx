@@ -27,7 +27,7 @@ const EMPTY_SETTINGS = {
   },
   customerNotifications: {
     autoSendInvoiceToCustomer: true,
-    autoSendReceiptToCustomer: false,
+    autoSendReceiptToCustomer: true,
     sendPaymentReminderEmail: false,
     sendInvoicePaidConfirmationToCustomer: true,
     acceptOnlinePayments: false,
@@ -240,7 +240,7 @@ export default function AdminTenantSettingsPanel({ tenantId, tenantName }) {
           </div>
           <Separator />
           <div className="space-y-3">
-            <p className="text-sm font-medium">Job invoice automation</p>
+            <p className="text-sm font-medium">Job invoices and tracking</p>
             {[
               ['autoSendInvoiceOnJobCreation', 'Auto-send invoice when a job is created'],
               ['customerJobTrackingEnabled', 'Enable customer job tracking links'],

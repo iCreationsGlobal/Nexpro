@@ -52,8 +52,6 @@ const DealerPricing = lazy(() => import('./pages/DealerPricing'));
 const CustomerFeedback = lazy(() => import('./pages/CustomerFeedback'));
 const Marketing = lazy(() => import('./pages/Marketing'));
 const Messages = lazy(() => import('./pages/Messages'));
-const AskAI = lazy(() => import('./pages/AskAI'));
-const Automations = lazy(() => import('./pages/Automations'));
 const Vendors = lazy(() => import('./pages/Vendors'));
 const Jobs = lazy(() => import('./pages/Jobs'));
 const Invoices = lazy(() => import('./pages/Invoices'));
@@ -67,7 +65,6 @@ const ExportData = lazy(() => import('./pages/ExportData'));
 const Materials = lazy(() => import('./pages/Materials'));
 const Equipment = lazy(() => import('./pages/Equipment'));
 const Rentals = lazy(() => import('./pages/Rentals'));
-const Watch = lazy(() => import('./pages/Watch'));
 const Merchandise = lazy(() => import('./pages/Merchandise'));
 const Leads = lazy(() => import('./pages/Leads'));
 const Users = lazy(() => import('./pages/Users'));
@@ -88,7 +85,6 @@ const SettingsTrackingPage = lazy(() => import('./pages/settings/SettingsTrackin
 const SettingsDeliveryPage = lazy(() => import('./pages/settings/SettingsDeliveryPage'));
 const SettingsInventoryPage = lazy(() => import('./pages/settings/SettingsInventoryPage'));
 const SettingsRentalPage = lazy(() => import('./pages/settings/SettingsRentalPage'));
-const SettingsAiPage = lazy(() => import('./pages/settings/SettingsAiPage'));
 const SettingsBillingPage = lazy(() => import('./pages/settings/SettingsBillingPage'));
 const Plans = lazy(() => import('./pages/Plans'));
 const Employees = lazy(() => import('./pages/Employees'));
@@ -112,7 +108,7 @@ const AdminBilling = lazy(() => import('./pages/admin/AdminBilling'));
 const AdminReports = lazy(() => import('./pages/admin/AdminReports'));
 const AdminHealth = lazy(() => import('./pages/admin/AdminHealth'));
 const AdminOpsAssets = lazy(() => import('./pages/admin/AdminOpsAssets'));
-const AdminAutomationsMessaging = lazy(() => import('./pages/admin/AdminAutomationsMessaging'));
+const AdminMessaging = lazy(() => import('./pages/admin/AdminMessaging'));
 const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'));
 const AdminOnlineStoreHeroes = lazy(() => import('./pages/admin/AdminOnlineStoreHeroes'));
 const AdminOnlineStoreDomains = lazy(() => import('./pages/admin/AdminOnlineStoreDomains'));
@@ -366,8 +362,8 @@ function AppContent() {
             <Route path="messages/groups" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><Messages /></RequireWorkspaceManager></FeatureRoute>} />
             <Route path="messages/credits" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><Messages /></RequireWorkspaceManager></FeatureRoute>} />
             <Route path="messages/history" element={<FeatureRoute featureKey="marketing"><RequireWorkspaceManager><Messages /></RequireWorkspaceManager></FeatureRoute>} />
-            <Route path="automations" element={<FeatureRoute featureKey="automations"><RequireWorkspaceManager><Automations /></RequireWorkspaceManager></FeatureRoute>} />
-            <Route path="ask-ai" element={<AskAI />} />
+            <Route path="automations" element={<Navigate to="/settings/delivery-rules" replace />} />
+            <Route path="ask-ai" element={<Navigate to="/dashboard" replace />} />
             <Route path="vendors" element={<FeatureRoute featureKey="crm"><Vendors /></FeatureRoute>} />
             <Route path="jobs" element={<FeatureRoute featureKey="jobAutomation"><Jobs /></FeatureRoute>} />
             <Route path="deliveries" element={<FeatureRoute featureKey="deliveries"><Deliveries /></FeatureRoute>} />
@@ -400,7 +396,7 @@ function AppContent() {
             <Route path="assets" element={<Navigate to="/materials" replace />} />
             <Route path="equipment" element={<FeatureRoute featureKey="materials"><Equipment /></FeatureRoute>} />
             <Route path="rentals" element={<FeatureRoute featureKey="rentals"><Rentals /></FeatureRoute>} />
-            <Route path="watch" element={<FeatureRoute featureKey="watch"><Watch /></FeatureRoute>} />
+            <Route path="watch" element={<Navigate to="/dashboard" replace />} />
             <Route path="merchandise" element={<FeatureRoute featureKey="materials"><RequireWorkspaceManager><Merchandise /></RequireWorkspaceManager></FeatureRoute>} />
             <Route path="employees" element={<FeatureRoute featureKey="payroll"><RequireWorkspaceManager><Employees /></RequireWorkspaceManager></FeatureRoute>} />
             <Route path="payroll" element={<FeatureRoute featureKey="payroll"><RequireWorkspaceManager><Payroll /></RequireWorkspaceManager></FeatureRoute>} />
@@ -436,7 +432,7 @@ function AppContent() {
               <Route path="delivery" element={<RequireWorkspaceManager><SettingsDeliveryPage /></RequireWorkspaceManager>} />
               <Route path="inventory" element={<RequireWorkspaceManager><SettingsInventoryPage /></RequireWorkspaceManager>} />
               <Route path="rental" element={<RequireWorkspaceManager><SettingsRentalPage /></RequireWorkspaceManager>} />
-              <Route path="ai" element={<RequireWorkspaceManager><SettingsAiPage /></RequireWorkspaceManager>} />
+              <Route path="ai" element={<Navigate to="/settings" replace />} />
             <Route path="billing" element={<RequireWorkspaceManager>{isPricingUiEnabled() ? <SettingsBillingPage /> : <Navigate to="/settings" replace />}</RequireWorkspaceManager>} />
             <Route path="sms" element={<RequireWorkspaceManager><SettingsSmsPage /></RequireWorkspaceManager>} />
             <Route path="invoices-receipts" element={<RequireWorkspaceManager><SettingsInvoicesReceiptsPage /></RequireWorkspaceManager>} />
@@ -477,7 +473,8 @@ function AppContent() {
             <Route path="reports" element={<AdminReports />} />
             <Route path="health" element={<AdminHealth />} />
             <Route path="ops" element={<AdminOpsAssets />} />
-            <Route path="automations" element={<AdminAutomationsMessaging />} />
+            <Route path="messaging" element={<AdminMessaging />} />
+            <Route path="automations" element={<Navigate to="/admin/messaging" replace />} />
             <Route path="support-tickets" element={<AdminSupportTickets />} />
             <Route path="sales-agents" element={<AdminSalesAgents />} />
             <Route path="sabito" element={<Navigate to="/admin/sabito/overview" replace />} />

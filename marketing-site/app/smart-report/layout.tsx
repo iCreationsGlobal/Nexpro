@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Smart Report",
   description:
-    "African Business Suite (ABS) Smart Report: AI-powered business insights, instant analytics, trend detection, and actionable recommendations.",
+    "African Business Suite (ABS) Smart Report: sales, expenses, profit, cash flow and stock for any period, with comparisons and PDF download.",
   alternates: {
     canonical: "/smart-report",
   },

@@ -28,9 +28,6 @@ jest.mock('../../../models', () => ({
 }));
 
 jest.mock('../../../services/activityLogger', () => ({}));
-jest.mock('../../../services/automationEngineService', () => ({
-  runQuoteSentAutomations: jest.fn(),
-}));
 jest.mock('../../../utils/taxConfig', () => ({
   getTaxConfigForTenant: jest.fn(),
 }));

@@ -34,7 +34,6 @@ export default function SmartReportExpensesTab({ snapshot, periodLabel }) {
     paymentMethods,
     expenseCategories,
     topVendors,
-    expenseInsights,
     comparisonLabel,
   } = snapshot;
 
@@ -118,7 +117,7 @@ export default function SmartReportExpensesTab({ snapshot, periodLabel }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
           <CardHeader className="pb-2 pt-4 px-4">
             <CardTitle className="text-base font-semibold">Top Expense Categories</CardTitle>
@@ -172,23 +171,6 @@ export default function SmartReportExpensesTab({ snapshot, periodLabel }) {
             ) : (
               <div className="py-10 text-center text-sm text-muted-foreground">No vendor expense data</div>
             )}
-          </CardContent>
-        </Card>
-
-        <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
-          <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base font-semibold">Expense Insights</CardTitle>
-            <Button variant="link" className="h-auto p-0 text-xs text-primary">View All Insights</Button>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <ul className="space-y-3 text-sm text-muted-foreground">
-              {expenseInsights.map((item, idx) => (
-                <li key={idx} className="flex gap-2">
-                  <span className="text-primary shrink-0">•</span>
-                  <span>{item.text}</span>
-                </li>
-              ))}
-            </ul>
           </CardContent>
         </Card>
       </div>

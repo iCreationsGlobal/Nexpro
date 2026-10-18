@@ -255,12 +255,12 @@ This doc is the single source of truth for “what’s in the app” from a user
 **What it is** – Three report views under the Reports menu:
 
 - **Overview** – Revenue, expenses, profit, product or service performance, expense breakdown, and pipeline (e.g. active jobs, open leads, pending invoices). Date range and filters. Content is business-type-specific (e.g. product sales for shop/pharmacy, job/service for studio).
-- **Smart Report** – **AI-powered analysis** (Claude) on the same report data: key findings, performance analysis, recommendations, risks, and growth opportunities. The backend sends aggregated report data to the AI and returns structured insights; the frontend displays them.
+- **Smart Report** – A detailed report for a chosen period, built from the same report data: executive summary, sales, financial overview and profit & loss, expenses, cash flow, inventory, and (for rental businesses) rentals, with charts and comparisons. It shows the business's own figures only and can be exported as PDF.
 - **Compliance** – Reports formatted for submission to tax or revenue authorities.
 
 **Who it’s for** – All tenants.
 
-**Marketing one-liner:** “Reports and AI-powered insights on revenue, expenses, and performance.”
+**Marketing one-liner:** “Clear reports on revenue, expenses, profit, and performance.”
 
 ---
 

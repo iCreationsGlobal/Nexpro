@@ -37,7 +37,6 @@ jest.mock('../../../utils/paginationUtils', () => ({
 }));
 
 jest.mock('../../../services/activityLogger', () => ({}));
-jest.mock('../../../services/taskAutomationService', () => ({}));
 jest.mock('../../../middleware/cache', () => ({
   invalidateCustomerListCache: jest.fn(),
 }));

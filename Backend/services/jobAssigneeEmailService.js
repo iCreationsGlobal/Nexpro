@@ -19,14 +19,6 @@ async function sendJobAssignedEmailToAssignee({ tenantId, job, assignee, assigne
     if (!tenantId || !job?.id || !assignee?.email) return;
     if (assignedByUser?.id && assignee.id === assignedByUser.id) return;
 
-    const {
-      shouldUseAutomationInsteadOfBuiltIn,
-      TEMPLATE_KEYS,
-    } = require('./customerNotificationBridgeService');
-    if (await shouldUseAutomationInsteadOfBuiltIn(tenantId, TEMPLATE_KEYS.JOB_ASSIGNED_STAFF)) {
-      return;
-    }
-
     const tenant = await Tenant.findByPk(tenantId, {
       attributes: ['id', 'name', 'metadata']
     });

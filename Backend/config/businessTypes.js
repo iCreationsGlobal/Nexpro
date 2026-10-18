@@ -8,7 +8,6 @@
 const BUSINESS_TYPE_FEATURES = {
   shop: [
     'crm',
-    'automations',
     'vendors',
     'marketing',
     'quoteAutomation',
@@ -27,7 +26,6 @@ const BUSINESS_TYPE_FEATURES = {
     'dealersAccount',
     'shopsModule',
     'pos',
-    'watch',
     'materialsTracking',
     'payments',
     'expenses',
@@ -39,7 +37,6 @@ const BUSINESS_TYPE_FEATURES = {
   ],
   studio: [
     'crm',
-    'automations',
     'vendors',
     'marketing',
     'quoteAutomation',
@@ -66,12 +63,10 @@ const BUSINESS_TYPE_FEATURES = {
     'salesReports',
     'arReports',
     'profitLossReports',
-    'studioLocationsModule',
-    'watch'
+    'studioLocationsModule'
   ],
   pharmacy: [
     'crm',
-    'automations',
     'vendors',
     'marketing',
     'quoteAutomation',
@@ -86,7 +81,6 @@ const BUSINESS_TYPE_FEATURES = {
     'tasks',
     'dealersAccount',
     'pharmacyManagement',
-    'watch',
     'prescriptions',
     'materialsTracking',
     'payments',
@@ -99,7 +93,6 @@ const BUSINESS_TYPE_FEATURES = {
   ],
   rental: [
     'crm',
-    'automations',
     'vendors',
     'marketing',
     'leadPipeline',
@@ -122,8 +115,7 @@ const BUSINESS_TYPE_FEATURES = {
     'profitLossReports',
     'rentals',
     'products',
-    'shopsModule',
-    'watch'
+    'shopsModule'
   ]
 };
 

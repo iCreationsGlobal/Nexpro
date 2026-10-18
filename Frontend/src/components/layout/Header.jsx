@@ -1,9 +1,6 @@
 import { useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Lock, RefreshCw, Sparkles } from 'lucide-react';
+import { Lock, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/context/AuthContext';
-import { IBIS_ASK_LABEL } from '@/constants/ibis';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import NotificationBell from '@/components/NotificationBell';
 import { useSimpleMode } from '@/hooks/useSimpleMode';
@@ -15,8 +12,6 @@ import UserMenu from './UserMenu';
  * Top bar for the sidebar (desktop) layout. Phones and tablets use AppHeader instead.
  */
 export function Header() {
-  const navigate = useNavigate();
-  const { isDriver } = useAuth();
   const simpleMode = useSimpleMode();
 
   const handleHardRefresh = useCallback(() => {
@@ -57,24 +52,6 @@ export function Header() {
             </TooltipTrigger>
             <TooltipContent side="bottom">Hard refresh</TooltipContent>
           </Tooltip>
-
-          {/* Ask iBIS — staff+ (read-only analysis); drivers and Simple Mode excluded */}
-          {!isDriver && !simpleMode.isSimple && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate('/ask-ai')}
-                  className="h-9 border-border"
-                >
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  <span>{IBIS_ASK_LABEL}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Open {IBIS_ASK_LABEL}</TooltipContent>
-            </Tooltip>
-          )}
 
           {/* Notification Bell (Simple Mode: no notifications or alerts) */}
           {!simpleMode.isSimple && (

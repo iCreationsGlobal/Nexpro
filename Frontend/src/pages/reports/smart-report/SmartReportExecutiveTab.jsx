@@ -10,7 +10,6 @@ import RevenueExpensesTrendChart from '../overview/RevenueExpensesTrendChart';
 import DonutBreakdownCard from './DonutBreakdownCard';
 import TopCustomersTable from '../overview/TopCustomersTable';
 import CashFlowSummaryCard from '../overview/CashFlowSummaryCard';
-import AIQuickInsightsCard from '../overview/AIQuickInsightsCard';
 import SmartReportKpiRow from './SmartReportKpiRow';
 import SmartReportSectionHeader from './SmartReportSectionHeader';
 
@@ -18,7 +17,7 @@ import SmartReportSectionHeader from './SmartReportSectionHeader';
  * Executive Summary tab — matches first Smart Report mockup.
  */
 export default function SmartReportExecutiveTab({ snapshot, periodLabel, isRental = false }) {
-  const { kpis, trend, expenseDonut, topCustomers, cashFlow, executiveAiInsight, comparisonLabel } = snapshot;
+  const { kpis, trend, expenseDonut, topCustomers, cashFlow, comparisonLabel } = snapshot;
   const revenue = kpis.revenue.value;
 
   const kpiItems = [
@@ -48,7 +47,7 @@ export default function SmartReportExecutiveTab({ snapshot, periodLabel, isRenta
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <TopCustomersTable
           customers={topCustomers.map((c) => ({
             customerId: c.id,
@@ -67,7 +66,6 @@ export default function SmartReportExecutiveTab({ snapshot, periodLabel, isRenta
           },
           netChangeInCash: cashFlow.net,
         }} />
-        <AIQuickInsightsCard insights={[executiveAiInsight]} />
       </div>
     </div>
   );

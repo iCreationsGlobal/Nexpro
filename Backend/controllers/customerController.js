@@ -13,7 +13,7 @@ const {
 } = require('../utils/shopUtils');
 const { getPagination } = require('../utils/paginationUtils');
 const { invalidateCustomerListCache } = require('../middleware/cache');
-const { runCustomerCreatedAutomations } = require('../services/automationEngineService');
+const { emitBusinessEvent } = require('../services/businessEvents');
 const { assertCustomerContactUnique } = require('../utils/customerUniquenessUtils');
 const { normalizeBirthdayDate } = require('../utils/customerBirthday');
 
@@ -312,13 +312,7 @@ exports.createCustomer = async (req, res, next) => {
       console.error('[CustomerController] partner referral match failed:', matchError?.message || matchError);
     }
 
-    runCustomerCreatedAutomations({
-      tenantId: req.tenantId,
-      customer,
-      actorUserId: req.user?.id || null,
-    }).catch((error) =>
-      console.error('[CustomerController] customer_created automations failed:', error?.message || error)
-    );
+    emitBusinessEvent(req.tenantId, 'customer.created', { customerId: customer.id });
 
     res.status(201).json({
       success: true,

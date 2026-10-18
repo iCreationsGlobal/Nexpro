@@ -35,12 +35,7 @@ const {
 } = require('../utils/shopUtils');
 const { invalidateInvoiceListCache, invalidateAfterMutation } = require('../middleware/cache');
 const activityLogger = require('../services/activityLogger');
-const {
-  runPaymentReceivedAutomations,
-  runReviewRequestAutomations,
-  runInvoiceSentAutomations,
-  runHighValueInvoiceAutomations,
-} = require('../services/automationEngineService');
+const { emitBusinessEvent } = require('../services/businessEvents');
 const { updateCustomerBalance } = require('../services/customerBalanceService');
 const { ensureSaleFromPaidInvoice } = require('../services/invoiceSaleService');
 const { isRentalSourcedInvoice, syncRentalFromPaidInvoice } = require('../services/rentalInvoicePaymentService');
@@ -474,25 +469,15 @@ const enqueueInvoicePaymentSideEffects = ({
   }
 
   if (paymentAmount > 0 && payment) {
-    runInvoicePaymentBackgroundTask('payment_received automations', () => runPaymentReceivedAutomations({
-      tenantId,
-      invoice: updatedInvoice,
-      customer: updatedInvoice?.customer || null,
-      payment,
-      paymentAmount,
-      paymentMethod,
-      actorUserId: userId,
-    }));
+    emitBusinessEvent(tenantId, 'payment.received', {
+      invoiceId,
+      customerId: customerId || null,
+      paymentId: payment.id,
+    });
   }
 
-  if (wasFullyPaid && !wasAlreadyPaid && !updatedInvoice?.jobId && !updatedInvoice?.saleId && updatedInvoice?.customerId) {
-    runInvoicePaymentBackgroundTask('review_request automations', () => runReviewRequestAutomations({
-      tenantId,
-      sourceType: 'invoice',
-      source: updatedInvoice,
-      customer: updatedInvoice?.customer || null,
-      actorUserId: userId,
-    }));
+  if (wasFullyPaid && !wasAlreadyPaid) {
+    emitBusinessEvent(tenantId, 'invoice.paid', { invoiceId, customerId: customerId || null });
   }
 };
 
@@ -761,9 +746,9 @@ async function sendInvoiceSmsFromTemplate(tenantId, eventKey, invoice, phone, pa
 }
 
 /**
- * Deliver invoice to customer via built-in channels or automation rules (unified path).
+ * Deliver invoice to customer via the built-in channels.
  * @param {object} params
- * @returns {Promise<{ emailSent: boolean, smsSent: boolean, emailError: string|null, viaAutomation?: boolean }>}
+ * @returns {Promise<{ emailSent: boolean, smsSent: boolean, emailError: string|null }>}
  */
 async function deliverInvoiceToCustomer({
   tenantId,
@@ -772,24 +757,15 @@ async function deliverInvoiceToCustomer({
   userId = null,
   deliverySource = 'internal_invoice_send',
   forceCustomerChannels = false,
-  actorUserId = null,
   prefsSetting = null,
   skipPaidReceipt = false,
 }) {
-  const {
-    TEMPLATE_KEYS,
-    isCustomerNotificationEffectiveEnabled,
-    shouldUseAutomationInsteadOfBuiltIn,
-  } = require('../services/customerNotificationBridgeService');
   const { isChannelEnabledForEvent } = require('../services/messageDeliveryRulesService');
 
   const resolvedPrefs = prefsSetting
     || await Setting.findOne({ where: { tenantId, key: 'customer-notification-preferences' } });
   const prefAllows = resolvedPrefs?.value?.autoSendInvoiceToCustomer !== false;
-  const effectiveEnabled = await isCustomerNotificationEffectiveEnabled(tenantId, {
-    settingEnabled: forceCustomerChannels || prefAllows,
-    templateKey: TEMPLATE_KEYS.INVOICE_SENT,
-  });
+  const effectiveEnabled = forceCustomerChannels || prefAllows;
 
   const deliveryLogContext = buildInvoiceDeliveryLogContext({
     tenantId,
@@ -824,32 +800,10 @@ async function deliverInvoiceToCustomer({
     return { emailSent: false, smsSent: false, emailError: null, paidConfirmation: true };
   }
 
-  const useAutomation = await shouldUseAutomationInsteadOfBuiltIn(tenantId, TEMPLATE_KEYS.INVOICE_SENT);
   logInvoiceDelivery('invoice_send_decision', deliveryLogContext, {
-    decision: useAutomation ? 'send_via_automation' : 'send_customer_channels',
-    reason: useAutomation ? 'automation_rule_enabled' : (forceCustomerChannels && !prefAllows ? 'forced_customer_channels' : 'auto_send_enabled'),
+    decision: 'send_customer_channels',
+    reason: forceCustomerChannels && !prefAllows ? 'forced_customer_channels' : 'auto_send_enabled',
   });
-
-  if (useAutomation) {
-    await runInvoiceSentAutomations({
-      tenantId,
-      invoice: updatedInvoice,
-      customer: updatedInvoice.customer || null,
-      paymentLink,
-      actorUserId: actorUserId ?? userId ?? null,
-    }).catch((err) =>
-      console.error('[Invoice] invoice_sent automations failed:', err?.message || err)
-    );
-    runHighValueInvoiceAutomations({
-      tenantId,
-      invoice: updatedInvoice,
-      customer: updatedInvoice.customer || null,
-      actorUserId: actorUserId ?? userId ?? null,
-    }).catch((err) =>
-      console.error('[Invoice] high_value_invoice automations failed:', err?.message || err)
-    );
-    return { emailSent: false, smsSent: false, emailError: null, viaAutomation: true };
-  }
 
   let emailSent = false;
   let smsSent = false;
@@ -956,14 +910,10 @@ async function deliverInvoiceToCustomer({
     }, 'warn');
   }
 
-  runHighValueInvoiceAutomations({
-    tenantId,
-    invoice: updatedInvoice,
-    customer: updatedInvoice.customer || null,
-    actorUserId: actorUserId ?? userId ?? null,
-  }).catch((err) =>
-    console.error('[Invoice] high_value_invoice automations failed:', err?.message || err)
-  );
+  emitBusinessEvent(tenantId, 'invoice.sent', {
+    invoiceId: updatedInvoice.id,
+    customerId: updatedInvoice.customerId || null,
+  });
 
   return { emailSent, smsSent, emailError };
 }
@@ -975,22 +925,9 @@ async function deliverInvoiceToCustomer({
  */
 async function sendInvoicePaidConfirmationToCustomer(tenantId, invoice) {
   try {
-    const {
-      TEMPLATE_KEYS,
-      isCustomerNotificationEffectiveEnabled,
-      shouldUseAutomationInsteadOfBuiltIn,
-    } = require('../services/customerNotificationBridgeService');
     const prefsRow = await Setting.findOne({ where: { tenantId, key: 'customer-notification-preferences' } });
     const prefs = prefsRow?.value || {};
-    const settingOn = prefs.sendInvoicePaidConfirmationToCustomer !== false;
-    const effective = await isCustomerNotificationEffectiveEnabled(tenantId, {
-      settingEnabled: settingOn,
-      templateKey: TEMPLATE_KEYS.PAYMENT_RECEIVED_THANK_YOU,
-    });
-    if (!effective) return;
-    if (await shouldUseAutomationInsteadOfBuiltIn(tenantId, TEMPLATE_KEYS.PAYMENT_RECEIVED_THANK_YOU)) {
-      return;
-    }
+    if (prefs.sendInvoicePaidConfirmationToCustomer === false) return;
 
     const customer = invoice.customer;
     if (!customer) return;
@@ -1505,14 +1442,6 @@ exports.createInvoice = async (req, res, next) => {
     invalidateAfterMutation(req.tenantId);
 
     invalidateInvoiceListCache(req.tenantId);
-    runHighValueInvoiceAutomations({
-      tenantId: req.tenantId,
-      invoice: createdInvoice,
-      customer: createdInvoice.customer || null,
-      actorUserId: req.user?.id || null,
-    }).catch((err) =>
-      console.error('[Invoice] high_value_invoice automations failed:', err?.message || err)
-    );
 
     const responsePayload = await invoiceToResponsePayload(createdInvoice);
     res.status(201).json({
@@ -2148,7 +2077,6 @@ exports.sendInvoice = async (req, res, next) => {
       paymentLink,
       userId: req.user?.id || null,
       deliverySource: 'manual_invoice_send',
-      actorUserId: req.user?.id || null,
       prefsSetting,
     });
 
@@ -2442,7 +2370,6 @@ async function sendInvoiceToCustomer(tenantId, invoice, options = {}) {
     userId,
     deliverySource,
     forceCustomerChannels,
-    actorUserId: userId,
     skipPaidReceipt,
   });
 }
@@ -2777,37 +2704,17 @@ async function recordPublicInvoicePaymentCore(invoice, {
   }
 
   if (paymentAmount > 0 && payment) {
-    setImmediate(() => {
-      runPaymentReceivedAutomations({
-        tenantId: invoice.tenantId,
-        invoice: updatedInvoice,
-        customer: invoice.customer || null,
-        payment,
-        paymentAmount,
-        paymentMethod: paymentMethod || 'online',
-        actorUserId: null,
-      }).catch((error) => {
-        console.error('[PublicInvoicePayment] payment_received automations failed:', error?.message || error);
-      });
+    emitBusinessEvent(invoice.tenantId, 'payment.received', {
+      invoiceId: invoice.id,
+      customerId: invoice.customerId || null,
+      paymentId: payment.id,
     });
   }
 
-  if (
-    updatedInvoice.status === 'paid'
-    && !updatedInvoice.jobId
-    && !updatedInvoice.saleId
-    && updatedInvoice.customerId
-  ) {
-    setImmediate(() => {
-      runReviewRequestAutomations({
-        tenantId: invoice.tenantId,
-        sourceType: 'invoice',
-        source: updatedInvoice,
-        customer: updatedInvoice.customer || invoice.customer || null,
-        actorUserId: null,
-      }).catch((error) => {
-        console.error('[PublicInvoicePayment] review_request automations failed:', error?.message || error);
-      });
+  if (updatedInvoice.status === 'paid') {
+    emitBusinessEvent(invoice.tenantId, 'invoice.paid', {
+      invoiceId: invoice.id,
+      customerId: invoice.customerId || null,
     });
   }
 

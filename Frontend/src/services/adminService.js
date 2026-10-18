@@ -206,9 +206,6 @@ const confirmOpsReveal = async (id, payload) =>
 const getOpsReveals = async (id) =>
   api.get(`/admin/ops/assets/${id}/reveals`);
 
-const getAutomationsOverview = async (params = {}) =>
-  api.get('/admin/automations/overview', { params });
-
 const getMessagingUsage = async (params = {}) =>
   api.get('/admin/messaging/usage', { params });
 
@@ -445,7 +442,6 @@ export default {
   challengeOpsReveal,
   confirmOpsReveal,
   getOpsReveals,
-  getAutomationsOverview,
   getMessagingUsage,
   getPlatformAdmins,
   getPlatformAdminInviteRoles,

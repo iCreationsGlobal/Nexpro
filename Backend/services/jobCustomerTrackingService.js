@@ -3,6 +3,7 @@ const { Job, JobItem, Customer, Setting, Tenant } = require('../models');
 const { applyTenantFilter } = require('../utils/tenantUtils');
 const { getTenantLogoUrl } = require('../utils/tenantLogo');
 const { buildCustomerFacingJobTitle } = require('../utils/jobCustomerMessageText');
+const { emitBusinessEvent } = require('./businessEvents');
 
 const JOB_INVOICE_DEFAULTS = {
   autoSendInvoiceOnJobCreation: false,
@@ -136,37 +137,17 @@ async function maybeSendJobTrackingSmsOnJobCreated({ tenantId, jobId, triggeredB
 }
 
 /**
- * Send configured customer tracking notifications (email and/or SMS) after job creation.
+ * After job creation: report job.created and send configured customer tracking notifications.
  * @param {{ tenantId: string, jobId: string, triggeredByUserId: string|null }} params
  */
 async function maybeSendJobTrackingNotificationsOnJobCreated(params) {
-  const { runJobCreatedAutomations } = require('./automationEngineService');
-  const {
-    TEMPLATE_KEYS,
-    shouldUseAutomationInsteadOfBuiltIn,
-  } = require('./customerNotificationBridgeService');
-  const { tenantId, jobId, triggeredByUserId } = params;
+  const { tenantId, jobId } = params;
 
-  await runJobCreatedAutomations({
-    tenantId,
-    jobId,
-    actorUserId: triggeredByUserId,
-  }).catch((err) => {
-    console.error('[JobTracking] job_created automations failed:', err?.message || err);
-  });
-
-  const skipEmailBuiltIn = await shouldUseAutomationInsteadOfBuiltIn(
-    tenantId,
-    TEMPLATE_KEYS.JOB_CREATED_TRACKING_EMAIL
-  );
-  const skipSmsBuiltIn = await shouldUseAutomationInsteadOfBuiltIn(
-    tenantId,
-    TEMPLATE_KEYS.JOB_CREATED_TRACKING_SMS
-  );
+  emitBusinessEvent(tenantId, 'job.created', { jobId });
 
   await Promise.allSettled([
-    skipEmailBuiltIn ? Promise.resolve() : maybeSendJobTrackingEmailOnJobCreated(params),
-    skipSmsBuiltIn ? Promise.resolve() : maybeSendJobTrackingSmsOnJobCreated(params),
+    maybeSendJobTrackingEmailOnJobCreated(params),
+    maybeSendJobTrackingSmsOnJobCreated(params),
   ]);
 }
 

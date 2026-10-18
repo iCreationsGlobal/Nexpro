@@ -1,22 +1,20 @@
 import {
   BarChart3,
-  Brain,
   Clock,
+  Gauge,
   History,
   LayoutDashboard,
-  Lightbulb,
   Package,
   Percent,
   Receipt,
   ShoppingCart,
-  Sparkles,
   Wallet,
   Wrench,
 } from 'lucide-react';
 
 /** Smart Report tab definitions — matches detail page tabs and create-modal sections. */
 export const SMART_REPORT_TABS = [
-  { id: 'executive', label: 'Executive Summary', icon: Sparkles },
+  { id: 'executive', label: 'Executive Summary', icon: Gauge },
   { id: 'financial', label: 'Financial Overview', icon: BarChart3 },
   { id: 'sales', label: 'Sales & Customers', icon: ShoppingCart },
   { id: 'expenses', label: 'Expenses', icon: Receipt },
@@ -28,8 +26,6 @@ export const SMART_REPORT_TABS = [
   { id: 'rental-utilization', label: 'Utilization', icon: Percent },
   { id: 'rental-late-returns', label: 'Late Returns', icon: Clock },
   { id: 'rental-damage', label: 'Damage Reports', icon: Wrench },
-  { id: 'ai-insights', label: 'AI Insights', icon: Brain },
-  { id: 'recommendations', label: 'Recommendations', icon: Lightbulb },
 ];
 
 export const SMART_REPORT_TAB_IDS = SMART_REPORT_TABS.map((t) => t.id);
@@ -48,8 +44,6 @@ export const SMART_REPORT_TAB_DESCRIPTIONS = {
   'rental-utilization': 'Fleet utilization and hired item-days',
   'rental-late-returns': 'Late returns, days late, and late charges',
   'rental-damage': 'Damage reports and cost by type',
-  'ai-insights': 'AI-generated findings from your business data',
-  recommendations: 'Prioritized actions to improve performance',
 };
 
 /**
@@ -92,10 +86,6 @@ export const SMART_REPORT_TYPE_GROUPS = [
     tabIds: ['inventory'],
     showWhen: ({ isShop, isPharmacy }) => isShop || isPharmacy,
   },
-  {
-    groupLabel: 'AI',
-    tabIds: ['ai-insights', 'recommendations'],
-  },
 ];
 
 /** Map legacy generate-report type ids → Smart Report tab id(s). */
@@ -114,32 +104,3 @@ export const LEGACY_REPORT_TYPE_TO_TAB = {
   'inventory-status': 'inventory',
   performance: 'executive',
 };
-
-/** Create-modal generation modes. */
-export const SMART_REPORT_GENERATION_MODES = {
-  SECTIONS: 'sections',
-  FREE_TEXT: 'free_text',
-};
-
-/**
- * Map assistant NLP period keys → Reports DateRangePicker preset keys.
- * @type {Record<string, string>}
- */
-export const ASSISTANT_PERIOD_TO_DATE_FILTER = {
-  today: 'today',
-  yesterday: 'yesterday',
-  week: 'thisWeek',
-  month: 'thisMonth',
-  year: 'thisYear',
-};
-
-/** Longer AI timeout for free-text custom questions (template path stays shorter). */
-export const SMART_REPORT_FREE_TEXT_AI_TIMEOUT_MS = 40000;
-
-/** Example chips for the Describe with AI create path. */
-export const SMART_REPORT_FREE_TEXT_EXAMPLE_PROMPTS = [
-  'How did we do this month vs last, and what should I fix first?',
-  'Where is cash getting stuck and what actions will free it up?',
-  'Which products or services drove profit this week, and what is at risk?',
-  'Give me a growth plan for this quarter based only on our numbers.',
-];

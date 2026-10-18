@@ -44,13 +44,14 @@ jest.mock('../../../utils/customerUniquenessUtils', () => ({
   assertCustomerContactUnique: jest.fn(),
 }));
 
-jest.mock('../../../services/automationEngineService', () => ({
-  runCustomerCreatedAutomations: jest.fn().mockResolvedValue({}),
+jest.mock('../../../services/businessEvents', () => ({
+  emitBusinessEvent: jest.fn(),
 }));
 
 const { Customer } = require('../../../models');
 const { assertCustomerContactUnique } = require('../../../utils/customerUniquenessUtils');
 const { attachScopedToPayload } = require('../../../utils/shopUtils');
+const { emitBusinessEvent } = require('../../../services/businessEvents');
 const customerController = require('../../../controllers/customerController');
 
 describe('customerController createCustomer', () => {
@@ -92,6 +93,7 @@ describe('customerController createCustomer', () => {
       })
     );
     expect(res.status).toHaveBeenCalledWith(201);
+    expect(emitBusinessEvent).toHaveBeenCalledWith('tenant-1', 'customer.created', { customerId: 'cust-1' });
     expect(next).not.toHaveBeenCalled();
   });
 

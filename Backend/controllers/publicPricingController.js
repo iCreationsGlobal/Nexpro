@@ -1,5 +1,6 @@
 const { plans: configPlans, lastUpdated: configLastUpdated } = require('../config/plans');
 const { SubscriptionPlan } = require('../models');
+const { pickKnownFeatureFlags } = require('../config/features');
 const {
   expandPlansWithPaystackVariants,
   getEnterprisePublicPricing,
@@ -78,7 +79,7 @@ const mapPlanForMarketing = (plan, opts = {}) => {
     billing: priceOverride?.billingDescription || plan.marketing?.billing || price?.billingDescription || null,
     perks: plan.marketing?.perks || [],
     highlights: plan.highlights || [],
-    features: plan.marketing?.featureFlags || {},
+    features: pickKnownFeatureFlags(plan.marketing?.featureFlags),
     popular: Boolean(plan.marketing?.popular),
     badge: plan.marketing?.badgeLabel || null,
     cta: typeof cta === 'object' ? { ...cta, label: cta.label || ctaLabel } : { label: ctaLabel },

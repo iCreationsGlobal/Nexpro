@@ -12,8 +12,6 @@ import DashboardStatsCards from '../components/DashboardStatsCards';
 import DashboardJobsTable from '../components/DashboardJobsTable';
 import { showSuccess, showError, showWarning } from '../utils/toast';
 import { formatPeriodLabel } from '../utils/formatPeriodLabel';
-import { buildAskAiUrl } from '../utils/buildAskAiUrl';
-import { IBIS_ASK_LABEL, IBIS_NAME } from '@/constants/ibis';
 import { getCoreTypeForBusinessSubType } from '@/constants/businessTypes';
 import { cn } from '@/lib/utils';
 import {
@@ -57,7 +55,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import dashboardService from '../services/dashboardService';
-import assistantService from '../services/assistantService';
 import productService from '../services/productService';
 import rentalService from '../services/rentalService';
 import OnlineStoreOrderBanner from '../components/store/OnlineStoreOrderBanner';
@@ -88,58 +85,6 @@ dayjs.extend(weekOfYear);
 dayjs.extend(isoWeek);
 dayjs.extend(relativeTime);
 
-const parseAiInsightResponse = (message = '') => {
-  const trimmed = String(message || '')
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  if (!trimmed) return null;
-
-  const parseJson = (raw) => {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed?.title && parsed?.body) {
-        return {
-          title: String(parsed.title).trim(),
-          body: String(parsed.body).trim(),
-        };
-      }
-    } catch {
-      return null;
-    }
-    return null;
-  };
-
-  const directJson = parseJson(trimmed);
-  if (directJson) return directJson;
-
-  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    const extractedJson = parseJson(jsonMatch[0]);
-    if (extractedJson) return extractedJson;
-  }
-
-  const lines = trimmed.split('\n').map((line) => line.trim()).filter(Boolean);
-  const titleLine = lines.find((line) => /^title:/i.test(line));
-  const bodyLine = lines.find((line) => /^(body|insight):/i.test(line));
-  if (titleLine && bodyLine) {
-    return {
-      title: titleLine.replace(/^title:\s*/i, '').trim(),
-      body: bodyLine.replace(/^(body|insight):\s*/i, '').trim(),
-    };
-  }
-
-  return {
-    title: 'AI business insight',
-    body: trimmed.length > 140 ? `${trimmed.slice(0, 137)}...` : trimmed,
-  };
-};
-
-const SHARP_DASHBOARD_DECLINE_PERCENTAGE = -50;
-const SIGNIFICANT_DAILY_BASELINE_PERCENTAGE = 15;
-
 const getApiStatus = (error) => error?.response?.status;
 const getApiErrorCode = (error) => error?.response?.data?.errorCode;
 const getApiMessage = (error) => error?.response?.data?.message || error?.response?.data?.error;
@@ -153,204 +98,6 @@ const isBillingLocked = (billingStatus) =>
   billingStatus?.canAccessApp === false ||
   billingStatus?.billingStatus === 'locked' ||
   billingStatus?.billingStatus === 'suspended';
-
-const toFiniteNumber = (value, fallback = 0) => {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : fallback;
-};
-
-const formatPercent = (value) => `${Math.abs(toFiniteNumber(value)).toFixed(0)}%`;
-
-const getInclusiveDays = (startDate, endDate) => {
-  const start = dayjs(startDate).startOf('day');
-  const end = dayjs(endDate).startOf('day');
-  if (!start.isValid() || !end.isValid() || end.isBefore(start)) return 1;
-  return Math.max(1, end.diff(start, 'day') + 1);
-};
-
-const getElapsedPeriodDays = (startDate, endDate) => {
-  const start = dayjs(startDate).startOf('day');
-  const end = dayjs(endDate).startOf('day');
-  const today = dayjs().startOf('day');
-  if (!start.isValid() || !end.isValid() || end.isBefore(start)) return 1;
-  const effectiveEnd = today.isAfter(start) && today.isBefore(end) ? today : end;
-  return Math.max(1, effectiveEnd.diff(start, 'day') + 1);
-};
-
-const calculatePercentageChange = (current, baseline) => {
-  const currentValue = toFiniteNumber(current);
-  const baselineValue = toFiniteNumber(baseline);
-  if (baselineValue > 0) return ((currentValue - baselineValue) / baselineValue) * 100;
-  if (currentValue > 0 && baselineValue <= 0) return 100;
-  if (currentValue <= 0 && baselineValue > 0) return -100;
-  return 0;
-};
-
-const buildHealthMetric = ({ current, comparisonMetric, currentDays, baselineDays, lowerIsBetter = false }) => {
-  const currentValue = toFiniteNumber(current);
-  const previousValue = toFiniteNumber(comparisonMetric?.previous);
-  const currentDailyAverage = currentValue / Math.max(1, currentDays);
-  const baselineDailyAverage = previousValue / Math.max(1, baselineDays);
-  const dailyAverageChangePercentage = calculatePercentageChange(currentDailyAverage, baselineDailyAverage);
-  const isAboveDailyBaseline = dailyAverageChangePercentage >= SIGNIFICANT_DAILY_BASELINE_PERCENTAGE;
-  const isBelowDailyBaseline = dailyAverageChangePercentage <= -SIGNIFICANT_DAILY_BASELINE_PERCENTAGE;
-
-  return {
-    current: currentValue,
-    previous: previousValue,
-    totalChangePercentage: toFiniteNumber(comparisonMetric?.percentage),
-    currentDailyAverage,
-    baselineDailyAverage,
-    dailyAverageChangePercentage,
-    hasBaseline: previousValue > 0 || baselineDailyAverage > 0,
-    isHealthy: lowerIsBetter ? isBelowDailyBaseline : isAboveDailyBaseline,
-    isUnhealthy: lowerIsBetter ? isAboveDailyBaseline : isBelowDailyBaseline,
-  };
-};
-
-const buildFallbackInsight = ({ businessHealthContext }) => {
-  const {
-    metrics,
-    lowStockCount,
-    isRetail,
-    isProfitable,
-    profitMargin,
-    comparisonLabel,
-  } = businessHealthContext;
-
-  if (metrics.profit.current < 0 && metrics.revenue.current > 0) {
-    return {
-      title: 'Costs are outpacing revenue',
-      body: metrics.profit.hasBaseline
-        ? `Profit is below its ${comparisonLabel} baseline. Review spending and protect higher-margin sales.`
-        : 'Expenses are higher than revenue for this period. Review spending and push higher-margin sales.',
-    };
-  }
-
-  if (metrics.revenue.isUnhealthy && metrics.profit.isUnhealthy) {
-    return {
-      title: 'Performance is below baseline',
-      body: `Revenue and profit are below recent averages. Check sales activity before increasing spend.`,
-    };
-  }
-
-  if (metrics.expenses.isUnhealthy && profitMargin < 10) {
-    return {
-      title: 'Expenses are running high',
-      body: `Spending is ${formatPercent(metrics.expenses.dailyAverageChangePercentage)} above average while margin is tight.`,
-    };
-  }
-
-  if (lowStockCount > 0 && isRetail) {
-    return {
-      title: 'Stock needs attention',
-      body: `${lowStockCount} item${lowStockCount === 1 ? ' is' : 's are'} low on stock. Restock priority products first.`,
-    };
-  }
-
-  if (metrics.revenue.isHealthy && metrics.profit.current > 0) {
-    return {
-      title: 'Business is ahead of average',
-      body: `Revenue is ${formatPercent(metrics.revenue.dailyAverageChangePercentage)} above its recent daily average with positive profit.`,
-    };
-  }
-
-  if (metrics.revenue.current > 0 && isProfitable) {
-    return {
-      title: 'Business is steady',
-      body: 'Revenue is covering expenses for this period. Keep comparing sales, costs, and customer activity.',
-    };
-  }
-
-  return {
-    title: 'Your dashboard is ready',
-    body: `Ask ${IBIS_NAME} to explain trends, collections, stock, or next steps for this period.`,
-  };
-};
-
-const buildBusinessHealthOverrideInsight = ({ businessHealthContext }) => {
-  const {
-    metrics,
-    periodLabel,
-    comparisonLabel,
-    isProfitable,
-    profitMargin,
-  } = businessHealthContext;
-
-  if (!metrics.revenue.hasBaseline && !metrics.profit.hasBaseline) return null;
-
-  const revenuePercentage = metrics.revenue.totalChangePercentage;
-  const profitPercentage = metrics.profit.totalChangePercentage;
-  const profitDownSharply = profitPercentage <= SHARP_DASHBOARD_DECLINE_PERCENTAGE;
-  const revenueDownSharply = revenuePercentage <= SHARP_DASHBOARD_DECLINE_PERCENTAGE;
-
-  if (!profitDownSharply && !revenueDownSharply) return null;
-
-  if (isProfitable && profitMargin >= 10 && !metrics.revenue.isUnhealthy && !metrics.profit.isUnhealthy) {
-    return {
-      title: 'Drop needs context',
-      body: `${periodLabel} totals are lower ${comparisonLabel}, but daily averages and profit still look healthy.`,
-    };
-  }
-
-  const metric = profitDownSharply ? 'profit' : 'revenue';
-  const metricContext = profitDownSharply ? metrics.profit : metrics.revenue;
-  const percentage = Math.abs(profitDownSharply ? profitPercentage : revenuePercentage);
-
-  if (!metricContext.isUnhealthy && isProfitable) {
-    return {
-      title: `${profitDownSharply ? 'Profit' : 'Revenue'} is lower`,
-      body: `${periodLabel} ${metric} is down ${percentage}% ${comparisonLabel}, but average pace is not sharply below baseline.`,
-    };
-  }
-
-  return {
-    title: `${profitDownSharply ? 'Profit' : 'Revenue'} below baseline`,
-    body: `${periodLabel} ${metric} is down ${percentage}% ${comparisonLabel} and below its recent daily average.`,
-  };
-};
-
-const buildStaffDashboardInsight = ({ businessHealthContext }) => {
-  const {
-    metrics,
-    lowStockCount,
-    isRetail,
-    comparisonLabel,
-  } = businessHealthContext;
-
-  if (lowStockCount > 0 && isRetail) {
-    return {
-      title: 'Stock needs attention',
-      body: `${lowStockCount} item${lowStockCount === 1 ? ' is' : 's are'} low on stock. Restock priority products first.`,
-    };
-  }
-
-  if (metrics.revenue.isUnhealthy) {
-    return {
-      title: 'Sales are below baseline',
-      body: `Revenue is below its ${comparisonLabel} baseline. Check customer activity and recent sales.`,
-    };
-  }
-
-  if (metrics.revenue.isHealthy) {
-    return {
-      title: 'Sales are ahead',
-      body: `Revenue is ${formatPercent(metrics.revenue.dailyAverageChangePercentage)} above its recent daily average.`,
-    };
-  }
-
-  if (metrics.newCustomers.isHealthy) {
-    return {
-      title: 'Customer growth is up',
-      body: `New customers are ${formatPercent(metrics.newCustomers.dailyAverageChangePercentage)} above recent averages.`,
-    };
-  }
-
-  return {
-    title: 'Your dashboard is ready',
-    body: 'Review sales, customers, stock, and next steps for this period.',
-  };
-};
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -727,7 +474,6 @@ const Dashboard = () => {
   const expenseTitle = useMemo(() => (isFiltered ? `${periodLabel} expenses` : "This Month's Expenses"), [isFiltered, periodLabel]);
   const profitTitle = useMemo(() => (isFiltered ? `${periodLabel} profit` : "This Month's Profit"), [isFiltered, periodLabel]);
   const profitValue = useMemo(() => Number(thisMonthSummary.profit ?? (revenueValue - expenseValue)), [thisMonthSummary.profit, revenueValue, expenseValue]);
-  const allTimeProfit = useMemo(() => Number(displayData?.allTime?.profit ?? ((displayData?.allTime?.revenue ?? 0) - (displayData?.allTime?.expenses ?? 0))), [displayData]);
   const thisMonthRange = useMemo(() => thisMonthSummary.range, [thisMonthSummary.range]);
 
   // Get business type from activeTenant (preferred) or overview response (fallback)
@@ -865,137 +611,6 @@ const Dashboard = () => {
     () => showStockAlerts || showOnlineOrderBanner,
     [showOnlineOrderBanner, showStockAlerts]
   );
-
-  const businessHealthContext = useMemo(() => {
-    const periodDays = getInclusiveDays(overviewParams.startDate, overviewParams.endDate);
-    const elapsedDays = getElapsedPeriodDays(overviewParams.startDate, overviewParams.endDate);
-    const lowStockCount = (stockAlerts?.lowStock || []).length;
-    const isRetail = isShop || isPharmacy;
-    const metrics = {
-      revenue: buildHealthMetric({
-        current: revenueValue,
-        comparisonMetric: comparisonData?.revenue,
-        currentDays: elapsedDays,
-        baselineDays: periodDays,
-      }),
-      expenses: buildHealthMetric({
-        current: expenseValue,
-        comparisonMetric: comparisonData?.expenses,
-        currentDays: elapsedDays,
-        baselineDays: periodDays,
-        lowerIsBetter: true,
-      }),
-      profit: buildHealthMetric({
-        current: profitValue,
-        comparisonMetric: comparisonData?.profit,
-        currentDays: elapsedDays,
-        baselineDays: periodDays,
-      }),
-      newCustomers: buildHealthMetric({
-        current: displayData?.summary?.newCustomers || 0,
-        comparisonMetric: comparisonData?.newCustomers,
-        currentDays: elapsedDays,
-        baselineDays: periodDays,
-      }),
-    };
-    const profitMargin = revenueValue > 0 ? (profitValue / revenueValue) * 100 : 0;
-
-    return {
-      periodLabel,
-      comparisonLabel: comparisonData?.label || 'vs previous period',
-      periodDays,
-      elapsedDays,
-      metrics,
-      lowStockCount,
-      stockAlertsActiveCount,
-      isRetail,
-      isProfitable: profitValue > 0,
-      profitMargin,
-      allTime: {
-        revenue: toFiniteNumber(displayData?.allTime?.revenue),
-        expenses: toFiniteNumber(displayData?.allTime?.expenses),
-        profit: allTimeProfit,
-      },
-      totalCustomers: toFiniteNumber(displayData?.summary?.totalCustomers),
-    };
-  }, [
-    overviewParams.startDate,
-    overviewParams.endDate,
-    stockAlerts?.lowStock,
-    stockAlertsActiveCount,
-    isShop,
-    isPharmacy,
-    revenueValue,
-    expenseValue,
-    profitValue,
-    displayData?.summary?.newCustomers,
-    displayData?.summary?.totalCustomers,
-    displayData?.allTime?.revenue,
-    displayData?.allTime?.expenses,
-    allTimeProfit,
-    comparisonData,
-    periodLabel,
-  ]);
-
-  const fallbackDashboardInsight = useMemo(
-    () => buildFallbackInsight({ businessHealthContext }),
-    [businessHealthContext]
-  );
-
-  const staffDashboardInsight = useMemo(
-    () => buildStaffDashboardInsight({ businessHealthContext }),
-    [businessHealthContext]
-  );
-
-  const businessHealthOverrideInsight = useMemo(
-    () => buildBusinessHealthOverrideInsight({ businessHealthContext }),
-    [businessHealthContext]
-  );
-
-  const { data: aiDashboardInsight, isFetching: aiDashboardInsightLoading } = useQuery({
-    queryKey: queryKeys.dashboard.aiInsight(activeTenantId, activeShopId, activeStudioLocationId, {
-      startDate: overviewParams.startDate,
-      endDate: overviewParams.endDate,
-      filterType: overviewParams.filterType,
-      revenueValue,
-      expenseValue,
-      profitValue,
-      newCustomers: displayData?.summary?.newCustomers,
-      lowStockCount: (stockAlerts?.lowStock || []).length,
-      revenueChange: businessHealthContext.metrics.revenue.dailyAverageChangePercentage,
-      expensesChange: businessHealthContext.metrics.expenses.dailyAverageChangePercentage,
-      profitChange: businessHealthContext.metrics.profit.dailyAverageChangePercentage,
-      newCustomersChange: businessHealthContext.metrics.newCustomers.dailyAverageChangePercentage,
-      profitMargin: businessHealthContext.profitMargin,
-      source: 'analysis_engine',
-    }),
-    queryFn: async () => {
-      // Prefer owned analysis engine (performance_summary) — no Claude round-trip
-      const result = await assistantService.askAnalysis('Summarize performance', {
-        intent: 'performance_summary',
-        pageContext: 'dashboard',
-        startDate: overviewParams.startDate,
-        endDate: overviewParams.endDate,
-        periodLabel,
-      });
-      if (result?.insight?.title && result?.insight?.body) {
-        return {
-          title: String(result.insight.title).trim(),
-          body: String(result.insight.body).trim(),
-        };
-      }
-      return parseAiInsightResponse(result?.message || result?.answerMarkdown || '');
-    },
-    enabled: scopeReady && !!overview && canViewProfitMetrics,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
-    retry: 1,
-  });
-
-  const visibleDashboardInsight = canViewProfitMetrics
-    ? businessHealthOverrideInsight || aiDashboardInsight || fallbackDashboardInsight
-    : staffDashboardInsight;
-  const dashboardInsightLoading = canViewProfitMetrics && !businessHealthOverrideInsight && aiDashboardInsightLoading;
 
   // Full-page skeletons only on initial load when we have no data yet
   if (loading && !overview) {
@@ -1240,46 +855,6 @@ const Dashboard = () => {
         loading={overviewLoading}
         showProfitCard={canViewProfitMetrics}
       />
-
-      {canViewProfitMetrics && (
-        <Card className="border border-gray-200 bg-green-50/70">
-          <CardContent className="py-1 px-3 sm:px-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand">
-                <Sparkles className="h-5 w-5 text-white" aria-hidden />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-brand mb-1">AI Insight</p>
-                <h3 className="text-base font-semibold text-foreground">
-                  {dashboardInsightLoading ? 'AI is reviewing your numbers' : visibleDashboardInsight.title}
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {dashboardInsightLoading
-                    ? 'Generating a quick business insight from your latest dashboard data.'
-                    : visibleDashboardInsight.body}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="shrink-0 bg-white"
-                onClick={() =>
-                  navigate(buildAskAiUrl({
-                    from: 'dashboard',
-                    prompt: 'Explain my dashboard insight and what I should do next.',
-                    startDate: overviewParams.startDate,
-                    endDate: overviewParams.endDate,
-                    periodLabel,
-                  }))
-                }
-              >
-                {IBIS_ASK_LABEL}
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {showOnlineOrderBanner && (
         <OnlineStoreOrderBanner

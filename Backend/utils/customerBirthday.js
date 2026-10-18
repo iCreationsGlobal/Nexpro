@@ -1,7 +1,7 @@
 /**
  * Customer birthday helpers (day + month only; year is not collected).
- * Stored as DATEONLY with fixed year 2000 so existing birthday automations
- * that match on MM-DD continue to work for both new and legacy full DOBs.
+ * Stored as DATEONLY with fixed year 2000 so birthday matching on MM-DD
+ * works for both new and legacy full DOBs.
  */
 
 const BIRTHDAY_STORAGE_YEAR = 2000;

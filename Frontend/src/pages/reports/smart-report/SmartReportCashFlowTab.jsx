@@ -40,10 +40,9 @@ export default function SmartReportCashFlowTab({ snapshot, periodLabel }) {
     compositionDonut: { slices: [], total: snapshot.cashFlow?.inflow || 0 },
     inflowBreakdown: [],
     outflowBreakdown: [],
-    insights: [],
   };
 
-  const { kpis, trend, activityDonut, compositionDonut, inflowBreakdown, outflowBreakdown, insights } = detail;
+  const { kpis, trend, activityDonut, compositionDonut, inflowBreakdown, outflowBreakdown } = detail;
   const comparisonLabel = snapshot.comparisonLabel;
 
   const kpiItems = [
@@ -109,7 +108,7 @@ export default function SmartReportCashFlowTab({ snapshot, periodLabel }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <HorizontalBarBreakdownCard
           title="Cash Inflow Breakdown"
           items={inflowBreakdown}
@@ -120,23 +119,6 @@ export default function SmartReportCashFlowTab({ snapshot, periodLabel }) {
           items={outflowBreakdown}
           viewLabel="View Outflow Analysis →"
         />
-
-        <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
-          <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base font-semibold">Cash Flow Insights</CardTitle>
-            <Button variant="link" className="h-auto p-0 text-xs text-primary">View All Insights</Button>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <ul className="space-y-3 text-sm text-muted-foreground">
-              {(insights.length > 0 ? insights : [{ text: 'Cash flow data is available for this period.' }]).map((item, idx) => (
-                <li key={idx} className="flex gap-2">
-                  <span className="text-primary shrink-0">•</span>
-                  <span>{item.text}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

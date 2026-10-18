@@ -29,7 +29,7 @@ export const WORKSPACE_ROLE_DEFINITIONS = {
       'Access all shops and studio locations',
       'Approve or reject submitted expenses',
       'Delete quotes, invoices, jobs, and other sensitive records',
-      'Reports, automations, marketing, and workspace settings',
+      'Reports, marketing, and workspace settings',
     ],
   },
   manager: {
@@ -37,7 +37,7 @@ export const WORKSPACE_ROLE_DEFINITIONS = {
     summary: 'Oversee day-to-day operations and workspace settings; cannot manage team accounts.',
     permissions: [
       'Sales, inventory, customers, quotes, expenses, and invoices',
-      'Reports, automations, marketing, export data, and workspace settings',
+      'Reports, marketing, export data, and workspace settings',
       'Create and update shops or studio locations',
       'View team members (cannot invite users or change roles)',
       'Limited to assigned shops or studios when locations are set',
@@ -49,7 +49,7 @@ export const WORKSPACE_ROLE_DEFINITIONS = {
     permissions: [
       'POS, sales, customers, expenses, quotes, and invoices',
       'Record payments and stock transfers',
-      'Cannot access reports, users, automations, or workspace settings',
+      'Cannot access reports, users, or workspace settings',
       'Limited visibility on product cost and margin fields',
       'Limited to assigned shops or studios',
     ],

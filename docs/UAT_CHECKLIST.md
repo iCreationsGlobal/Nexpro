@@ -134,7 +134,7 @@ Complete testing by **[date TBD]** / during the UAT window. *(Update as needed.)
 ### 8. Reports
 
 - [ ] **Overview**: Open **Reports**, then **Overview**. Page loads. Change date range if available.
-- [ ] **Smart Report**: Open **Smart Report**. Content loads.
+- [ ] **Smart Report**: Open **Smart Report**. The report's figures (sales, expenses, profit, trends) load for the selected period.
 - [ ] **Generated Reports**: Open **Generated Reports**. List or empty state loads.
 
 ### 9. Settings

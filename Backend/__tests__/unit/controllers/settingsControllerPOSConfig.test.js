@@ -25,10 +25,6 @@ jest.mock('../../../utils/taxConfig', () => ({
   warmTaxConfigCache: jest.fn(),
 }));
 
-jest.mock('../../../utils/taskAutomationConfig', () => ({
-  normalizeTaskAutomation: jest.fn((value) => value || {}),
-}));
-
 jest.mock('../../../config/customerSourceOptions', () => ({
   getCustomerSourceOptions: jest.fn(() => []),
 }));
@@ -85,10 +81,6 @@ jest.mock('../../../services/smsService', () => ({
   getResolvedConfig: jest.fn().mockResolvedValue(null),
 }));
 
-jest.mock('../../../services/customerNotificationBridgeService', () => ({
-  getSaleReceiptAutomationCoverage: jest.fn().mockResolvedValue({ sms: false, email: false, whatsapp: false }),
-}));
-
 const { Setting } = require('../../../models');
 const { getPOSConfig, updatePOSConfig } = require('../../../controllers/settingsController');
 
@@ -128,6 +120,7 @@ describe('settingsController POS config scanning', () => {
         allowManualBarcodeEntry: true,
         allowExternalScanner: true,
       });
+      expect(res.body.data).not.toHaveProperty('automationReceiptCoverage');
     });
 
     it('merges stored scanning settings with defaults', async () => {

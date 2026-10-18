@@ -5,20 +5,12 @@ jest.mock('../../../models', () => ({
   Shop: {},
   Tenant: {},
   Setting: { findOne: jest.fn() },
-  SaleActivity: { findOne: jest.fn(), create: jest.fn() },
+  SaleActivity: { findOne: jest.fn(), findAll: jest.fn(), create: jest.fn() },
   Product: {},
   Invoice: {},
   User: {},
   Payment: {},
   Barcode: {},
-}));
-
-jest.mock('../../../services/customerNotificationBridgeService', () => ({
-  TEMPLATE_KEYS: { SALE_COMPLETED_RECEIPT: 'sale_completed_receipt' },
-  isPosAutoSendReceiptEnabled: jest.fn(),
-  getAutomationCoveredChannelsForTemplate: jest.fn(),
-  hasRecentReceiptForSale: jest.fn(),
-  recordReceiptSentActivity: jest.fn(),
 }));
 
 jest.mock('../../../services/messageDeliveryRulesService', () => ({
@@ -28,6 +20,11 @@ jest.mock('../../../services/messageDeliveryRulesService', () => ({
 jest.mock('../../../services/smsService', () => ({
   getResolvedConfig: jest.fn().mockResolvedValue({ provider: 'test' }),
   validatePhoneNumber: jest.fn().mockReturnValue('0240000000'),
+  sendMessage: jest.fn().mockResolvedValue({ success: true }),
+}));
+
+jest.mock('../../../services/smsTemplateService', () => ({
+  renderForTenant: jest.fn().mockResolvedValue('Receipt SMS'),
 }));
 
 jest.mock('../../../services/whatsappService', () => ({
@@ -40,63 +37,79 @@ jest.mock('../../../services/emailService', () => ({
   sendMessage: jest.fn(),
 }));
 
-const { Sale, Setting } = require('../../../models');
-const bridge = require('../../../services/customerNotificationBridgeService');
+const { Sale, Setting, SaleActivity } = require('../../../models');
+const messageDeliveryRulesService = require('../../../services/messageDeliveryRulesService');
+const smsService = require('../../../services/smsService');
 const saleController = require('../../../controllers/saleController');
 
-describe('saleController autoSendReceiptIfEnabled dedupe', () => {
+const mockSettings = ({ prefs = null, posMode = null } = {}) => {
+  Setting.findOne.mockImplementation(async ({ where }) => {
+    if (where.key === 'customer-notification-preferences') return prefs ? { value: prefs } : null;
+    if (where.key === 'pos_config') return posMode ? { value: { receipt: { mode: posMode } } } : null;
+    return null;
+  });
+};
+
+describe('saleController autoSendReceiptIfEnabled', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    bridge.isPosAutoSendReceiptEnabled.mockResolvedValue(false);
-    bridge.getAutomationCoveredChannelsForTemplate.mockResolvedValue(new Set());
-    bridge.hasRecentReceiptForSale.mockResolvedValue(false);
-    bridge.recordReceiptSentActivity.mockResolvedValue(undefined);
-    Setting.findOne.mockResolvedValue({ value: { autoSendReceiptToCustomer: true } });
+    mockSettings();
+    SaleActivity.findAll.mockResolvedValue([]);
+    SaleActivity.create.mockResolvedValue({});
+    messageDeliveryRulesService.isChannelEnabledForEvent.mockResolvedValue(false);
+    smsService.sendMessage.mockResolvedValue({ success: true });
+    Sale.findOne.mockResolvedValue({
+      customer: { phone: '0240000000', email: 'a@b.com' },
+    });
   });
 
-  it('skips legacy auto-send when neither legacy setting nor POS auto_send is enabled', async () => {
-    Setting.findOne.mockResolvedValue({ value: { autoSendReceiptToCustomer: false } });
-    bridge.isPosAutoSendReceiptEnabled.mockResolvedValue(false);
+  it('sends by default when the workspace never set the receipt preference', async () => {
+    await saleController.autoSendReceiptIfEnabled('tenant-1', 'sale-1');
+
+    expect(Sale.findOne).toHaveBeenCalled();
+  });
+
+  it('skips when the preference is explicitly off and POS is not in auto_send mode', async () => {
+    mockSettings({ prefs: { autoSendReceiptToCustomer: false }, posMode: 'ask' });
 
     await saleController.autoSendReceiptIfEnabled('tenant-1', 'sale-1');
 
     expect(Sale.findOne).not.toHaveBeenCalled();
-    expect(bridge.recordReceiptSentActivity).not.toHaveBeenCalled();
+    expect(SaleActivity.create).not.toHaveBeenCalled();
   });
 
-  it('does not send on channels covered by sale_completed receipt automation', async () => {
-    bridge.getAutomationCoveredChannelsForTemplate.mockResolvedValue(new Set(['sms', 'email', 'whatsapp']));
-    Sale.findOne.mockResolvedValue({
-      customer: { phone: '0240000000', email: 'a@b.com' },
-    });
+  it('still sends when the preference is off but POS auto_send mode is on', async () => {
+    mockSettings({ prefs: { autoSendReceiptToCustomer: false }, posMode: 'auto_send' });
 
     await saleController.autoSendReceiptIfEnabled('tenant-1', 'sale-1');
 
     expect(Sale.findOne).toHaveBeenCalled();
-    expect(bridge.recordReceiptSentActivity).not.toHaveBeenCalled();
   });
 
-  it('checks per-channel dedupe before sending SMS', async () => {
-    const messageDeliveryRulesService = require('../../../services/messageDeliveryRulesService');
-    messageDeliveryRulesService.isChannelEnabledForEvent.mockResolvedValue(true);
-    bridge.hasRecentReceiptForSale.mockImplementation(async (_tenantId, _saleId, channel) => channel === 'sms');
-    Sale.findOne.mockResolvedValue({
-      customer: { phone: '0240000000', email: 'a@b.com' },
-    });
+  it('sends the SMS receipt and records the channel for dedupe', async () => {
+    messageDeliveryRulesService.isChannelEnabledForEvent.mockImplementation(
+      async (_tenantId, _eventKey, channel) => channel === 'sms'
+    );
 
     await saleController.autoSendReceiptIfEnabled('tenant-1', 'sale-1');
 
-    expect(bridge.hasRecentReceiptForSale).toHaveBeenCalledWith('tenant-1', 'sale-1', 'sms');
+    expect(smsService.sendMessage).toHaveBeenCalledWith('tenant-1', '0240000000', 'Receipt SMS');
+    expect(SaleActivity.create).toHaveBeenCalledWith(expect.objectContaining({
+      saleId: 'sale-1',
+      type: 'receipt_sent',
+      metadata: expect.objectContaining({ channels: ['sms'], source: 'auto_send_receipt' }),
+    }));
   });
 
-  it('considers POS auto_send mode as a legacy auto-send trigger', async () => {
-    Setting.findOne.mockResolvedValue({ value: { autoSendReceiptToCustomer: false } });
-    bridge.isPosAutoSendReceiptEnabled.mockResolvedValue(true);
-    Sale.findOne.mockResolvedValue(null);
+  it('does not resend a channel already sent within the dedupe window', async () => {
+    messageDeliveryRulesService.isChannelEnabledForEvent.mockImplementation(
+      async (_tenantId, _eventKey, channel) => channel === 'sms'
+    );
+    SaleActivity.findAll.mockResolvedValue([{ id: 'act-1', metadata: { channels: ['sms'] } }]);
 
     await saleController.autoSendReceiptIfEnabled('tenant-1', 'sale-1');
 
-    expect(bridge.isPosAutoSendReceiptEnabled).toHaveBeenCalledWith('tenant-1');
-    expect(Sale.findOne).toHaveBeenCalled();
+    expect(smsService.sendMessage).not.toHaveBeenCalled();
+    expect(SaleActivity.create).not.toHaveBeenCalled();
   });
 });

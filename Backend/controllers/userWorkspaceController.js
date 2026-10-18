@@ -5,10 +5,7 @@ const { Op } = require('sequelize');
 const emailService = require('../services/emailService');
 const emailTemplates = require('../services/emailTemplates');
 const { attachScopedToPayload } = require('../utils/shopUtils');
-const {
-  shouldUseAutomationInsteadOfBuiltIn,
-  TEMPLATE_KEYS,
-} = require('../services/customerNotificationBridgeService');
+const { emitBusinessEvent } = require('../services/businessEvents');
 
 const ALLOWED_TASK_STATUSES = ['todo', 'in_progress', 'on_hold', 'completed'];
 const isAllLocationParam = (value) => String(value || '').trim().toLowerCase() === 'all';
@@ -139,7 +136,7 @@ const sendTaskAssignmentEmail = async ({
 };
 
 /**
- * Notify assignee via automation rules, falling back to the built-in email when no rule is enabled.
+ * Email the assignee and report task.assigned.
  * @param {object} params
  */
 const notifyTaskAssignee = async ({
@@ -151,27 +148,9 @@ const notifyTaskAssignee = async ({
   if (!tenantId || !task?.id || !assignee?.id) return;
   if (actor?.id && assignee.id === actor.id) return;
 
-  try {
-    const { runTaskAssignedStaffAutomations } = require('../services/automationEngineService');
-    await runTaskAssignedStaffAutomations({
-      tenantId,
-      task,
-      assignee,
-      assignedByUser: actor || null,
-      actorUserId: actor?.id || null,
-    });
-  } catch (err) {
-    console.error(
-      `[Tasks][assignment-automation] failed tenantId=${tenantId} taskId=${task.id} assigneeId=${assignee.id} error=${err?.message || err}`
-    );
-  }
+  emitBusinessEvent(tenantId, 'task.assigned', { taskId: task.id, assigneeId: assignee.id });
 
   try {
-    const useAutomation = await shouldUseAutomationInsteadOfBuiltIn(
-      tenantId,
-      TEMPLATE_KEYS.TASK_ASSIGNED_STAFF
-    );
-    if (useAutomation) return;
     if (!assignee.email) return;
     await sendTaskAssignmentEmail({
       tenantId,

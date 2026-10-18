@@ -189,40 +189,25 @@ export default function SmartReportRentalOverviewTab({ snapshot, periodLabel }) 
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-base font-semibold">Performance Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 grid grid-cols-3 gap-3 text-center">
-            <div className="rounded-lg border border-border p-3">
-              <p className="text-xs text-muted-foreground">Revenue Growth</p>
-              <p className="font-semibold">{formatPercentChange(revenueChange)}</p>
-            </div>
-            <div className="rounded-lg border border-border p-3">
-              <p className="text-xs text-muted-foreground">Profit Margin</p>
-              <p className="font-semibold">{profitMargin.toFixed(1)}%</p>
-            </div>
-            <div className="rounded-lg border border-border p-3">
-              <p className="text-xs text-muted-foreground">Customer Acquisition</p>
-              <p className="font-semibold">{newShare.toFixed(1)}%</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-base font-semibold">Key Insights</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3 text-sm text-muted-foreground">
-            <p><span className="font-medium text-foreground">Revenue Growth.</span> Hire booked changed by {formatPercentChange(revenueChange)} versus the previous period.</p>
-            <p><span className="font-medium text-foreground">Rental Transactions.</span> {formatInteger(rental.rentalCount)} hires worth {formatOverviewCurrency(hireBooked)}.</p>
-            {newShare > 0 && (
-              <p><span className="font-medium text-foreground">Growing Customer Base.</span> {newShare.toFixed(1)}% of active customers in this period are new.</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <Card style={OVERVIEW_CARD_BORDER} className="bg-card">
+        <CardHeader className="pb-2 pt-4 px-4">
+          <CardTitle className="text-base font-semibold">Performance Summary</CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-4 grid grid-cols-3 gap-3 text-center">
+          <div className="rounded-lg border border-border p-3">
+            <p className="text-xs text-muted-foreground">Revenue Growth</p>
+            <p className="font-semibold">{formatPercentChange(revenueChange)}</p>
+          </div>
+          <div className="rounded-lg border border-border p-3">
+            <p className="text-xs text-muted-foreground">Profit Margin</p>
+            <p className="font-semibold">{profitMargin.toFixed(1)}%</p>
+          </div>
+          <div className="rounded-lg border border-border p-3">
+            <p className="text-xs text-muted-foreground">Customer Acquisition</p>
+            <p className="font-semibold">{newShare.toFixed(1)}%</p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

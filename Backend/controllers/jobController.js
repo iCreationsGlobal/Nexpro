@@ -46,7 +46,7 @@ const { getMaterialTypesForStudioType } = require('../config/studioTypes');
 const { buildCustomerFacingJobTitle } = require('../utils/jobCustomerMessageText');
 const { getTaxConfigForTenant } = require('../utils/taxConfig');
 const { convertLineItemsFromTaxInclusive } = require('../utils/taxCalculation');
-const { runReviewRequestAutomations, runJobCompletedAutomations } = require('../services/automationEngineService');
+const { emitBusinessEvent } = require('../services/businessEvents');
 
 const jobWhere = (req, extra = {}) =>
   applyStudioLocationFilter(req, applyTenantFilter(req.tenantId, extra));
@@ -853,17 +853,8 @@ exports.applyJobCreatePaymentToInvoice = applyJobCreatePaymentToInvoice;
  */
 async function maybeAutoSendInvoiceOnJobCreation(tenantId, invoice, userId, options = {}) {
   if (!invoice?.id || !tenantId) return;
-  const {
-    TEMPLATE_KEYS,
-    isCustomerNotificationEffectiveEnabled,
-  } = require('../services/customerNotificationBridgeService');
   const row = await Setting.findOne({ where: { tenantId, key: 'job-invoice' } });
-  const settingOn = row?.value?.autoSendInvoiceOnJobCreation === true;
-  const effective = await isCustomerNotificationEffectiveEnabled(tenantId, {
-    settingEnabled: settingOn,
-    templateKey: TEMPLATE_KEYS.JOB_CREATED_SEND_INVOICE,
-  });
-  if (!effective) {
+  if (row?.value?.autoSendInvoiceOnJobCreation !== true) {
     return;
   }
   try {
@@ -1262,40 +1253,10 @@ exports.createJob = async (req, res, next) => {
       }
 
       if (jobWithDetails.assignedTo) {
-        setImmediate(async () => {
-          try {
-            const { runJobAssignedStaffAutomations, runJobCreatedStaffAutomations } = require('../services/automationEngineService');
-            await runJobAssignedStaffAutomations({
-              tenantId: req.tenantId,
-              job: jobWithDetails,
-              assignee: jobWithDetails.assignedUser || null,
-              customer: jobWithDetails.customer || null,
-              assignedByUser: req.user || null,
-              actorUserId: req.user?.id || null,
-            });
-            await runJobCreatedStaffAutomations({
-              tenantId: req.tenantId,
-              job: jobWithDetails,
-              customer: jobWithDetails.customer || null,
-              actorUserId: req.user?.id || null,
-            });
-          } catch (automationErr) {
-            console.error('[CreateJob] staff automations failed:', automationErr?.message || automationErr);
-          }
-        });
-      } else {
-        setImmediate(async () => {
-          try {
-            const { runJobCreatedStaffAutomations } = require('../services/automationEngineService');
-            await runJobCreatedStaffAutomations({
-              tenantId: req.tenantId,
-              job: jobWithDetails,
-              customer: jobWithDetails.customer || null,
-              actorUserId: req.user?.id || null,
-            });
-          } catch (automationErr) {
-            console.error('[CreateJob] job_created_staff automations failed:', automationErr?.message || automationErr);
-          }
+        emitBusinessEvent(req.tenantId, 'job.assigned', {
+          jobId: jobWithDetails.id,
+          assigneeId: jobWithDetails.assignedTo,
+          customerId: jobWithDetails.customerId || null,
         });
       }
 
@@ -1618,20 +1579,10 @@ exports.updateJob = async (req, res, next) => {
     }
 
     if (updatePayload.assignedTo && updatePayload.assignedTo !== oldAssignedTo) {
-      setImmediate(async () => {
-        try {
-          const { runJobAssignedStaffAutomations } = require('../services/automationEngineService');
-          await runJobAssignedStaffAutomations({
-            tenantId: req.tenantId,
-            job: updatedJob,
-            assignee: updatedJob.assignedUser || null,
-            customer: updatedJob.customer || null,
-            assignedByUser: req.user || null,
-            actorUserId: req.user?.id || null,
-          });
-        } catch (automationErr) {
-          console.error('[Job] job_assigned_staff automations failed:', automationErr?.message || automationErr);
-        }
+      emitBusinessEvent(req.tenantId, 'job.assigned', {
+        jobId: updatedJob.id,
+        assigneeId: updatePayload.assignedTo,
+        customerId: updatedJob.customerId || null,
       });
     }
 
@@ -1655,38 +1606,10 @@ exports.updateJob = async (req, res, next) => {
           } catch (whatsappErr) {
             console.error('[Job] WhatsApp completed notification failed:', whatsappErr?.message || whatsappErr);
           }
-          try {
-            await runJobCompletedAutomations({
-              tenantId: req.tenantId,
-              job: updatedJob,
-              customer: updatedJob.customer || null,
-              actorUserId: req.user?.id || null,
-            });
-            try {
-              const { runJobCompletedStaffAutomations } = require('../services/automationEngineService');
-              await runJobCompletedStaffAutomations({
-                tenantId: req.tenantId,
-                job: updatedJob,
-                customer: updatedJob.customer || null,
-                actorUserId: req.user?.id || null,
-              });
-            } catch (staffErr) {
-              console.error('[Job] job_completed_staff automations failed:', staffErr?.message || staffErr);
-            }
-          } catch (error) {
-            console.error('[Job] job_completed automations failed:', error?.message || error);
-          }
-          try {
-            await runReviewRequestAutomations({
-              tenantId: req.tenantId,
-              sourceType: 'job',
-              source: updatedJob,
-              customer: updatedJob.customer || null,
-              actorUserId: req.user?.id || null,
-            });
-          } catch (error) {
-            console.error('[Job] review_request automations failed:', error?.message || error);
-          }
+        });
+        emitBusinessEvent(req.tenantId, 'job.completed', {
+          jobId: updatedJob.id,
+          customerId: updatedJob.customerId || null,
         });
       }
     }

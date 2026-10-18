@@ -177,26 +177,6 @@ export const DATE_FORMATS = {
   DATETIME: 'YYYY-MM-DD HH:mm:ss',
 };
 
-/** ABS Watch incident kinds — keep copy low-certainty, never accuse staff. */
-export const WATCH_INCIDENT_KINDS = {
-  MATCHED: 'matched',
-  UNMATCHED_INTERACTION: 'unmatched_interaction',
-  SALE_WITHOUT_EVENT: 'sale_without_event',
-};
-
-export const WATCH_INCIDENT_STATUSES = {
-  PENDING: 'pending',
-  CONFIRMED: 'confirmed',
-  DISMISSED: 'dismissed',
-  NEEDS_CONTEXT: 'needs_context',
-};
-
-export const WATCH_REVIEW_DECISIONS = {
-  CONFIRM: 'confirm',
-  DISMISS: 'dismiss',
-  NEEDS_CONTEXT: 'needs_context',
-};
-
 // File Upload Configuration
 export const FILE_UPLOAD = {
   MAX_SIZE_MB: 20,
@@ -363,7 +343,6 @@ export const STATUS_CHIP_CLASSES = {
   syncing: CHIP_BLUE,
   synced: CHIP_GREEN,
   failed: CHIP_RED,
-  /** Automation rule run outcome */
   success: CHIP_GREEN,
   sending: CHIP_BLUE,
   ready: CHIP_GRAY,

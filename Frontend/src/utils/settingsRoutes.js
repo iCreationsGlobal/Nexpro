@@ -101,14 +101,6 @@ export const SETTINGS_HUB_CARDS = [
     businessTypes: ['rental'],
   },
   {
-    slug: 'ai',
-    title: 'Ayebia / AI',
-    subtitle: 'Anthropic API key for Ask Ayebia and automations',
-    group: 'business',
-    migrated: true,
-    managerOnly: true,
-  },
-  {
     slug: 'billing',
     title: 'Billing & plan',
     subtitle: 'Subscription, seats, and ABS plan',
@@ -179,7 +171,6 @@ const MIGRATED_TAB_ROUTES = {
   delivery: '/settings/delivery',
   inventory: '/settings/inventory',
   rental: '/settings/rental',
-  ai: '/settings/ai',
   billing: '/settings/billing',
   subscription: '/settings/billing',
   sms: '/settings/sms',

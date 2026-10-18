@@ -1037,21 +1037,6 @@ const logLowStock = async (item, tenantId, triggeredBy = null) => {
     triggeredBy,
     link: `/materials`
   });
-  try {
-    const taskAutomationService = require('./taskAutomationService');
-    await taskAutomationService.createLowStockTask({
-      item: {
-        id: item.id,
-        name: item.name,
-        quantityOnHand: qty,
-        reorderLevel: item.reorderLevel
-      },
-      tenantId,
-      triggeredBy
-    });
-  } catch (automationError) {
-    console.error('[ActivityLogger] Failed to auto-create low-stock task:', automationError?.message);
-  }
   return result;
 };
 

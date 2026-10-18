@@ -2,7 +2,7 @@ import { buildSmartReportSnapshot } from './buildSmartReportSnapshot';
 
 /**
  * Resolve tab-ready snapshot from a saved/generated Smart Report.
- * Uses embedded snapshot when present; otherwise builds minimal view from legacy insights.
+ * Uses embedded snapshot when present; otherwise builds minimal view from legacy report sections.
  * @param {Object} report
  * @returns {Object}
  */
@@ -31,7 +31,6 @@ export function getSmartReportSnapshot(report) {
     financialPositionData: {},
     revenueByChannelData: {},
     prescriptionData: null,
-    aiAnalysis: null,
     comparison: {
       prevRevenue: revenueMetric?.prevValue ?? 0,
       prevExpenses: expenseMetric?.prevValue ?? 0,
@@ -73,51 +72,4 @@ export function formatSmartReportPeriodLabel(report) {
     return `Monthly Report • ${report.month} ${report.year}`;
   }
   return report?.period ? `Report • ${report.period}` : 'Smart Report';
-}
-
-/**
- * Footer AI summary per active tab.
- * @param {string} tabId
- * @param {Object} snapshot
- */
-export function getTabAiSummary(tabId, snapshot) {
-  switch (tabId) {
-    case 'financial':
-      return snapshot.aiSummary;
-    case 'sales':
-      return snapshot.salesAiSummary;
-    case 'expenses':
-      return snapshot.expensesAiSummary;
-    case 'cashflow':
-      return snapshot.cashFlowAiSummary;
-    case 'inventory':
-      return snapshot.inventoryAiSummary;
-    case 'rental-overview':
-    case 'rental-inventory':
-    case 'rental-history':
-    case 'rental-utilization':
-    case 'rental-late-returns':
-    case 'rental-damage':
-      return snapshot.rentalAiSummary;
-    case 'recommendations':
-      return snapshot.recommendationsAiSummary;
-    case 'ai-insights':
-      return snapshot.aiInsightPoints?.[0] || snapshot.executiveAiInsight;
-    case 'executive':
-    default:
-      return snapshot.executiveAiInsight;
-  }
-}
-
-/**
- * Footer "see more" link per tab.
- * @param {string} tabId
- * @returns {{ label: string, tabId: string } | null}
- */
-export function getTabFooterLink(tabId) {
-  if (tabId === 'ai-insights' || tabId === 'recommendations') return null;
-  if (tabId === 'cashflow' || tabId === 'inventory') {
-    return { label: 'See AI Recommendations →', tabId: 'recommendations' };
-  }
-  return { label: 'See AI Insights →', tabId: 'ai-insights' };
 }

@@ -22,11 +22,11 @@ const {
   validateMergedTaxPayload,
   warmTaxConfigCache
 } = require('../utils/taxConfig');
-const { normalizeTaskAutomation } = require('../utils/taskAutomationConfig');
 const { collapseRepeatedDialCode } = require('../utils/phoneUtils');
 const { getCustomerSourceOptions } = require('../config/customerSourceOptions');
 const { getLeadSourceOptions } = require('../config/leadSourceOptions');
 const { notifyDataDeletionRequested } = require('../services/platformAdminNotificationService');
+const { isAutoSendReceiptPreferenceOn } = require('../services/receiptDeliveryService');
 const {
   DEFAULT_SHOP_TYPE,
   normalizeTenantClassification,
@@ -208,7 +208,6 @@ const buildOrganizationPayload = (organizationSettings = {}, tenant = null) => {
     supportEmail: organizationSettings.supportEmail || '',
     address: organizationSettings.address || {},
     tax: getTaxFromOrganizationSettings(organizationSettings),
-    taskAutomation: normalizeTaskAutomation(organizationSettings.taskAutomation || {}),
     businessType: tenant?.businessType || 'shop',
     shopType: tenant?.businessType === 'shop' ? (tenantMetadata.shopType || DEFAULT_SHOP_TYPE) : '',
     appName: organizationSettings.appName || '',
@@ -632,10 +631,6 @@ exports.updateOrganizationSettings = async (req, res, next) => {
               : (existing.tax?.eVat?.apiKeyEncrypted || ''),
         },
       },
-      taskAutomation: {
-        ...(existing.taskAutomation || {}),
-        ...(incoming.taskAutomation || {})
-      },
     };
 
     const taxValidationError = validateMergedTaxPayload(mergedIncoming.tax);
@@ -643,7 +638,6 @@ exports.updateOrganizationSettings = async (req, res, next) => {
       return res.status(400).json({ success: false, message: taxValidationError });
     }
     mergedIncoming.tax = normalizeTaxConfig(mergedIncoming.tax || {});
-    mergedIncoming.taskAutomation = normalizeTaskAutomation(mergedIncoming.taskAutomation || {});
 
     console.log('🔵 [Backend] Merged incoming data (before save):', JSON.stringify(mergedIncoming, null, 2));
     console.log('🔵 [Backend] Merged incoming details:', {
@@ -794,7 +788,6 @@ exports.updateOrganizationSettings = async (req, res, next) => {
       supportEmail: (updated && updated.hasOwnProperty('supportEmail')) ? updated.supportEmail : '',
       address: (updated && updated.address) ? updated.address : {},
       tax: getTaxFromOrganizationSettings(updated || {}),
-      taskAutomation: normalizeTaskAutomation(updated?.taskAutomation || {}),
       businessType: tenant?.businessType || 'shop',
       shopType: tenant?.businessType === 'shop'
         ? (tenant?.metadata?.shopType || tenant?.metadata?.businessSubType || DEFAULT_SHOP_TYPE)
@@ -998,70 +991,6 @@ exports.updatePayrollSettings = async (req, res, next) => {
   }
 };
 
-// @desc    Get tenant AI settings (masked)
-// @route   GET /api/settings/ai
-// @access  Private
-exports.getAISettings = async (req, res, next) => {
-  try {
-    const { getTenantAiSettingsSummary } = require('../services/tenantAiSettingsService');
-    const summary = await getTenantAiSettingsSummary(req.tenantId);
-
-    res.status(200).json({
-      success: true,
-      data: summary
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Save tenant AI API key override
-// @route   PUT /api/settings/ai
-// @access  Private (admin, manager)
-exports.updateAISettings = async (req, res, next) => {
-  try {
-    const { saveTenantAiApiKey } = require('../services/tenantAiSettingsService');
-    const { apiKey } = sanitizePayload(req.body || {});
-    const summary = await saveTenantAiApiKey({
-      tenantId: req.tenantId,
-      apiKey,
-      userId: req.user?.id
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'AI API key saved for this workspace.',
-      data: summary
-    });
-  } catch (error) {
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({
-        success: false,
-        message: error.message
-      });
-    }
-    next(error);
-  }
-};
-
-// @desc    Remove tenant AI API key override
-// @route   DELETE /api/settings/ai
-// @access  Private (admin, manager)
-exports.deleteAISettings = async (req, res, next) => {
-  try {
-    const { clearTenantAiApiKey } = require('../services/tenantAiSettingsService');
-    const summary = await clearTenantAiApiKey(req.tenantId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Workspace AI key removed. AI features will use the system default when configured.',
-      data: summary
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 // @desc    Get WhatsApp settings
 // @route   GET /api/settings/whatsapp
 // @access  Private
@@ -1175,9 +1104,6 @@ exports.updateWhatsAppSettings = async (req, res, next) => {
     } catch (verifyErr) {
       console.warn('[Settings][whatsapp] marketing verification update:', verifyErr?.message || verifyErr);
     }
-
-    const { ensureDefaultAutomationsSafe } = require('../services/defaultAutomationService');
-    await ensureDefaultAutomationsSafe(req.tenantId, { tenant: req.tenant });
 
     res.status(200).json({
       success: true,
@@ -1467,9 +1393,6 @@ exports.updateSMSSettings = async (req, res, next) => {
       console.warn('[Settings][sms] marketing verification update:', verifyErr?.message || verifyErr);
     }
 
-    const { ensureDefaultAutomationsSafe } = require('../services/defaultAutomationService');
-    await ensureDefaultAutomationsSafe(req.tenantId, { tenant: req.tenant });
-
     res.status(200).json({
       success: true,
       message: 'SMS settings updated successfully',
@@ -1705,7 +1628,7 @@ exports.getNotificationChannels = async (req, res, next) => {
       whatsapp: !!(whatsappConfig.enabled && whatsappConfig.phoneNumberId),
       sms: !!smsResolved,
       autoSendInvoiceToCustomer: prefs.autoSendInvoiceToCustomer !== false,
-      autoSendReceiptToCustomer: prefs.autoSendReceiptToCustomer === true,
+      autoSendReceiptToCustomer: isAutoSendReceiptPreferenceOn(prefs),
       sendPaymentReminderEmail: prefs.sendPaymentReminderEmail === true,
       sendInvoicePaidConfirmationToCustomer: prefs.sendInvoicePaidConfirmationToCustomer !== false,
       acceptOnlinePayments: prefs.acceptOnlinePayments === true
@@ -1854,7 +1777,7 @@ exports.updateCustomerNotificationPreferences = async (req, res, next) => {
       success: true,
       data: {
         autoSendInvoiceToCustomer: updated.autoSendInvoiceToCustomer !== false,
-        autoSendReceiptToCustomer: updated.autoSendReceiptToCustomer === true,
+        autoSendReceiptToCustomer: isAutoSendReceiptPreferenceOn(updated),
         sendPaymentReminderEmail: updated.sendPaymentReminderEmail === true,
         sendInvoicePaidConfirmationToCustomer: updated.sendInvoicePaidConfirmationToCustomer !== false,
         acceptOnlinePayments: updated.acceptOnlinePayments === true
@@ -2516,9 +2439,6 @@ exports.getPOSConfig = async (req, res, next) => {
       whatsapp: !!(whatsappSetting?.value?.enabled),
       email: !!(emailSetting?.value?.enabled)
     };
-
-    const { getSaleReceiptAutomationCoverage } = require('../services/customerNotificationBridgeService');
-    merged.automationReceiptCoverage = await getSaleReceiptAutomationCoverage(req.tenantId);
 
     res.status(200).json({ success: true, data: merged });
   } catch (error) {

@@ -4,52 +4,49 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { 
-  Brain, 
   BarChart3, 
   TrendingUp, 
   FileText, 
-  Zap, 
-  MessageSquare,
   PieChart,
   LineChart,
   ArrowRight,
-  Sparkles,
-  Clock,
-  Target
+  Package,
+  Wallet,
+  CalendarRange
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 export default function SmartReportPage() {
   const features = [
     {
-      icon: Brain,
-      title: 'AI-Powered Analysis',
-      description: 'Get intelligent insights from your business data with our advanced AI engine that understands your metrics and trends.'
+      icon: BarChart3,
+      title: 'Executive Summary',
+      description: 'Your key numbers for the period on one page: sales, expenses, profit, and how they moved.'
     },
     {
-      icon: MessageSquare,
-      title: 'Natural Language Queries',
-      description: 'Ask questions in plain English like "What were my top selling products last month?" and get instant answers.'
+      icon: CalendarRange,
+      title: 'Any Period',
+      description: 'Choose the dates you want to see and compare them with the period before.'
     },
     {
       icon: TrendingUp,
-      title: 'Trend Detection',
-      description: 'Automatically identify patterns, seasonal trends, and anomalies in your sales, expenses, and customer behavior.'
+      title: 'Sales & Customers',
+      description: 'See your top products, services, and customers, and how sales changed over time.'
     },
     {
-      icon: Target,
-      title: 'Actionable Recommendations',
-      description: 'Receive AI-generated suggestions to improve profitability, reduce costs, and grow your business.'
+      icon: Wallet,
+      title: 'Expenses & Cash Flow',
+      description: 'Expense categories, money in and money out, so you know where your cash goes.'
     },
     {
-      icon: Zap,
-      title: 'Instant Insights',
-      description: 'No more manual data crunching. Get comprehensive business intelligence in seconds, not hours.'
+      icon: Package,
+      title: 'Inventory',
+      description: 'Stock levels, low-stock items, and stock movement for shops and pharmacies.'
     },
     {
-      icon: Clock,
-      title: 'Real-Time Analytics',
-      description: 'Access up-to-the-minute data with automatic syncing across all your business operations.'
+      icon: FileText,
+      title: 'Download & Share',
+      description: 'Save the report as a PDF to share with partners, your accountant, or your bank.'
     }
   ]
 
@@ -80,15 +77,6 @@ export default function SmartReportPage() {
     }
   ]
 
-  const examples = [
-    '"How much did I sell this month?"',
-    '"Show me customers who haven\'t ordered in 30 days"',
-    '"What are my top products?"',
-    '"Compare this quarter to last quarter"',
-    '"What are my top expense categories?"',
-    '"Why are sales down?"'
-  ]
-
   return (
     <main className="min-h-screen bg-white">
       {/* Hero Section */}
@@ -115,8 +103,8 @@ export default function SmartReportPage() {
               transition={{ duration: 0.5 }}
               className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full text-[#a3e635] text-sm font-medium mb-6"
             >
-              <Sparkles className="h-4 w-4" />
-              Powered by AI
+              <BarChart3 className="h-4 w-4" />
+              Business reports
             </motion.div>
             
             <motion.h1
@@ -133,8 +121,8 @@ export default function SmartReportPage() {
               transition={{ duration: 0.5, delay: 0.2 }}
               className="text-xl text-green-100 mb-10 max-w-3xl mx-auto"
             >
-              AI-powered business intelligence that turns your data into actionable insights.
-              Ask questions in plain English and get instant, intelligent answers.
+              A clear report of how your business is doing. Sales, expenses, profit, cash flow and
+              stock for any period, built from the records you already keep in ABS.
             </motion.p>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -153,49 +141,15 @@ export default function SmartReportPage() {
         </div>
       </section>
 
-      {/* Ask Anything Section */}
+      {/* Features Section */}
       <section className="py-10 sm:py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
         <div className="mx-auto max-w-7xl">
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-              Just Ask
+              Everything in One Report
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              No complex dashboards. No SQL queries. Just ask what you want to know.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
-            {examples.map((example, index) => (
-              <motion.div
-                key={example}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="bg-white rounded-lg p-4 border border-gray-200 hover:border-[#166534] transition-colors cursor-pointer group"
-              >
-                <div className="flex items-start gap-3">
-                  <MessageSquare className="h-5 w-5 text-[#166534] mt-0.5 flex-shrink-0" />
-                  <p className="text-gray-700 group-hover:text-gray-900 text-sm italic">
-                    {example}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section className="py-10 sm:py-20 px-4 sm:px-6 lg:px-8 bg-white">
-        <div className="mx-auto max-w-7xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-              Intelligence That Works for You
-            </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Smart Report combines advanced AI with your business data to deliver insights that matter.
+              Smart Report pulls your sales, expenses, and stock together so you can see the whole picture.
             </p>
           </div>
 
@@ -210,7 +164,7 @@ export default function SmartReportPage() {
                   viewport={{ once: true }}
                   transition={{ duration: 0.5, delay: index * 0.1 }}
                 >
-                  <Card className="h-full border-0 bg-gray-50 hover:bg-gray-100 transition-colors">
+                  <Card className="h-full border-0 bg-white hover:bg-gray-100 transition-colors">
                     <CardHeader>
                       <div className="inline-flex p-3 rounded-lg bg-[#166534]/10 text-[#166534] mb-4 w-fit">
                         <Icon className="h-6 w-6" />
@@ -231,14 +185,14 @@ export default function SmartReportPage() {
       </section>
 
       {/* Report Types Section */}
-      <section className="py-10 sm:py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
+      <section className="py-10 sm:py-20 px-4 sm:px-6 lg:px-8 bg-white">
         <div className="mx-auto max-w-7xl">
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
               Comprehensive Reports
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              From daily sales to annual forecasts, get the reports you need.
+              From daily sales to yearly totals, get the reports you need.
             </p>
           </div>
 
@@ -276,14 +230,14 @@ export default function SmartReportPage() {
       </section>
 
       {/* How It Works Section */}
-      <section className="py-10 sm:py-20 px-4 sm:px-6 lg:px-8 bg-white">
+      <section className="py-10 sm:py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
         <div className="mx-auto max-w-7xl">
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
               How It Works
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Get intelligent insights in three simple steps.
+              Get your report in three simple steps.
             </p>
           </div>
 
@@ -291,18 +245,18 @@ export default function SmartReportPage() {
             {[
               {
                 step: '1',
-                title: 'Connect Your Data',
-                description: 'Your business data is automatically synced and organized in real-time.'
+                title: 'Run Your Business',
+                description: 'Record sales, invoices, and expenses in ABS as you work. There is nothing extra to set up.'
               },
               {
                 step: '2',
-                title: 'Ask a Question',
-                description: 'Type your question in plain English or choose from suggested insights.'
+                title: 'Choose a Period',
+                description: 'Pick the dates and the sections you want: sales, expenses, cash flow, inventory, and more.'
               },
               {
                 step: '3',
-                title: 'Get Insights',
-                description: 'Receive instant analysis with charts, recommendations, and actionable next steps.'
+                title: 'Read & Share',
+                description: 'See your numbers with charts and comparisons, then download the report as a PDF.'
               }
             ].map((item, index) => (
               <motion.div
@@ -333,10 +287,10 @@ export default function SmartReportPage() {
             viewport={{ once: true }}
           >
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-              Ready to Get Smarter Insights?
+              Ready to See Your Numbers Clearly?
             </h2>
             <p className="text-xl text-green-100 mb-8">
-              Start your free trial and see how AI can transform your business reporting.
+              Start your free trial and get a clear report of your business in minutes.
             </p>
             <Link href="/onboarding">
               <Button size="lg" className="text-base px-8 py-6 bg-[#a3e635] hover:bg-[#84cc16] text-[#14532d] font-semibold">

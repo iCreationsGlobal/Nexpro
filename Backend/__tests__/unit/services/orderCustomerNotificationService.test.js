@@ -52,11 +52,6 @@ jest.mock('../../../utils/orderTrackingLink', () => ({
   resolveOrderTrackingLink: jest.fn(),
 }));
 
-jest.mock('../../../services/customerNotificationBridgeService', () => ({
-  TEMPLATE_KEYS: { ORDER_CREATED_NOTIFICATION: 'order_created_notification' },
-  shouldUseAutomationInsteadOfBuiltIn: jest.fn(),
-}));
-
 const { Tenant } = require('../../../models');
 const emailService = require('../../../services/emailService');
 const smsService = require('../../../services/smsService');
@@ -65,9 +60,6 @@ const smsTemplateService = require('../../../services/smsTemplateService');
 const { isChannelEnabledForEvent } = require('../../../services/messageDeliveryRulesService');
 const { resolveBusinessNameForContext } = require('../../../utils/resolveBusinessNameForContext');
 const { resolveOrderTrackingLink } = require('../../../utils/orderTrackingLink');
-const {
-  shouldUseAutomationInsteadOfBuiltIn,
-} = require('../../../services/customerNotificationBridgeService');
 const {
   notifyOrderCreatedForCustomer,
   buildSmsMessageFallback,
@@ -89,7 +81,6 @@ describe('orderCustomerNotificationService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    shouldUseAutomationInsteadOfBuiltIn.mockResolvedValue(false);
     resolveOrderTrackingLink.mockResolvedValue(
       'https://app.example.com/track/kitchen?order=ORD-42'
     );
@@ -134,12 +125,12 @@ describe('orderCustomerNotificationService', () => {
     );
   });
 
-  it('skips built-in send when automation is enabled', async () => {
-    shouldUseAutomationInsteadOfBuiltIn.mockResolvedValue(true);
+  it('only skips channels turned off in the delivery rules', async () => {
+    isChannelEnabledForEvent.mockImplementation((_t, _e, channel) => Promise.resolve(channel === 'email'));
     const result = await notifyOrderCreatedForCustomer({ tenantId: 't1', sale });
-    expect(result.skipped).toBe(true);
+    expect(result.skipped).toBeUndefined();
+    expect(emailService.sendMessage).toHaveBeenCalled();
     expect(smsService.sendMessage).not.toHaveBeenCalled();
-    expect(emailService.sendMessage).not.toHaveBeenCalled();
   });
 
   describe('notifyOrderStatusChangedForCustomer', () => {

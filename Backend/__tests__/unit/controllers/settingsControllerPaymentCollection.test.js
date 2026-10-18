@@ -34,10 +34,6 @@ jest.mock('../../../utils/taxConfig', () => ({
   warmTaxConfigCache: jest.fn(),
 }));
 
-jest.mock('../../../utils/taskAutomationConfig', () => ({
-  normalizeTaskAutomation: jest.fn((value) => value || {}),
-}));
-
 jest.mock('../../../config/customerSourceOptions', () => ({
   getCustomerSourceOptions: jest.fn(() => []),
 }));

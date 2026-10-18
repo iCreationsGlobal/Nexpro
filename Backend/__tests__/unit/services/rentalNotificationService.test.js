@@ -26,6 +26,7 @@ jest.mock('../../../models', () => ({
   PreBookingItem: {},
   Invoice: {
     findAll: jest.fn(),
+    findByPk: jest.fn(),
   },
 }));
 
@@ -45,6 +46,21 @@ jest.mock('../../../services/emailTemplates', () => ({
     html: '<p>Alert</p>',
     text: 'Alert',
   })),
+  rentalLifecycleNotification: jest.fn(() => ({
+    subject: 'Rental confirmed',
+    html: '<p>Confirmed</p>',
+    text: 'Confirmed',
+  })),
+}));
+
+jest.mock('../../../services/smsService', () => ({
+  getResolvedConfig: jest.fn(),
+  validatePhoneNumber: jest.fn(),
+  sendMessage: jest.fn(),
+}));
+
+jest.mock('../../../services/messageDeliveryRulesService', () => ({
+  isChannelEnabledForEvent: jest.fn(),
 }));
 
 jest.mock('../../../services/notificationPreferenceHelper', () => ({
@@ -60,19 +76,18 @@ jest.mock('../../../utils/tenantLogo', () => ({
   getTenantLogoUrl: jest.fn(() => ''),
 }));
 
-jest.mock('../../../services/customerNotificationBridgeService', () => ({
-  shouldUseAutomationInsteadOfBuiltIn: jest.fn().mockResolvedValue(false),
-}));
-
 const { Rental, Tenant, UserTenant, User, Notification, Invoice } = require('../../../models');
 const emailService = require('../../../services/emailService');
 const { isNotificationChannelEnabled, getPreferencesForUsers } = require('../../../services/notificationPreferenceHelper');
 const rentalNotificationService = require('../../../services/rentalNotificationService');
-const { shouldUseAutomationInsteadOfBuiltIn } = require('../../../services/customerNotificationBridgeService');
+const smsService = require('../../../services/smsService');
+const emailTemplates = require('../../../services/emailTemplates');
+const { isChannelEnabledForEvent } = require('../../../services/messageDeliveryRulesService');
 const {
   NOTIFICATION_TYPES,
   notifyDamageReportCreated,
   processScheduledReminders,
+  sendRentalLifecycleMessage,
 } = require('../../../services/rentalNotificationService');
 
 describe('rentalNotificationService', () => {
@@ -91,7 +106,11 @@ describe('rentalNotificationService', () => {
     getPreferencesForUsers.mockResolvedValue(new Map([
       ['manager-1', { categories: { alert: { in_app: true, email: true } } }],
     ]));
-    shouldUseAutomationInsteadOfBuiltIn.mockResolvedValue(false);
+    isChannelEnabledForEvent.mockResolvedValue(true);
+    smsService.getResolvedConfig.mockResolvedValue({ provider: 'test' });
+    smsService.validatePhoneNumber.mockImplementation((phone) => (phone ? '+233241234567' : null));
+    smsService.sendMessage.mockResolvedValue({ success: true });
+    Invoice.findByPk.mockResolvedValue(null);
   });
 
   it('sends due-today customer email and logs idempotency key', async () => {
@@ -135,8 +154,8 @@ describe('rentalNotificationService', () => {
     expect(summary.dueToday.sent).toBe(1);
   });
 
-  it('skips built-in due email when a rental automation rule is enabled', async () => {
-    shouldUseAutomationInsteadOfBuiltIn.mockResolvedValue(true);
+  it('skips the due email when the rental_due email switch is off', async () => {
+    isChannelEnabledForEvent.mockResolvedValue(false);
     const today = new Date().toISOString().slice(0, 10);
     const rental = {
       id: 'rental-auto',
@@ -155,7 +174,7 @@ describe('rentalNotificationService', () => {
       types: [NOTIFICATION_TYPES.DUE_TODAY],
     });
 
-    expect(shouldUseAutomationInsteadOfBuiltIn).toHaveBeenCalledWith('tenant-1', 'rental_due_reminder');
+    expect(isChannelEnabledForEvent).toHaveBeenCalledWith('tenant-1', 'rental_due', 'email');
     expect(emailService.sendMessage).not.toHaveBeenCalled();
     expect(summary.dueToday.skipped).toBe(1);
     expect(rental.update).not.toHaveBeenCalled();
@@ -281,5 +300,109 @@ describe('rentalNotificationService', () => {
 
     expect(Notification.create).not.toHaveBeenCalled();
     expect(summary.paymentPromised.sent).toBe(0);
+  });
+
+  describe('sendRentalLifecycleMessage', () => {
+    const buildRental = (overrides = {}) => ({
+      id: 'rental-10',
+      tenantId: 'tenant-1',
+      customerId: 'cust-10',
+      status: 'confirmed',
+      startDate: '2026-10-01',
+      endDate: '2026-10-05',
+      totalDue: 300,
+      amountPaid: 100,
+      metadata: { invoiceId: 'inv-10' },
+      update: jest.fn().mockResolvedValue(undefined),
+      customer: { id: 'cust-10', name: 'Efua', phone: '0241234567', email: 'efua@test.com' },
+      items: [{ product: { name: 'Canopy' }, quantity: 2 }],
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      Invoice.findByPk.mockResolvedValue({ id: 'inv-10', invoiceNumber: 'INV-010', balance: '200.00' });
+    });
+
+    it('sends the confirmation by SMS and email and logs it once', async () => {
+      const rental = buildRental();
+
+      const result = await sendRentalLifecycleMessage({ rental, event: 'created' });
+
+      expect(result).toEqual({ sent: true, skipped: false, channels: ['sms', 'email'] });
+      expect(isChannelEnabledForEvent).toHaveBeenCalledWith('tenant-1', 'rental_created', 'sms');
+      expect(isChannelEnabledForEvent).toHaveBeenCalledWith('tenant-1', 'rental_created', 'email');
+      expect(smsService.sendMessage).toHaveBeenCalledWith(
+        'tenant-1',
+        '+233241234567',
+        expect.stringMatching(/^Hi Efua, your rental is booked from 1 Oct 2026 to 5 Oct 2026\. Total ₵ 300\.00\. Invoice INV-010\. — Rental Co$/)
+      );
+      expect(emailTemplates.rentalLifecycleNotification).toHaveBeenCalledWith(
+        'created',
+        rental,
+        rental.customer,
+        rental.items,
+        expect.objectContaining({ name: 'Rental Co' }),
+        { invoiceNumber: 'INV-010', balance: 200 }
+      );
+      expect(emailService.sendMessage).toHaveBeenCalledWith(
+        'tenant-1',
+        'efua@test.com',
+        'Rental confirmed',
+        '<p>Confirmed</p>',
+        'Confirmed'
+      );
+      expect(rental.update).toHaveBeenCalledWith({
+        metadata: expect.objectContaining({
+          invoiceId: 'inv-10',
+          notificationLog: [expect.objectContaining({ key: 'rental_created:rental-10', channels: ['sms', 'email'] })],
+        }),
+      });
+    });
+
+    it('does not send the same event twice', async () => {
+      const rental = buildRental({
+        metadata: { notificationLog: [{ key: 'rental_checked_out:rental-10' }] },
+      });
+
+      const result = await sendRentalLifecycleMessage({ rental, event: 'checked_out' });
+
+      expect(result.reason).toBe('duplicate');
+      expect(smsService.sendMessage).not.toHaveBeenCalled();
+      expect(emailService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('respects the per-event channel switches and SMS opt-out', async () => {
+      isChannelEnabledForEvent.mockImplementation(async (_tenantId, eventKey, channel) => (
+        eventKey === 'rental_returned' && channel === 'sms'
+      ));
+      const rental = buildRental({ customer: { id: 'cust-10', name: 'Efua', phone: '0241234567', smsConsent: false } });
+
+      const result = await sendRentalLifecycleMessage({ rental, event: 'returned' });
+
+      expect(result.reason).toBe('no_channel');
+      expect(smsService.sendMessage).not.toHaveBeenCalled();
+      expect(emailService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('sends the return SMS with the latest invoice balance', async () => {
+      isChannelEnabledForEvent.mockImplementation(async (_tenantId, _eventKey, channel) => channel === 'sms');
+      const rental = buildRental();
+
+      await sendRentalLifecycleMessage({ rental, event: 'returned' });
+
+      expect(smsService.sendMessage).toHaveBeenCalledWith(
+        'tenant-1',
+        '+233241234567',
+        'Hi Efua, we recorded your return. Balance ₵ 200.00. Invoice INV-010. — Rental Co'
+      );
+      expect(emailService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('ignores events that have no customer message', async () => {
+      const result = await sendRentalLifecycleMessage({ rental: buildRental(), event: 'cancelled' });
+
+      expect(result.reason).toBe('invalid_payload');
+      expect(smsService.sendMessage).not.toHaveBeenCalled();
+    });
   });
 });

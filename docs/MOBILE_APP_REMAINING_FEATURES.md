@@ -10,7 +10,6 @@
 - ✅ **Jobs** - List, filters, detail view (for studio types)
 - ✅ **POS/Scan** - Product search, barcode scanning, add to cart
 - ✅ **Cart** - Full cart management, checkout, payment processing
-- ✅ **Chat/AI Assistant** - Business insights via chat
 - ✅ **Notifications** - List, mark as read
 - ✅ **Settings** - Workspace switcher, basic preferences
 - ✅ **Profile** - View/edit user profile
@@ -117,10 +116,10 @@
 ### Low Priority (Nice to Have)
 
 #### 11. **Reports** 🟢
-- Currently handled via Chat/AI Assistant
-- Could add more structured reports if needed
-- **Status**: AI chat implemented, structured reports not needed per plan
-- **Impact**: Low (AI chat covers most needs)
+- Simple period totals (money in, money out, profit) on mobile
+- Detailed reports (Overview, Smart Report) stay on the web app
+- **Status**: Simple reports screen implemented
+- **Impact**: Low (web app covers detailed reporting)
 
 #### 12. **Accounting** 🟢
 - Financial reports
@@ -185,7 +184,7 @@
 ## 📱 Mobile-Specific Considerations
 
 ### What Should Stay Web-Only
-- **Complex Reports** - Charts, graphs (use AI chat instead)
+- **Complex Reports** - Charts, graphs, Smart Report
 - **Admin Pages** - Platform administration
 - **Advanced Settings** - Complex configuration
 - **Bulk Operations** - Large data imports/exports
@@ -262,5 +261,5 @@
 
 - The mobile app currently covers the **most common daily operations** (POS, sales, customers)
 - **Complex features** (invoices, quotes, inventory) are missing but can be done on web
-- **AI Chat** replaces the need for complex reports on mobile
+- **Complex reports** stay on the web app; mobile shows simple period totals
 - The app is **functional for basic operations** but needs more features for full business management

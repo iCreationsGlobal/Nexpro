@@ -9,7 +9,6 @@ import {
   ClipboardList,
   Contact,
   Download,
-  Eye,
   FileBarChart,
   FileCheck2,
   FileText,
@@ -37,7 +36,6 @@ import {
   UserPlus,
   Users,
   Wallet,
-  Workflow,
   Wrench,
 } from 'lucide-react';
 import { STUDIO_LIKE_TYPES } from '@/constants';
@@ -219,7 +217,6 @@ const MORE_ICONS = {
   '/tasks': ListChecks,
   '/deliveries': Truck,
   '/reviews': Star,
-  '/automations': Workflow,
   '/messages': MessageSquare,
   '/marketing': Megaphone,
   '/vendors': Contact,
@@ -242,7 +239,6 @@ const MORE_ICONS = {
   '/store/settings': Settings,
   '/online-store': Globe,
   '/online-store/orders': ClipboardList,
-  '/watch': Eye,
   '/reports/overview': BarChart3,
   '/reports/smart-report': FileBarChart,
   '/export-data': Download,
@@ -267,7 +263,6 @@ const STORE_PATHS = [
   '/store/orders',
   '/store/settings',
   '/dealers',
-  '/watch',
   '/expenses',
 ];
 const WORK_PATHS = ['/jobs', '/quotes', '/leads', '/tasks', '/deliveries', '/rentals'];

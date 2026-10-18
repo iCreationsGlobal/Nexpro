@@ -10,10 +10,6 @@ const { formatCedi } = require('../utils/formatNumber');
 const smsTemplateService = require('./smsTemplateService');
 const { resolveBusinessNameForContext } = require('../utils/resolveBusinessNameForContext');
 const { resolveOrderTrackingLink } = require('../utils/orderTrackingLink');
-const {
-  TEMPLATE_KEYS,
-  shouldUseAutomationInsteadOfBuiltIn,
-} = require('./customerNotificationBridgeService');
 
 const EVENT_KEY = 'order_created';
 const STATUS_EVENT_KEY = 'order_status';
@@ -107,17 +103,12 @@ const buildOrderCreatedSmsMessage = async (tenantId, sale, company, trackingLink
 
 /**
  * Notify the customer when an order/sale is created (email / SMS / WhatsApp).
- * Skips built-in channels when an order_created automation rule is enabled.
  * @param {{ tenantId: string, sale: object }} params
- * @returns {Promise<{ sent: boolean, results: object[], skipped?: boolean, reason?: string }>}
+ * @returns {Promise<{ sent: boolean, results: object[] }>}
  */
 const notifyOrderCreatedForCustomer = async ({ tenantId, sale }) => {
   if (!tenantId || !sale?.customer) {
     return { sent: false, results: [] };
-  }
-
-  if (await shouldUseAutomationInsteadOfBuiltIn(tenantId, TEMPLATE_KEYS.ORDER_CREATED_NOTIFICATION)) {
-    return { sent: false, results: [], skipped: true, reason: 'automation_enabled' };
   }
 
   const customer = sale.customer;

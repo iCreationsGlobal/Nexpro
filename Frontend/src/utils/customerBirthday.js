@@ -1,6 +1,6 @@
 /**
  * Customer birthday helpers (day + month only; year is not collected).
- * Stored as DATEONLY with fixed year 2000 for birthday automations.
+ * Stored as DATEONLY with fixed year 2000 (only month and day matter).
  */
 
 export const BIRTHDAY_STORAGE_YEAR = 2000;

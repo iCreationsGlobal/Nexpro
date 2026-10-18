@@ -1,23 +1,17 @@
 const DEFAULT_RECEIPT_CHANNELS = ['sms', 'print'];
 const DEFAULT_CHANNELS_AVAILABLE = { sms: false, whatsapp: false, email: false };
-const DEFAULT_AUTOMATION_COVERAGE = { sms: false, email: false, whatsapp: false };
 
 /**
  * Receipt channels the cashier can manually choose after a sale.
- * Print is always kept; SMS/email/WhatsApp are hidden when an automation already covers that channel.
+ * Print is kept when configured; SMS/email/WhatsApp only when the channel is integrated.
  * @param {Object} [posConfig]
  * @returns {string[]}
  */
 export function getEffectiveReceiptChannels(posConfig) {
-  const coverage = posConfig?.automationReceiptCoverage || DEFAULT_AUTOMATION_COVERAGE;
   const rawChannels = posConfig?.receipt?.channels || DEFAULT_RECEIPT_CHANNELS;
   const available = posConfig?.receiptChannelsAvailable || DEFAULT_CHANNELS_AVAILABLE;
 
-  return rawChannels.filter((channel) => {
-    if (channel === 'print') return true;
-    if (available[channel] !== true) return false;
-    return !coverage[channel];
-  });
+  return rawChannels.filter((channel) => channel === 'print' || available[channel] === true);
 }
 
 /**

@@ -22,7 +22,6 @@ const {
   Setting,
 } = require('../models');
 const { baseUploadDir, ensureDirExists } = require('../middleware/upload');
-const openaiService = require('../services/openaiService');
 const { applyTenantFilter } = require('../utils/tenantUtils');
 const { getPagination } = require('../utils/paginationUtils');
 const { applyShopReadFilter, attachShopToPayload, assertShopIdAccess } = require('../utils/shopUtils');
@@ -154,9 +153,6 @@ const INVENTORY_POLICIES = new Set(['track', 'continue', 'deny']);
 const ONLINE_STORE_SOURCE = 'online_store';
 const ORDER_STATUS_FILTERS = new Set(['pending', 'paid', 'processing', 'ready', 'packed', 'out_for_delivery', 'delivered', 'cancelled']);
 const STORE_ORDER_STATUS_ACTIONS = new Set(['processing', 'ready', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']);
-const BANNER_PROMPT_MAX_LENGTH = 500;
-const BANNER_HINT_MAX_LENGTH = 180;
-const DISALLOWED_BANNER_PROMPT_TERMS = /\b(porn|pornographic|nude|nudity|sexually explicit|gore|blood splatter|weapon|hate symbol|gambling|casino)\b/i;
 
 const firstFilled = (...values) => (
   values
@@ -1178,23 +1174,6 @@ const getServiceCategoriesFromServices = (services = []) => {
 };
 
 const compactInput = (value, maxLength) => String(value || '').trim().slice(0, maxLength);
-
-const writeGeneratedBannerSvg = async ({ tenantId, svg }) => {
-  const buffer = Buffer.from(svg, 'utf8');
-  const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-
-  if (isServerless) {
-    return `data:image/svg+xml;base64,${buffer.toString('base64')}`;
-  }
-
-  await validateStorageLimit(tenantId, buffer.length, true);
-  const subDir = path.join('store-listings', tenantId);
-  const uploadPath = path.join(baseUploadDir, subDir);
-  ensureDirExists(uploadPath);
-  const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-store-banner.svg`;
-  fs.writeFileSync(path.join(uploadPath, filename), buffer);
-  return `/uploads/store-listings/${tenantId}/${filename}`;
-};
 
 const getLatestGeneratedBannerUrl = (tenantId) => {
   if (!tenantId) return null;
@@ -3266,83 +3245,6 @@ exports.uploadListingImages = async (req, res, next) => {
 
     res.status(200).json({ success: true, data: { imageUrls } });
   } catch (error) {
-    next(error);
-  }
-};
-
-exports.generateBanner = async (req, res, next) => {
-  try {
-    const prompt = compactInput(req.body.prompt, BANNER_PROMPT_MAX_LENGTH);
-    const styleHint = compactInput(req.body.styleHint, BANNER_HINT_MAX_LENGTH);
-    const colorHint = compactInput(req.body.colorHint || req.body.primaryColor, 120);
-
-    if (prompt.length < 8) {
-      return res.status(400).json({
-        success: false,
-        message: 'Describe the banner you want in at least 8 characters',
-      });
-    }
-    if (String(req.body.prompt || '').length > BANNER_PROMPT_MAX_LENGTH) {
-      return res.status(400).json({
-        success: false,
-        message: `Banner prompt must be ${BANNER_PROMPT_MAX_LENGTH} characters or less`,
-      });
-    }
-    if (DISALLOWED_BANNER_PROMPT_TERMS.test([prompt, styleHint].join(' '))) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please use a safe storefront banner prompt',
-      });
-    }
-
-    const settings = await getCurrentStoreSettings(req);
-    const metadata = settings?.metadata && typeof settings.metadata === 'object' ? settings.metadata : {};
-    const generated = await openaiService.generateStoreBannerSvg({
-      prompt,
-      styleHint,
-      colorHint,
-      tenantId: req.tenantId,
-      businessType: req.tenant?.businessType || 'shop',
-      storeName: compactInput(req.body.storeName || req.body.displayName || settings?.displayName || req.tenant?.name, 120),
-      category: compactInput(req.body.category || metadata.category, 120),
-      description: compactInput(req.body.description || settings?.description, 300),
-    });
-    const imageUrl = await writeGeneratedBannerSvg({ tenantId: req.tenantId, svg: generated.svg });
-
-    res.status(201).json({
-      success: true,
-      data: {
-        imageUrl,
-        bannerImageUrl: imageUrl,
-        provider: generated.provider,
-        model: generated.model,
-        format: generated.format,
-        width: generated.width,
-        height: generated.height,
-      },
-    });
-  } catch (error) {
-    const { classifyAiProviderError } = require('../utils/aiProviderErrors');
-    const classified = classifyAiProviderError(error);
-    if (classified || error.aiProviderError) {
-      const errorCode = classified?.errorCode || error.errorCode || error.code;
-      const message = classified?.message || error.message;
-      const statusCode = classified?.statusCode || error.statusCode || 503;
-      return res.status(statusCode).json({
-        success: false,
-        message,
-        error: message,
-        code: errorCode,
-        errorCode,
-      });
-    }
-    if (error.code === 'AI_IMAGE_INVALID_OUTPUT') {
-      return res.status(502).json({
-        success: false,
-        message: 'AI could not generate a usable banner. Please try a different prompt.',
-        code: 'AI_IMAGE_INVALID_OUTPUT',
-      });
-    }
     next(error);
   }
 };

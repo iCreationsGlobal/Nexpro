@@ -10,7 +10,6 @@ const { formatCustomerSmsForTenant } = require('../utils/smsMessageUtils');
 const smsTemplateService = require('./smsTemplateService');
 const emailService = require('./emailService');
 const emailTemplates = require('./emailTemplates');
-const taskAutomationService = require('./taskAutomationService');
 const { getTenantLogoUrl } = require('../utils/tenantLogo');
 
 /**
@@ -109,16 +108,6 @@ class PaymentReminderService {
 
       for (const invoice of overdueInvoices) {
         try {
-          try {
-            await taskAutomationService.createInvoiceOverdueTask({
-              invoice,
-              tenantId: invoice.tenantId,
-              triggeredBy: null
-            });
-          } catch (taskError) {
-            console.error('[PaymentReminder] Failed to auto-create overdue invoice task:', taskError?.message);
-          }
-
           if (!invoice.customer) {
             skippedCount++;
             continue;
@@ -129,21 +118,6 @@ class PaymentReminderService {
 
           let reminderSent = false;
           const { isChannelEnabledForEvent } = require('./messageDeliveryRulesService');
-          const {
-            TEMPLATE_KEYS,
-            isCustomerNotificationEffectiveEnabled,
-            shouldUseAutomationInsteadOfBuiltIn,
-          } = require('./customerNotificationBridgeService');
-
-          // When an overdue automation is enabled, skip all built-in channels (WA/SMS/email).
-          const skipBuiltInReminders = await shouldUseAutomationInsteadOfBuiltIn(
-            invoice.tenantId,
-            TEMPLATE_KEYS.OVERDUE_INVOICE_REMINDER
-          );
-          if (skipBuiltInReminders) {
-            skippedCount++;
-            continue;
-          }
 
           const [whatsappRule, smsRule, emailRule] = await Promise.all([
             isChannelEnabledForEvent(invoice.tenantId, 'payment_reminder', 'whatsapp'),
@@ -213,14 +187,10 @@ class PaymentReminderService {
             }
           }
 
-          // Send email if enabled (optional setting or automation rule)
+          // Send email if enabled (optional setting)
           const prefsRow = await Setting.findOne({ where: { tenantId: invoice.tenantId, key: 'customer-notification-preferences' } });
           const prefs = prefsRow?.value || {};
-          const emailEffective = await isCustomerNotificationEffectiveEnabled(invoice.tenantId, {
-            settingEnabled: prefs.sendPaymentReminderEmail === true,
-            templateKey: TEMPLATE_KEYS.OVERDUE_INVOICE_REMINDER,
-          });
-          if (emailRule && emailEffective && customerEmail) {
+          if (emailRule && prefs.sendPaymentReminderEmail === true && customerEmail) {
             const emailConfig = await emailService.getConfig(invoice.tenantId);
             if (emailConfig) {
               const tenant = await Tenant.findByPk(invoice.tenantId);

@@ -13,8 +13,6 @@ export const createReportSchema = z.object({
   durationType: z.string().optional(),
   year: z.number().optional(),
   month: z.string().optional(),
-  /** Free-text “Describe with AI” prompt (optional; required only in free_text mode at submit). */
-  userPrompt: z.string().optional(),
 });
 
 /** Studio types that use Jobs (printing_press, mechanic, barber, salon) */
@@ -50,8 +48,7 @@ export function getBusinessTerminology(businessType, metadata = {}) {
       revenue: 'Service Revenue',
       analyticsTitle: 'Service Analytics Summary',
       analyticsDescription: 'An overview of the performance of your services and their revenue.',
-      topRevenueLabel: 'Top 5 Revenue Sources',
-      topCategoryInsightLabel: 'service category'
+      topRevenueLabel: 'Top 5 Revenue Sources'
     },
     mechanic: {
       analytics: 'Repair Analytics',
@@ -72,8 +69,7 @@ export function getBusinessTerminology(businessType, metadata = {}) {
       revenue: 'Repair Revenue',
       analyticsTitle: 'Repair Analytics Summary',
       analyticsDescription: 'An overview of the performance of your repair services and their revenue.',
-      topRevenueLabel: 'Top 5 Revenue Sources',
-      topCategoryInsightLabel: 'repair category'
+      topRevenueLabel: 'Top 5 Revenue Sources'
     },
     barber: {
       analytics: 'Service Analytics',
@@ -94,8 +90,7 @@ export function getBusinessTerminology(businessType, metadata = {}) {
       revenue: 'Service Revenue',
       analyticsTitle: 'Service Analytics Summary',
       analyticsDescription: 'An overview of the performance of your services and their revenue.',
-      topRevenueLabel: 'Top 5 Revenue Sources',
-      topCategoryInsightLabel: 'service'
+      topRevenueLabel: 'Top 5 Revenue Sources'
     },
     salon: {
       analytics: 'Service Analytics',
@@ -116,8 +111,7 @@ export function getBusinessTerminology(businessType, metadata = {}) {
       revenue: 'Service Revenue',
       analyticsTitle: 'Service Analytics Summary',
       analyticsDescription: 'An overview of the performance of your services and their revenue.',
-      topRevenueLabel: 'Top 5 Revenue Sources',
-      topCategoryInsightLabel: 'service'
+      topRevenueLabel: 'Top 5 Revenue Sources'
     },
     shop: {
       analytics: 'Product Analytics',
@@ -138,8 +132,7 @@ export function getBusinessTerminology(businessType, metadata = {}) {
       revenue: 'Product Revenue',
       analyticsTitle: 'Product Analytics Summary',
       analyticsDescription: 'A detailed summary of all products and their sales status.',
-      topRevenueLabel: 'Top 5 Products',
-      topCategoryInsightLabel: 'product'
+      topRevenueLabel: 'Top 5 Products'
     },
     pharmacy: {
       analytics: 'Drug Analytics',
@@ -160,8 +153,7 @@ export function getBusinessTerminology(businessType, metadata = {}) {
       revenue: 'Prescription Revenue',
       analyticsTitle: 'Drug Analytics Summary',
       analyticsDescription: 'A detailed summary of all drugs and their prescription status.',
-      topRevenueLabel: 'Top 5 Products',
-      topCategoryInsightLabel: 'drug'
+      topRevenueLabel: 'Top 5 Products'
     },
     rental: {
       analytics: 'Hire Analytics',
@@ -182,8 +174,7 @@ export function getBusinessTerminology(businessType, metadata = {}) {
       revenue: 'Collections',
       analyticsTitle: 'Hire Analytics Summary',
       analyticsDescription: 'Invoice collections and hire activity for the period.',
-      topRevenueLabel: 'Top 5 Hire Items',
-      topCategoryInsightLabel: 'hire item'
+      topRevenueLabel: 'Top 5 Hire Items'
     }
   };
 

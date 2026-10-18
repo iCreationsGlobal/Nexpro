@@ -146,20 +146,8 @@ jest.mock('../../../services/messageDeliveryRulesService', () => ({
   isChannelEnabledForEvent: jest.fn().mockResolvedValue(true),
 }));
 
-jest.mock('../../../services/customerNotificationBridgeService', () => ({
-  TEMPLATE_KEYS: {
-    INVOICE_SENT: 'invoice_sent_notification',
-    PAYMENT_RECEIVED_THANK_YOU: 'payment_received_thank_you',
-  },
-  isCustomerNotificationEffectiveEnabled: jest.fn(),
-  shouldUseAutomationInsteadOfBuiltIn: jest.fn(),
-}));
-
-jest.mock('../../../services/automationEngineService', () => ({
-  runPaymentReceivedAutomations: jest.fn(),
-  runReviewRequestAutomations: jest.fn(),
-  runInvoiceSentAutomations: jest.fn().mockResolvedValue({ executed: 1 }),
-  runHighValueInvoiceAutomations: jest.fn().mockResolvedValue({ executed: 0 }),
+jest.mock('../../../services/businessEvents', () => ({
+  emitBusinessEvent: jest.fn(),
 }));
 
 const { Invoice, Payment, Setting, Job, Sale } = require('../../../models');
@@ -169,8 +157,7 @@ const { ensureSaleFromPaidInvoice } = require('../../../services/invoiceSaleServ
 const emailService = require('../../../services/emailService');
 const emailTemplates = require('../../../services/emailTemplates');
 const { createInvoicePaymentJournal } = require('../../../services/invoiceAccountingService');
-const bridgeService = require('../../../services/customerNotificationBridgeService');
-const automationEngineService = require('../../../services/automationEngineService');
+const { emitBusinessEvent } = require('../../../services/businessEvents');
 const invoiceController = require('../../../controllers/invoiceController');
 
 describe('invoiceController sendInvoiceToCustomer logging', () => {
@@ -209,8 +196,6 @@ describe('invoiceController sendInvoiceToCustomer logging', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    bridgeService.isCustomerNotificationEffectiveEnabled.mockImplementation(async (_tenantId, { settingEnabled }) => settingEnabled);
-    bridgeService.shouldUseAutomationInsteadOfBuiltIn.mockResolvedValue(false);
     logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -292,33 +277,28 @@ describe('invoiceController sendInvoiceToCustomer logging', () => {
     }));
   });
 
-  it('uses automation rules instead of built-in channels when invoice_sent rule is enabled', async () => {
+  it('always sends through the built-in channels and reports invoice.sent', async () => {
     const invoice = baseInvoice();
     Invoice.findOne.mockResolvedValue(invoice);
     Setting.findOne.mockResolvedValue({
       value: { autoSendInvoiceToCustomer: true },
     });
-    bridgeService.isCustomerNotificationEffectiveEnabled.mockResolvedValue(true);
-    bridgeService.shouldUseAutomationInsteadOfBuiltIn.mockResolvedValue(true);
+    emailService.sendMessage.mockResolvedValue({ success: true, messageId: 'msg-2' });
 
     await invoiceController.sendInvoiceToCustomer('tenant-1', invoice, {
       userId: 'user-1',
       deliverySource: 'quote_accept',
     });
 
-    expect(emailService.sendMessage).not.toHaveBeenCalled();
-    expect(automationEngineService.runInvoiceSentAutomations).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenantId: 'tenant-1',
-        invoice,
-        paymentLink: expect.stringContaining('/pay-invoice/'),
-        actorUserId: 'user-1',
-      })
-    );
+    expect(emailService.sendMessage).toHaveBeenCalled();
+    expect(emitBusinessEvent).toHaveBeenCalledWith('tenant-1', 'invoice.sent', {
+      invoiceId: 'invoice-1',
+      customerId: 'customer-1',
+    });
     expect(logSpy).toHaveBeenCalledWith('[InvoiceDelivery]', expect.objectContaining({
       event: 'invoice_send_decision',
-      decision: 'send_via_automation',
-      reason: 'automation_rule_enabled',
+      decision: 'send_customer_channels',
+      reason: 'auto_send_enabled',
     }));
   });
 
@@ -333,9 +313,6 @@ describe('invoiceController sendInvoiceToCustomer logging', () => {
     Setting.findOne.mockResolvedValue({
       value: { autoSendInvoiceToCustomer: true, sendInvoicePaidConfirmationToCustomer: true },
     });
-    bridgeService.shouldUseAutomationInsteadOfBuiltIn.mockImplementation(async (_tenantId, templateKey) => (
-      templateKey === bridgeService.TEMPLATE_KEYS.INVOICE_SENT
-    ));
     emailService.sendMessage.mockResolvedValue({ success: true, messageId: 'paid-1' });
 
     await invoiceController.sendInvoiceToCustomer('tenant-1', invoice, {
@@ -343,7 +320,7 @@ describe('invoiceController sendInvoiceToCustomer logging', () => {
       deliverySource: 'job_creation_auto_send',
     });
 
-    expect(automationEngineService.runInvoiceSentAutomations).not.toHaveBeenCalled();
+    expect(emitBusinessEvent).not.toHaveBeenCalledWith('tenant-1', 'invoice.sent', expect.anything());
     expect(emailTemplates.invoiceNotification).not.toHaveBeenCalled();
     expect(emailTemplates.invoicePaidConfirmation).toHaveBeenCalled();
   });
@@ -366,7 +343,7 @@ describe('invoiceController sendInvoiceToCustomer logging', () => {
       skipPaidReceipt: true,
     });
 
-    expect(automationEngineService.runInvoiceSentAutomations).not.toHaveBeenCalled();
+    expect(emitBusinessEvent).not.toHaveBeenCalled();
     expect(emailTemplates.invoiceNotification).not.toHaveBeenCalled();
     expect(emailTemplates.invoicePaidConfirmation).not.toHaveBeenCalled();
     expect(emailService.sendMessage).not.toHaveBeenCalled();
@@ -383,14 +360,16 @@ describe('invoiceController sendInvoiceToCustomer logging', () => {
     Setting.findOne.mockResolvedValue({
       value: { autoSendInvoiceToCustomer: true },
     });
-    bridgeService.shouldUseAutomationInsteadOfBuiltIn.mockResolvedValue(true);
 
     await invoiceController.sendInvoiceToCustomer('tenant-1', invoice, {
       userId: 'user-1',
       deliverySource: 'job_creation_auto_send',
     });
 
-    expect(automationEngineService.runInvoiceSentAutomations).toHaveBeenCalled();
+    expect(emailTemplates.invoiceNotification).toHaveBeenCalled();
+    expect(emitBusinessEvent).toHaveBeenCalledWith('tenant-1', 'invoice.sent', expect.objectContaining({
+      invoiceId: 'invoice-1',
+    }));
     expect(emailTemplates.invoicePaidConfirmation).not.toHaveBeenCalled();
   });
 });
@@ -968,7 +947,7 @@ describe('applyInvoicePaymentInternal', () => {
     jest.useRealTimers();
   });
 
-  it('marks the invoice paid, creates a Payment, and queues payment_received automations', async () => {
+  it('marks the invoice paid, creates a Payment, and reports payment.received and invoice.paid', async () => {
     const invoice = {
       id: 'invoice-1',
       tenantId: 'tenant-1',
@@ -1016,14 +995,17 @@ describe('applyInvoicePaymentInternal', () => {
     }));
     expect(result.invoice.status).toBe('paid');
 
+    expect(emitBusinessEvent).toHaveBeenCalledWith('tenant-1', 'payment.received', {
+      invoiceId: 'invoice-1',
+      customerId: 'customer-1',
+      paymentId: 'pay-1',
+    });
+    expect(emitBusinessEvent).toHaveBeenCalledWith('tenant-1', 'invoice.paid', {
+      invoiceId: 'invoice-1',
+      customerId: 'customer-1',
+    });
+    expect(emitBusinessEvent).not.toHaveBeenCalledWith('tenant-1', 'invoice.sent', expect.anything());
     await jest.runAllTimersAsync();
-    expect(automationEngineService.runPaymentReceivedAutomations).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenantId: 'tenant-1',
-        paymentAmount: 200,
-      })
-    );
-    expect(automationEngineService.runInvoiceSentAutomations).not.toHaveBeenCalled();
   });
 
   it('records a deposit as a partial payment', async () => {
@@ -1063,7 +1045,10 @@ describe('applyInvoicePaymentInternal', () => {
     expect(invoice.update).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'paid' }));
     expect(result.invoice.balance).toBe(150);
 
+    expect(emitBusinessEvent).toHaveBeenCalledWith('tenant-1', 'payment.received', expect.objectContaining({
+      paymentId: 'pay-2',
+    }));
+    expect(emitBusinessEvent).not.toHaveBeenCalledWith('tenant-1', 'invoice.paid', expect.anything());
     await jest.runAllTimersAsync();
-    expect(automationEngineService.runPaymentReceivedAutomations).toHaveBeenCalled();
   });
 });

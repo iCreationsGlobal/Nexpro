@@ -4,6 +4,7 @@ const {
   DEFAULT_PLAN_BRANCH_LIMITS,
   DEFAULT_STORAGE_LIMITS,
   getFeatureFlagsForPlan,
+  pickKnownFeatureFlags,
 } = require('../config/features');
 const { resolveEnterpriseLimits } = require('../config/enterpriseTiers');
 const { applyFeatureGatesToFlags } = require('../config/businessTypes');
@@ -20,7 +21,7 @@ const getTenantEntitlementsMeta = (tenant) => {
 
 const normalizeFeatureOverrides = (overrides) => {
   if (!overrides || typeof overrides !== 'object') return {};
-  return Object.entries(overrides).reduce((acc, [key, value]) => {
+  return Object.entries(pickKnownFeatureFlags(overrides)).reduce((acc, [key, value]) => {
     if (typeof value === 'boolean') {
       acc[key] = value;
     }
@@ -36,7 +37,7 @@ const buildBaseFeatureFlags = (tenantPlan, dbPlan) => {
   // entirely and always got the "every feature enabled" canonical default, so admin toggles never
   // took effect for trial tenants (the common case, since new tenants start on trial).
   if (dbPlan?.marketing?.featureFlags && typeof dbPlan.marketing.featureFlags === 'object') {
-    return { ...canonicalFlags, ...dbPlan.marketing.featureFlags };
+    return { ...canonicalFlags, ...pickKnownFeatureFlags(dbPlan.marketing.featureFlags) };
   }
   return canonicalFlags;
 };

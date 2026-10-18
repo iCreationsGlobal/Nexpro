@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Mail, Loader2, X, MessageCircle } from 'lucide-react';
+import { Mail, Loader2, X } from 'lucide-react';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Header } from '../components/layout/Header';
 import { SmartSearchProvider } from '../context/SmartSearchContext';
@@ -13,8 +13,6 @@ import BillingGraceBanner from '../components/BillingGraceBanner';
 import BillingLockedScreen from '../components/BillingLockedScreen';
 import ShopAccessBanner from '../components/ShopAccessBanner';
 import SupportAccessBanner from '../components/SupportAccessBanner';
-import AssistantChatPanel from '../components/AssistantChatPanel';
-import FloatingActionButton from '../components/FloatingActionButton';
 import { useSafeAreaInsets } from '../hooks/useResponsive';
 import { useDeviceMode } from '../hooks/useDeviceMode';
 import { useAppShellNav } from '../hooks/useAppShellNav';
@@ -38,25 +36,6 @@ import { useDismissibleDashboardBanner } from '../hooks/useDismissibleDashboardB
 import authService from '../services/authService';
 import { showSuccess, showError } from '../utils/toast';
 import { releaseBodyInteractionLocks } from '../utils/releaseBodyInteractionLocks';
-import { IBIS_ASK_LABEL, IBIS_NAME } from '../constants/ibis';
-
-/**
- * Map current route to Ask AI pageContext for the floating panel.
- * @param {string} pathname
- * @returns {string|undefined}
- */
-function pageContextFromPath(pathname) {
-  const path = String(pathname || '');
-  if (path === '/' || path.startsWith('/dashboard')) return 'dashboard';
-  if (path.startsWith('/reports')) return 'reports';
-  if (path.startsWith('/sales') || path.startsWith('/pos')) return 'sales';
-  if (path.startsWith('/invoices')) return 'invoices';
-  if (path.startsWith('/expenses')) return 'expenses';
-  if (path.startsWith('/customers')) return 'customers';
-  if (path.startsWith('/products') || path.startsWith('/inventory')) return 'products';
-  if (path.startsWith('/jobs')) return 'jobs';
-  return undefined;
-}
 
 /**
  * Phone/tablet chrome state: header meta, tabs, More sheet, scroll memory.
@@ -160,19 +139,9 @@ const MainLayout = () => {
   } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
-  const [assistantOpen, setAssistantOpen] = useState(false);
   const wasAppShellRef = useRef(isAppShell);
 
-  const assistantPageContext = useMemo(
-    () => pageContextFromPath(location.pathname),
-    [location.pathname]
-  );
   const { isSimple } = useSimpleMode();
-  // Simple Mode: no AI assistant.
-  // Phones and tablets reach iBIS from the header, like the native app (no floating button).
-  const showAssistantFab =
-    !isAppShell && !isDriver && !isSimple && !assistantOpen && location.pathname !== '/ask-ai';
-  const openAssistant = useCallback(() => setAssistantOpen(true), []);
 
   // Phones/tablets: sales taken offline are kept on the device and synced (services/offlineSalesQueue).
   const offlineSales = useOfflineSalesSync({ enabled: isAppShell && !isDriver });
@@ -324,24 +293,6 @@ const MainLayout = () => {
             </div>
           </main>
       </WorkspaceFrame>
-      {showAssistantFab && (
-        <FloatingActionButton
-          icon={MessageCircle}
-          label={IBIS_NAME}
-          tooltip={IBIS_ASK_LABEL}
-          onClick={openAssistant}
-          position="bottom-right"
-          showOnAllSizes
-          hideOnScroll={false}
-        />
-      )}
-      {!isSimple && (
-        <AssistantChatPanel
-          open={assistantOpen}
-          onOpenChange={setAssistantOpen}
-          pageContext={assistantPageContext}
-        />
-      )}
       </ShopProvider>
       </StudioLocationProvider>
     </SmartSearchProvider>

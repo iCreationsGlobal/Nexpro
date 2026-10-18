@@ -2254,7 +2254,6 @@ const POS = () => {
           onFindOrCreateCustomer={handleFindOrCreateCustomer}
           onSendReceipt={handleSendReceiptForScanMode}
           receiptChannelsAvailable={posConfig?.receiptChannelsAvailable || { sms: false, whatsapp: false, email: false }}
-          automationReceiptCoverage={posConfig?.automationReceiptCoverage || { sms: false, email: false, whatsapp: false }}
           isOnline={isOnline}
           isRestaurant={isRestaurant}
           scanningEnabled={scanningEnabled}

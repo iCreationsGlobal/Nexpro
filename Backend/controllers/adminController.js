@@ -68,7 +68,6 @@ const {
   MarketplaceOrderPayment,
   MarketplacePayout,
   MarketplaceLedgerEntry,
-  VisionIncident,
 } = require('../models');
 const {
   resolveBillingStatus,
@@ -463,10 +462,6 @@ const clearSaleBlockersForHardDelete = async ({ tenant, sale, transaction }) => 
     transaction
   });
   const saleItemIds = saleItems.map((item) => item.id);
-  await VisionIncident.update(
-    { saleId: null },
-    { where: { tenantId: tenant.id, saleId: sale.id }, transaction }
-  );
   await PartnerCommission.update(
     { saleId: null },
     { where: { tenantId: tenant.id, saleId: sale.id }, transaction }

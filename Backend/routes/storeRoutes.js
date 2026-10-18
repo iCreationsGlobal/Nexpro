@@ -13,7 +13,6 @@ const {
   publishListing,
   unpublishListing,
   uploadListingImages,
-  generateBanner,
   getStoreOrders,
   getStoreOrderStats,
   getStoreOrder,
@@ -40,7 +39,6 @@ const { tenantContext } = require('../middleware/tenant');
 const { shopContext } = require('../middleware/shopContext');
 const { studioLocationContext } = require('../middleware/studioLocationContext');
 const { productImageUploader, checkStorageLimit, imageOnlyMulter } = require('../middleware/upload');
-const { bulkOperationLimiter } = require('../middleware/rateLimiter');
 const { timeCrudAction } = require('../middleware/crudTiming');
 const { listHeroLibrary } = require('../controllers/onlineStoreHeroController');
 
@@ -120,13 +118,6 @@ router.post(
   checkStorageLimit,
   productImageUploader.array('files', 5),
   uploadListingImages
-);
-
-router.post(
-  '/banner/generate',
-  bulkOperationLimiter,
-  authorize('admin', 'manager'),
-  generateBanner
 );
 
 router.route('/listings')

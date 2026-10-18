@@ -202,7 +202,6 @@ export const AuthProvider = ({ children }) => {
           plan: m?.tenant?.plan,
           enabledCount: Object.values(m?.tenant?.effectiveFeatureFlags || {}).filter(Boolean).length,
           crm: m?.tenant?.effectiveFeatureFlags?.crm === true,
-          automations: m?.tenant?.effectiveFeatureFlags?.automations === true,
         })));
       }
       for (const m of nextMemberships) {
@@ -272,7 +271,6 @@ export const AuthProvider = ({ children }) => {
         hasEffectiveFlags: !!m?.tenant?.effectiveFeatureFlags,
         enabledCount: Object.values(m?.tenant?.effectiveFeatureFlags || {}).filter(Boolean).length,
         crm: m?.tenant?.effectiveFeatureFlags?.crm === true,
-        automations: m?.tenant?.effectiveFeatureFlags?.automations === true,
       })));
     }
 

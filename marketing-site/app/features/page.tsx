@@ -22,11 +22,8 @@ import {
   DollarSign,
   Clock,
   Calculator,
-  Brain,
   PieChart,
   LineChart,
-  Target,
-  Sparkles,
   Layers,
   Building2,
   Banknote,
@@ -155,7 +152,7 @@ const FEATURE_GROUPS: {
   {
     id: 'reports-analytics',
     title: 'Reports',
-    subtitle: 'Reports and AI-powered insights on revenue, expenses, and performance.',
+    subtitle: 'Clear reports on revenue, expenses, profit, and performance.',
     icon: BarChart3,
     features: [
       { icon: BarChart3, title: 'Overview', description: 'Revenue, expenses, profit, product or service performance, expense breakdown, and pipeline (e.g. active jobs, open leads, pending invoices). Date range and filters; content adapts to business type.' },
@@ -165,30 +162,21 @@ const FEATURE_GROUPS: {
   },
   {
     id: 'smart-report',
-    title: 'Smart Report (AI)',
-    subtitle: 'AI-powered analysis: key findings, performance analysis, recommendations, risks, and growth opportunities.',
-    icon: Brain,
+    title: 'Smart Report',
+    subtitle: 'A detailed report for any period: summary, sales, profit and loss, expenses, cash flow, and stock.',
+    icon: LineChart,
     features: [
-      { icon: Brain, title: 'AI-powered analysis', description: 'Claude-powered analysis on your report data: key findings, performance analysis, recommendations, risks, and growth opportunities. Backend sends aggregated data to the AI and returns structured insights.' },
-      { icon: MessageSquare, title: 'Natural language', description: 'Ask questions in plain English and get instant, intelligent answers from your business data.' },
-      { icon: Target, title: 'Recommendations & trends', description: 'Actionable suggestions and trend detection to improve profitability and grow your business.' },
+      { icon: BarChart3, title: 'Executive summary', description: 'Key numbers for the period with trends and a comparison against the previous period.' },
+      { icon: PieChart, title: 'Sections you choose', description: 'Financial overview, sales and customers, expenses, cash flow, and inventory, plus utilization, late returns, and damage for rental businesses.' },
+      { icon: FileText, title: 'PDF download', description: 'Download the report as a PDF to share with partners, an accountant, or a lender.' },
     ],
   },
 ]
 
-const ASK_EXAMPLES = [
-  '"How much did I sell this month?"',
-  '"Show me customers who haven\'t ordered in 30 days"',
-  '"What are my top products?"',
-  '"Compare this quarter to last quarter"',
-  '"What are my top expense categories?"',
-  '"Why are sales down?"',
-]
-
 const SMART_REPORT_STEPS = [
-  { step: '1', title: 'Connect Your Data', description: 'Your business data is automatically synced and organized in real-time.' },
-  { step: '2', title: 'Ask a Question', description: 'Type your question in plain English or choose from suggested insights.' },
-  { step: '3', title: 'Get Insights', description: 'Receive instant analysis with charts, recommendations, and actionable next steps.' },
+  { step: '1', title: 'Run Your Business', description: 'Record sales, invoices, and expenses in ABS as you work. There is nothing extra to set up.' },
+  { step: '2', title: 'Choose a Period', description: 'Pick the dates and the sections you want: sales, expenses, cash flow, inventory, and more.' },
+  { step: '3', title: 'Read & Share', description: 'See your numbers with charts and comparisons, then download the report as a PDF.' },
 ]
 
 function FeatureCard({
@@ -250,7 +238,7 @@ export default function FeaturesPage() {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="text-lg text-green-100"
           >
-            Payments, invoices & quotes, jobs, sales & POS, inventory, customers, pharmacy, and AI reports—all in one place.
+            Payments, invoices & quotes, jobs, sales & POS, inventory, customers, pharmacy, and reports—all in one place.
           </motion.p>
         </div>
       </section>
@@ -286,43 +274,11 @@ export default function FeaturesPage() {
         )
       })}
 
-      {/* Smart Report: Just Ask + How it works */}
+      {/* Smart Report: How it works */}
       <section className="py-10 sm:py-20 px-4 sm:px-6 lg:px-8 bg-[#166534]">
         <div className="mx-auto max-w-7xl">
-          <div className="text-center mb-10">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-[#a3e635] text-sm font-medium mb-4"
-            >
-              <Sparkles className="h-4 w-4" />
-              Powered by AI
-            </motion.div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">Just Ask</h2>
-            <p className="text-green-100">No dashboards or SQL—ask what you want to know.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto mb-12">
-            {ASK_EXAMPLES.map((example, index) => (
-              <motion.div
-                key={example}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.05 }}
-                className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20"
-              >
-                <div className="flex items-start gap-3">
-                  <MessageSquare className="h-5 w-5 text-[#a3e635] mt-0.5 flex-shrink-0" />
-                  <p className="text-green-50 text-sm italic">{example}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
           <div>
-            <h3 className="text-xl font-semibold text-white mb-6 text-center">How Smart Report Works</h3>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-10 text-center">How Smart Report Works</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {SMART_REPORT_STEPS.map((item, index) => (
                 <motion.div

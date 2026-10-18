@@ -127,7 +127,7 @@ export default function PharmaciesPage() {
               transition={{ duration: 0.5, delay: 0.2 }}
               className="text-lg text-green-100 mb-8"
             >
-              Complete pharmacy management system with prescription tracking, intelligent expiry alerts,
+              Complete pharmacy management system with prescription tracking, expiry alerts,
               and regulatory compliance. Dispense with confidence, serve patients better.
             </motion.p>
             <motion.div

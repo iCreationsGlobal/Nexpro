@@ -9,7 +9,6 @@ const {
   documentScopeSqlFragment,
 } = require('../utils/reportScopeUtils');
 const { resolveBusinessType } = require('../config/businessTypes');
-const { classifyAiProviderError, AI_PROVIDER_USER_MESSAGES } = require('../utils/aiProviderErrors');
 
 /** Tenant + active shop filter for retail reports. */
 const scopedRetailWhere = (req, extra = {}) =>
@@ -1797,120 +1796,6 @@ exports.getServiceAnalyticsReport = async (req, res, next) => {
     logReportError('[Service Analytics] Stack:', error.stack);
     logReportError('[Service Analytics] Full error:', error);
     next(error);
-  }
-};
-
-// @desc    Generate AI-powered report analysis
-// @route   POST /api/reports/ai-analysis
-// @access  Private
-exports.generateAIAnalysis = async (req, res, next) => {
-  try {
-    const openaiService = require('../services/openaiService');
-    const { reportData, options = {} } = req.body;
-
-    if (!reportData) {
-      return res.status(400).json({
-        success: false,
-        error: 'Report data is required'
-      });
-    }
-
-    const tenant = req.tenant || {};
-    const businessType = options.businessType ?? tenant.businessType ?? 'printing_press';
-    const studioType = options.studioType ?? tenant.metadata?.studioType ?? (['printing_press', 'mechanic', 'barber', 'salon'].includes(businessType) ? businessType : null);
-
-    const analysis = await openaiService.analyzeReportData(reportData, {
-      businessType,
-      studioType,
-      period: options.period,
-      startDate: options.startDate,
-      endDate: options.endDate,
-      ...options,
-      tenantId: req.tenantId
-    });
-
-    res.status(200).json({
-      success: true,
-      data: analysis.analysis
-    });
-  } catch (error) {
-    const classified = classifyAiProviderError(error);
-    if (classified || error.aiProviderError) {
-      const errorCode = classified?.errorCode || error.errorCode || error.code;
-      const message = classified?.message || error.message;
-      const statusCode = classified?.statusCode || error.statusCode || 503;
-
-      if (errorCode === 'OPENAI_NOT_CONFIGURED') {
-        return res.status(200).json({
-          success: true,
-          data: {
-            keyFindings: [
-              'Revenue and expense data has been analyzed.',
-              'Smart Report generated without AI because no AI key is configured.',
-              AI_PROVIDER_USER_MESSAGES.OPENAI_NOT_CONFIGURED,
-            ],
-            performanceAnalysis: 'The report was generated from business data. AI-powered narrative analysis is disabled until an AI key is configured.',
-            recommendations: [],
-            riskAssessment: [],
-            growthOpportunities: [],
-            strategicSuggestions: [
-              'Review the financial, sales, expenses, cash flow, and inventory tabs for detailed performance signals.',
-            ],
-            aiConfigured: false,
-            aiUnavailableReason: message,
-          },
-        });
-      }
-
-      if (errorCode === 'AI_PROVIDER_BILLING_REQUIRED') {
-        return res.status(200).json({
-          success: true,
-          data: {
-            keyFindings: [
-              'Revenue and expense data has been analyzed.',
-              message,
-            ],
-            performanceAnalysis: 'The report was generated from business data. AI insights are unavailable until platform AI credit is restored or a workspace AI key is added.',
-            recommendations: [],
-            riskAssessment: [],
-            growthOpportunities: [],
-            strategicSuggestions: [
-              'Review the financial, sales, expenses, cash flow, and inventory tabs for detailed performance signals.',
-            ],
-            aiConfigured: false,
-            aiUnavailableReason: message,
-          },
-        });
-      }
-
-      return res.status(statusCode).json({
-        success: false,
-        error: message,
-        errorCode,
-        code: errorCode,
-      });
-    }
-
-    logReportError('Error generating AI analysis:', error);
-    // Return a fallback response if OpenAI fails for other reasons
-    res.status(200).json({
-      success: true,
-      data: {
-        keyFindings: [
-          'Revenue and expense data has been analyzed.',
-          'Profit margins indicate business health.',
-          'Continue monitoring key performance indicators.'
-        ],
-        performanceAnalysis: 'The report data shows business performance metrics. Review the detailed sections for specific insights.',
-        recommendations: [],
-        riskAssessment: [],
-        growthOpportunities: [],
-        strategicSuggestions: [
-          'Continue tracking revenue and expense trends.',
-          'Monitor profit margins for optimization opportunities.'
-        ],
-      }
-    });
   }
 };
 

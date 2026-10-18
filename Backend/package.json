@@ -29,7 +29,6 @@
     "generate:platform-email-key": "node scripts/generate-platform-email-encryption-key.js",
     "update:platform-email-key": "node scripts/update-platform-email-encryption-key.js",
     "setup:ops-assets-credentials": "node scripts/setup-ops-assets-credentials.js",
-    "setup:ai-credentials": "node scripts/setup-ai-credentials.js",
     "update:superadmin-email": "node scripts/update-superadmin-email.js",
     "verify:user-email": "node scripts/verify-user-email.js",
     "delete:tenant-products": "node scripts/delete-tenant-products.js",
@@ -68,7 +67,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.74.0",
     "@aws-sdk/client-s3": "^3.1149.0",
     "@aws-sdk/s3-request-presigner": "^3.1149.0",
     "@neondatabase/serverless": "^1.1.0",
@@ -91,7 +89,6 @@
     "node-cache": "^5.1.2",
     "node-cron": "^4.2.1",
     "nodemailer": "^10.0.10",
-    "openai": "^6.16.0",
     "pg": "^8.11.3",
     "pg-hstore": "^2.3.4",
     "qs": "^6.13.0",

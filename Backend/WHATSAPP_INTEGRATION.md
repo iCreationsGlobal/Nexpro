@@ -239,29 +239,20 @@ Meta will send a GET request to verify your webhook:
 
 ## Message Templates Reference
 
-Create UTILITY templates in Meta with these exact names (language `en`). Automations prefill the matching template when you add a WhatsApp action.
+Create UTILITY templates in Meta with these exact names (language `en`). These are the messages ABS sends by itself; customer messages also follow the per-event channel switches in Settings → Delivery rules.
 
 | Template | Used for |
 |----------|----------|
-| invoice_notification | Invoice sent / high-value invoice |
+| invoice_notification | Invoice sent |
 | quote_delivery | Quote sent |
-| quote_follow_up | Quote with no response |
-| order_confirmation | Job/order confirmed |
-| order_created | Order created |
-| sale_receipt | POS sale completed |
+| order_created | Order created (override with `orderCreatedTemplateName`) |
+| sale_receipt | Sale receipt (override with `receiptTemplateName`) |
 | payment_reminder | Overdue invoice (payment_overdue_2: name, account, amount, due date + Pay now button) |
-| payment_received | Payment recorded |
-| review_request | Review request |
+| job_created | Job created |
 | job_completed | Job completed |
-| birthday_greeting | Customer birthday |
-| win_back | Inactive customers |
-| low_stock_alert | Low stock |
-| welcome_customer | New customer |
-| new_lead_alert | New lead |
-| lead_follow_up | Lead with no contact |
-| prescription_refill | Pharmacy refill due |
-| low_profit_alert | Low margin sale |
-| daily_sales_summary | Daily sales recap |
+| low_stock_alert | Low stock (staff) |
+
+Birthday, win-back, review request and other marketing-style messages are no longer sent by ABS; they move to Lynk.
 
 All templates use the `en` language code. To support other languages (French, Swahili, etc.), create additional templates with different language codes.
 

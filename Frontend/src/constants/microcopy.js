@@ -377,19 +377,6 @@ export const EMPTY_STATES = {
   },
 
   // Rentals
-  WATCH: {
-    icon: 'Eye',
-    title: 'No watch incidents yet',
-    description: 'Pair a Watch device with your shop camera below, or upload a short clip. ABS compares till activity with recorded sales.',
-    primaryAction: 'Refresh',
-  },
-  WATCH_FILTERED: {
-    icon: 'Eye',
-    title: 'No matching incidents',
-    description: 'Try another bucket or clear the status filter.',
-    primaryAction: 'Clear Filters',
-  },
-
   RENTALS: {
     icon: 'Clock',
     title: 'No rentals yet',

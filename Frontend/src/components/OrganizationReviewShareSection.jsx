@@ -121,8 +121,7 @@ export function OrganizationReviewShareSection({ tenantSlug, organizationName })
             <div>
               <h2 className="text-lg font-semibold text-foreground">Share &amp; collect reviews</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Share your link or QR code with customers to collect feedback. You can also send review links automatically
-                from <span className="font-medium text-foreground">Automations</span> (e.g. after a job is created).
+                Share your link or QR code with customers to collect feedback.
               </p>
             </div>
             <div>

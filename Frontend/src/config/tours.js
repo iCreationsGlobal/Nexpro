@@ -125,7 +125,7 @@ export const TOUR_STEPS = {
   REPORTS_ENTRY: {
     id: 'reports-entry',
     target: '[data-tour="nav-reports"]',
-    content: 'View Reports to see your business summary, smart insights, and compliance reports.',
+    content: 'View Reports to see your business summary, smart reports, and compliance reports.',
     placement: 'right',
     disableBeacon: true,
     businessTypes: ['shop', 'pharmacy', 'printing_press', 'mechanic', 'barber', 'salon', 'studio']

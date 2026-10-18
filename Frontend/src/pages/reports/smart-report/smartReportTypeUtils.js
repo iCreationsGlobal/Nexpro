@@ -94,22 +94,18 @@ export function normalizeLegacyReportTypes(types = []) {
 }
 
 /**
- * Infer tab ids from legacy insight sections.
- * @param {Array<{ type?: string }>} insights
+ * Infer tab ids from legacy report sections (saved reports without reportTypes).
+ * @param {Array<{ type?: string }>} sections
  * @returns {string[]}
  */
-export function inferTabIdsFromInsights(insights = []) {
+export function inferTabIdsFromSections(sections = []) {
   const types = [];
-  insights.forEach((insight) => {
-    if (!insight?.type) return;
-    if (insight.type === 'performance') types.push('executive');
-    else if (LEGACY_REPORT_TYPE_TO_TAB[insight.type]) {
-      const mapped = LEGACY_REPORT_TYPE_TO_TAB[insight.type];
+  sections.forEach((section) => {
+    if (!section?.type) return;
+    if (section.type === 'performance') types.push('executive');
+    else if (LEGACY_REPORT_TYPE_TO_TAB[section.type]) {
+      const mapped = LEGACY_REPORT_TYPE_TO_TAB[section.type];
       (Array.isArray(mapped) ? mapped : [mapped]).forEach((id) => types.push(id));
-    } else if (insight.type === 'ai-analysis' || insight.type === 'strategy') {
-      types.push('ai-insights');
-    } else if (['recommendation', 'opportunity'].includes(insight.type)) {
-      types.push('recommendations');
     }
   });
   return normalizeLegacyReportTypes(types);
@@ -127,8 +123,6 @@ const RENTAL_SMART_REPORT_TAB_IDS = new Set([
   'financial',
   'rental-history',
   'rental-damage',
-  'ai-insights',
-  'recommendations',
   'rental-utilization',
   'rental-late-returns',
   'executive',
@@ -163,7 +157,7 @@ export function resolveSmartReportTabs(report, ctx = {}) {
   if (Array.isArray(report?.reportTypes) && report.reportTypes.length > 0) {
     selectedIds = normalizeLegacyReportTypes(report.reportTypes).filter((id) => availableIds.has(id));
   } else if (Array.isArray(report?.insights) && report.insights.length > 0) {
-    selectedIds = inferTabIdsFromInsights(report.insights);
+    selectedIds = inferTabIdsFromSections(report.insights);
   } else {
     return available;
   }

@@ -14,7 +14,6 @@ const baseArgs = {
   financialPositionData: {},
   revenueByChannelData: {},
   prescriptionData: null,
-  aiAnalysis: null,
   comparison: { prevRevenue: 8000, prevExpenses: 1500, prevCogs: 2000, prevProfit: 4500, label: 'vs previous period' },
   isShop: true,
   isPharmacy: false,
@@ -104,7 +103,6 @@ describe('buildSmartReportSnapshot profit formulas', () => {
     expect(snapshot.rental.damageCost).toBe(350);
     expect(snapshot.rental.productHistory).toEqual([]);
     expect(snapshot.rental.lowStockAlerts).toEqual([]);
-    expect(snapshot.rentalAiSummary).toContain('Hire booked');
     expect(snapshot.revenueDonut.slices.some((slice) => slice.name === 'Excavator')).toBe(true);
   });
 });

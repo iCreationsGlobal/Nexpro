@@ -95,12 +95,12 @@ describe('adminController.updateTenantAccess', () => {
     TenantAccessAudit.create.mockResolvedValue({});
   });
 
-  it('persists true and false feature overrides and removes missing keys', async () => {
+  it('persists true and false feature overrides and drops missing or removed keys', async () => {
     const tenant = createTenant({
       entitlements: {
         featureOverrides: {
           reports: true,
-          automations: true,
+          marketing: true,
         },
       },
     });
@@ -111,8 +111,9 @@ describe('adminController.updateTenantAccess', () => {
       user: { id: 'admin-1' },
       body: {
         featureOverrides: {
-          automations: false,
+          marketing: false,
           apiAccess: true,
+          watch: true,
         },
       },
     };
@@ -123,14 +124,14 @@ describe('adminController.updateTenantAccess', () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(tenant.metadata.entitlements.featureOverrides).toEqual({
-      automations: false,
+      marketing: false,
       apiAccess: true,
     });
     expect(tenant.changed).toHaveBeenCalledWith('metadata', true);
     expect(tenant.save).toHaveBeenCalledTimes(1);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json.mock.calls[0][0].data.metadata.entitlements.featureOverrides).toEqual({
-      automations: false,
+      marketing: false,
       apiAccess: true,
     });
   });

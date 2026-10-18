@@ -5,7 +5,6 @@
  * with error codes, structured logging, and request context.
  */
 const { setCorsHeaders } = require('../utils/corsUtils');
-const { classifyAiProviderError } = require('../utils/aiProviderErrors');
 
 const errorHandler = (err, req, res, next) => {
   const origin = req.get('Origin');
@@ -36,21 +35,6 @@ const errorHandler = (err, req, res, next) => {
   console.error('[ErrorHandler]', JSON.stringify(errorContext, null, 2));
   if (process.env.NODE_ENV === 'development') {
     console.error('[ErrorHandler] Full error:', err);
-  }
-
-  const classifiedAiError = classifyAiProviderError(err);
-  if (classifiedAiError || err.aiProviderError) {
-    const statusCode = classifiedAiError?.statusCode || err.statusCode || 500;
-    const errorCode = classifiedAiError?.errorCode || err.errorCode || err.code || 'INTERNAL_ERROR';
-    const message = classifiedAiError?.message || err.message || 'Server Error';
-
-    return res.status(statusCode).json({
-      success: false,
-      error: message,
-      errorCode,
-      code: errorCode,
-      requestId,
-    });
   }
 
   // Handle different error types

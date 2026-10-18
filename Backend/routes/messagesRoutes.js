@@ -12,7 +12,6 @@ const {
   createMessageGroup,
   addGroupMembers,
   updatePreferredSenderId,
-  setupBirthdayMessaging,
 } = require('../controllers/messagesController');
 const { protect, authorize } = require('../middleware/auth');
 const { tenantContext } = require('../middleware/tenant');
@@ -27,7 +26,6 @@ router.get('/overview', getMessagesOverview);
 router.get('/history', getSmsHistory);
 router.post('/compose', composeSms);
 router.put('/sender-id', updatePreferredSenderId);
-router.post('/birthday-setup', setupBirthdayMessaging);
 
 router.get('/templates', listMarketingTemplates);
 router.post('/templates', createMarketingTemplate);

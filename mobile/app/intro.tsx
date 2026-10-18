@@ -17,7 +17,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
-import { IntroWatchHero } from '@/components/IntroWatchHero';
 import { IntroStoreHero } from '@/components/IntroStoreHero';
 import { IntroInvoiceHero } from '@/components/IntroInvoiceHero';
 import { IntroPosHero } from '@/components/IntroPosHero';
@@ -60,7 +59,6 @@ function getNativeChipVisual(variant: SplashIntroSmallCardVariant): NativeChipVi
       return { iconBg: BRAND_GREEN, iconName: 'shopping-cart' };
     case 'adapts':
       return { iconBg: BRAND_GREEN, iconName: 'sparkles' };
-    case 'unusual-activity':
     default:
       return { iconBg: '#f97316', bang: '!' };
   }
@@ -233,8 +231,6 @@ export default function IntroScreen() {
           <IntroInvoiceHero width={width} height={carouselHeight || cardStageHeight} />
         ) : item.id === 'online-store' ? (
           <IntroStoreHero width={width} height={carouselHeight || cardStageHeight} />
-        ) : item.id === 'abs-watch' ? (
-          <IntroWatchHero width={width} height={carouselHeight || cardStageHeight} />
         ) : <IntroCardStagePlain slide={item} stageHeight={carouselHeight || cardStageHeight} stageWidth={width} />}
       </View>
     ),

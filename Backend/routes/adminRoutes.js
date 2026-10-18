@@ -100,10 +100,7 @@ const {
   getTenantSettings,
   updateTenantSettings,
 } = require('../controllers/adminTenantSettingsController');
-const {
-  getAdminAutomationsOverview,
-  getAdminMessagingUsage,
-} = require('../controllers/adminAutomationsController');
+const { getAdminMessagingUsage } = require('../controllers/adminMessagingUsageController');
 const {
   listSalesAgents,
   getSalesAgent,
@@ -648,16 +645,11 @@ router.get(
 );
 
 /**
- * Automations & Messaging observability (cross-tenant, privacy-safe)
+ * Platform SMS usage per tenant (privacy-safe)
  */
 router.get(
-  '/automations/overview',
-  requirePlatformAdminPermission('automations.view'),
-  getAdminAutomationsOverview
-);
-router.get(
   '/messaging/usage',
-  requirePlatformAdminPermission('automations.view'),
+  requirePlatformAdminPermission('messaging.view'),
   getAdminMessagingUsage
 );
 

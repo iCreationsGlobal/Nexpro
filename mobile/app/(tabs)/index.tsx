@@ -12,7 +12,6 @@ import {
   Alert,
 } from 'react-native';
 import { MiniSparkline } from '@/components/dashboard/MiniSparkline';
-import { buildDashboardInsight } from '@/utils/dashboardInsights';
 import { formatStatusLabel, getSaleStatusColors } from '@/utils/formatLabels';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -26,7 +25,6 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
 import { dashboardService } from '@/services/dashboardService';
-import { assistantService } from '@/services/assistantService';
 import { authService } from '@/services/auth';
 import { CURRENCY, ORDER_STATUSES, resolveBusinessType, SHOP_TYPES } from '@/constants';
 import { formatCurrency } from '@/utils/formatCurrency';
@@ -133,85 +131,9 @@ type RecentSale = {
   customer?: { name?: string; phone?: string } | null;
 };
 
-type AiInsightResponse = {
-  title: string;
-  body: string;
-};
-
 function iconTint(color: string): string {
   if (/^#[0-9a-fA-F]{6}$/.test(color)) return `${color}1A`;
   return 'rgba(22, 101, 52, 0.1)';
-}
-
-function parseAiInsightResponse(message: string): AiInsightResponse | null {
-  const trimmed = String(message || '')
-    .trim()
-    .replace(/```(?:json)?/gi, '')
-    .replace(/```/g, '')
-    .trim();
-  if (!trimmed) return null;
-
-  const parseInsightJson = (raw: string): AiInsightResponse | null => {
-    try {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed === 'string') {
-        return parseInsightJson(parsed);
-      }
-      const candidate = parsed?.title || parsed?.body
-        ? parsed
-        : parsed?.message && typeof parsed.message === 'string'
-          ? parseInsightJson(parsed.message)
-          : null;
-      if (!candidate) return null;
-      const insight = candidate as Partial<AiInsightResponse>;
-      if (insight.title && insight.body) {
-        return {
-          title: String(insight.title).replace(/^["'`]+|["'`]+$/g, '').trim(),
-          body: String(insight.body).replace(/^["'`]+|["'`]+$/g, '').trim(),
-        };
-      }
-    } catch {
-      return null;
-    }
-    return null;
-  };
-
-  const directJson = parseInsightJson(trimmed);
-  if (directJson) return directJson;
-
-  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    const extractedJson = parseInsightJson(jsonMatch[0]);
-    if (extractedJson) return extractedJson;
-  }
-
-  const quotedTitleMatch = trimmed.match(/["']?title["']?\s*:\s*["']([^"']+)["']/i);
-  const quotedBodyMatch = trimmed.match(/["']?(?:body|insight)["']?\s*:\s*["']([^"']+)["']/i);
-  if (quotedTitleMatch && quotedBodyMatch) {
-    return {
-      title: quotedTitleMatch[1].trim(),
-      body: quotedBodyMatch[1].trim(),
-    };
-  }
-
-  const lines = trimmed.split('\n').map((line) => line.trim()).filter(Boolean);
-  const titleLine = lines.find((line) => /^title:/i.test(line));
-  const bodyLine = lines.find((line) => /^(body|insight):/i.test(line));
-  if (titleLine && bodyLine) {
-    return {
-      title: titleLine.replace(/^title:\s*/i, '').trim(),
-      body: bodyLine.replace(/^(body|insight):\s*/i, '').trim(),
-    };
-  }
-
-  if (/^\{[\s\S]*["']title["'][\s\S]*["']body["'][\s\S]*\}$/.test(trimmed)) {
-    return null;
-  }
-
-  return {
-    title: 'AI business insight',
-    body: trimmed.length > 120 ? `${trimmed.slice(0, 117)}...` : trimmed,
-  };
 }
 
 function getDueDateBadge(
@@ -400,66 +322,11 @@ function DashboardScreen() {
   const revenue = filteredPeriod?.revenue ?? (isShop || isPharmacy ? shopData.monthSales : currentMonth.revenue) ?? 0;
   const expenses = filteredPeriod?.expenses ?? currentMonth.expenses ?? 0;
   const profit = filteredPeriod?.profit ?? currentMonth.profit ?? revenue - expenses;
-  const lowStockItems = shopData.lowStockItems ?? 0;
 
   const recentSales = useMemo(
     () => (shopData.recentSales ?? []) as RecentSale[],
     [shopData.recentSales]
   );
-
-  const dashboardInsight = useMemo(
-    () =>
-      buildDashboardInsight({
-        revenue,
-        expenses,
-        profit,
-        comparison,
-        lowStockItems,
-        isShop,
-        isPharmacy,
-      }),
-    [revenue, expenses, profit, comparison, lowStockItems, isShop, isPharmacy]
-  );
-
-  const { data: aiDashboardInsight, isFetching: isFetchingAiInsight } = useQuery({
-    queryKey: [
-      'dashboard',
-      'ai-insight',
-      'v3-analysis',
-      activeTenantId,
-      activeShopId,
-      activeStudioLocationId,
-      filterType,
-      revenue,
-      expenses,
-      profit,
-      summary.newCustomers,
-      lowStockItems,
-    ],
-    queryFn: async () => {
-      const response = await assistantService.askAnalysis('Summarize performance', {
-        intent: 'performance_summary',
-        pageContext: 'dashboard',
-        period: filterType,
-        startDate: dateRange.start,
-        endDate: dateRange.end,
-        periodLabel: getFilterLabel(filterType),
-      });
-      if (response?.insight?.title && response?.insight?.body) {
-        return {
-          title: String(response.insight.title).trim(),
-          body: String(response.insight.body).trim(),
-        };
-      }
-      return parseAiInsightResponse(response?.message ?? response?.answerMarkdown ?? '');
-    },
-    enabled: !!activeTenantId && !isLoading && !!overviewResponse && !inStoreSetup,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
-    retry: 1,
-  });
-
-  const visibleDashboardInsight = aiDashboardInsight ?? dashboardInsight;
 
   const showPeriodPicker = useCallback(() => {
     setPeriodOpen(true);
@@ -675,41 +542,6 @@ function DashboardScreen() {
           />
         )}
       </View>
-
-      {/* AI insight */}
-      <Pressable
-        onPress={() =>
-          router.push({
-            pathname: '/(tabs)/chat',
-            params: {
-              prompt: 'Explain my dashboard insight and what I should do next.',
-              pageContext: 'dashboard',
-            },
-          } as never)
-        }
-        style={({ pressed }) => [
-          styles.insightCard,
-          { backgroundColor: resolvedTheme === 'dark' ? '#14532d' : '#ecfdf5', borderColor: resolvedTheme === 'dark' ? colors.tint : '#bbf7d0' },
-          pressed && styles.pressed,
-        ]}
-      >
-        <View style={[styles.insightIconCircle, { backgroundColor: colors.tint }]}>
-          <AppIcon name="brain" size={20} color="#fff" />
-        </View>
-        <View style={styles.insightTextCol}>
-          <Text style={[styles.insightEyebrow, { color: colors.tint }]}>AI Insight</Text>
-          <Text style={[styles.insightTitle, { color: textColor }]} numberOfLines={2}>
-            {isFetchingAiInsight ? 'AI is reviewing your numbers' : visibleDashboardInsight.title}
-          </Text>
-          <Text style={[styles.insightBody, { color: mutedColor }]} numberOfLines={2}>
-            {isFetchingAiInsight ? 'Generating a quick business insight from your latest dashboard data.' : visibleDashboardInsight.body}
-          </Text>
-        </View>
-        <View style={[styles.insightCta, { backgroundColor: cardBg, borderColor }]}>
-          <Text style={[styles.insightCtaText, { color: colors.tint }]}>View</Text>
-          <AppIcon name="chevron-right" size={14} color={colors.tint} />
-        </View>
-      </Pressable>
 
       {showOnlineStoreBanner && (
         <Pressable
@@ -1051,54 +883,6 @@ const styles = StyleSheet.create({
   periodPillText: {
     fontFamily: FontFamily.semiBold,
     fontSize: FontSize.sm,
-    fontWeight: '600',
-  },
-  insightCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: 20,
-  },
-  insightIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  insightTextCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  insightEyebrow: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  insightTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  insightBody: {
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 4,
-  },
-  insightCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    flexShrink: 0,
-  },
-  insightCtaText: {
-    fontSize: 12,
     fontWeight: '600',
   },
   sectionHeaderRow: {

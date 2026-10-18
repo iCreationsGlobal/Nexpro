@@ -10,8 +10,7 @@ const { sequelize } = require('../config/database');
 const config = require('../config/config');
 const { getPagination } = require('../utils/paginationUtils');
 const activityLogger = require('../services/activityLogger');
-const taskAutomationService = require('../services/taskAutomationService');
-const { runNewLeadAutomations } = require('../services/automationEngineService');
+const { emitBusinessEvent } = require('../services/businessEvents');
 const { invalidateCustomerListCache } = require('../middleware/cache');
 const { applyTenantFilter, sanitizePayload } = require('../utils/tenantUtils');
 const {
@@ -223,24 +222,13 @@ exports.createLead = async (req, res, next) => {
       } catch (error) {
         console.error('[LeadController] Failed to log lead activity:', error);
       }
-      const { runLeadAssignedStaffAutomations } = require('../services/automationEngineService');
-      runLeadAssignedStaffAutomations({
-        tenantId: req.tenantId,
-        lead: createdLead,
-        assignee: createdLead.assignee || null,
-        actorUserId: req.user?.id || null,
-      }).catch((error) =>
-        console.error('[LeadController] lead_assigned_staff automations failed:', error?.message || error)
-      );
+      emitBusinessEvent(req.tenantId, 'lead.assigned', {
+        leadId: createdLead.id,
+        assigneeId: createdLead.assignedTo,
+      });
     }
 
-    runNewLeadAutomations({
-      tenantId: req.tenantId,
-      lead: createdLead || lead,
-      actorUserId: req.user?.id || null,
-    }).catch((error) =>
-      console.error('[LeadController] new_lead automations failed:', error?.message || error)
-    );
+    emitBusinessEvent(req.tenantId, 'lead.created', { leadId: (createdLead || lead).id });
 
     res.status(201).json({ success: true, data: createdLead });
   } catch (error) {
@@ -379,20 +367,6 @@ exports.updateLead = async (req, res, next) => {
 
     await lead.update(sanitized, { transaction });
 
-    if (sanitized.nextFollowUp) {
-      try {
-        await taskAutomationService.createLeadFollowUpTask({
-          lead: { ...lead.toJSON(), ...sanitized },
-          followUpDate: sanitized.nextFollowUp,
-          nextStep: null,
-          tenantId: req.tenantId,
-          triggeredBy: req.user?.id || null
-        });
-      } catch (automationError) {
-        console.error('[LeadController] Failed to create lead follow-up task:', automationError?.message);
-      }
-    }
-
     let activityCreated = false;
     if (sanitized.status && sanitized.status !== previousStatus) {
       // Log status change notification
@@ -473,15 +447,10 @@ exports.updateLead = async (req, res, next) => {
       && sanitized.assignedTo
       && sanitized.assignedTo !== previousAssignedTo
     ) {
-      const { runLeadAssignedStaffAutomations } = require('../services/automationEngineService');
-      runLeadAssignedStaffAutomations({
-        tenantId: req.tenantId,
-        lead: updatedLead,
-        assignee: updatedLead.assignee || null,
-        actorUserId: req.user?.id || null,
-      }).catch((error) =>
-        console.error('[LeadController] lead_assigned_staff automations failed:', error?.message || error)
-      );
+      emitBusinessEvent(req.tenantId, 'lead.assigned', {
+        leadId: lead.id,
+        assigneeId: sanitized.assignedTo,
+      });
     }
 
     res.status(200).json({ success: true, data: updatedLead });
@@ -534,17 +503,6 @@ exports.addLeadActivity = async (req, res, next) => {
 
     if (payload.followUpDate) {
       await lead.update({ nextFollowUp: payload.followUpDate });
-      try {
-        await taskAutomationService.createLeadFollowUpTask({
-          lead,
-          followUpDate: payload.followUpDate,
-          nextStep: payload.nextStep || null,
-          tenantId: req.tenantId,
-          triggeredBy: req.user?.id || null
-        });
-      } catch (automationError) {
-        console.error('[LeadController] Failed to create follow-up task:', automationError?.message);
-      }
     }
     if (payload.updateStatus) {
       await lead.update({ status: payload.updateStatus });

@@ -24,7 +24,6 @@ const expectedFeatureKeys = [
   'pharmacyOps',
   'materials',
   'rentals',
-  'watch',
   'reports',
   'graEvat',
   'notifications',
@@ -37,7 +36,6 @@ const expectedFeatureKeys = [
   'whiteLabel',
   'sso',
   'customWorkflows',
-  'automations',
   'dedicatedSupport',
   'sla',
 ];
@@ -74,9 +72,13 @@ describe('plan feature matrix', () => {
     expect(getFeatureFlagsForPlan('enterprise').rentals).toBe(true);
   });
 
-  it('includes watch on professional but not starter base plans', () => {
-    expect(getFeatureFlagsForPlan('starter').watch).toBe(false);
-    expect(getFeatureFlagsForPlan('professional').watch).toBe(true);
-    expect(getFeatureFlagsForPlan('enterprise').watch).toBe(true);
+  it('no longer offers Watch or automations (moved to Lynk)', () => {
+    for (const planId of ['trial', 'starter', 'professional', 'enterprise']) {
+      const flags = getFeatureFlagsForPlan(planId);
+      expect(flags).not.toHaveProperty('watch');
+      expect(flags).not.toHaveProperty('automations');
+    }
+    const copy = plans.flatMap((plan) => [...(plan.highlights || []), ...(plan.marketing?.perks || [])]);
+    expect(copy.some((line) => /automat(ion|ed reminders)/i.test(line))).toBe(false);
   });
 });

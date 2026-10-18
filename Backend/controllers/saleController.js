@@ -21,13 +21,7 @@ const { computeDocumentTax } = require('../utils/taxCalculation');
 const { getTenantLogoUrl } = require('../utils/tenantLogo');
 const { resolveDeliveryForSale } = require('../services/deliverySettingsService');
 const { notifyOrderCreatedForCustomer } = require('../services/orderCustomerNotificationService');
-const {
-  runReviewRequestAutomations,
-  runSaleCompletedAutomations,
-  runOrderCreatedAutomations,
-  runLowProfitMarginAutomations,
-  runStockChangeAutomations,
-} = require('../services/automationEngineService');
+const { emitBusinessEvent } = require('../services/businessEvents');
 const { getTenantShopType } = require('../config/businessTypes');
 const {
   applyShopFilter,
@@ -941,25 +935,15 @@ const runPostSaleAutomation = async ({ sale, items, tenantId, userId, isRestaura
       console.log(`[CreateSale] Skipping auto-invoice for walk-in sale ${sale.id}`);
     }
 
+    if (createdSale.customer || (isRestaurant && createdSale.orderStatus)) {
+      emitBusinessEvent(tenantId, 'order.created', {
+        saleId: createdSale.id,
+        customerId: createdSale.customerId || null,
+      });
+    }
+
     if (createdSale.customer) {
       mark('customer-order-alert:start');
-      await runOrderCreatedAutomations({
-        tenantId,
-        sale: createdSale,
-        customer: createdSale.customer || null,
-        actorUserId: userId || null,
-      }).catch((err) =>
-        console.error('[CreateSale] order_created automations failed:', err?.message || err)
-      );
-      const { runOrderCreatedStaffAutomations } = require('../services/automationEngineService');
-      await runOrderCreatedStaffAutomations({
-        tenantId,
-        sale: createdSale,
-        customer: createdSale.customer || null,
-        actorUserId: userId || null,
-      }).catch((err) =>
-        console.error('[CreateSale] order_created_staff automations failed:', err?.message || err)
-      );
       await notifyOrderCreatedForCustomer({
         tenantId,
         sale: createdSale
@@ -967,16 +951,6 @@ const runPostSaleAutomation = async ({ sale, items, tenantId, userId, isRestaura
         console.error('[CreateSale] Customer order-created alert failed:', alertError?.message || alertError)
       );
       mark('customer-order-alert:end');
-    } else if (isRestaurant && createdSale.orderStatus) {
-      const { runOrderCreatedStaffAutomations } = require('../services/automationEngineService');
-      await runOrderCreatedStaffAutomations({
-        tenantId,
-        sale: createdSale,
-        customer: null,
-        actorUserId: userId || null,
-      }).catch((err) =>
-        console.error('[CreateSale] order_created_staff automations failed:', err?.message || err)
-      );
     }
 
     if (isRestaurant && createdSale.orderStatus) {
@@ -999,17 +973,11 @@ const runPostSaleAutomation = async ({ sale, items, tenantId, userId, isRestaura
           if (product.trackStock === false) continue;
           if (product.quantityOnHand <= 0) {
             emitInventoryAlert(tenantId, product, 'out_of_stock');
+            emitBusinessEvent(tenantId, 'stock.out', { productId: product.id });
           } else if (product.quantityOnHand <= (product.reorderLevel || 10)) {
             emitInventoryAlert(tenantId, product, 'low_stock');
+            emitBusinessEvent(tenantId, 'stock.low', { productId: product.id });
           }
-          runStockChangeAutomations({
-            tenantId,
-            product,
-            stockEvent: 'auto',
-            actorUserId: userId || null,
-          }).catch((err) =>
-            console.error('[CreateSale] stock change automations failed:', err?.message || err)
-          );
         }
       }
     } catch (wsError) {
@@ -1024,65 +992,10 @@ const runPostSaleAutomation = async ({ sale, items, tenantId, userId, isRestaura
       );
       mark('auto-receipt:end');
 
-      if (createdSale.customerId && !isDealerSale(createdSale)) {
-        mark('review-request:start');
-        await runReviewRequestAutomations({
-          tenantId,
-          sourceType: 'sale',
-          source: createdSale,
-          customer: createdSale.customer || null,
-          actorUserId: userId || null,
-        }).catch((err) =>
-          console.error('[CreateSale] review_request automations failed:', err?.message || err)
-        );
-        mark('review-request:end');
-      }
-
-      if (createdSale.customer) {
-        mark('sale-completed:start');
-        await runSaleCompletedAutomations({
-          tenantId,
-          sale: createdSale,
-          customer: createdSale.customer || null,
-          actorUserId: userId || null,
-        }).catch((err) =>
-          console.error('[CreateSale] sale_completed automations failed:', err?.message || err)
-        );
-        const { runSaleCompletedStaffAutomations } = require('../services/automationEngineService');
-        await runSaleCompletedStaffAutomations({
-          tenantId,
-          sale: createdSale,
-          customer: createdSale.customer || null,
-          actorUserId: userId || null,
-        }).catch((err) =>
-          console.error('[CreateSale] sale_completed_staff automations failed:', err?.message || err)
-        );
-        mark('sale-completed:end');
-      }
-
-      mark('low-profit-margin:start');
-      const saleItemsForMargin = await SaleItem.findAll({
-        where: { saleId: createdSale.id },
-        attributes: ['id', 'productId', 'quantity', 'total', 'metadata'],
+      emitBusinessEvent(tenantId, 'sale.completed', {
+        saleId: createdSale.id,
+        customerId: createdSale.customerId || null,
       });
-      const marginProductIds = [...new Set(saleItemsForMargin.map((item) => item.productId).filter(Boolean))];
-      const marginProducts = marginProductIds.length
-        ? await Product.findAll({
-          where: { id: { [Op.in]: marginProductIds }, tenantId },
-          attributes: ['id', 'costPrice'],
-        })
-        : [];
-      await runLowProfitMarginAutomations({
-        tenantId,
-        sale: createdSale,
-        saleItems: saleItemsForMargin,
-        productsById: new Map(marginProducts.map((product) => [product.id, product])),
-        customer: createdSale.customer || null,
-        actorUserId: userId || null,
-      }).catch((err) =>
-        console.error('[CreateSale] low_profit_margin automations failed:', err?.message || err)
-      );
-      mark('low-profit-margin:end');
     }
   } catch (error) {
     console.error('[CreateSale] Post-sale automation failed:', error?.message || error);
@@ -2062,16 +1975,11 @@ exports.updateSale = async (req, res, next) => {
             console.error('[UpdateSale] Auto-send receipt failed:', receiptErr?.message || receiptErr)
           );
 
-          if (becameCompleted && updatedSale?.customerId && !isDealerSale(updatedSale)) {
-            await runReviewRequestAutomations({
-              tenantId,
-              sourceType: 'sale',
-              source: updatedSale,
-              customer: updatedSale.customer || null,
-              actorUserId: userId,
-            }).catch((err) =>
-              console.error('[UpdateSale] review_request automations failed:', err?.message || err)
-            );
+          if (becameCompleted) {
+            emitBusinessEvent(tenantId, 'sale.completed', {
+              saleId: sale.id,
+              customerId: updatedSale?.customerId || null,
+            });
           }
         } catch (bgErr) {
           console.error('[UpdateSale] Background completion work failed:', bgErr?.message || bgErr);
@@ -2303,17 +2211,10 @@ exports.recordPayment = async (req, res, next) => {
           console.error('[RecordPayment] Auto-send receipt failed:', receiptErr?.message || receiptErr)
         );
 
-        if (updatedSale?.customerId && !isDealerSale(updatedSale)) {
-          await runReviewRequestAutomations({
-            tenantId,
-            sourceType: 'sale',
-            source: updatedSale,
-            customer: updatedSale.customer || null,
-            actorUserId: userId,
-          }).catch((err) =>
-            console.error('[RecordPayment] review_request automations failed:', err?.message || err)
-          );
-        }
+        emitBusinessEvent(tenantId, 'sale.completed', {
+          saleId: sale.id,
+          customerId: updatedSale?.customerId || null,
+        });
       } catch (bgErr) {
         console.error('[RecordPayment] Background post-payment work failed:', bgErr?.message || bgErr);
       }
@@ -2615,24 +2516,14 @@ exports.updateOrderStatus = async (req, res, next) => {
       triggeredBy: req.user?.id
     }).catch((err) => console.error('[updateOrderStatus] Notification failed:', err?.message));
 
-    setImmediate(async () => {
-      try {
-        const { runOrderStatusStaffAutomations } = require('../services/automationEngineService');
-        const saleForAutomation = await Sale.findByPk(sale.id, {
-          include: [{ model: Customer, as: 'customer' }],
-        });
-        await runOrderStatusStaffAutomations({
-          tenantId: req.tenantId,
-          sale: saleForAutomation || { ...sale.toJSON(), orderStatus },
-          customer: saleForAutomation?.customer || null,
-          orderStatus,
-          previousStatus: oldOrderStatus,
-          actorUserId: req.user?.id || null,
-        });
-      } catch (automationErr) {
-        console.error('[updateOrderStatus] order_status_staff automations failed:', automationErr?.message || automationErr);
-      }
+    emitBusinessEvent(req.tenantId, 'order.status_changed', {
+      saleId: sale.id,
+      customerId: sale.customerId || null,
+      orderStatus,
+      previousStatus: oldOrderStatus || null,
+    });
 
+    setImmediate(async () => {
       try {
         const { notifyOrderStatusChangedForCustomer } = require('../services/orderCustomerNotificationService');
         const saleForSms = await Sale.findByPk(sale.id, {
@@ -2798,20 +2689,8 @@ exports.sendReceipt = async (req, res, next) => {
       throw accessErr;
     }
 
-    const {
-      hasRecentReceiptForSale,
-      getAutomationCoveredChannelsForTemplate,
-      TEMPLATE_KEYS,
-    } = require('../services/customerNotificationBridgeService');
-
-    // Automation coverage and dedupe are checked per-channel below (not as a blanket
-    // all-or-nothing gate) — an enabled "sale receipt" automation that only sends
-    // WhatsApp/email, or an auto-sent email, must not silently swallow a manually
-    // requested SMS send.
-    const automationHandledChannels = await getAutomationCoveredChannelsForTemplate(
-      req.tenantId,
-      TEMPLATE_KEYS.SALE_COMPLETED_RECEIPT
-    );
+    // Dedupe is per-channel below: an auto-sent email must not swallow a manually requested SMS.
+    const { hasRecentReceiptForSale } = require('../services/receiptDeliveryService');
 
     // Determine phone and email to use; normalize phone for SMS/WhatsApp (0XX / +233)
     const rawPhone = phone || sale.customer?.phone;
@@ -2834,10 +2713,6 @@ exports.sendReceipt = async (req, res, next) => {
     // Send via requested channels
     for (const channel of channels) {
       try {
-        if (automationHandledChannels.has(channel)) {
-          results[channel] = { success: true, managedByAutomation: true };
-          continue;
-        }
         if (await hasRecentReceiptForSale(req.tenantId, sale.id, channel)) {
           results[channel] = { success: true, deduped: true };
           continue;
@@ -2914,28 +2789,18 @@ exports.sendReceipt = async (req, res, next) => {
 };
 
 /**
- * If tenant has "auto send receipt to customer" enabled, send receipt via all configured channels.
+ * Send the receipt via all configured channels unless the workspace turned auto-send off
+ * (on by default; POS auto_send mode forces it on).
  * Used by sale creation and completion paths; skips quietly when no customer contact is available.
  */
 async function autoSendReceiptIfEnabled(tenantId, saleId) {
   const {
-    TEMPLATE_KEYS,
-    isPosAutoSendReceiptEnabled,
-    getAutomationCoveredChannelsForTemplate,
+    isAutoSendReceiptEnabled,
     hasRecentReceiptForSale,
     recordReceiptSentActivity,
-  } = require('../services/customerNotificationBridgeService');
+  } = require('../services/receiptDeliveryService');
 
-  const prefs = await Setting.findOne({ where: { tenantId, key: 'customer-notification-preferences' } });
-  const settingOn = prefs?.value?.autoSendReceiptToCustomer === true;
-  const posAutoSend = await isPosAutoSendReceiptEnabled(tenantId);
-  // Legacy auto-send only when explicitly enabled — automations run separately via runSaleCompletedAutomations.
-  if (!settingOn && !posAutoSend) return;
-
-  const automationHandledChannels = await getAutomationCoveredChannelsForTemplate(
-    tenantId,
-    TEMPLATE_KEYS.SALE_COMPLETED_RECEIPT
-  );
+  if (!(await isAutoSendReceiptEnabled(tenantId))) return;
 
   const sale = await Sale.findOne({
     where: { tenantId, id: saleId },
@@ -2972,7 +2837,7 @@ async function autoSendReceiptIfEnabled(tenantId, saleId) {
   // never configured or failed silently here.
   const sentChannels = [];
 
-  if (emailConfig && email && !automationHandledChannels.has('email')) {
+  if (emailConfig && email) {
     if (!(await hasRecentReceiptForSale(tenantId, saleId, 'email'))) {
       const emailResult = await sendEmailReceipt(tenantId, email, sale, receiptMessage).catch((e) => {
         console.error('[AutoSendReceipt] Email failed:', e?.message);
@@ -2981,7 +2846,7 @@ async function autoSendReceiptIfEnabled(tenantId, saleId) {
       if (emailResult?.success) sentChannels.push('email');
     }
   }
-  if (smsConfig && hasPhone && !automationHandledChannels.has('sms')) {
+  if (smsConfig && hasPhone) {
     if (!(await hasRecentReceiptForSale(tenantId, saleId, 'sms'))) {
       const smsResult = await sendSMSReceipt(
         tenantId,
@@ -2994,7 +2859,7 @@ async function autoSendReceiptIfEnabled(tenantId, saleId) {
       if (smsResult?.success) sentChannels.push('sms');
     }
   }
-  if (whatsappConfig?.phoneNumberId && hasPhone && !automationHandledChannels.has('whatsapp')) {
+  if (whatsappConfig?.phoneNumberId && hasPhone) {
     if (!(await hasRecentReceiptForSale(tenantId, saleId, 'whatsapp'))) {
       const whatsappResult = await sendWhatsAppReceipt(tenantId, whatsappService.validatePhoneNumber(phone), sale, receiptMessage).catch((e) => {
         console.error('[AutoSendReceipt] WhatsApp failed:', e?.message);

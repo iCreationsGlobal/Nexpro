@@ -266,7 +266,7 @@ This document outlines all specific UI elements and sections that will be target
 
 #### Smart Report
 - **Selector**: `[data-tour="reports-smart"]`
-- **Content**: "Get AI-powered insights and recommendations"
+- **Content**: "Get a detailed report of your sales, expenses, profit and trends for any period"
 
 ### 16. Settings Page (`/settings`)
 

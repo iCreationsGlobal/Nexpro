@@ -208,7 +208,7 @@ export default function ShopsPage() {
                   <div className="text-[9px] text-gray-400 mt-1">Jul → Dec</div>
                 </motion.div>
 
-                {/* Top Services / Insights card (front right) */}
+                {/* Top Services / Highlights card (front right) */}
                 <motion.div
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -222,10 +222,10 @@ export default function ShopsPage() {
                     <div className="flex justify-between"><span className="text-[#166534] font-semibold">2</span> Frames <span className="text-gray-500">GH₵8.4k</span></div>
                     <div className="flex justify-between"><span className="text-[#166534] font-semibold">3</span> Editing <span className="text-gray-500">GH₵4.8k</span></div>
                   </div>
-                  <div className="text-[9px] font-semibold text-gray-900 mt-2 pt-2 border-t border-gray-100">INSIGHTS</div>
+                  <div className="text-[9px] font-semibold text-gray-900 mt-2 pt-2 border-t border-gray-100">HIGHLIGHTS</div>
                   <div className="space-y-1 mt-1 text-[9px] text-gray-600">
                     <div className="flex items-center gap-1"><BarChart3 className="h-3 w-3 text-[#166534]" /> +32% frame sales</div>
-                    <div className="flex items-center gap-1"><Package className="h-3 w-3 text-[#166534]" /> Bundle: frames + packages</div>
+                    <div className="flex items-center gap-1"><Package className="h-3 w-3 text-[#166534]" /> 18 packages sold</div>
                     <div className="flex items-center gap-1"><Users className="h-3 w-3 text-[#166534]" /> Daniel O. repeat client</div>
                   </div>
                 </motion.div>

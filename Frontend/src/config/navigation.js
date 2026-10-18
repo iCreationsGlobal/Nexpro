@@ -23,7 +23,6 @@ import {
   Building2,
   Globe,
   CalendarClock,
-  Eye,
 } from 'lucide-react';
 import { isQuotesEnabledForTenant, STUDIO_LIKE_TYPES } from '@/constants';
 import { isSabitoStoreEnabled } from '@/utils/sabitoStoreFeature';
@@ -49,7 +48,6 @@ export const MENU_HINTS = {
   '/invoices': 'Bills you send to customers',
   '/expenses': 'Money you spent on business',
   '/reports': 'Reports and data analysis',
-  '/ask-ai': 'Ask Ayebia about your business data',
   '/data-analysis': 'Reports and data analysis',
   '/export-data': 'Download data as CSV or Excel',
   '/settings': 'Change app settings',
@@ -62,7 +60,6 @@ export const MENU_HINTS = {
   '/materials': 'Materials you use',
   '/equipment': 'Laptops, furniture, vehicles',
   '/rentals': 'Items you hire out to customers',
-  '/watch': 'Physical activity compared with recorded sales',
   '/merchandise': 'Stock value of goods you sell',
   assets: 'Stock value of goods for sale, materials, and equipment',
   '/employees': 'Your staff',
@@ -75,7 +72,6 @@ export const MENU_HINTS = {
   '/quotes': 'Price quotes for customers',
   '/pricing': 'Set your prices',
   '/tasks': 'Track follow-ups, meetings, and team tasks',
-  '/automations': 'Set rules that run business actions automatically',
   '/store': 'Manage your Sabito marketplace storefront',
   '/store/listings': 'Products published on Sabito Store',
   '/store/services': 'Services published on your Sabito studio storefront',
@@ -135,14 +131,6 @@ export const getMenuItems = (
     if (hasFeature('products')) {
       baseItems.push({ key: '/products', icon: Package, label: 'Products', tooltip: MENU_HINTS['/products'] });
     }
-  }
-  if (hasFeature('watch')) {
-    baseItems.push({
-      key: '/watch',
-      icon: Eye,
-      label: 'Watch',
-      tooltip: MENU_HINTS['/watch'],
-    });
   }
   if (!isPlatformAdmin && STUDIO_LIKE_TYPES.includes(businessType) && hasFeature('jobAutomation')) {
     baseItems.push({ key: '/jobs', icon: FileText, label: 'Jobs', tooltip: MENU_HINTS['/jobs'] });
@@ -239,7 +227,6 @@ export const getMenuItems = (
     ...(!isPlatformAdmin && hasFeature('crm') ? [{ key: '/reviews', label: 'Reviews', tooltip: MENU_HINTS['/reviews'] }] : []),
     ...(hasFeature('deliveries') ? [{ key: '/deliveries', label: 'Deliveries', tooltip: MENU_HINTS['/deliveries'] }] : []),
     ...(!isPlatformAdmin && hasFeature('tasks') ? [{ key: '/tasks', label: 'Tasks', tooltip: MENU_HINTS['/tasks'] }] : []),
-    ...(hasFeature('automations') ? [{ key: '/automations', label: 'Automations', tooltip: MENU_HINTS['/automations'], managerOnly: true }] : []),
     ...(!isPlatformAdmin && hasFeature('leadPipeline') ? [{ key: '/leads', label: 'Leads', tooltip: MENU_HINTS['/leads'] }] : []),
     ...(hasFeature('marketing') ? [{ key: '/messages', label: 'Messages', tooltip: MENU_HINTS['/messages'], managerOnly: true }] : []),
     ...(hasFeature('marketing') ? [{ key: '/marketing', label: 'Marketing', tooltip: MENU_HINTS['/marketing'], managerOnly: true }] : []),
@@ -383,7 +370,6 @@ export const getQuickActions = (businessType, shopType) => {
  */
 export const getRoutePrefetchMap = () => ({
   '/dashboard': () => import('../pages/Dashboard'),
-  '/ask-ai': () => import('../pages/AskAI'),
   '/customers': () => import('../pages/Customers'),
   '/reviews': () => import('../pages/CustomerFeedback'),
   '/marketing': () => import('../pages/Marketing'),
@@ -404,7 +390,6 @@ export const getRoutePrefetchMap = () => ({
   '/materials': () => import('../pages/Materials'),
   '/equipment': () => import('../pages/Equipment'),
   '/rentals': () => import('../pages/Rentals'),
-  '/watch': () => import('../pages/Watch'),
   '/merchandise': () => import('../pages/Merchandise'),
   '/leads': () => import('../pages/Leads'),
   '/users': () => import('../pages/Users'),
@@ -419,7 +404,6 @@ export const getRoutePrefetchMap = () => ({
   '/drugs': () => import('../pages/Drugs'),
   '/prescriptions': () => import('../pages/Prescriptions'),
   '/tasks': () => import('../pages/Tasks'),
-  '/automations': () => import('../pages/Automations'),
   ...(isSabitoStoreEnabled()
     ? {
         '/store': () => import('../pages/StoreDashboard'),

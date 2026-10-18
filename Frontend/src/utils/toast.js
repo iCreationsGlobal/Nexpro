@@ -1,6 +1,5 @@
 import { toast } from 'react-toastify';
 import { CHUNK_LOAD_REFRESH_MESSAGE, hasChunkLoadError } from './chunkLoadError';
-import { getAiProviderErrorMessage } from './aiProviderErrors';
 import { requestAppUpdateDialog } from '../components/AppUpdateRequiredDialog';
 
 /**
@@ -11,11 +10,6 @@ import { requestAppUpdateDialog } from '../components/AppUpdateRequiredDialog';
  * @returns {string} - Clear error message for the user
  */
 export const getErrorMessage = (error, defaultMessage = 'Something went wrong. Please try again.') => {
-  const aiProviderMessage = getAiProviderErrorMessage(error);
-  if (aiProviderMessage) {
-    return aiProviderMessage;
-  }
-
   // If error is already a string, return it
   if (typeof error === 'string') {
     return error;

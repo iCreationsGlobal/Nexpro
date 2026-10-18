@@ -16,7 +16,7 @@ const {
 } = require('../utils/shopUtils');
 const activityLogger = require('../services/activityLogger');
 const { getTaxConfigForTenant } = require('../utils/taxConfig');
-const { runQuoteSentAutomations } = require('../services/automationEngineService');
+const { emitBusinessEvent } = require('../services/businessEvents');
 const { computeQuoteTaxSummary, computeDocumentTax } = require('../utils/taxCalculation');
 const {
   resolveDocumentOrganization,
@@ -590,15 +590,10 @@ exports.createQuote = async (req, res, next) => {
         try {
           await Quote.update({ status: 'sent' }, { where: applyTenantFilter(tenantId, { id: quote.id }) });
           fullQuote.status = 'sent';
-          runQuoteSentAutomations({
-            tenantId,
-            quote: fullQuote,
-            customer: fullQuote.customer || null,
-            quoteLink,
-            actorUserId,
-          }).catch((error) =>
-            console.error('[Quote] quote_sent automations failed:', error?.message || error)
-          );
+          emitBusinessEvent(tenantId, 'quote.sent', {
+            quoteId: fullQuote.id,
+            customerId: fullQuote.customerId || null,
+          });
         } catch (statusErr) {
           console.error('[Quote] Failed to mark quote as sent:', statusErr?.message || statusErr);
         }
@@ -745,50 +740,31 @@ exports.respondToQuoteByToken = async (req, res, next) => {
     // Notify tenant by email when quote is accepted (don't block customer response)
     setImmediate(async () => {
       try {
-        const {
-          shouldUseAutomationInsteadOfBuiltIn,
-          TEMPLATE_KEYS,
-        } = require('../services/customerNotificationBridgeService');
-        const useAutomation = await shouldUseAutomationInsteadOfBuiltIn(
+        const organization = await resolveDocumentOrganization({
           tenantId,
-          TEMPLATE_KEYS.QUOTE_ACCEPTED_STAFF
-        );
-        if (!useAutomation) {
-          const organization = await resolveDocumentOrganization({
-            tenantId,
-            shop: updatedQuote.shop || null,
-            studioLocation: updatedQuote.studioLocation || null,
-          });
-          const tenantEmail = organization.email || null;
-          if (tenantEmail && typeof tenantEmail === 'string' && tenantEmail.includes('@')) {
-            const emailService = require('../services/emailService');
-            const emailTemplates = require('../services/emailTemplates');
-            const frontendUrl = process.env.FRONTEND_URL || '';
-            const { subject, html, text } = emailTemplates.quoteAcceptedNotifyTenant(
-              updatedQuote,
-              organizationToEmailCompany(organization),
-              frontendUrl
-            );
-            await emailService.sendMessage(tenantId, tenantEmail, subject, html, text);
-          }
+          shop: updatedQuote.shop || null,
+          studioLocation: updatedQuote.studioLocation || null,
+        });
+        const tenantEmail = organization.email || null;
+        if (tenantEmail && typeof tenantEmail === 'string' && tenantEmail.includes('@')) {
+          const emailService = require('../services/emailService');
+          const emailTemplates = require('../services/emailTemplates');
+          const frontendUrl = process.env.FRONTEND_URL || '';
+          const { subject, html, text } = emailTemplates.quoteAcceptedNotifyTenant(
+            updatedQuote,
+            organizationToEmailCompany(organization),
+            frontendUrl
+          );
+          await emailService.sendMessage(tenantId, tenantEmail, subject, html, text);
         }
       } catch (emailErr) {
         console.error('[Quote] respondToQuoteByToken notify-tenant email failed:', emailErr?.message);
       }
     });
 
-    setImmediate(async () => {
-      try {
-        const { runQuoteAcceptedStaffAutomations } = require('../services/automationEngineService');
-        await runQuoteAcceptedStaffAutomations({
-          tenantId,
-          quote: updatedQuote,
-          customer: updatedQuote.customer || null,
-          actorUserId: null,
-        });
-      } catch (automationErr) {
-        console.error('[Quote] quote_accepted_staff automations failed:', automationErr?.message || automationErr);
-      }
+    emitBusinessEvent(tenantId, 'quote.accepted', {
+      quoteId: updatedQuote.id,
+      customerId: updatedQuote.customerId || null,
     });
 
     const message = invoiceId
@@ -1547,29 +1523,10 @@ exports.convertQuoteToJob = async (req, res, next) => {
     }
 
     if (jobWithDetails.assignedTo) {
-      setImmediate(async () => {
-        try {
-          const {
-            runJobAssignedStaffAutomations,
-            runJobCreatedStaffAutomations,
-          } = require('../services/automationEngineService');
-          await runJobAssignedStaffAutomations({
-            tenantId: req.tenantId,
-            job: jobWithDetails,
-            assignee: jobWithDetails.assignedUser || null,
-            customer: jobWithDetails.customer || null,
-            assignedByUser: req.user || null,
-            actorUserId: req.user?.id || null,
-          });
-          await runJobCreatedStaffAutomations({
-            tenantId: req.tenantId,
-            job: jobWithDetails,
-            customer: jobWithDetails.customer || null,
-            actorUserId: req.user?.id || null,
-          });
-        } catch (automationErr) {
-          console.error('[convertQuoteToJob] staff automations failed:', automationErr?.message || automationErr);
-        }
+      emitBusinessEvent(req.tenantId, 'job.assigned', {
+        jobId: jobWithDetails.id,
+        assigneeId: jobWithDetails.assignedTo,
+        customerId: jobWithDetails.customerId || null,
       });
     }
 

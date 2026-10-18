@@ -26,23 +26,18 @@ jest.mock('../../../middleware/cache', () => ({
   invalidateAfterMutation: jest.fn(),
 }));
 
-jest.mock('../../../services/automationEngineService', () => ({
-  runRentalCreatedAutomations: jest.fn().mockResolvedValue({}),
-  runRentalCreatedStaffAutomations: jest.fn().mockResolvedValue({}),
-  runRentalCheckedOutAutomations: jest.fn().mockResolvedValue({}),
-  runRentalReturnedAutomations: jest.fn().mockResolvedValue({}),
-  runRentalReturnedStaffAutomations: jest.fn().mockResolvedValue({}),
-  runRentalCancelledAutomations: jest.fn().mockResolvedValue({}),
+jest.mock('../../../services/rentalNotificationService', () => ({
+  sendRentalLifecycleMessage: jest.fn().mockResolvedValue({ sent: true }),
+}));
+
+jest.mock('../../../services/businessEvents', () => ({
+  emitBusinessEvent: jest.fn(),
 }));
 
 const { generateRentalInvoice } = require('../../../services/rentalInvoiceService');
 const { cancelUnpaidRentalInvoice } = require('../../../services/rentalInvoicePaymentService');
-const {
-  runRentalCreatedAutomations,
-  runRentalCheckedOutAutomations,
-  runRentalReturnedAutomations,
-  runRentalCancelledAutomations,
-} = require('../../../services/automationEngineService');
+const { sendRentalLifecycleMessage } = require('../../../services/rentalNotificationService');
+const { emitBusinessEvent } = require('../../../services/businessEvents');
 const { runPostRentalAutomation } = require('../../../services/rentalAutomationService');
 
 describe('runPostRentalAutomation', () => {
@@ -63,7 +58,7 @@ describe('runPostRentalAutomation', () => {
     generateRentalInvoice.mockResolvedValue({ invoice: { id: 'inv-1' }, created: true });
   });
 
-  it('creates an invoice and fires created automations', async () => {
+  it('creates an invoice, sends the confirmation and reports rental.created', async () => {
     const result = await runPostRentalAutomation({
       event: 'created',
       rental,
@@ -71,11 +66,44 @@ describe('runPostRentalAutomation', () => {
     });
 
     expect(generateRentalInvoice).toHaveBeenCalledWith('rental-1', { applyHeldDeposit: false });
-    expect(runRentalCreatedAutomations).toHaveBeenCalled();
+    expect(rental.reload).toHaveBeenCalled();
+    expect(sendRentalLifecycleMessage).toHaveBeenCalledWith({
+      rental,
+      invoice: { id: 'inv-1' },
+      event: 'created',
+    });
+    expect(emitBusinessEvent).toHaveBeenCalledWith('tenant-1', 'rental.created', {
+      rentalId: 'rental-1',
+      customerId: 'customer-1',
+      invoiceId: 'inv-1',
+    });
     expect(result.created).toBe(true);
   });
 
-  it('applies deposit on return', async () => {
+  it('treats a confirmed pre-booking as a new rental', async () => {
+    await runPostRentalAutomation({
+      event: 'prebooking_confirmed',
+      rental,
+      tenantId: 'tenant-1',
+    });
+
+    expect(sendRentalLifecycleMessage).toHaveBeenCalledWith(expect.objectContaining({ event: 'created' }));
+    expect(emitBusinessEvent).toHaveBeenCalledWith('tenant-1', 'rental.created', expect.any(Object));
+  });
+
+  it('keeps the invoice result when the customer message fails', async () => {
+    sendRentalLifecycleMessage.mockRejectedValueOnce(new Error('sms down'));
+
+    const result = await runPostRentalAutomation({
+      event: 'created',
+      rental,
+      tenantId: 'tenant-1',
+    });
+
+    expect(result.created).toBe(true);
+  });
+
+  it('applies deposit on return and sends the return message', async () => {
     await runPostRentalAutomation({
       event: 'returned',
       rental,
@@ -83,7 +111,8 @@ describe('runPostRentalAutomation', () => {
     });
 
     expect(generateRentalInvoice).toHaveBeenCalledWith('rental-1', { applyHeldDeposit: true });
-    expect(runRentalReturnedAutomations).toHaveBeenCalled();
+    expect(sendRentalLifecycleMessage).toHaveBeenCalledWith(expect.objectContaining({ event: 'returned' }));
+    expect(emitBusinessEvent).toHaveBeenCalledWith('tenant-1', 'rental.returned', expect.any(Object));
   });
 
   it('cancels unpaid invoice on cancel', async () => {
@@ -95,10 +124,13 @@ describe('runPostRentalAutomation', () => {
 
     expect(cancelUnpaidRentalInvoice).toHaveBeenCalledWith(rental);
     expect(generateRentalInvoice).not.toHaveBeenCalled();
-    expect(runRentalCancelledAutomations).toHaveBeenCalled();
+    expect(sendRentalLifecycleMessage).not.toHaveBeenCalled();
+    expect(emitBusinessEvent).toHaveBeenCalledWith('tenant-1', 'rental.cancelled', expect.objectContaining({
+      rentalId: 'rental-1',
+    }));
   });
 
-  it('fires checkout automations without applying deposit', async () => {
+  it('sends the handover message on checkout without applying deposit', async () => {
     await runPostRentalAutomation({
       event: 'checkout',
       rental,
@@ -106,6 +138,18 @@ describe('runPostRentalAutomation', () => {
     });
 
     expect(generateRentalInvoice).toHaveBeenCalledWith('rental-1', { applyHeldDeposit: false });
-    expect(runRentalCheckedOutAutomations).toHaveBeenCalled();
+    expect(sendRentalLifecycleMessage).toHaveBeenCalledWith(expect.objectContaining({ event: 'checked_out' }));
+    expect(emitBusinessEvent).toHaveBeenCalledWith('tenant-1', 'rental.checked_out', expect.any(Object));
+  });
+
+  it('sends no customer message or event for extensions', async () => {
+    await runPostRentalAutomation({
+      event: 'extended',
+      rental,
+      tenantId: 'tenant-1',
+    });
+
+    expect(sendRentalLifecycleMessage).not.toHaveBeenCalled();
+    expect(emitBusinessEvent).not.toHaveBeenCalled();
   });
 });

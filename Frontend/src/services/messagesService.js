@@ -66,10 +66,6 @@ export async function updateSenderId(senderId) {
   return api.put('/messages/sender-id', { senderId });
 }
 
-export async function setupBirthdayMessaging(body = {}) {
-  return api.post('/messages/birthday-setup', body);
-}
-
 const messagesService = {
   getOverview,
   getHistory,
@@ -86,7 +82,6 @@ const messagesService = {
   initializeCreditPurchase,
   verifyCreditPurchase,
   updateSenderId,
-  setupBirthdayMessaging,
 };
 
 export default messagesService;

@@ -20,13 +20,11 @@ export const TAB_PAGE_TITLES: Record<string, string> = {
   deliveries: 'Deliveries',
   jobs: 'Jobs',
   orders: 'Orders',
-  chat: 'Ayebia',
   cart: 'Cart',
   store: 'Online Store',
   'online-orders': 'Online Store',
   'store-services': 'Studio Services',
   'store-products': 'Store Products',
-  watch: 'Watch',
 };
 
 /**

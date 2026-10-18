@@ -150,21 +150,6 @@ const updateRentalSettings = async (payload) => {
   return res?.data?.data ?? res?.data ?? res;
 };
 
-const getAISettings = async () => {
-  const res = await api.get('/settings/ai');
-  return res?.data?.data ?? res?.data ?? res;
-};
-
-const updateAISettings = async (payload) => {
-  const res = await api.put('/settings/ai', payload);
-  return res?.data?.data ?? res?.data ?? res;
-};
-
-const deleteAISettings = async () => {
-  const res = await api.delete('/settings/ai');
-  return res?.data?.data ?? res?.data ?? res;
-};
-
 const getCustomerSources = async () => {
   const res = await api.get('/settings/customer-sources');
   return res?.data ?? [];
@@ -315,9 +300,6 @@ export default {
   updateDeliverySettings,
   getRentalSettings,
   updateRentalSettings,
-  getAISettings,
-  updateAISettings,
-  deleteAISettings,
   getCustomerSources,
   getLeadSources,
   getNotificationChannels,

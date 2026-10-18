@@ -513,6 +513,43 @@ Content-Type: application/json
 }
 ```
 
+## Messaging Settings Endpoints
+
+### Get Notification Channels
+```
+GET /api/settings/notification-channels
+Headers: Authorization: Bearer <token>
+```
+Returns which channels are configured (`email`, `sms`, `whatsapp`) and the customer message switches.
+`autoSendReceiptToCustomer` is `true` unless the workspace turned it off (POS `auto_send` mode also sends receipts).
+
+### Update Customer Notification Preferences
+```
+PUT /api/settings/customer-notification-preferences
+Headers: Authorization: Bearer <token>
+```
+Body (any subset):
+```json
+{
+  "autoSendInvoiceToCustomer": true,
+  "autoSendReceiptToCustomer": true,
+  "sendPaymentReminderEmail": false,
+  "sendInvoicePaidConfirmationToCustomer": true
+}
+```
+
+## Removed Endpoints
+
+AI, advanced automations and ABS Watch moved to Lynk. These routes no longer exist:
+`/api/analysis/*`, `/api/automations/*`, `/api/watch/*`, `/api/watch-agent/*`, `POST /api/reports/ai-analysis`,
+`/api/settings/ai`, `POST /api/store/banner/generate`, `POST /api/messages/birthday-setup`,
+`GET /api/admin/automations/overview`.
+
+`POST /api/assistant/chat` stays only for older app builds and always answers `410`:
+```json
+{ "success": false, "code": "ASSISTANT_REMOVED", "message": "Ask Ayebia is no longer available in ABS." }
+```
+
 ## Query Parameters
 
 ### Common Query Parameters

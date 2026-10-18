@@ -60,10 +60,6 @@ export function Header() {
     setSearchValue('');
   }, [setSearchValue]);
 
-  const handleChatPress = useCallback(() => {
-    router.push('/(tabs)/chat');
-  }, [router]);
-
   const handleNotificationPress = useCallback(() => {
     router.push('/notifications');
   }, [router]);
@@ -108,15 +104,6 @@ export function Header() {
         )}
         {!isDriver && !isSimple && (
           <View style={styles.topRowRight}>
-            <Pressable
-              onPress={handleChatPress}
-              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Chat"
-            >
-              <AppIcon name="comments" size={22} color={colors.text} />
-            </Pressable>
             <Pressable
               onPress={handleNotificationPress}
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}

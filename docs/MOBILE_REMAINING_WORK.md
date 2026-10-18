@@ -18,7 +18,6 @@
    - ✅ Customers (list, search, add/edit modal)
    - ✅ Scan/POS (QR scanner, product search, job creation)
    - ✅ Cart (checkout, payment methods)
-   - ✅ Chat (AI assistant for reports)
    - ✅ Login
    - ✅ Profile (edit name, view email)
    - ✅ Settings (workspace switcher, basic prefs)
@@ -219,7 +218,7 @@
 ### 6. **Navigation & Routing**
 
 #### Tab Bar Updates
-- **Status**: Current tabs: Dashboard, Sales, Cart, Scan, Customers, Chat
+- **Status**: Current tabs: Dashboard, Sales, Cart, Scan, Customers
 - **Needed**: 
   - Conditional tabs based on business type
   - Jobs tab for studios
