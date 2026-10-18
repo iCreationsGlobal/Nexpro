@@ -36,12 +36,12 @@ export default function SignOutPendingDialog({ pendingCheck, onConfirm, onCancel
         ) : (
           <>
             <AlertDialogHeader>
-              <AlertDialogTitle>{salesLabel(count)} haven&apos;t reached ABS yet</AlertDialogTitle>
+              <AlertDialogTitle>{salesLabel(count)} {count === 1 ? "hasn't" : "haven't"} reached ABS yet</AlertDialogTitle>
               <AlertDialogDescription>
                 {count === 1 ? 'It is' : 'They are'} saved on this device.
                 {otherWorkspaces > 0
-                  ? ` ${otherWorkspaces === count ? 'All of them belong' : `${otherWorkspaces} belong`} to another workspace — switch to it while online to send them.`
-                  : ' Connect to the internet and stay signed in to send them now.'}{' '}
+                  ? ` ${otherWorkspaces === count ? (count === 1 ? 'It belongs' : 'All of them belong') : `${otherWorkspaces} ${otherWorkspaces === 1 ? 'belongs' : 'belong'}`} to another workspace — switch to it while online to send ${otherWorkspaces === 1 ? 'it' : 'them'}.`
+                  : ` Connect to the internet and stay signed in to send ${count === 1 ? 'it' : 'them'} now.`}{' '}
                 If you sign out, {count === 1 ? 'it stays' : 'they stay'} on this device and will send the next time you
                 sign in here. Until then {count === 1 ? 'it is' : 'they are'} not in your sales reports.
               </AlertDialogDescription>

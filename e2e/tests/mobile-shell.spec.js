@@ -300,7 +300,7 @@ test.describe('app shell', () => {
     await page.getByRole('button', { name: 'Account menu' }).click();
     await page.getByRole('menuitem', { name: 'Logout' }).click();
     const warning = page.getByRole('alertdialog');
-    await expect(warning).toContainText("1 sale haven't reached ABS yet");
+    await expect(warning).toContainText("1 sale hasn't reached ABS yet");
     await warning.getByRole('button', { name: 'Stay signed in' }).click();
     await expect(warning).toHaveCount(0);
     await expect(page).not.toHaveURL(/\/login/);

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, DeviceEventEmitter, View } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
+import { useSignOut } from '@/hooks/useSignOut';
 import { AppLoadingScreen } from '@/components/AppLoadingScreen';
 import { PinLockScreen } from '@/components/simple/PinLockScreen';
 import { SetPinScreen } from '@/components/simple/SetPinScreen';
@@ -24,7 +25,8 @@ export function lockSimpleMode() {
  * after a couple of minutes in the background.
  */
 export function SimpleModePinGate({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const signOut = useSignOut();
   const userId = user?.id ? String(user.id) : '';
   const [pinChecked, setPinChecked] = useState(false);
   const [hasPin, setHasPin] = useState(false);
@@ -89,7 +91,7 @@ export function SimpleModePinGate({ children }: { children: React.ReactNode }) {
   if (!pinChecked) return <AppLoadingScreen />;
   if (!hasPin) return <SetPinScreen userId={userId} onDone={unlock} />;
   if (!unlocked) {
-    return <PinLockScreen userId={userId} onUnlock={unlock} onForgot={() => { void logout(); }} />;
+    return <PinLockScreen userId={userId} onUnlock={unlock} onForgot={() => { void signOut(); }} />;
   }
 
   return (

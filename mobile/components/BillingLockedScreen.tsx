@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { useAuth } from '@/context/AuthContext';
+import { useSignOut } from '@/hooks/useSignOut';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { BRAND_GREEN } from '@/constants/brand';
 import { RADIUS, TOUCH_TARGET } from '@/constants/sizing';
@@ -19,7 +20,8 @@ type Props = {
 export function BillingLockedScreen({ billing, onRecheck, rechecking }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { memberships, activeTenant, logout } = useAuth();
+  const { memberships, activeTenant } = useAuth();
+  const signOut = useSignOut();
   const { bg, cardBg, borderColor, textColor, mutedColor } = useScreenColors();
   const { title, description } = getBillingLockCopy(billing);
   const canSwitchWorkspace = memberships.length > 1;
@@ -60,7 +62,7 @@ export function BillingLockedScreen({ billing, onRecheck, rechecking }: Props) {
             borderColor={borderColor}
           />
         ) : null}
-        <Pressable accessibilityRole="button" onPress={() => { void logout(); }} style={styles.signOut}>
+        <Pressable accessibilityRole="button" onPress={() => { void signOut(); }} style={styles.signOut}>
           <Text style={[styles.signOutText, { color: mutedColor }]}>Sign out</Text>
         </Pressable>
       </View>

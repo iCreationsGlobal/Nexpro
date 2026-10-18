@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useAuth } from '@/context/AuthContext';
+import { useSignOut } from '@/hooks/useSignOut';
 import { resetLocalSessionForOnboardingTest } from '@/utils/devSessionReset';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
@@ -30,25 +31,16 @@ type LinkItem = {
 export default function AccountScreen() {
   const router = useRouter();
   const { user, logout, isDriver } = useAuth();
+  const signOut = useSignOut();
   const { cardBg, borderColor, textColor, mutedColor, colors, danger } = useScreenColors();
 
-  const handleLogout = useCallback(() => {
-    Alert.alert(
-      'Log out',
-      'Are you sure you want to log out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log out',
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-            router.replace('/login');
-          },
-        },
-      ]
-    );
-  }, [logout, router]);
+  // Sends sales saved offline first, and warns if any are still on the phone.
+  const handleLogout = useCallback(async () => {
+    const signedOut = await signOut({
+      confirm: { title: 'Log out', message: 'Are you sure you want to log out?', action: 'Log out' },
+    });
+    if (signedOut) router.replace('/login');
+  }, [signOut, router]);
 
   const handleResetOnboardingTestSession = useCallback(() => {
     Alert.alert(

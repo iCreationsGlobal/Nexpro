@@ -142,18 +142,22 @@ const asyncStoragePersister = createAsyncStoragePersister({
 
 function OfflineSyncOnActive() {
   const queryClient = useQueryClient();
-  const { isDriver } = useAuth();
+  const { isDriver, activeTenantId, user } = useAuth();
+  const userId = user?.id;
   const appState = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (nextState) => {
-      if (isDriver) return;
+      if (isDriver || !activeTenantId || !userId) {
+        appState.current = nextState;
+        return;
+      }
       if (appState.current === 'background' && nextState === 'active') {
         if (!(await getCurrentNetworkOnline())) {
           appState.current = nextState;
           return;
         }
         offlineQueueService
-          .syncPendingSales()
+          .syncPendingSales({ tenantId: activeTenantId, userId })
           .then(({ synced }) => {
             if (synced > 0) return refreshAfterSale(queryClient);
           })
@@ -162,7 +166,7 @@ function OfflineSyncOnActive() {
       appState.current = nextState;
     });
     return () => sub.remove();
-  }, [queryClient, isDriver]);
+  }, [queryClient, isDriver, activeTenantId, userId]);
   return null;
 }
 

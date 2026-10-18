@@ -104,7 +104,7 @@ export default function CartScreen() {
     getSubtotal,
     getItemCount,
   } = useCart();
-  const { activeTenantId, activeTenant, hasFeature } = useAuth();
+  const { activeTenantId, activeTenant, hasFeature, user } = useAuth();
   const { activeShopId, activeShop, activeStudioLocationId, activeStudioLocation, scopeReady } =
     useWorkspaceScope();
   const { colors, bg, cardBg, borderColor, textColor, mutedColor, inputBg } = useScreenColors();
@@ -284,7 +284,7 @@ export default function CartScreen() {
             message.includes('network') ||
             message.includes('timeout'));
         if (shouldQueue) {
-          await offlineQueueService.queueSale(payload);
+          await offlineQueueService.queueSale(payload, { tenantId: activeTenantId, userId: user?.id });
           return { _offline: true };
         }
         throw error;

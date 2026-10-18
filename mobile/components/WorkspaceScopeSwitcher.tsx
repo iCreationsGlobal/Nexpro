@@ -265,45 +265,64 @@ export function WorkspaceScopeSwitcher({ embedded = false }: WorkspaceScopeSwitc
   );
 }
 
+/** Sales this person saved offline: this workspace's (can send now) and other workspaces' (switch to send). */
 export function OfflineQueueBanner() {
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
   const colors = Colors[resolvedTheme ?? 'light'];
-  const [count, setCount] = useState(0);
+  const { activeTenantId, user } = useAuth();
+  const userId = user?.id;
+  const [counts, setCounts] = useState({ here: 0, elsewhere: 0 });
   const [syncing, setSyncing] = useState(false);
+
+  const load = React.useCallback(async () => {
+    if (!userId) return { here: 0, elsewhere: 0 };
+    const { offlineQueueService } = await import('@/services/offlineQueueService');
+    const mine = await offlineQueueService.getPendingSales({ userId });
+    const here = mine.filter((sale) => sale.tenantId === activeTenantId || !sale.tenantId).length;
+    return { here, elsewhere: mine.length - here };
+  }, [activeTenantId, userId]);
 
   React.useEffect(() => {
     let mounted = true;
-    const load = async () => {
-      const { offlineQueueService } = await import('@/services/offlineQueueService');
-      const n = await offlineQueueService.getPendingCount();
-      if (mounted) setCount(n);
-    };
-    load();
-    const interval = setInterval(load, 8000);
+    const refresh = () => { void load().then((next) => { if (mounted) setCounts(next); }); };
+    refresh();
+    const interval = setInterval(refresh, 8000);
     return () => {
       mounted = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [load]);
 
-  if (count === 0) return null;
+  const { here, elsewhere } = counts;
+  if (here === 0 && elsewhere === 0) return null;
 
   const onSync = async () => {
+    if (!activeTenantId || !userId) return;
     setSyncing(true);
     try {
       const { offlineQueueService } = await import('@/services/offlineQueueService');
-      const { synced } = await offlineQueueService.syncPendingSales();
-      setCount(await offlineQueueService.getPendingCount());
+      const { synced } = await offlineQueueService.syncPendingSales({ tenantId: activeTenantId, userId });
+      setCounts(await load());
       if (synced > 0) await refreshAfterSale(queryClient);
     } finally {
       setSyncing(false);
     }
   };
 
+  if (here === 0) {
+    return (
+      <View style={[bannerStyles.wrap, { backgroundColor: '#fef3c7', borderColor: '#fcd34d' }]}>
+        <Text style={bannerStyles.text}>
+          {elsewhere} {elsewhere === 1 ? 'sale' : 'sales'} saved offline in another workspace. Switch to it to send {elsewhere === 1 ? 'it' : 'them'}.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[bannerStyles.wrap, { backgroundColor: '#fef3c7', borderColor: '#fcd34d' }]}>
-      <Text style={bannerStyles.text}>{count} sale(s) waiting to sync</Text>
+      <Text style={bannerStyles.text}>{here} {here === 1 ? 'sale' : 'sales'} waiting to sync</Text>
       <Pressable onPress={onSync} disabled={syncing} style={[bannerStyles.btn, { backgroundColor: colors.tint }]}>
         {syncing ? (
           <ActivityIndicator color="#fff" size="small" />
