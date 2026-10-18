@@ -266,6 +266,9 @@ const rentalMatchesDateRange = (rental, startDate, endDate) => {
   return true;
 };
 
+/** The rentals endpoints return everything, so phones and tablets show the whole list (no pager). */
+const EVERYTHING_LOADED = { hasMore: false, loadMore: () => {}, isLoadingMore: false };
+
 const Rentals = () => {
   const { activeTenantId, activeTenant, isManager } = useAuth();
   const { isRental: isRentalTenant, defaultBranchId: workspaceDefaultBranchId } = useWorkspaceProfile();
@@ -2975,6 +2978,7 @@ const Rentals = () => {
               current: pagination.current,
               total: pagination.total ?? rentals.length,
             }}
+            infinite={EVERYTHING_LOADED}
           />
         </TabsContent>
 
@@ -2993,6 +2997,7 @@ const Rentals = () => {
               current: pagination.current,
               total: pagination.total ?? preBookings.length,
             }}
+            infinite={EVERYTHING_LOADED}
           />
         </TabsContent>
 

@@ -9,6 +9,7 @@ import SwipeableCard from './SwipeableCard';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useDeviceMode } from '@/hooks/useDeviceMode';
 import { CardTapContext } from './cardTapContext';
+import InfiniteListFooter from './InfiniteListFooter';
 
 /** Taps on these inside a card do their own thing instead of opening the record. */
 const INTERACTIVE_IN_CARD =
@@ -40,6 +41,7 @@ import {
  * @param {boolean} gridLayout - When true, show cards in a multi-column grid (desktop grid mode); when false, single column stack
  * @param {Function} getCardImage - Optional function(record) => imageUrl to show a thumbnail at top of each card
  * @param {boolean} showLabelsInCardView - When false (default), omit column labels in card view for "no header" consistency
+ * @param {{ hasMore: boolean, loadMore: Function, isLoadingMore: boolean }|null} infinite - Phones/tablets: `data` is every loaded row and more load on scroll instead of pages (see usePagedList)
  */
 const MobileCardView = memo(({
   data = [],
@@ -61,6 +63,7 @@ const MobileCardView = memo(({
   gridLayout = false,
   getCardImage,
   showLabelsInCardView = false,
+  infinite = null,
 }) => {
   const { isMobile } = useResponsive();
   const { isAppShell } = useDeviceMode();
@@ -89,8 +92,10 @@ const MobileCardView = memo(({
   const startIndex = useMemo(() => (pagination.current - 1) * effectivePageSize + 1, [pagination.current, effectivePageSize]);
   const endIndex = useMemo(() => Math.min(pagination.current * effectivePageSize, totalItems), [pagination.current, effectivePageSize, totalItems]);
   
+  const scrollsForMore = Boolean(isAppShell && infinite);
+
   const paginatedData = useMemo(() => {
-    if (externalPagination) {
+    if (externalPagination || scrollsForMore) {
       // External pagination - data is already paginated
       return data;
     }
@@ -99,7 +104,7 @@ const MobileCardView = memo(({
       (pagination.current - 1) * effectivePageSize,
       pagination.current * effectivePageSize
     );
-  }, [data, pagination.current, effectivePageSize, externalPagination]);
+  }, [data, pagination.current, effectivePageSize, externalPagination, scrollsForMore]);
 
   const handlePageChange = useCallback((newPage) => {
     setPagination(prev => ({ ...prev, current: newPage, pageSize }));
@@ -211,7 +216,8 @@ const MobileCardView = memo(({
     ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4'
     : isMobile ? 'space-y-2' : 'space-y-3';
 
-  if (loading) {
+  // Scrolling lists keep their rows (and scroll position) while more load or the list refreshes.
+  if (loading && !(scrollsForMore && data.length > 0)) {
     return (
       <div className={cardsContainerClass}>
         {[...Array(Math.min(pageSize, gridLayout ? 8 : pageSize))].map((_, i) => (
@@ -480,8 +486,15 @@ const MobileCardView = memo(({
         })}
       </div>
 
-      {/* Pagination - always at bottom, outside grid */}
-      {totalItems > 0 && (
+      {scrollsForMore ? (
+        <InfiniteListFooter
+          hasMore={infinite.hasMore}
+          loadMore={infinite.loadMore}
+          isLoadingMore={infinite.isLoadingMore}
+          count={data.length}
+          className="mt-2"
+        />
+      ) : totalItems > 0 && (
         <div className={cn(
           'flex flex-col sm:flex-row items-center justify-between gap-3 w-full',
           gridLayout

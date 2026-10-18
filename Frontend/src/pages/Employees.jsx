@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { useDebounce } from '../hooks/useDebounce';
 import { useResponsive } from '../hooks/useResponsive';
 import { useSmartSearch } from '../context/SmartSearchContext';
-import { SEARCH_PLACEHOLDERS, DEBOUNCE_DELAYS } from '../constants';
+import { SEARCH_PLACEHOLDERS, DEBOUNCE_DELAYS, QUERY_CACHE } from '../constants';
+import { usePagedList } from '../hooks/usePagedList';
 // Removed Ant Design imports - using shadcn/ui only
 import PhoneNumberInput from '../components/PhoneNumberInput';
 import {
@@ -25,7 +26,7 @@ import {
   Pencil
 } from 'lucide-react';
 import dayjs from 'dayjs';
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
 import employeeService from '../services/employeeService';
 import customDropdownService from '../services/customDropdownService';
 import { showSuccess, showError, showWarning } from '../utils/toast';
@@ -887,6 +888,9 @@ const EmployeeForm = ({ currentStep, form, savingDepartment, setSavingDepartment
   );
 };
 
+/** Employees in one list response (`{ data: [...], count }`). */
+const employeeRowsFromResponse = (response) => (Array.isArray(response?.data) ? response.data : []);
+
 const Employees = () => {
   const queryClient = useQueryClient();
   const { searchValue, setPageSearchConfig } = useSmartSearch();
@@ -1012,14 +1016,24 @@ const Employees = () => {
     setPagination((prev) => ({ ...prev, current: 1 }));
   }, [searchValue]);
 
-  const employeeQuery = useQuery({
-    queryKey: ['employees', pagination.current, pagination.pageSize, filters, debouncedSearch],
-    queryFn: () => {
-      const params = { page: pagination.current, limit: pagination.pageSize, ...filters };
-      if (debouncedSearch) params.search = debouncedSearch;
-      return employeeService.getEmployees(params);
-    },
+  const employeeFilterParams = useMemo(() => {
+    const params = { ...filters };
+    if (debouncedSearch) params.search = debouncedSearch;
+    return params;
+  }, [filters, debouncedSearch]);
+
+  // Pages on desktop; loads as you scroll on phones and tablets.
+  const employeeQuery = usePagedList({
+    queryKey: (params) => ['employees', params.page, params.limit, filters, debouncedSearch],
+    params: employeeFilterParams,
+    fetchPage: (params) => employeeService.getEmployees(params),
+    getRows: employeeRowsFromResponse,
+    getTotal: (response) => Number(response?.count) || 0,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
+    staleTime: QUERY_CACHE.STALE_TIME_DEFAULT,
   });
+  const employeesInfinite = employeeQuery.infinite;
 
   const resetFormState = () => {
     setFormStep(0);
@@ -1326,12 +1340,17 @@ const Employees = () => {
     }
   ], [handleView, departmentOptions]);
 
-  const employees = Array.isArray(employeeQuery.data?.data) ? employeeQuery.data.data : [];
-  const total = Number(employeeQuery.data?.count) || 0;
+  /** Every loaded row (one page on desktop; all scrolled-in pages on phones and tablets). */
+  const employees = employeeQuery.rows;
+  /** The page the summary cards count (the first page on phones and tablets). */
+  const summaryEmployees = useMemo(
+    () => employeeRowsFromResponse(employeeQuery.response),
+    [employeeQuery.response]
+  );
 
   // Calculate summary stats
   const summaryStats = useMemo(() => {
-    if (!Array.isArray(employees)) {
+    if (!Array.isArray(summaryEmployees)) {
       return {
         totals: {
           totalEmployees: 0,
@@ -1342,10 +1361,10 @@ const Employees = () => {
       };
     }
     
-    const totalEmployees = employees.length || 0;
-    const activeEmployees = employees.filter(e => e?.status === 'active').length || 0;
-    const inactiveEmployees = employees.filter(e => e?.status === 'inactive').length || 0;
-    const departments = new Set(employees.map(e => e?.department).filter(Boolean)).size || 0;
+    const totalEmployees = summaryEmployees.length || 0;
+    const activeEmployees = summaryEmployees.filter(e => e?.status === 'active').length || 0;
+    const inactiveEmployees = summaryEmployees.filter(e => e?.status === 'inactive').length || 0;
+    const departments = new Set(summaryEmployees.map(e => e?.department).filter(Boolean)).size || 0;
     
     return {
       totals: {
@@ -1355,9 +1374,9 @@ const Employees = () => {
         departments: Number(departments) || 0
       }
     };
-  }, [employees]);
+  }, [summaryEmployees]);
 
-  const organization = employeeQuery.data?.organization || {};
+  const organization = employeeQuery.response?.organization || {};
 
   // Helper function to render table from columns and dataSource with server-side pagination
   const renderTable = (columns, dataSource, rowKey = 'id', options = {}) => {
@@ -1476,14 +1495,15 @@ const Employees = () => {
     return result;
   }, [employees, filters]);
 
-  // Paginate filtered employees
+  // Paginate filtered employees (phones and tablets show every loaded row and load more on scroll)
   const paginatedEmployees = useMemo(() => {
+    if (employeesInfinite) return filteredEmployees;
     const start = (pagination.current - 1) * pagination.pageSize;
     const end = start + pagination.pageSize;
     return filteredEmployees.slice(start, end);
-  }, [filteredEmployees, pagination.current, pagination.pageSize]);
+  }, [employeesInfinite, filteredEmployees, pagination.current, pagination.pageSize]);
 
-  const employeesCount = filteredEmployees.length;
+  const employeesCount = employeesInfinite ? employeeQuery.total : filteredEmployees.length;
 
   // Drawer tabs for employee details
   const drawerTabs = useMemo(() => {
@@ -1767,6 +1787,7 @@ const Employees = () => {
           current: pagination.current,
           total: employeesCount
         }}
+        infinite={employeesInfinite}
       />
 
       {/* Filter Drawer */}

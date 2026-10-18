@@ -39,6 +39,7 @@ import { resolveImageUrl } from '../utils/fileUtils';
 import { numberInputValue, handleNumberChange, numberOrEmptySchema } from '../utils/formUtils';
 import { QUERY_STALE, refreshAfterExpense } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
+import { usePagedList } from '../hooks/usePagedList';
 import {
   OTHER_DROPDOWN_VALUE,
   resolveOtherDropdownValue,
@@ -164,6 +165,12 @@ const rejectionSchema = z.object({
 
 // Sentinel for optional Select "None" option (Radix Select forbids value="")
 const SELECT_NONE_VALUE = '__none__';
+
+/** Expenses in one list response (`{ data, count }`). */
+const expenseRowsFromResponse = (response) => {
+  const data = response?.data || response;
+  return Array.isArray(data) ? data : [];
+};
 
 const Expenses = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -374,11 +381,8 @@ const Expenses = () => {
     });
   };
 
-  const expenseQueryParams = useMemo(() => {
-    const params = {
-      page: pagination.current,
-      limit: pagination.pageSize,
-    };
+  const expenseFilterParams = useMemo(() => {
+    const params = {};
     if (filters.category !== 'all') params.category = filters.category;
     if (filters.status !== 'all') params.status = filters.status;
     if (filters.jobId !== 'all') params.jobId = filters.jobId;
@@ -388,21 +392,28 @@ const Expenses = () => {
     if (filters.startDate) params.startDate = dayjs(filters.startDate).format('YYYY-MM-DD');
     if (filters.endDate) params.endDate = dayjs(filters.endDate).format('YYYY-MM-DD');
     return params;
-  }, [filters, pagination.current, pagination.pageSize]);
+  }, [filters]);
 
-  // Use React Query for expenses
+  // Pages on desktop; loads as you scroll on phones and tablets.
   const {
-    data: expensesResponse,
+    rows: expenses,
+    total: expensesCount,
     isLoading: expensesLoading,
     error: expensesError,
     refetch: refetchExpenses,
     isFetching: expensesRefetching,
-  } = useQuery({
-    queryKey: queryKeys.expenses.list(activeTenantId, activeShopId, activeStudioLocationId, expenseQueryParams),
-    queryFn: () => expenseService.getAll(expenseQueryParams),
+    infinite: expensesInfinite,
+  } = usePagedList({
+    queryKey: (params) => queryKeys.expenses.list(activeTenantId, activeShopId, activeStudioLocationId, params),
+    params: expenseFilterParams,
+    fetchPage: (params) => expenseService.getAll(params),
+    getRows: expenseRowsFromResponse,
+    getTotal: (response, rows) => response?.count ?? rows.length,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
     enabled: scopeReady,
     staleTime: QUERY_STALE.LIST,
-    refetchOnWindowFocus: false,
+    queryOptions: { refetchOnWindowFocus: false },
   });
 
   const { data: jobsResponse } = useQuery({
@@ -428,11 +439,6 @@ const Expenses = () => {
     staleTime: QUERY_STALE.TRANSACTIONAL,
     refetchOnWindowFocus: true,
   });
-
-  const expenses = useMemo(() => {
-    const data = expensesResponse?.data || expensesResponse;
-    return Array.isArray(data) ? data : [];
-  }, [expensesResponse]);
 
   const jobs = useMemo(() => {
     const data = jobsResponse?.data || jobsResponse;
@@ -467,17 +473,11 @@ const Expenses = () => {
   }, [jobs, editingExpense?.job, editingExpense?.jobId]);
 
   useEffect(() => {
-    const total = expensesResponse?.count ?? expenses.length;
-    setPagination((prev) => (prev.total === total ? prev : { ...prev, total }));
-  }, [expensesResponse, expenses.length]);
-
-  useEffect(() => {
     if (expensesError) showError(null, 'Failed to fetch expenses');
   }, [expensesError]);
 
   // Backend handles filtering via params; use data directly
   const paginatedExpenses = expenses;
-  const expensesCount = expensesResponse?.count ?? expenses.length;
 
   // Use stats from API (accurate totals); fallback to 0
   const summaryStats = useMemo(() => ({
@@ -1082,7 +1082,7 @@ const Expenses = () => {
 
   // Merge API categories with existing expense categories (for filter dropdown)
   const expenseCategories = useMemo(() => {
-    const fromExpenses = new Set((expensesResponse?.data ?? []).map(e => e.category).filter(Boolean));
+    const fromExpenses = new Set(expenses.map(e => e.category).filter(Boolean));
     const fromApiSet = new Set(Array.isArray(categoriesFromApi) ? categoriesFromApi : []);
     const merged = new Set([...fromApiSet, ...fromExpenses]);
     // "Other" is handled as a dedicated specify option — keep literal "Other" out of the list
@@ -1090,7 +1090,7 @@ const Expenses = () => {
     return Array.from(merged)
       .filter((category) => String(category).toLowerCase() !== 'other')
       .sort((a, b) => a.localeCompare(b));
-  }, [expensesResponse?.data, categoriesFromApi]);
+  }, [expenses, categoriesFromApi]);
 
   const resetCategoryOtherState = useCallback(() => {
     setCategoryOtherInput('');
@@ -1260,6 +1260,7 @@ const Expenses = () => {
           page={pagination.current}
           totalPages={Math.max(Math.ceil(expensesCount / pagination.pageSize), 1)}
           onPageChange={(nextPage) => setPagination((prev) => ({ ...prev, current: nextPage }))}
+          infinite={expensesInfinite}
         />
       ) : (
       <>
@@ -1375,6 +1376,7 @@ const Expenses = () => {
           current: pagination.current,
           total: expensesCount
         }}
+        infinite={expensesInfinite}
         viewMode={tableViewMode}
         onViewModeChange={setTableViewMode}
       />

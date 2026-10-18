@@ -10,6 +10,7 @@ import customDropdownService from '../services/customDropdownService';
 import { useAuth } from '../context/AuthContext';
 import { useWorkspaceScope } from '../hooks/useWorkspaceScope';
 import { useResponsive } from '../hooks/useResponsive';
+import { usePagedList } from '../hooks/usePagedList';
 import ActionColumn from '../components/ActionColumn';
 import DetailsDrawer from '../components/DetailsDrawer';
 import DashboardTable from '../components/DashboardTable';
@@ -67,6 +68,9 @@ import { EMPTY_STATES } from '../constants/microcopy';
 import { QUERY_STALE } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
 
+/** Pricing templates in one list response (`{ data: [...], count }`). */
+const templateRowsFromResponse = (response) => (Array.isArray(response?.data) ? response.data : []);
+
 // Zod schemas
 const discountTierSchema = z.object({
   minQuantity: integerOrEmptySchema(z, 1).refine((v) => v >= 1, 'Min quantity must be at least 1'),
@@ -116,8 +120,6 @@ const pricingTemplateSchema = z.object({
 });
 
 const Pricing = () => {
-  const [templates, setTemplates] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
@@ -128,7 +130,6 @@ const Pricing = () => {
   const { isMobile } = useResponsive();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [viewingTemplate, setViewingTemplate] = useState(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [customCategories, setCustomCategories] = useState([]);
   const [showCategoryOtherInput, setShowCategoryOtherInput] = useState(false);
   const [categoryOtherValue, setCategoryOtherValue] = useState('');
@@ -173,51 +174,65 @@ const Pricing = () => {
   const pricingMethod = form.watch('pricingMethod');
   const materialType = form.watch('materialType');
 
+  const templateFilterParams = useMemo(() => {
+    const params = {};
+    if (filters.category !== 'all') {
+      params.category = filters.category;
+    }
+    if (filters.isActive !== 'all') {
+      params.isActive = filters.isActive === 'true';
+    }
+    return params;
+  }, [filters.category, filters.isActive]);
+
+  // Pages on desktop (backend pagination); loads as you scroll on phones and tablets.
+  const {
+    rows: templates,
+    isLoading: loading,
+    refetch: refetchTemplates,
+    error: templatesError,
+    infinite: templatesInfinite,
+  } = usePagedList({
+    queryKey: (params) => ['pricingTemplates', 'list', activeTenantId, activeShopId, activeStudioLocationId, params],
+    params: templateFilterParams,
+    fetchPage: (params) => pricingService.getAll(params),
+    getRows: templateRowsFromResponse,
+    getTotal: (response, rows) => response?.count ?? rows.length,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
+    enabled: scopeReady,
+    // Always fresh when the page opens, like before it used React Query.
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    if (!templatesError) return;
+    console.error('Error fetching pricing templates:', templatesError);
+    showError(templatesError, 'Failed to load pricing templates');
+  }, [templatesError]);
+
+  /** Reload the list (every loaded page on phones and tablets); `isRefresh` spins the refresh button. */
   const fetchTemplates = useCallback(async (isRefresh = false) => {
-    if (isRefresh) {
-      setRefreshingTemplates(true);
-    } else {
-      setLoading(true);
-    }
+    if (isRefresh) setRefreshingTemplates(true);
     try {
-      const params = {
-        page: pagination.current,
-        limit: pagination.pageSize, // Backend pagination
-      };
-      
-      if (filters.category !== 'all') {
-        params.category = filters.category;
-      }
-      if (filters.isActive !== 'all') {
-        params.isActive = filters.isActive === 'true';
-      }
-      
-      const response = await pricingService.getAll(params);
-      setTemplates(response.data || []);
-    } catch (error) {
-      console.error('Error fetching pricing templates:', error);
-      showError(error, 'Failed to load pricing templates');
-      setTemplates([]);
+      await refetchTemplates();
     } finally {
-      if (isRefresh) {
-        setRefreshingTemplates(false);
-      } else {
-        setLoading(false);
-      }
+      if (isRefresh) setRefreshingTemplates(false);
     }
-  }, [filters, pagination.current, pagination.pageSize, activeShopId, activeStudioLocationId]);
+  }, [refetchTemplates]);
 
   // Apply client-side filtering
   const filteredTemplates = useMemo(() => {
     return templates; // Backend already filters
   }, [templates, filters]);
 
-  // Paginate filtered templates
+  // Paginate filtered templates (phones and tablets: every loaded row)
   const paginatedTemplates = useMemo(() => {
+    if (templatesInfinite) return filteredTemplates;
     const start = (pagination.current - 1) * pagination.pageSize;
     const end = start + pagination.pageSize;
     return filteredTemplates.slice(start, end);
-  }, [filteredTemplates, pagination.current, pagination.pageSize]);
+  }, [filteredTemplates, pagination.current, pagination.pageSize, templatesInfinite]);
 
   const templatesCount = filteredTemplates.length;
 
@@ -237,11 +252,6 @@ const Pricing = () => {
       }
     };
   }, [templates]);
-
-  useEffect(() => {
-    if (!scopeReady) return;
-    fetchTemplates();
-  }, [scopeReady, fetchTemplates, refreshTrigger]);
 
   useEffect(() => {
     const loadCustomCategories = async () => {
@@ -328,7 +338,7 @@ const Pricing = () => {
       setDeletingTemplate(id);
       await pricingService.delete(id);
       showSuccess('Pricing template deleted successfully');
-      setRefreshTrigger(prev => prev + 1);
+      fetchTemplates();
     } catch (error) {
       showError(error, 'Failed to delete pricing template');
     } finally {
@@ -390,7 +400,7 @@ const Pricing = () => {
       }
       setModalVisible(false);
       form.reset();
-      setRefreshTrigger(prev => prev + 1);
+      fetchTemplates();
     } catch (error) {
       showError(error, error.error || 'Operation failed');
     }
@@ -625,6 +635,7 @@ const Pricing = () => {
           current: pagination.current,
           total: templatesCount
         }}
+        infinite={templatesInfinite}
         viewMode={tableViewMode}
         onViewModeChange={setTableViewMode}
       />

@@ -3,6 +3,7 @@ import { onlineManager, useIsRestoring, useQueryClient } from '@tanstack/react-q
 import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
 import { customerService } from '@/services/customerService';
+import { LIST_PAGE_SIZE } from '@/hooks/useInfiniteList';
 import { productService } from '@/services/productService';
 import { QUERY_STALE } from '@/utils/queryInvalidation';
 import { STARTUP_DATA_WAIT_MS, canRevealStartupData } from '@/utils/startupData';
@@ -53,9 +54,11 @@ export function useStartupData(destinationReady: boolean, dashboard: boolean, vi
       }
       if (cancelled || !onlineManager.isOnline()) return;
       if (customersAllowed) {
-        await client.prefetchQuery({
-          queryKey: ['customers', activeTenantId, activeShopId, activeStudioLocationId, ''],
-          queryFn: ({ signal }) => customerService.getCustomers({ page: 1, limit: 20 }, { signal, timeout: 15000 }),
+        await client.prefetchInfiniteQuery({
+          // useInfiniteList key: the list key with 'infinite' appended.
+          queryKey: ['customers', activeTenantId, activeShopId, activeStudioLocationId, '', 'infinite'],
+          initialPageParam: 1,
+          queryFn: ({ signal }) => customerService.getCustomers({ page: 1, limit: LIST_PAGE_SIZE }, { signal, timeout: 15000 }),
           staleTime: QUERY_STALE.LIST,
           retry: false,
         });

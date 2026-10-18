@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useDebounce } from '../../hooks/useDebounce';
+import { usePagedList } from '../../hooks/usePagedList';
 import { Loader2, RefreshCw, Undo2 } from 'lucide-react';
 import saleReturnService from '../../services/saleReturnService';
 import DetailsDrawer from '../DetailsDrawer';
@@ -32,8 +32,12 @@ const paymentLabels = {
   other: 'Other',
 };
 
+/** Returns in one list response (`{ data, pagination: { page, limit, total } }`). */
+const returnRowsFromResponse = (response) => (Array.isArray(response?.data) ? response.data : []);
+
 /**
  * Returns history list + detail drawer (under Sales).
+ * Pages on desktop; loads as you scroll on phones and tablets.
  */
 export default function SaleReturnsPanel() {
   const [page, setPage] = useState(1);
@@ -42,24 +46,24 @@ export default function SaleReturnsPanel() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const debouncedSearch = useDebounce(search, 500);
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['sale-returns', page, debouncedSearch],
-    queryFn: async () => {
-      const res = await saleReturnService.getReturns({
-        page,
-        limit: 20,
-        search: debouncedSearch || undefined,
-      });
-      return res;
-    },
+  const {
+    rows,
+    total,
+    response: data,
+    isLoading,
+    isFetching,
+    refetch,
+    infinite,
+  } = usePagedList({
+    queryKey: (params) => ['sale-returns', params.page, debouncedSearch],
+    params: { search: debouncedSearch || undefined },
+    fetchPage: (params) => saleReturnService.getReturns(params),
+    getRows: returnRowsFromResponse,
+    getTotal: (response) => response?.pagination?.total,
+    page,
+    pageSize: 20,
     staleTime: QUERY_STALE?.SHORT || 30_000,
   });
-
-  const rows = useMemo(() => {
-    const payload = data?.data;
-    if (Array.isArray(payload)) return payload;
-    return [];
-  }, [data]);
 
   const paginationMeta = data?.pagination || {};
 
@@ -178,9 +182,10 @@ export default function SaleReturnsPanel() {
           onPageChange={(newPagination) => setPage(newPagination.current)}
           externalPagination={{
             current: paginationMeta.page || page,
-            total: paginationMeta.total || 0,
+            total,
             pageSize: paginationMeta.limit || 20,
           }}
+          infinite={infinite}
         />
       )}
 

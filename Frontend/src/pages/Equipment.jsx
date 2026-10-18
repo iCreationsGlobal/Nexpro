@@ -15,6 +15,7 @@ import {
 import dayjs from 'dayjs';
 import { useDebounce } from '../hooks/useDebounce';
 import { useResponsive } from '../hooks/useResponsive';
+import { usePagedList } from '../hooks/usePagedList';
 import DetailsDrawer from '../components/DetailsDrawer';
 import DrawerSectionCard from '../components/DrawerSectionCard';
 import ActionColumn from '../components/ActionColumn';
@@ -79,6 +80,9 @@ import {
 import { SEARCH_PLACEHOLDERS, DEBOUNCE_DELAYS } from '../constants';
 import { formatAmount } from '../utils/formatNumber';
 
+/** Equipment in one list response (`{ data: [...], count }`). */
+const equipmentRowsFromResponse = (response) => (Array.isArray(response?.data) ? response.data : []);
+
 const sortCategories = (list = []) =>
   [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
@@ -124,9 +128,7 @@ const Equipment = () => {
   const debouncedSearch = useDebounce(searchValue, DEBOUNCE_DELAYS.SEARCH);
   const { isMobile } = useResponsive();
 
-  const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
-  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [categories, setCategories] = useState([]);
   const [vendors, setVendors] = useState([]);
@@ -205,41 +207,55 @@ const Equipment = () => {
     }
   }, []);
 
+  const equipmentFilterParams = useMemo(() => {
+    const params = {
+      categoryId: filters.categoryId !== 'all' ? filters.categoryId : undefined,
+      status: filters.status !== 'all' ? filters.status : undefined
+    };
+    if (debouncedSearch) params.search = debouncedSearch;
+    return params;
+  }, [filters.categoryId, filters.status, debouncedSearch]);
+
+  // Pages on desktop; loads as you scroll on phones and tablets.
+  const {
+    rows: items,
+    total: itemsTotal,
+    isLoading: loading,
+    refetch: refetchItems,
+    error: itemsError,
+    infinite: itemsInfinite,
+  } = usePagedList({
+    queryKey: (params) => ['equipment', 'items', activeTenantId, activeShopId, activeStudioLocationId, params],
+    params: equipmentFilterParams,
+    fetchPage: (params) => equipmentService.getItems(params),
+    getRows: equipmentRowsFromResponse,
+    getTotal: (response, rows) => response?.count ?? response?.pagination?.total ?? rows.length,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
+    enabled: scopeReady,
+    // Always fresh when the page opens, like before it used React Query.
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    if (!itemsError) return;
+    console.error('Failed to load equipment', itemsError);
+    showError(itemsError, 'Failed to load equipment');
+  }, [itemsError]);
+
+  /** Reload the list (every loaded page on phones and tablets); `isRefresh` spins the refresh button. */
   const fetchItems = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
     try {
-      const params = {
-        page: pagination.current,
-        limit: pagination.pageSize,
-        categoryId: filters.categoryId !== 'all' ? filters.categoryId : undefined,
-        status: filters.status !== 'all' ? filters.status : undefined
-      };
-      if (debouncedSearch) params.search = debouncedSearch;
-      const response = await equipmentService.getItems(params);
-      const payload = response || {};
-      const rows = Array.isArray(payload.data) ? payload.data : [];
-      setItems(rows);
-      const total = payload.count ?? payload.pagination?.total ?? rows.length;
-      setPagination((prev) => ({ ...prev, total }));
-    } catch (error) {
-      console.error('Failed to load equipment', error);
-      showError(error, 'Failed to load equipment');
-      setItems([]);
+      await refetchItems();
     } finally {
-      setRefreshing(false);
-      setLoading(false);
+      if (isRefresh) setRefreshing(false);
     }
-  }, [pagination.current, pagination.pageSize, filters.categoryId, filters.status, debouncedSearch, activeShopId, activeStudioLocationId]);
+  }, [refetchItems]);
 
   useEffect(() => {
     fetchCategories();
   }, [fetchCategories]);
-
-  useEffect(() => {
-    if (!scopeReady) return;
-    fetchItems();
-  }, [fetchItems, scopeReady, shopContext?.isShopWorkspace, activeShopId, activeStudioLocationId]);
 
   const loadVendors = useCallback(async () => {
     try {
@@ -651,8 +667,9 @@ const Equipment = () => {
         }}
         externalPagination={{
           current: pagination.current,
-          total: pagination.total ?? items.length
+          total: itemsTotal
         }}
+        infinite={itemsInfinite}
       />
 
       <Sheet open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>

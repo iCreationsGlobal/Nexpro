@@ -20,6 +20,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import marketingService from '../services/marketingService';
+import { QUERY_CACHE } from '../constants';
+import { usePagedList } from '../hooks/usePagedList';
+import InfiniteListFooter from '@/components/InfiniteListFooter';
 import { handleApiError, showError, showSuccess } from '../utils/toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +55,12 @@ import { WhatsAppIcon } from '@/components/ui/WhatsAppIcon';
 
 const CARD_BORDER = { border: '1px solid #e5e7eb' };
 const DEFAULT_CAMPAIGN_PAGE_SIZE = 10;
+
+/** Campaigns in one list response (`{ data: { campaigns, total, totalPages, currentPage, limit } }`). */
+const campaignRowsFromResponse = (response) => (
+  Array.isArray(response?.data?.campaigns) ? response.data.campaigns : []
+);
+const campaignTotalFromResponse = (response) => Number(response?.data?.total) || 0;
 
 const DEFAULT_FORM = {
   name: '',
@@ -279,15 +288,25 @@ function MarketingOverview() {
     queryFn: () => marketingService.getOverview(),
     enabled: !!activeTenantId,
   });
-  const { data: campaignResponse, isLoading: campaignsLoading } = useQuery({
-    queryKey: ['marketing', 'campaigns', 'overview', activeTenantId, campaignPage],
-    queryFn: () => marketingService.listCampaigns({ page: campaignPage, limit: DEFAULT_CAMPAIGN_PAGE_SIZE }),
+  // Pages on desktop; loads as you scroll on phones and tablets.
+  const {
+    rows: campaigns,
+    response: campaignResponse,
+    isLoading: campaignsLoading,
+    infinite: campaignsInfinite,
+  } = usePagedList({
+    queryKey: (params) => ['marketing', 'campaigns', 'overview', activeTenantId, params.page],
+    fetchPage: (params) => marketingService.listCampaigns(params),
+    getRows: campaignRowsFromResponse,
+    getTotal: campaignTotalFromResponse,
+    page: campaignPage,
+    pageSize: DEFAULT_CAMPAIGN_PAGE_SIZE,
     enabled: !!activeTenantId,
+    staleTime: QUERY_CACHE.STALE_TIME_DEFAULT,
   });
   const overview = data?.data || {};
   const stats = overview.stats || {};
   const campaignData = campaignResponse?.data || {};
-  const campaigns = Array.isArray(campaignData.campaigns) ? campaignData.campaigns : [];
 
   const openCreateDialog = useCallback(() => {
     setSearchParams((params) => {
@@ -351,6 +370,7 @@ function MarketingOverview() {
         isLoading={campaignsLoading}
         emptyMessage="Create a draft, preview your audience, then send when ready."
         onPageChange={setCampaignPage}
+        infinite={campaignsInfinite}
       />
 
       <CreateCampaignDialog
@@ -455,6 +475,7 @@ function CampaignListCard({
   emptyMessage,
   toolbar,
   onPageChange,
+  infinite = null,
 }) {
   return (
     <Card style={CARD_BORDER}>
@@ -478,7 +499,11 @@ function CampaignListCard({
         ) : (
           <>
             <CampaignTable campaigns={campaigns} />
-            <CampaignPagination pagination={pagination} isLoading={isLoading} onPageChange={onPageChange} />
+            {infinite ? (
+              <InfiniteListFooter {...infinite} count={campaigns.length} noun="campaigns" className="mt-2" />
+            ) : (
+              <CampaignPagination pagination={pagination} isLoading={isLoading} onPageChange={onPageChange} />
+            )}
           </>
         )}
       </CardContent>
@@ -495,17 +520,25 @@ function CampaignList() {
   const editCampaignId = searchParams.get('id');
   const isCampaignDialogOpen = campaignModal === 'new' || (campaignModal === 'edit' && Boolean(editCampaignId));
   const campaignDialogMode = campaignModal === 'edit' && editCampaignId ? 'edit' : 'create';
-  const { data, isLoading } = useQuery({
-    queryKey: ['marketing', 'campaigns', activeTenantId, status, page],
-    queryFn: () => marketingService.listCampaigns({
-      ...(status ? { status } : {}),
-      page,
-      limit: DEFAULT_CAMPAIGN_PAGE_SIZE,
-    }),
+  const campaignFilterParams = useMemo(() => (status ? { status } : {}), [status]);
+  // Pages on desktop; loads as you scroll on phones and tablets.
+  const {
+    rows: campaigns,
+    response: data,
+    isLoading,
+    infinite: campaignsInfinite,
+  } = usePagedList({
+    queryKey: (params) => ['marketing', 'campaigns', activeTenantId, status, params.page],
+    params: campaignFilterParams,
+    fetchPage: (params) => marketingService.listCampaigns(params),
+    getRows: campaignRowsFromResponse,
+    getTotal: campaignTotalFromResponse,
+    page,
+    pageSize: DEFAULT_CAMPAIGN_PAGE_SIZE,
     enabled: !!activeTenantId,
+    staleTime: QUERY_CACHE.STALE_TIME_DEFAULT,
   });
   const campaignData = data?.data || {};
-  const campaigns = campaignData.campaigns || [];
 
   const handleStatusChange = useCallback((event) => {
     setStatus(event.target.value);
@@ -562,6 +595,7 @@ function CampaignList() {
         emptyTitle="No campaigns match this view"
         emptyMessage="No campaigns match this view."
         onPageChange={setPage}
+        infinite={campaignsInfinite}
         toolbar={(
           <select
             className="h-9 rounded-md border border-input bg-background px-3 text-sm"
@@ -1416,23 +1450,36 @@ const RECIPIENT_STATUS_STYLES = {
 };
 const RECIPIENT_PAGE_SIZE = 25;
 
+/** Recipients in one response (`{ data: { recipients, total, totalPages, currentPage, limit } }`). */
+const recipientRowsFromResponse = (response) => (
+  Array.isArray(response?.data?.recipients) ? response.data.recipients : []
+);
+
 /** Per-recipient send log: who got the message on which channel, and why any failed. */
 function CampaignRecipientsCard({ campaignId, isSending }) {
   const { activeTenantId } = useAuth();
   const [status, setStatus] = useState('all');
   const [page, setPage] = useState(1);
-  const { data, isLoading } = useQuery({
-    queryKey: ['marketing', 'campaign-recipients', activeTenantId, campaignId, status, page],
-    queryFn: () => marketingService.getCampaignRecipients(campaignId, {
-      status: status === 'all' ? undefined : status,
-      page,
-      limit: RECIPIENT_PAGE_SIZE,
-    }),
+  const recipientFilterParams = useMemo(() => ({ status: status === 'all' ? undefined : status }), [status]);
+  // Pages on desktop; loads as you scroll on phones and tablets (every loaded page refreshes while sending).
+  const {
+    rows: recipients,
+    response: data,
+    isLoading,
+    infinite: recipientsInfinite,
+  } = usePagedList({
+    queryKey: (params) => ['marketing', 'campaign-recipients', activeTenantId, campaignId, status, params.page],
+    params: recipientFilterParams,
+    fetchPage: (params) => marketingService.getCampaignRecipients(campaignId, params),
+    getRows: recipientRowsFromResponse,
+    getTotal: (response) => Number(response?.data?.total) || 0,
+    page,
+    pageSize: RECIPIENT_PAGE_SIZE,
     enabled: !!activeTenantId && !!campaignId,
-    refetchInterval: isSending ? 4000 : false,
+    staleTime: QUERY_CACHE.STALE_TIME_DEFAULT,
+    queryOptions: { refetchInterval: isSending ? 4000 : false },
   });
   const result = data?.data || {};
-  const recipients = result.recipients || [];
   const totalPages = result.totalPages || 1;
 
   return (
@@ -1492,7 +1539,11 @@ function CampaignRecipientsCard({ campaignId, isSending }) {
             </TableBody>
           </Table>
         )}
-        {totalPages > 1 ? (
+        {recipientsInfinite ? (
+          recipients.length > 0 ? (
+            <InfiniteListFooter {...recipientsInfinite} count={recipients.length} noun="messages" />
+          ) : null
+        ) : totalPages > 1 ? (
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Page {page} of {totalPages}</span>
             <div className="flex gap-2">

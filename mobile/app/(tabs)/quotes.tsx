@@ -8,7 +8,6 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
@@ -29,7 +28,9 @@ import { FilterChipRow } from '@/components/FilterChip';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { CURRENCY, isQuotesEnabledForTenant } from '@/constants';
 import { formatCurrency } from '@/utils/formatCurrency';
-import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListResponse';
+import { getApiErrorMessage } from '@/utils/parseApiListResponse';
+import { useInfiniteList } from '@/hooks/useInfiniteList';
+import { ListLoadMoreFooter } from '@/components/ListLoadMoreFooter';
 import { formatStatusLabel } from '@/utils/formatLabels';
 
 function formatDate(dateStr: string): string {
@@ -76,12 +77,24 @@ export default function QuotesScreen() {
   const quotesFeatureOk =
     hasFeature('quoteAutomation') && isQuotesEnabledForTenant(businessType, shopType);
 
-  const { data: response, isLoading, refetch, isRefetching, error, isError } = useQuery({
+  const {
+    firstPage: response,
+    rows: quotes,
+    isLoading,
+    refetch,
+    isPullRefreshing,
+    error,
+    isError,
+    loadMore,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useInfiniteList<Quote>({
     queryKey: ['quotes', activeTenantId, activeShopId, activeStudioLocationId, statusFilter, debouncedSearch],
-    queryFn: async () => {
+    fetchPage: async (page, limit) => {
       const params: { page?: number; limit?: number; status?: string; search?: string } = {
-        page: 1,
-        limit: 20,
+        page,
+        limit,
         search: debouncedSearch || undefined,
       };
       if (statusFilter !== 'all') params.status = statusFilter;
@@ -94,7 +107,6 @@ export default function QuotesScreen() {
     enabled: !!activeTenantId && quotesFeatureOk && scopeReady,
   });
 
-  const quotes = useMemo(() => parseApiListResponse<Quote>(response), [response]);
   const loadErrorMessage = useMemo(
     () => getApiErrorMessage(error, 'Could not load quotes. Pull to refresh.'),
     [error]
@@ -204,7 +216,17 @@ export default function QuotesScreen() {
           renderItem={renderQuoteItem}
           contentContainerStyle={listContentStyleWhenEmpty(styles.listContent, quotes.length === 0)}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={colors.tint} />
+            <RefreshControl refreshing={isPullRefreshing} onRefresh={onRefresh} tintColor={colors.tint} />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            <ListLoadMoreFooter
+              isLoadingMore={isFetchingNextPage}
+              isError={isFetchNextPageError}
+              onRetry={() => { void fetchNextPage(); }}
+              color={colors.tint}
+            />
           }
           ListEmptyComponent={
             <ListEmptyState

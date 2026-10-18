@@ -121,6 +121,7 @@ import settingsService from '../services/settingsService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { QUERY_STALE, refreshAfterLeadChange } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
+import { usePagedList } from '../hooks/usePagedList';
 
 /** Radix Select cannot use ""; use this value and map to null on change/submit. */
 const LEAD_UNASSIGNED_SELECT_VALUE = 'unassigned';
@@ -151,6 +152,9 @@ const statusSchema = z.object({
   status: z.enum(['new', 'contacted', 'qualified', 'converted', 'lost']),
   statusComment: z.string().optional(),
 });
+
+/** Leads in one list response (`{ data: [...], count }`). */
+const leadRowsFromResponse = (response) => (Array.isArray(response?.data) ? response.data : []);
 
 const Leads = () => {
   const { activeTenant, activeTenantId } = useAuth();
@@ -273,10 +277,8 @@ const Leads = () => {
     ];
   }, [leadSourceOptionsApi]);
 
-  const leadQueryParams = useMemo(() => {
+  const leadFilterParams = useMemo(() => {
     const params = {
-      page: pagination.current,
-      limit: pagination.pageSize,
       status: filters.status,
       priority: filters.priority,
       source: filters.source === 'all' ? undefined : filters.source,
@@ -285,19 +287,27 @@ const Leads = () => {
     };
     if (debouncedSearch) params.search = debouncedSearch;
     return params;
-  }, [debouncedSearch, filters.assignedTo, filters.isActive, filters.priority, filters.source, filters.status, pagination.current, pagination.pageSize]);
+  }, [debouncedSearch, filters.assignedTo, filters.isActive, filters.priority, filters.source, filters.status]);
 
+  // Pages on desktop; loads as you scroll on phones and tablets.
   const {
-    data: leadsResponse,
+    rows: leads,
+    total: leadsTotal,
     isLoading: loading,
     error: leadsError,
     refetch: refetchLeads,
-  } = useQuery({
-    queryKey: queryKeys.leads.list(activeTenantId, activeStudioLocationId, leadQueryParams),
-    queryFn: () => leadService.getAll(leadQueryParams),
+    infinite: leadsInfinite,
+  } = usePagedList({
+    queryKey: (params) => queryKeys.leads.list(activeTenantId, activeStudioLocationId, params),
+    params: leadFilterParams,
+    fetchPage: (params) => leadService.getAll(params),
+    getRows: leadRowsFromResponse,
+    getTotal: (response, rows) => response?.count || rows.length || 0,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
     enabled: scopeReady && (!studioLocationCtx?.isStudioWorkspace || !!activeStudioLocationId || !!studioLocationCtx?.canAccessAll),
     staleTime: QUERY_STALE.LIST,
-    refetchOnWindowFocus: true,
+    queryOptions: { refetchOnWindowFocus: true },
   });
 
   const {
@@ -320,11 +330,6 @@ const Leads = () => {
     refetchOnWindowFocus: false,
   });
 
-  const leads = useMemo(() => {
-    const payload = leadsResponse || {};
-    return Array.isArray(payload.data) ? payload.data : [];
-  }, [leadsResponse]);
-
   const summary = summaryResponse?.data || summaryResponse || {};
   const users = useMemo(() => {
     const data = usersResponse?.data || usersResponse;
@@ -337,11 +342,6 @@ const Leads = () => {
       showError(leadsError, 'Failed to load leads');
     }
   }, [leadsError]);
-
-  useEffect(() => {
-    const total = leadsResponse?.count || leads.length || 0;
-    setPagination((prev) => (prev.total === total ? prev : { ...prev, total }));
-  }, [leads.length, leadsResponse?.count]);
 
   const fetchSummary = useCallback(() => refetchSummary(), [refetchSummary]);
 
@@ -1111,10 +1111,11 @@ const Leads = () => {
           title={null}
           emptyState={leadsEmptyState}
           pageSize={pagination.pageSize}
-          externalPagination={{ current: pagination.current, total: pagination.total }}
+          externalPagination={{ current: pagination.current, total: leadsTotal }}
           onPageChange={(newPagination) => {
             setPagination(newPagination);
           }}
+          infinite={leadsInfinite}
           viewMode={tableViewMode}
           onViewModeChange={setTableViewMode}
         />

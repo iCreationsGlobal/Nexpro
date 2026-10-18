@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
 import { ChevronRight, Loader2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import InfiniteListFooter from '@/components/InfiniteListFooter';
 import { cn } from '@/lib/utils';
 import { useWorkspaceScope } from '../../hooks/useWorkspaceScope';
 import dashboardService from '../../services/dashboardService';
@@ -25,6 +26,7 @@ const periodLabel = (key) => (key === 'today' ? 'today' : key === 'week' ? 'this
  * Simple Mode expenses page: a big Add expense button, a period switch, the period's total
  * (the same figure as the dashboard's Expenses card) and a plain list. Tapping an expense
  * opens it for editing.
+ * With `infinite` (phones and tablets, from usePagedList) more load on scroll instead of pages.
  */
 export default function SimpleExpensesList({
   expenses,
@@ -37,6 +39,7 @@ export default function SimpleExpensesList({
   page,
   totalPages,
   onPageChange,
+  infinite = null,
 }) {
   const { activeTenantId, activeShopId, activeStudioLocationId, scopeReady } = useWorkspaceScope();
   const current = SIMPLE_EXPENSE_PERIODS.find((p) => p.key === period) || SIMPLE_EXPENSE_PERIODS[0];
@@ -134,7 +137,9 @@ export default function SimpleExpensesList({
         </ul>
       )}
 
-      {totalPages > 1 ? (
+      {infinite && expenses.length > 0 ? (
+        <InfiniteListFooter {...infinite} count={expenses.length} noun="expenses" />
+      ) : !infinite && totalPages > 1 ? (
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Page {page} of {totalPages}</span>
           <div className="flex gap-2">

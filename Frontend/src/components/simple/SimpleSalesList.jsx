@@ -2,6 +2,7 @@ import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
 import { ChevronRight, Loader2, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import InfiniteListFooter from '@/components/InfiniteListFooter';
 import { cn } from '@/lib/utils';
 import { formatAmount } from '../../utils/formatNumber';
 
@@ -23,6 +24,7 @@ const periodSummaryLabel = (key) => (
 /**
  * Simple Mode sales page: a big Sell button, a period switch, the period's total, and a plain
  * list of sales. Tapping a sale opens its receipt with a big Print button.
+ * With `infinite` (phones and tablets, from usePagedList) more load on scroll instead of pages.
  */
 export default function SimpleSalesList({
   sales,
@@ -37,6 +39,7 @@ export default function SimpleSalesList({
   page,
   totalPages,
   onPageChange,
+  infinite = null,
   getPartyLabel,
   paymentMethodLabels = {},
 }) {
@@ -124,7 +127,9 @@ export default function SimpleSalesList({
         </ul>
       )}
 
-      {totalPages > 1 ? (
+      {infinite && sales.length > 0 ? (
+        <InfiniteListFooter {...infinite} count={sales.length} noun="sales" />
+      ) : !infinite && totalPages > 1 ? (
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Page {page} of {totalPages}</span>
           <div className="flex gap-2">

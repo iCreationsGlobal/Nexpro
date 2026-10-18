@@ -25,6 +25,8 @@ import { useRegisterPageSearch } from '@/hooks/useRegisterPageSearch';
 import { useDebounce } from '@/hooks/useDebounce';
 import { matchesSearchQuery } from '@/utils/matchesSearchQuery';
 import { flatListStyleForEmpty } from '@/utils/listEmptyLayout';
+import { useInfiniteList } from '@/hooks/useInfiniteList';
+import { ListLoadMoreFooter } from '@/components/ListLoadMoreFooter';
 import { expenseService } from '@/services/expenseService';
 import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
@@ -122,13 +124,22 @@ function ExpensesScreen() {
     staleTime: QUERY_STALE.TRANSACTIONAL,
   });
 
-  const { data: response, isLoading, refetch, isRefetching, error, isError } = useQuery({
+  const {
+    firstPage: response,
+    rows: rawExpenses,
+    isLoading,
+    refetch,
+    isPullRefreshing,
+    error,
+    isError,
+    loadMore,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useInfiniteList<Expense>({
     queryKey: ['expenses', activeTenantId, activeShopId, activeStudioLocationId],
-    queryFn: () =>
-      expenseService.getExpenses({
-        page: 1,
-        limit: 20,
-      }),
+    fetchPage: (page, limit) => expenseService.getExpenses({ page, limit }),
     enabled: expensesScopedEnabled,
     staleTime: QUERY_STALE.TRANSACTIONAL,
     gcTime: 60 * 60 * 1000,
@@ -139,7 +150,6 @@ function ExpensesScreen() {
     [error]
   );
 
-  const rawExpenses = useMemo(() => parseApiListResponse<Expense>(response), [response]);
 
   const expenses = useMemo(() => {
     if (!debouncedSearch.trim()) return rawExpenses;
@@ -154,6 +164,13 @@ function ExpensesScreen() {
       ])
     );
   }, [rawExpenses, debouncedSearch]);
+
+  // Search runs on the loaded expenses; while none of them match, keep loading older ones.
+  const searchingOlder =
+    !!debouncedSearch.trim() && expenses.length === 0 && !isFetchNextPageError && (!!hasNextPage || isFetchingNextPage);
+  useEffect(() => {
+    if (searchingOlder) loadMore();
+  }, [searchingOlder, loadMore]);
 
   const expenseStats = useMemo(() => {
     const stats = ((statsResponse as ExpenseStatsResponse)?.data ?? statsResponse ?? {}) as ExpenseStatsResponse;
@@ -222,21 +239,31 @@ function ExpensesScreen() {
           },
           (old: unknown) => {
             if (!old || typeof old !== 'object') return old;
-            const prev = old as { data?: Expense[]; count?: number };
-            if (Array.isArray(prev.data)) {
-              if (prev.data.some((row) => row?.id === created.id)) return old;
-              return {
-                ...prev,
-                data: [created, ...prev.data],
-                count: typeof prev.count === 'number' ? prev.count + 1 : prev.count,
-              };
+            const prepend = (page: unknown) => {
+              const prev = page as { data?: Expense[]; count?: number };
+              if (Array.isArray(prev?.data)) {
+                if (prev.data.some((row) => row?.id === created.id)) return page;
+                return {
+                  ...prev,
+                  data: [created, ...prev.data],
+                  count: typeof prev.count === 'number' ? prev.count + 1 : prev.count,
+                };
+              }
+              if (Array.isArray(page)) {
+                const list = page as Expense[];
+                if (list.some((row) => row?.id === created.id)) return page;
+                return [created, ...list];
+              }
+              return page;
+            };
+            // The expenses screen loads page by page (useInfiniteList): add to the first page.
+            const infinite = old as { pages?: unknown[] };
+            if (Array.isArray(infinite.pages)) {
+              if (!infinite.pages.length) return old;
+              if (infinite.pages.some((page) => parseApiListResponse<Expense>(page).some((row) => row?.id === created.id))) return old;
+              return { ...infinite, pages: [prepend(infinite.pages[0]), ...infinite.pages.slice(1)] };
             }
-            if (Array.isArray(old)) {
-              const list = old as Expense[];
-              if (list.some((row) => row?.id === created.id)) return old;
-              return [created, ...list];
-            }
-            return old;
+            return prepend(old);
           }
         );
 
@@ -444,8 +471,8 @@ function ExpensesScreen() {
         </View>
       )}
 
-      {isLoading && !response ? (
-        <ListLoadingState message="Loading expenses..." />
+      {(isLoading && !response) || searchingOlder ? (
+        <ListLoadingState message={searchingOlder ? 'Searching older expenses...' : 'Loading expenses...'} />
       ) : isError ? (
         <ListErrorState title="Failed to load expenses" message={loadErrorMessage} onRetry={refetch} />
       ) : expenses.length === 0 ? (
@@ -471,7 +498,17 @@ function ExpensesScreen() {
           renderItem={renderExpenseItem}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={colors.tint} />
+            <RefreshControl refreshing={isPullRefreshing} onRefresh={onRefresh} tintColor={colors.tint} />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            <ListLoadMoreFooter
+              isLoadingMore={isFetchingNextPage}
+              isError={isFetchNextPageError}
+              onRetry={() => { void fetchNextPage(); }}
+              color={colors.tint}
+            />
           }
         />
       )}

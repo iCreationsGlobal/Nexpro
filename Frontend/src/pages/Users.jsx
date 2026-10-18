@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '../hooks/useDebounce';
+import { usePagedList } from '../hooks/usePagedList';
 import { useResponsive } from '../hooks/useResponsive';
 import { useSmartSearch } from '../context/SmartSearchContext';
 import { useForm } from 'react-hook-form';
@@ -133,13 +134,18 @@ const getMemberRole = (record) => {
 
 const isAdminLikeRole = (role) => ADMIN_LIKE_ROLES.includes(role);
 
+/** Team members in one list response (`{ data: [...], count }`). */
+const userRowsFromResponse = (response) => {
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  return [];
+};
+
 const Users = () => {
   const navigate = useNavigate();
   const { searchValue, setSearchValue, setPageSearchConfig } = useSmartSearch();
   const debouncedSearch = useDebounce(searchValue, DEBOUNCE_DELAYS.SEARCH);
   const { isMobile } = useResponsive();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [stats, setStats] = useState(null);
@@ -301,10 +307,48 @@ const Users = () => {
     setPagination((prev) => ({ ...prev, current: 1 }));
   }, [searchValue]);
 
+  const userFilterParams = useMemo(() => {
+    const params = {};
+    if (filters.role !== 'all') {
+      params.role = filters.role;
+    }
+    if (filters.isActive !== 'all') {
+      params.isActive = filters.isActive === 'true';
+    }
+    if (debouncedSearch) params.search = debouncedSearch;
+    return params;
+  }, [filters.role, filters.isActive, debouncedSearch]);
+
+  // Pages on desktop; loads as you scroll on phones and tablets.
+  const {
+    rows: users,
+    total: usersTotal,
+    response: usersResponse,
+    isLoading: usersLoading,
+    isFetching: usersFetching,
+    refetch: refetchUsers,
+    error: usersError,
+    infinite: usersInfinite,
+  } = usePagedList({
+    queryKey: (params) => ['users', 'team', activeTenantId, params],
+    params: userFilterParams,
+    fetchPage: (params) => userService.getAll(params),
+    getRows: userRowsFromResponse,
+    getTotal: (response, rows) => response?.count ?? rows.length,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
+    enabled: Boolean(activeTenantId),
+    // Fetched fresh each time the page opens, as before.
+    staleTime: 0,
+    queryOptions: { retry: false },
+  });
+  // Desktop shows the skeleton while fetching (not for the refresh button), as before;
+  // loading more on phones keeps the rows on screen.
+  const loading = !activeTenantId || usersLoading || (usersFetching && !usersInfinite && !refreshingUsers);
+
   useEffect(() => {
-    if (!activeTenantId) return;
-    fetchUsers();
-  }, [activeTenantId, pagination.current, pagination.pageSize, filters.role, filters.isActive, debouncedSearch]);
+    if (usersError) handleApiError(usersError, { context: 'fetch users' });
+  }, [usersError]);
 
   useEffect(() => {
     if (!activeTenantId || !isAdmin) return;
@@ -330,67 +374,33 @@ const Users = () => {
     }
   }, [users]);
 
-  const fetchUsers = async (isRefresh = false) => {
+  const fetchUsers = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshingUsers(true);
     try {
-      if (isRefresh) {
-        setRefreshingUsers(true);
-      } else {
-        setLoading(true);
-      }
-      const params = {
-        page: pagination.current,
-        limit: pagination.pageSize, // Backend pagination
-      };
-      
-      if (filters.role !== 'all') {
-        params.role = filters.role;
-      }
-      if (filters.isActive !== 'all') {
-        params.isActive = filters.isActive === 'true';
-      }
-      if (debouncedSearch) params.search = debouncedSearch;
-
-      const response = await userService.getAll(params);
-      const list = Array.isArray(response?.data)
-        ? response.data
-        : Array.isArray(response?.data?.data)
-          ? response.data.data
-          : [];
-      setUsers(list);
-      setPagination((prev) => ({
-        ...prev,
-        total: response?.count ?? list.length,
-      }));
-    } catch (error) {
-      handleApiError(error, { context: 'fetch users' });
-      setUsers([]);
-      setPagination((prev) => ({ ...prev, total: 0 }));
+      await refetchUsers();
     } finally {
-      if (isRefresh) {
-        setRefreshingUsers(false);
-      } else {
-        setLoading(false);
-      }
+      if (isRefresh) setRefreshingUsers(false);
     }
-  };
+  }, [refetchUsers]);
 
-  // Calculate summary stats (current page; totals use pagination.total in cards where needed)
+  // Calculate summary stats (current page — the first page on phones and tablets; totals use the full count)
   const calculatedStats = useMemo(() => {
-    const adminUsers = users.filter((u) => u.role === 'admin').length;
-    const managerUsers = users.filter((u) => u.role === 'manager').length;
-    const staffUsers = users.filter((u) => u.role === 'staff').length;
-    const driverUsers = users.filter((u) => u.role === 'driver').length;
+    const pageUsers = userRowsFromResponse(usersResponse);
+    const adminUsers = pageUsers.filter((u) => u.role === 'admin').length;
+    const managerUsers = pageUsers.filter((u) => u.role === 'manager').length;
+    const staffUsers = pageUsers.filter((u) => u.role === 'staff').length;
+    const driverUsers = pageUsers.filter((u) => u.role === 'driver').length;
 
     return {
       totals: {
-        totalUsers: pagination.total || users.length,
+        totalUsers: usersTotal || pageUsers.length,
         adminUsers,
         managerUsers,
         staffUsers,
         driverUsers,
       },
     };
-  }, [users, pagination.total]);
+  }, [usersResponse, usersTotal]);
 
   const fetchSeatUsage = useCallback(async () => {
     if (!activeTenantId || !isManager) return;
@@ -507,12 +517,12 @@ const Users = () => {
     if (!isAdmin || !record?.id) return false;
     if (user?.id && String(record.id) === String(user.id)) return false;
     const role = getMemberRole(record);
-    const fullListLoaded = pagination.total === users.length;
+    const fullListLoaded = usersTotal === users.length;
     if (isAdminLikeRole(role) && fullListLoaded && adminLikeCountOnPage <= 1) {
       return false;
     }
     return true;
-  }, [isAdmin, user?.id, pagination.total, users.length, adminLikeCountOnPage]);
+  }, [isAdmin, user?.id, usersTotal, users.length, adminLikeCountOnPage]);
 
   const cannotRemoveReason = useCallback((record) => {
     if (!record?.id) return '';
@@ -520,12 +530,12 @@ const Users = () => {
       return 'You cannot remove yourself from this workspace.';
     }
     const role = getMemberRole(record);
-    const fullListLoaded = pagination.total === users.length;
+    const fullListLoaded = usersTotal === users.length;
     if (isAdminLikeRole(role) && fullListLoaded && adminLikeCountOnPage <= 1) {
       return 'This is the last remaining owner or admin. Assign another admin before removing them.';
     }
     return '';
-  }, [user?.id, pagination.total, users.length, adminLikeCountOnPage]);
+  }, [user?.id, usersTotal, users.length, adminLikeCountOnPage]);
 
   const openRemoveMemberDialog = useCallback((record) => {
     if (!canRemoveMember(record)) return;
@@ -544,9 +554,9 @@ const Users = () => {
       if (viewingUser?.id === memberToRemove.id) {
         handleCloseDrawer();
       }
-      await fetchUsers();
+      // Refetches this list (it is under ['users']) and every other team-member list.
+      await queryClient.invalidateQueries({ queryKey: ['users'] });
       void fetchSeatUsage();
-      void queryClient.invalidateQueries({ queryKey: ['users'] });
     } catch (error) {
       handleApiError(error, { context: 'remove team member' });
     } finally {
@@ -1055,8 +1065,9 @@ const Users = () => {
         }}
         externalPagination={{
           current: pagination.current,
-          total: pagination.total,
+          total: usersTotal,
         }}
+        infinite={usersInfinite}
       />
 
       {/* Filter Drawer */}

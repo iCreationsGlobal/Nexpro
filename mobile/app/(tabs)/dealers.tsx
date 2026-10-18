@@ -28,7 +28,9 @@ import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
 import { FormSheetModal } from '@/components/FormSheetModal';
 import { FORM_LABELS } from '@/constants/formLabels';
-import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListResponse';
+import { getApiErrorMessage } from '@/utils/parseApiListResponse';
+import { useInfiniteList } from '@/hooks/useInfiniteList';
+import { ListLoadMoreFooter } from '@/components/ListLoadMoreFooter';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { refreshAfterDealerChange, QUERY_STALE } from '@/utils/queryInvalidation';
 import { formatCurrency } from '@/utils/formatCurrency';
@@ -98,17 +100,29 @@ export default function DealersScreen() {
   const dealersEnabled =
     !!activeTenantId && isRetailLike && hasFeature('dealersAccount') && scopeReady;
 
-  const { data: response, isLoading, refetch, isRefetching, error, isError } = useQuery({
+  const {
+    firstPage: response,
+    rows: dealers,
+    isLoading,
+    refetch,
+    isPullRefreshing,
+    error,
+    isError,
+    loadMore,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useInfiniteList<DealerRow>({
     queryKey: [
       'dealers',
       activeTenantId,
       debouncedSearch,
       statusFilter,
     ],
-    queryFn: () =>
+    fetchPage: (page, limit) =>
       dealerService.getAll({
-        page: 1,
-        limit: 50,
+        page,
+        limit,
         search: debouncedSearch || undefined,
         ...(statusFilter === 'active' ? { isActive: true } : {}),
         ...(statusFilter === 'inactive' ? { isActive: false } : {}),
@@ -138,7 +152,6 @@ export default function DealersScreen() {
     },
   });
 
-  const dealers = useMemo(() => parseApiListResponse<DealerRow>(response), [response]);
   const dealerStats = useMemo(() => {
     const stats = (statsResponse ?? {}) as DealerStats;
     return {
@@ -280,7 +293,17 @@ export default function DealersScreen() {
           renderItem={renderDealerItem}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={colors.tint} />
+            <RefreshControl refreshing={isPullRefreshing} onRefresh={onRefresh} tintColor={colors.tint} />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            <ListLoadMoreFooter
+              isLoadingMore={isFetchingNextPage}
+              isError={isFetchNextPageError}
+              onRetry={() => { void fetchNextPage(); }}
+              color={colors.tint}
+            />
           }
         />
       )}

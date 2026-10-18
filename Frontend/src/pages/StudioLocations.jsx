@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -17,6 +18,7 @@ import { useStudioLocation } from '../context/StudioLocationContext';
 import { useSmartSearch } from '../context/SmartSearchContext';
 import { useDebounce } from '../hooks/useDebounce';
 import { useResponsive } from '../hooks/useResponsive';
+import { usePagedList } from '../hooks/usePagedList';
 import studioLocationService from '../services/studioLocationService';
 import userService from '../services/userService';
 import { resolveImageUrl } from '../utils/fileUtils';
@@ -87,16 +89,21 @@ const locationSchema = z.object({
   isDefault: z.boolean().optional(),
 });
 
+/** Studios in one list response (`{ data: [...], count }`). */
+const locationRowsFromResponse = (response) => (Array.isArray(response?.data) ? response.data : []);
+
+/** Cached studio lists (one page on desktop; `{ pages, pageParams }` on phones and tablets). */
+const LOCATION_LIST_KEY = ['studio-locations', 'list'];
+
 const StudioLocations = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeTenant, isManager } = useAuth();
   const { refreshLocations } = useStudioLocation();
   const { isMobile } = useResponsive();
+  const queryClient = useQueryClient();
   const { searchValue, setPageSearchConfig } = useSmartSearch();
   const debouncedSearch = useDebounce(searchValue, DEBOUNCE_DELAYS.SEARCH);
 
-  const [locations, setLocations] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10, total: 0 });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -144,42 +151,52 @@ const StudioLocations = () => {
     if (isModalOpen) loadTeamMembers();
   }, [isModalOpen, loadTeamMembers]);
 
-  const fetchLocations = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await studioLocationService.getAll({
-        page: pagination.page,
-        limit: pagination.pageSize,
-        search: debouncedSearch,
-      });
-      const list = Array.isArray(response?.data) ? response.data : [];
-      setLocations(list);
-      setPagination((prev) => ({ ...prev, total: response?.count ?? list.length }));
-    } catch (error) {
-      showError(error?.response?.data?.message || 'Failed to load studio locations');
-      setLocations([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [pagination.page, pagination.pageSize, debouncedSearch]);
+  // Pages on desktop; loads as you scroll on phones and tablets.
+  const locationFilterParams = useMemo(() => ({ search: debouncedSearch }), [debouncedSearch]);
+  const {
+    rows: locations,
+    total: locationsTotal,
+    response: locationsResponse,
+    isLoading: locationsLoading,
+    isFetching: locationsFetching,
+    refetch: refetchLocations,
+    error: locationsError,
+    infinite: locationsInfinite,
+  } = usePagedList({
+    queryKey: (params) => [...LOCATION_LIST_KEY, activeTenant?.id, params],
+    params: locationFilterParams,
+    fetchPage: (params) => studioLocationService.getAll(params),
+    getRows: locationRowsFromResponse,
+    getTotal: (response, rows) => response?.count ?? rows.length,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+    // Fetched fresh each time the page opens, as before.
+    staleTime: 0,
+    queryOptions: { retry: false },
+  });
+  // Desktop shows the skeleton on every fetch, as before; loading more on phones keeps the rows.
+  const loading = locationsLoading || (locationsFetching && !locationsInfinite);
+  const fetchLocations = useCallback(() => refetchLocations(), [refetchLocations]);
+
+  useEffect(() => {
+    if (locationsError) showError(locationsError?.response?.data?.message || 'Failed to load studio locations');
+  }, [locationsError]);
 
   useEffect(() => {
     setPageSearchConfig({ scope: 'studio-locations', placeholder: 'Search studios by name or city…' });
   }, [setPageSearchConfig]);
 
-  useEffect(() => {
-    fetchLocations();
-  }, [fetchLocations]);
-
+  // Counts from the current page (the first page on phones and tablets)
   const stats = useMemo(() => {
-    const active = locations.filter((l) => l.isActive).length;
+    const pageLocations = locationRowsFromResponse(locationsResponse);
+    const active = pageLocations.filter((l) => l.isActive).length;
     return {
-      total: pagination.total,
+      total: locationsTotal,
       active,
-      inactive: locations.length - active,
-      cities: [...new Set(locations.map((l) => l.city).filter(Boolean))].length,
+      inactive: pageLocations.length - active,
+      cities: [...new Set(pageLocations.map((l) => l.city).filter(Boolean))].length,
     };
-  }, [locations, pagination.total]);
+  }, [locationsResponse, locationsTotal]);
 
   const handleEdit = useCallback(
     (row) => {
@@ -334,14 +351,25 @@ const StudioLocations = () => {
     }, { replace: true });
   }, [searchParams, setSearchParams, handleCreate]);
 
+  /** Show a saved studio straight away (new ones at the top) until the list refetches. */
   const applySavedLocationToList = useCallback((saved) => {
     if (!saved?.id) return;
-    setLocations((prev) => {
-      const index = prev.findIndex((row) => row.id === saved.id);
-      if (index === -1) return [saved, ...prev];
-      return prev.map((row) => (row.id === saved.id ? { ...row, ...saved } : row));
+    const isListed = (response) => locationRowsFromResponse(response).some((row) => row.id === saved.id);
+    const withSaved = (response, addIfMissing) => {
+      if (!Array.isArray(response?.data)) return response;
+      if (!isListed(response)) return addIfMissing ? { ...response, data: [saved, ...response.data] } : response;
+      return { ...response, data: response.data.map((row) => (row.id === saved.id ? { ...row, ...saved } : row)) };
+    };
+    queryClient.setQueriesData({ queryKey: LOCATION_LIST_KEY }, (data) => {
+      if (!data) return data;
+      if (!Array.isArray(data.pages)) return withSaved(data, true);
+      const listedSomewhere = data.pages.some(isListed);
+      return {
+        ...data,
+        pages: data.pages.map((response, index) => withSaved(response, !listedSomewhere && index === 0)),
+      };
     });
-  }, []);
+  }, [queryClient]);
 
   const onSubmit = async (data) => {
     try {
@@ -374,7 +402,7 @@ const StudioLocations = () => {
       }
       setIsModalOpen(false);
       setLogoFile(null);
-      fetchLocations();
+      // Invalidates every ['studio-locations', …] query, this list included.
       refreshLocations();
     } catch (error) {
       showError(error?.response?.data?.message || 'Failed to save studio');
@@ -400,7 +428,7 @@ const StudioLocations = () => {
       await studioLocationService.remove(deleteTarget.id);
       showSuccess('Studio removed');
       setDeleteTarget(null);
-      fetchLocations();
+      // Invalidates every ['studio-locations', …] query, this list included.
       refreshLocations();
     } catch (error) {
       showError(error?.response?.data?.message || 'Failed to delete studio');
@@ -442,7 +470,8 @@ const StudioLocations = () => {
         loading={loading}
         emptyState={locationsEmptyState}
         pageSize={pagination.pageSize}
-        externalPagination={{ current: pagination.page, total: pagination.total }}
+        externalPagination={{ current: pagination.page, total: locationsTotal }}
+        infinite={locationsInfinite}
         onPageChange={(p) =>
           setPagination((prev) => ({
             ...prev,

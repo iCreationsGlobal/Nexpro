@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { Plus, Pencil, Trash2, Eye, Upload as UploadIcon, Loader2, Filter, RefreshCw, Building2, CheckCircle, XCircle, Users } from 'lucide-react';
 import { useDebounce } from '../hooks/useDebounce';
 import { useResponsive } from '../hooks/useResponsive';
+import { usePagedList } from '../hooks/usePagedList';
 import vendorService from '../services/vendorService';
 import vendorPriceListService from '../services/vendorPriceListService';
 import { useAuth } from '../context/AuthContext';
@@ -99,6 +100,12 @@ const priceListItemSchema = z.object({
   imageUrl: z.string().optional().nullable(),
 });
 
+/** Vendors in one list response (`{ data: [...], count }`, or a bare array). */
+const vendorRowsFromResponse = (response) => {
+  const result = response?.data || response || [];
+  return Array.isArray(result) ? result : [];
+};
+
 // Helper function to resolve file URLs (handles base64, relative paths, and absolute URLs)
 const resolveFileUrl = (url) => {
   if (!url) return '';
@@ -151,54 +158,37 @@ const Vendors = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Use React Query for vendors
+  const vendorFilterParams = useMemo(() => {
+    const params = {};
+    if (filters.category !== 'all') params.category = filters.category;
+    if (filters.isActive !== 'all') params.isActive = filters.isActive === 'true';
+    if (debouncedSearch) params.search = debouncedSearch;
+    return params;
+  }, [filters.category, filters.isActive, debouncedSearch]);
+
+  // Pages on desktop; loads as you scroll on phones and tablets.
   const {
-    data: vendorsQueryResult,
+    rows: vendors,
+    total: vendorsCount,
     isLoading: vendorsLoading,
     error: vendorsError,
     refetch: refetchVendors,
     isFetching: vendorsRefetching,
-  } = useQuery({
-    queryKey: ['vendors', activeTenantId, activeShopId, pagination.current, pagination.pageSize, filters, debouncedSearch],
-    queryFn: async () => {
-      try {
-        const params = {
-          page: pagination.current,
-          limit: pagination.pageSize,
-        };
-
-        if (filters.category !== 'all') {
-          params.category = filters.category;
-        }
-
-        if (filters.isActive !== 'all') {
-          params.isActive = filters.isActive === 'true';
-        }
-
-        if (debouncedSearch) params.search = debouncedSearch;
-
-        const response = await vendorService.getAll(params);
-        return response;
-      } catch (error) {
-        console.error('Error in queryFn:', error);
-        throw error;
-      }
-    },
+    infinite: vendorsInfinite,
+  } = usePagedList({
+    queryKey: ({ page, limit }) => ['vendors', activeTenantId, activeShopId, page, limit, filters, debouncedSearch],
+    params: vendorFilterParams,
+    fetchPage: (params) => vendorService.getAll(params),
+    getRows: vendorRowsFromResponse,
+    getTotal: (response, rows) => response?.count || rows.length,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
     enabled: !!activeTenantId && (!shopContext?.isShopWorkspace || !!activeShopId),
-    keepPreviousData: true,
     staleTime: 60 * 1000, // 1 minute
-    refetchOnWindowFocus: false,
+    queryOptions: { refetchOnWindowFocus: false },
   });
-
-  // Extract vendors and count from query result
-  const vendors = useMemo(() => {
-    const result = vendorsQueryResult?.data || vendorsQueryResult || [];
-    return Array.isArray(result) ? result : [];
-  }, [vendorsQueryResult]);
-
-  const vendorsCount = useMemo(() => {
-    return vendorsQueryResult?.count || vendors.length;
-  }, [vendorsQueryResult, vendors]);
+  // Loading the next rows on scroll isn't a refresh.
+  const vendorsRefreshing = vendorsRefetching && !vendorsInfinite?.isLoadingMore;
 
   // Invalidate vendors query
   const invalidateVendors = useCallback(() => {
@@ -238,11 +228,6 @@ const Vendors = () => {
   useEffect(() => {
     setPagination((prev) => ({ ...prev, current: 1 }));
   }, [searchValue]);
-
-  useEffect(() => {
-    const totalCount = vendorsQueryResult?.count || 0;
-    setPagination((prev) => (prev.total === totalCount ? prev : { ...prev, total: totalCount }));
-  }, [vendorsQueryResult]);
 
   useEffect(() => {
     if (vendorsError) {
@@ -594,10 +579,10 @@ const Vendors = () => {
               <Button 
                 variant="outline" 
                 onClick={() => refetchVendors()}
-                disabled={vendorsRefetching}
+                disabled={vendorsRefreshing}
                 size={isMobile ? "icon" : "default"}
               >
-                {vendorsRefetching ? (
+                {vendorsRefreshing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <RefreshCw className="h-4 w-4" />
@@ -684,6 +669,7 @@ const Vendors = () => {
           current: pagination.current,
           total: vendorsCount
         }}
+        infinite={vendorsInfinite}
         viewMode={tableViewMode}
         onViewModeChange={setTableViewMode}
       />

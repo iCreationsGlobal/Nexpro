@@ -97,6 +97,7 @@ import { usePrintFormatOverride } from '../hooks/usePrintFormatOverride';
 import PrintFormatSwitcher from '../components/PrintFormatSwitcher';
 import { QUERY_STALE, refreshAfterCustomerChange } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
+import { usePagedList } from '../hooks/usePagedList';
 import {
   normalizeEntityResponse,
   enrichSaleCustomer,
@@ -109,6 +110,13 @@ import {
 } from '../utils/customerRentalMetadata';
 import PrintableReceipt from '../components/PrintableReceipt';
 import PrintableInvoice from '../components/PrintableInvoice';
+
+/** Customers in one list response (`{ data: [...] }`, or a bare array from older endpoints). */
+const customerRowsFromResponse = (response) => {
+  if (!response) return [];
+  if (response.success !== false && response.data) return Array.isArray(response.data) ? response.data : [];
+  return Array.isArray(response) ? response : [];
+};
 
 /** API often returns null for empty optional fields; forms need strings for controlled inputs. */
 const customerString = z.preprocess(
@@ -266,24 +274,28 @@ const Customers = () => {
     setPagination((prev) => ({ ...prev, current: 1 }));
   }, [searchValue]);
 
-  const customersQueryParams = useMemo(() => {
-    const params = {
-      page: pagination.current,
-      limit: pagination.pageSize,
-      search: debouncedSearchText,
-    };
+  const customersFilterParams = useMemo(() => {
+    const params = { search: debouncedSearchText };
     if (filters.isActive !== 'all') params.isActive = filters.isActive === 'true';
     if (filters.howDidYouHear !== 'all') params.howDidYouHear = filters.howDidYouHear;
     return params;
-  }, [pagination.current, pagination.pageSize, debouncedSearchText, filters.isActive, filters.howDidYouHear]);
+  }, [debouncedSearchText, filters.isActive, filters.howDidYouHear]);
 
+  // Pages on desktop; loads as you scroll on phones and tablets.
   const {
-    data: customersResponse,
+    rows: customerRows,
+    total: customersTotal,
     isLoading: loading,
     refetch: refetchCustomers,
-  } = useQuery({
-    queryKey: queryKeys.customers.list(activeTenantId, activeShopId, activeStudioLocationId, customersQueryParams),
-    queryFn: () => customerService.getAll(customersQueryParams),
+    infinite: customersInfinite,
+  } = usePagedList({
+    queryKey: (params) => queryKeys.customers.list(activeTenantId, activeShopId, activeStudioLocationId, params),
+    params: customersFilterParams,
+    fetchPage: (params) => customerService.getAll(params),
+    getRows: customerRowsFromResponse,
+    getTotal: (response, rows) => response?.count ?? rows.length,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
     enabled: scopeReady,
     staleTime: QUERY_STALE.LIST,
   });
@@ -350,32 +362,14 @@ const Customers = () => {
   });
 
   const customers = useMemo(() => {
-    if (!customersResponse) return [];
-    let customersData = [];
-    if (customersResponse?.success !== false && customersResponse?.data) {
-      customersData = Array.isArray(customersResponse.data) ? customersResponse.data : [];
-    } else {
-      customersData = Array.isArray(customersResponse) ? customersResponse : [];
-    }
-    
-    if (filters.customerType !== 'all') {
-      customersData = customersData.filter((customer) => {
-        const balance = parseFloat(customer.balance || 0);
-        if (filters.customerType === 'new') return balance === 0;
-        if (filters.customerType === 'returning') return balance > 0;
-        return true;
-      });
-    }
-    return customersData;
-  }, [customersResponse, filters.customerType]);
-
-  useEffect(() => {
-    if (!customersResponse) return;
-    setPagination((prev) => ({
-      ...prev,
-      total: customersResponse?.count ?? customers.length,
-    }));
-  }, [customersResponse, customers.length]);
+    if (filters.customerType === 'all') return customerRows;
+    return customerRows.filter((customer) => {
+      const balance = parseFloat(customer.balance || 0);
+      if (filters.customerType === 'new') return balance === 0;
+      if (filters.customerType === 'returning') return balance > 0;
+      return true;
+    });
+  }, [customerRows, filters.customerType]);
 
   useEffect(() => {
     const loadCustomOptions = async () => {
@@ -861,14 +855,15 @@ const Customers = () => {
         <SimpleCustomersList
           customers={customers}
           loading={loading}
-          totalCount={pagination.total}
+          totalCount={customersTotal}
           search={searchValue}
           onSearchChange={setSearchValue}
           onAdd={handleAdd}
           onOpenCustomer={handleEdit}
           page={pagination.current}
-          totalPages={Math.max(Math.ceil((pagination.total || 0) / pagination.pageSize), 1)}
+          totalPages={Math.max(Math.ceil((customersTotal || 0) / pagination.pageSize), 1)}
           onPageChange={(nextPage) => setPagination((prev) => ({ ...prev, current: nextPage }))}
+          infinite={customersInfinite}
         />
       ) : (
       <>
@@ -1016,10 +1011,11 @@ const Customers = () => {
           title={null}
           emptyState={customersEmptyState}
           pageSize={pagination.pageSize}
-          externalPagination={{ current: pagination.current, total: pagination.total }}
+          externalPagination={{ current: pagination.current, total: customersTotal }}
           onPageChange={(newPagination) => {
             setPagination(newPagination);
           }}
+          infinite={customersInfinite}
           viewMode={tableViewMode}
           onViewModeChange={setTableViewMode}
         />

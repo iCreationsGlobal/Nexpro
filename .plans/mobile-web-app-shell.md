@@ -46,7 +46,9 @@
 - Desktop dialogs, drawers and confirms checked pixel-identical before/after.
 
 Not done from the original Phase 2 list (follow-ups):
-- Filter chips instead of filter sheets, and infinite scroll in `MobileCardView` (both need per-page work; lists still page with Previous/Next).
+- Filter chips instead of filter sheets (needs per-page work).
+- Done 2026-10-18: lists load as you scroll on phones and tablets (`hooks/usePagedList.js`, `components/InfiniteListFooter.jsx`, `infinite` prop on DashboardTable/MobileCardView and the Simple Mode lists); desktop keeps page buttons. Admin Control Center lists still page.
+  - Native app too: Customers, Expenses, Invoices, Quotes, Jobs, Leads and Dealers load 20 at a time as you scroll (`mobile/hooks/useInfiniteList.ts`, `mobile/components/ListLoadMoreFooter.tsx`); before, they only ever showed the first 20–50. Expenses search runs on the loaded rows (the API has no expense search), so while nothing matches it keeps loading older expenses.
 - Native-style Dashboard redesign (the current phone dashboard already has period tabs, 2×2 stats, AI insight and recent sales).
 
 ## Done — Phase 3 (installed app)
@@ -75,7 +77,7 @@ Checked with a production build + service worker in Chromium: manifest/icons ser
 
 ## Next (optional follow-ups)
 
-- Phase 2 leftovers: filter chips, infinite scroll in `MobileCardView`, native-style dashboard.
+- Phase 2 leftovers: filter chips, native-style dashboard.
 - A web point of sale for pharmacies (today the pharmacy "Point of Sale" quick action opens a "shop only" page).
 
 ## Known issues found along the way

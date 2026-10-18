@@ -5,6 +5,8 @@ import { z } from 'zod';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { useResponsive } from '../hooks/useResponsive';
+import { useDeviceMode } from '../hooks/useDeviceMode';
+import { usePagedList } from '../hooks/usePagedList';
 import { showSuccess, showError } from '../utils/toast';
 // Removed Ant Design imports - using shadcn/ui only
 import { Plus, RefreshCw, Eye, Loader2, MinusCircle, BookOpen, FileText, Calculator, TrendingUp, Trash2, PlusCircle, Repeat, Play, Pause, CalendarClock } from 'lucide-react';
@@ -160,12 +162,15 @@ const accountCategoriesByType = {
   ],
 };
 
+/** Journal entries in one list response (`{ data, count }`). */
+const journalRowsFromResponse = (response) => (Array.isArray(response?.data) ? response.data : []);
 
 const Accounting = () => {
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
   const { activeTenantId } = useAuth();
   const { isMobile } = useResponsive();
+  const { isAppShell } = useDeviceMode();
   const [accountModalVisible, setAccountModalVisible] = useState(false);
   const [journalModalVisible, setJournalModalVisible] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
@@ -227,10 +232,20 @@ const Accounting = () => {
     enabled: !!activeTenantId,
   });
 
+  // Desktop: one request with the server's default page, as before.
   const journalQuery = useQuery({
     queryKey: ['journalEntries'],
     queryFn: () => accountingService.getJournalEntries(),
-    enabled: !!activeTenantId,
+    enabled: !!activeTenantId && !isAppShell,
+  });
+
+  // Phones and tablets: every journal entry, loaded as you scroll.
+  const shellJournal = usePagedList({
+    queryKey: (params) => ['journalEntries', params],
+    fetchPage: (params) => accountingService.getJournalEntries(params),
+    getRows: journalRowsFromResponse,
+    getTotal: (response) => response?.count,
+    enabled: !!activeTenantId && isAppShell,
   });
 
   const trialBalanceQuery = useQuery({
@@ -717,7 +732,12 @@ const Accounting = () => {
   ], [runRecurringNowMutation, updateRecurringMutation]);
 
   const accounts = accountsQuery.data?.data || [];
-  const journalEntries = journalQuery.data?.data || [];
+  const journalEntries = isAppShell ? shellJournal.rows : (journalQuery.data?.data || []);
+  // The stats card counts the first page in both layouts (desktop only asks for that page).
+  const journalEntriesForStats = useMemo(
+    () => (isAppShell ? journalRowsFromResponse(shellJournal.response) : journalEntries),
+    [isAppShell, shellJournal.response, journalEntries],
+  );
   const trialBalance = trialBalanceQuery.data?.data || [];
   const recurringJournals = recurringJournalsQuery.data?.data || [];
   const recurringRuns = recurringRunsQuery.data?.data || [];
@@ -725,7 +745,7 @@ const Accounting = () => {
   // Calculate summary stats
   const summaryStats = useMemo(() => {
     const totalAccounts = accounts.length;
-    const journalEntriesCount = journalEntries.length;
+    const journalEntriesCount = journalEntriesForStats.length;
     const activeAccounts = accounts.filter(a => a.isActive).length;
     const activeRecurring = recurringJournals.filter((r) => r.status === 'active').length;
     
@@ -737,7 +757,7 @@ const Accounting = () => {
         activeRecurring
       }
     };
-  }, [accounts, journalEntries, recurringJournals]);
+  }, [accounts, journalEntriesForStats, recurringJournals]);
 
   const accountOptions = accounts.map((account) => ({
     label: `${account.code} — ${account.name}`,
@@ -936,7 +956,7 @@ const Accounting = () => {
           <DashboardTable
             data={journalEntries}
             columns={journalTableColumns}
-            loading={journalQuery.isLoading}
+            loading={isAppShell ? shellJournal.isLoading : journalQuery.isLoading}
             title={null}
             emptyIcon={<FileText className="h-12 w-12 text-muted-foreground" />}
             emptyDescription="No journal entries yet. Entries are created automatically from sales, expenses, and invoices."
@@ -948,6 +968,7 @@ const Accounting = () => {
               current: 1,
               total: journalEntries.length
             }}
+            infinite={shellJournal.infinite}
           />
         </TabsContent>
         <TabsContent value="trial">

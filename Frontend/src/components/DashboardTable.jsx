@@ -135,6 +135,7 @@ function DashboardVirtualizedGrid({ scrollRef, paginatedData, columns, scrollRes
  * @param {string} viewMode - 'table' (list) | 'grid' (cards). With onViewModeChange: list shows column headers; grid uses MobileCardView (no header row).
  * @param {Function} onViewModeChange - When provided, mobile respects viewMode (list = table + headers; grid = cards). When omitted, mobile always uses cards (legacy).
  * @param {Function} getCardImage - Optional function(record) => imageUrl for card thumbnail in grid/card view
+ * @param {Object|null} infinite - From usePagedList: on phones/tablets the cards load more on scroll instead of paging
  */
 const DashboardTable = memo(({
   data = [],
@@ -152,7 +153,8 @@ const DashboardTable = memo(({
   onCardClick,
   viewMode: controlledViewMode,
   onViewModeChange,
-  getCardImage
+  getCardImage,
+  infinite = null,
 }) => {
   // Cards wherever the app-style layout is used (phones and tablets) — matches MainLayout.
   const { isAppShell: isMobile } = useDeviceMode();
@@ -224,6 +226,7 @@ const DashboardTable = memo(({
           onCardClick={onCardClick}
           gridLayout={viewMode === 'grid'}
           getCardImage={getCardImage}
+          infinite={infinite}
         />
       </div>
     );

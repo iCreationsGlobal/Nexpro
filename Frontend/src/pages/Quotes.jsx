@@ -43,6 +43,7 @@ import { getCatalogUnitPrice, getProductStockQuantity } from '../utils/productSt
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { QUERY_STALE, refreshAfterQuoteChange } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
+import { usePagedList } from '../hooks/usePagedList';
 import ActionColumn from '../components/ActionColumn';
 import DetailsDrawer from '../components/DetailsDrawer';
 import DrawerSectionCard from '../components/DrawerSectionCard';
@@ -284,6 +285,9 @@ const normalizeQuotesResponse = (response) => {
   };
 };
 
+/** Quotes in one list response (`{ data, count }`). */
+const quoteRowsFromResponse = (response) => normalizeQuotesResponse(response).quotes;
+
 const QuoteProductPicker = forwardRef(({
   value,
   disabled,
@@ -483,11 +487,8 @@ const Quotes = () => {
   const [categoryOtherInputs, setCategoryOtherInputs] = useState({});
   const quotesQueryEnabled = scopeReady && !!activeTenantId && (!shopContext?.isShopWorkspace || !!activeShopId);
 
-  const quotesQueryParams = useMemo(() => {
-    const params = {
-      page: pagination.current,
-      limit: pagination.pageSize,
-    };
+  const quotesFilterParams = useMemo(() => {
+    const params = {};
 
     if (filters.status && filters.status !== 'all') {
       params.status = filters.status;
@@ -501,34 +502,42 @@ const Quotes = () => {
 
     return params;
   }, [
-    pagination.current,
-    pagination.pageSize,
     filters.status,
     filters.customerId,
     debouncedSearch,
   ]);
 
+  // Pages on desktop; loads as you scroll on phones and tablets.
   const {
-    data: quotesQueryResponse,
+    rows: quotes,
+    total: quotesCount,
+    response: quotesQueryResponse,
     error: quotesQueryError,
     isError: quotesQueryIsError,
     isFetching: quotesIsFetching,
     isLoading: loading,
     refetch: refetchQuotesQuery,
-  } = useQuery({
-    queryKey: queryKeys.quotes.list(activeTenantId, activeShopId, activeStudioLocationId, quotesQueryParams),
-    queryFn: () => quoteService.getAll(quotesQueryParams),
+    infinite: quotesInfinite,
+  } = usePagedList({
+    queryKey: (params) => queryKeys.quotes.list(activeTenantId, activeShopId, activeStudioLocationId, params),
+    params: quotesFilterParams,
+    fetchPage: (params) => quoteService.getAll(params),
+    getRows: quoteRowsFromResponse,
+    getTotal: (response) => normalizeQuotesResponse(response).total,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
     enabled: quotesQueryEnabled,
     staleTime: QUERY_STALE.TRANSACTIONAL,
-    refetchInterval: 60 * 1000,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    queryOptions: {
+      refetchInterval: 60 * 1000,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+      retry: 1,
+    },
   });
 
-  const quotesQueryData = useMemo(() => normalizeQuotesResponse(quotesQueryResponse), [quotesQueryResponse]);
-  const quotes = quotesQueryData.quotes;
-  const quotesCount = quotesQueryData.total;
+  // Stats cards read the first page's summary.
+  const quotesSummary = useMemo(() => normalizeQuotesResponse(quotesQueryResponse).summary, [quotesQueryResponse]);
   const refreshingQuotes = quotesIsFetching && !loading;
 
   const refetchQuotes = useCallback(async () => {
@@ -852,9 +861,9 @@ const Quotes = () => {
 
   const summaryStats = useMemo(() => {
     return {
-      totals: quotesQueryData.summary,
+      totals: quotesSummary,
     };
-  }, [quotesQueryData.summary]);
+  }, [quotesSummary]);
 
   const fetchQuoteDetails = async (quoteId) => {
     try {
@@ -1554,6 +1563,7 @@ const Quotes = () => {
           current: pagination.current,
           total: quotesCount
         }}
+        infinite={quotesInfinite}
         viewMode={tableViewMode}
         onViewModeChange={setTableViewMode}
       />

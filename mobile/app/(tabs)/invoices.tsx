@@ -17,7 +17,9 @@ import { useSmartSearch } from '@/context/SmartSearchContext';
 import { useRegisterPageSearch } from '@/hooks/useRegisterPageSearch';
 import { useDebounce } from '@/hooks/useDebounce';
 import { flatListStyleForEmpty, listContentStyleWhenEmpty, showListFilters } from '@/utils/listEmptyLayout';
-import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListResponse';
+import { getApiErrorMessage } from '@/utils/parseApiListResponse';
+import { useInfiniteList } from '@/hooks/useInfiniteList';
+import { ListLoadMoreFooter } from '@/components/ListLoadMoreFooter';
 import { formatStatusLabel } from '@/utils/formatLabels';
 import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
@@ -129,12 +131,25 @@ export default function InvoicesScreen() {
     staleTime: QUERY_STALE.TRANSACTIONAL,
   });
 
-  const { data: response, isLoading, refetch, isRefetching, error, isError } = useQuery({
+  const {
+    firstPage: response,
+    rows: invoices,
+    isLoading,
+    refetch,
+    isRefetching,
+    isPullRefreshing,
+    error,
+    isError,
+    loadMore,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useInfiniteList<Invoice>({
     queryKey: ['invoices', activeTenantId, activeShopId, activeStudioLocationId, statusFilter, debouncedSearch],
-    queryFn: async () => {
+    fetchPage: async (page, limit) => {
       const params: { page?: number; limit?: number; status?: string; search?: string } = {
-        page: 1,
-        limit: 20,
+        page,
+        limit,
         search: debouncedSearch || undefined,
       };
       if (statusFilter !== 'all') params.status = statusFilter;
@@ -165,7 +180,6 @@ export default function InvoicesScreen() {
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 
-  const invoices = useMemo(() => parseApiListResponse<Invoice>(response), [response]);
 
   const invoiceStats = useMemo(() => {
     const stats = normalizeInvoiceStatsResponse(statsResponse);
@@ -391,7 +405,17 @@ export default function InvoicesScreen() {
           renderItem={renderInvoiceItem}
           contentContainerStyle={listContentStyleWhenEmpty(styles.listContent, isEmpty)}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={colors.tint} />
+            <RefreshControl refreshing={isPullRefreshing} onRefresh={onRefresh} tintColor={colors.tint} />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            <ListLoadMoreFooter
+              isLoadingMore={isFetchingNextPage}
+              isError={isFetchNextPageError}
+              onRetry={() => { void fetchNextPage(); }}
+              color={colors.tint}
+            />
           }
           ListEmptyComponent={
             <ListEmptyState

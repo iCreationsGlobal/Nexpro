@@ -46,6 +46,7 @@ import { resolveImageUrl } from '../utils/fileUtils';
 import { formatAmount } from '../utils/formatNumber';
 import { QUERY_STALE, refreshAfterSale } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
+import { usePagedList } from '../hooks/usePagedList';
 import dayjs from 'dayjs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -188,6 +189,9 @@ const normalizeSalesResponse = (response) => {
   };
 };
 
+/** Sales in one list response (`{ data, count, summary }`). */
+const saleRowsFromResponse = (response) => normalizeSalesResponse(response).sales;
+
 const Sales = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -240,47 +244,51 @@ const Sales = () => {
       activeTenant?.metadata?.shopType) === SHOP_TYPES.RESTAURANT;
   const salesQueryEnabled = !!activeTenantId && isShop && (!shopContext?.isShopWorkspace || !!activeShopId) && salesTab === 'sales';
 
-  const salesQueryParams = useMemo(() => {
-    const params = {
-      page: pagination.current,
-      limit: pagination.pageSize,
-    };
+  const salesFilterParams = useMemo(() => {
+    const params = {};
     if (filters.status !== 'all') params.status = filters.status;
     if (filters.customerId !== 'all') params.customerId = filters.customerId;
     if (filters.startDate) params.startDate = dayjs(filters.startDate).format('YYYY-MM-DD');
     if (filters.endDate) params.endDate = dayjs(filters.endDate).format('YYYY-MM-DD');
     return params;
   }, [
-    pagination.current,
-    pagination.pageSize,
     filters.status,
     filters.customerId,
     filters.startDate,
     filters.endDate,
   ]);
 
+  // Pages on desktop; loads as you scroll on phones and tablets.
   const {
-    data: salesQueryResponse,
+    rows: sales,
+    total: totalSalesCount,
+    response: salesQueryResponse,
     error: salesQueryError,
     isError: salesQueryIsError,
     isFetching: salesIsFetching,
     isLoading: loading,
     refetch: refetchSalesQuery,
-  } = useQuery({
-    queryKey: queryKeys.sales.list(activeTenantId, activeShopId, salesQueryParams),
-    queryFn: () => saleService.getSales(salesQueryParams),
+    infinite: salesInfinite,
+  } = usePagedList({
+    queryKey: (params) => queryKeys.sales.list(activeTenantId, activeShopId, params),
+    params: salesFilterParams,
+    fetchPage: (params) => saleService.getSales(params),
+    getRows: saleRowsFromResponse,
+    getTotal: (response) => normalizeSalesResponse(response).total,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
     enabled: salesQueryEnabled,
     staleTime: QUERY_STALE.TRANSACTIONAL,
-    refetchInterval: 60 * 1000,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    queryOptions: {
+      refetchInterval: 60 * 1000,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+      retry: 1,
+    },
   });
 
-  const salesQueryData = useMemo(() => normalizeSalesResponse(salesQueryResponse), [salesQueryResponse]);
-  const sales = salesQueryData.sales;
-  const totalSalesCount = salesQueryData.total;
-  const salesSummary = salesQueryData.summary;
+  // Stats come from the first page's summary (it covers every matching sale, not one page).
+  const salesSummary = useMemo(() => normalizeSalesResponse(salesQueryResponse).summary, [salesQueryResponse]);
   const refreshingSales = salesIsFetching && !loading;
 
   const { data: customersResponse } = useQuery({
@@ -908,6 +916,7 @@ const Sales = () => {
           page={pagination.current}
           totalPages={Math.max(Math.ceil(totalSalesCount / pagination.pageSize), 1)}
           onPageChange={(nextPage) => setPagination((prev) => ({ ...prev, current: nextPage }))}
+          infinite={salesInfinite}
           getPartyLabel={getSalePartyLabel}
           paymentMethodLabels={paymentMethodLabels}
         />
@@ -1039,6 +1048,7 @@ const Sales = () => {
           current: pagination.current,
           total: totalSalesCount
         }}
+        infinite={salesInfinite}
         viewMode={tableViewMode}
         onViewModeChange={setTableViewMode}
         getCardImage={(sale) => {

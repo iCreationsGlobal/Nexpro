@@ -55,6 +55,7 @@ import { guardOnline } from '../utils/onlineRequired';
 import { useResponsive } from '../hooks/useResponsive';
 import { useActiveShopType } from '../hooks/useActiveShopType';
 import { useApi } from '../hooks/useApi';
+import { usePagedList } from '../hooks/usePagedList';
 import DetailsDrawer from '../components/DetailsDrawer';
 import MobileFormDialog from '../components/MobileFormDialog';
 import DrawerSectionCard from '../components/DrawerSectionCard';
@@ -784,10 +785,9 @@ const Products = () => {
   // Debounced search
   const debouncedSearch = useDebounce(searchValue, DEBOUNCE_DELAYS.SEARCH);
 
-  const productQueryParams = useMemo(() => {
+  // Filters and sort; usePagedList adds page/limit (desktop pages, phones/tablets load on scroll).
+  const productFilterParams = useMemo(() => {
     const params = {
-      page: pagination.current,
-      limit: pagination.pageSize,
       search: debouncedSearch,
       categoryId: categoryFilter === 'all' ? undefined : categoryFilter,
       sort: sortBy || 'name_asc',
@@ -800,12 +800,7 @@ const Products = () => {
     }
 
     return params;
-  }, [pagination.current, pagination.pageSize, debouncedSearch, categoryFilter, stockFilter, sortBy]);
-
-  const productListQueryKey = useMemo(
-    () => queryKeys.products.list(activeTenantId, activeShopId, activeStudioLocationId, productQueryParams),
-    [activeTenantId, activeShopId, activeStudioLocationId, productQueryParams]
-  );
+  }, [debouncedSearch, categoryFilter, stockFilter, sortBy]);
 
   const productCategoriesQueryKey = useMemo(
     () => queryKeys.products.categories(activeTenantId, activeShopId, activeStudioLocationId),
@@ -818,22 +813,31 @@ const Products = () => {
   );
 
   const {
-    data: productsResponse,
+    rows: products,
+    total: productsTotal,
     isLoading: loading,
     isFetching: productsFetching,
     isError: productsError,
     error: productsQueryError,
     refetch: refetchProducts,
-  } = useApi({
-    queryKey: productListQueryKey,
-    queryFn: () => productService.getProducts(productQueryParams),
-    options: {
-      enabled: scopeReady,
-      staleTime: QUERY_STALE.LIST,
+    infinite: productsInfinite,
+  } = usePagedList({
+    queryKey: (params) => queryKeys.products.list(activeTenantId, activeShopId, activeStudioLocationId, params),
+    params: productFilterParams,
+    fetchPage: (params) => productService.getProducts(params),
+    getRows: getProductRows,
+    getTotal: getProductTotal,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
+    enabled: scopeReady,
+    staleTime: QUERY_STALE.LIST,
+    queryOptions: {
       refetchOnWindowFocus: false,
       retry: 1,
     },
   });
+  // Loading the next rows on scroll isn't a refresh.
+  const productsRefreshing = productsFetching && !productsInfinite?.isLoadingMore;
 
   const {
     data: categoriesResponse,
@@ -864,7 +868,6 @@ const Products = () => {
     },
   });
 
-  const products = useMemo(() => getProductRows(productsResponse), [productsResponse]);
   const categories = useMemo(() => getCategoryRows(categoriesResponse), [categoriesResponse]);
   const stats = useMemo(() => getProductStats(statsResponse), [statsResponse]);
 
@@ -887,13 +890,6 @@ const Products = () => {
       retry: 1,
     },
   });
-
-  useEffect(() => {
-    setPagination((prev) => {
-      const nextTotal = getProductTotal(productsResponse);
-      return prev.total === nextTotal ? prev : { ...prev, total: nextTotal };
-    });
-  }, [productsResponse]);
 
   useEffect(() => {
     if (productsError) {
@@ -2807,7 +2803,7 @@ const Products = () => {
         <SimpleProductsList
           products={products}
           loading={loading}
-          totalCount={pagination.total || products.length}
+          totalCount={productsTotal}
           search={searchValue}
           onSearchChange={setSearchValue}
           onAdd={handleCreateProduct}
@@ -2815,8 +2811,9 @@ const Products = () => {
           sortBy={sortBy}
           onSortChange={setSortBy}
           page={pagination.current}
-          totalPages={Math.max(Math.ceil((pagination.total || 0) / pagination.pageSize), 1)}
+          totalPages={Math.max(Math.ceil((productsTotal || 0) / pagination.pageSize), 1)}
           onPageChange={(nextPage) => handlePageChange({ ...pagination, current: nextPage })}
+          infinite={productsInfinite}
         />
       ) : (
       <>
@@ -2852,9 +2849,9 @@ const Products = () => {
                 variant="outline"
                 size={isMobile ? 'icon' : 'default'}
                 onClick={handleRefresh}
-                disabled={productsFetching}
+                disabled={productsRefreshing}
               >
-                {productsFetching ? (
+                {productsRefreshing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <RefreshCw className="h-4 w-4" />
@@ -2962,8 +2959,9 @@ const Products = () => {
         title={null}
         emptyState={productsEmptyState}
         pageSize={pagination.pageSize}
-        externalPagination={{ current: pagination.current, total: pagination.total }}
+        externalPagination={{ current: pagination.current, total: productsTotal }}
         onPageChange={handlePageChange}
+        infinite={productsInfinite}
         viewMode={tableViewMode}
         onViewModeChange={setTableViewMode}
       />

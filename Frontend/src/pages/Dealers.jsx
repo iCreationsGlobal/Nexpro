@@ -58,8 +58,15 @@ import { numberInputValue, handleNumberChange } from '../utils/formUtils';
 import { generatePDF, openPrintDialog } from '../utils/pdfUtils';
 import { QUERY_STALE } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
+import { usePagedList } from '../hooks/usePagedList';
 import { formatAmount } from '../utils/formatNumber';
 import PrintableDealerStatement from '../components/PrintableDealerStatement';
+
+/** Dealers in one list response (`{ data: [...], count }`). */
+const dealerRowsFromResponse = (response) => {
+  const rows = response?.data || [];
+  return Array.isArray(rows) ? rows : [];
+};
 
 const optionalString = z.preprocess(
   (val) => (val === null || val === undefined ? '' : val),
@@ -161,12 +168,10 @@ const Dealers = () => {
     }
   }, [searchParams, setSearchParams, form]);
 
-  const listParams = useMemo(() => ({
-    page: pagination.current,
-    limit: pagination.pageSize,
+  const listFilterParams = useMemo(() => ({
     search: debouncedSearchText,
     ...(filters.isActive !== 'all' ? { isActive: filters.isActive === 'true' } : {}),
-  }), [pagination.current, pagination.pageSize, debouncedSearchText, filters.isActive]);
+  }), [debouncedSearchText, filters.isActive]);
 
   const { data: statsResponse, isLoading: statsLoading } = useQuery({
     queryKey: queryKeys.dealers.stats(activeTenantId),
@@ -175,22 +180,24 @@ const Dealers = () => {
     enabled: !!activeTenantId,
   });
 
-  const { data: dealersResponse, isLoading, refetch } = useQuery({
-    queryKey: queryKeys.dealers.list(activeTenantId, listParams),
-    queryFn: () => dealerService.getAll(listParams),
+  // Pages on desktop; loads as you scroll on phones and tablets.
+  const {
+    rows: dealers,
+    total: dealersTotal,
+    isLoading,
+    refetch,
+    infinite: dealersInfinite,
+  } = usePagedList({
+    queryKey: (params) => queryKeys.dealers.list(activeTenantId, params),
+    params: listFilterParams,
+    fetchPage: (params) => dealerService.getAll(params),
+    getRows: dealerRowsFromResponse,
+    getTotal: (response, rows) => response?.count ?? response?.pagination?.total ?? rows.length,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
     staleTime: QUERY_STALE.DEFAULT,
     enabled: !!activeTenantId,
   });
-
-  const dealers = useMemo(() => {
-    const rows = dealersResponse?.data || [];
-    return Array.isArray(rows) ? rows : [];
-  }, [dealersResponse]);
-
-  useEffect(() => {
-    const total = dealersResponse?.count ?? dealersResponse?.pagination?.total ?? dealers.length;
-    setPagination((prev) => ({ ...prev, total }));
-  }, [dealersResponse, dealers.length]);
 
   const { data: ledgerResponse, isLoading: ledgerLoading } = useQuery({
     queryKey: queryKeys.dealers.ledger(viewingDealer?.id, { page: 1, limit: 50 }),
@@ -664,8 +671,9 @@ const Dealers = () => {
           loading={isLoading}
           emptyState={dealersEmptyState}
           pageSize={pagination.pageSize}
-          externalPagination={{ current: pagination.current, total: pagination.total }}
+          externalPagination={{ current: pagination.current, total: dealersTotal }}
           onPageChange={(newPagination) => setPagination((prev) => ({ ...prev, ...newPagination }))}
+          infinite={dealersInfinite}
         />
       )}
 

@@ -19,9 +19,15 @@ const ALL_FEATURES = [
  * @param {'full'|'simple'} [options.interfaceMode]
  * @param {string[]} [options.focusAreas] - Ranked focus-area ids
  * @param {string[]} [options.features] - Plan features switched on (default: all)
- * @param {(path: string) => unknown} [options.responses] - Data for specific API paths ('/customers', …)
+ * @param {(path: string, url: URL) => unknown} [options.responses] - Data for specific API paths ('/customers', …).
+ *   Return `{ body }` from `mockBody()` to send a whole response body (e.g. with a total count).
  */
 export { ALL_FEATURES };
+
+const FULL_BODY = Symbol('full response body');
+
+/** Wrap a whole response body for `responses` (instead of the default `{ success, data }`). */
+export const mockBody = (body) => ({ [FULL_BODY]: body });
 
 export async function mockWorkspaceApi(page, {
   baseURL,
@@ -73,7 +79,10 @@ export async function mockWorkspaceApi(page, {
     if (!url.pathname.startsWith('/api')) return route.fulfill({ status: 204, body: '' });
 
     const path = url.pathname.replace(/^\/api/, '');
-    const provided = responses(path);
+    const provided = responses(path, url);
+    if (provided && typeof provided === 'object' && FULL_BODY in provided) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(provided[FULL_BODY]) });
+    }
     let data = [];
     if (provided !== undefined) {
       data = provided;

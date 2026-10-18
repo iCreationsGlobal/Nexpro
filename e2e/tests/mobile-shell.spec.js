@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockWorkspaceApi, ALL_FEATURES } from './helpers/mockApi.js';
+import { mockWorkspaceApi, mockBody, ALL_FEATURES } from './helpers/mockApi.js';
 
 /**
  * Phones and tablets get the app shell (bottom tabs, More sheet, app headers) like the native app;
@@ -20,6 +20,25 @@ const withCustomer = {
     if (path === '/customers') return [CUSTOMER];
     if (path === '/customers/c1') return CUSTOMER;
     return undefined;
+  },
+};
+
+const MANY_CUSTOMERS = Array.from({ length: 45 }, (_, i) => ({
+  id: `c${i + 1}`,
+  name: `Customer ${String(i + 1).padStart(2, '0')}`,
+  phone: `02440000${String(i).padStart(2, '0')}`,
+  isActive: true,
+  createdAt: '2026-09-01T10:00:00Z',
+}));
+/** 45 customers, paged by the request's page/limit like the API. */
+const withManyCustomers = {
+  features: withCustomer.features,
+  responses: (path, url) => {
+    if (path !== '/customers') return undefined;
+    const pageNumber = Number(url.searchParams.get('page') || 1);
+    const limit = Number(url.searchParams.get('limit') || 10);
+    const data = MANY_CUSTOMERS.slice((pageNumber - 1) * limit, pageNumber * limit);
+    return mockBody({ success: true, data, count: MANY_CUSTOMERS.length });
   },
 };
 
@@ -50,6 +69,15 @@ test.describe('desktop', () => {
     await expect(page.getByText('Kofi Mensah').first()).toBeVisible();
     await page.waitForTimeout(1500);
     expect(await page.evaluate(() => localStorage.getItem('abs-query-cache'))).toBeNull();
+  });
+
+  test('long lists keep their page buttons', async ({ page, baseURL }) => {
+    await openApp(page, baseURL, '/customers', withManyCustomers);
+    await expect(page.getByText('Page 1 of 5')).toBeVisible();
+    await expect(page.getByText(/^Customer \d\d$/)).toHaveCount(10);
+    await page.getByRole('button', { name: /Next/ }).click();
+    await expect(page.getByText('Customer 11', { exact: true })).toBeVisible();
+    await expect(page.getByText('Customer 01', { exact: true })).toHaveCount(0);
   });
 
   test('keeps the sidebar and has no tab bar', async ({ page, baseURL }) => {
@@ -165,6 +193,25 @@ test.describe('app shell', () => {
     await expect(openOverlays(page)).toHaveCount(0);
     await page.goBack();
     await expect(page).toHaveURL(/\/dashboard$/);
+  });
+
+  test('long lists load more as you scroll', async ({ page, baseURL }) => {
+    const listRequests = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === '/api/customers') listRequests.push(`${url.searchParams.get('page')}x${url.searchParams.get('limit')}`);
+    });
+    await openApp(page, baseURL, '/customers', withManyCustomers);
+    const names = page.getByText(/^Customer \d\d$/);
+    await expect(names.first()).toBeVisible();
+    await expect(page.getByText(/Page \d+ of \d+/)).toHaveCount(0);
+    await expect(names).toHaveCount(20);
+    await expect.poll(async () => {
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      return names.count();
+    }).toBe(45);
+    await expect(page.getByText('All 45 items')).toBeVisible();
+    expect([...new Set(listRequests)]).toEqual(['1x20', '2x20', '3x20']);
   });
 
   test('tapping a card opens the record; back closes it', async ({ page, baseURL }, testInfo) => {

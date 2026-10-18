@@ -10,6 +10,7 @@ import invoiceService from '../services/invoiceService';
 import { guardOnline } from '../utils/onlineRequired';
 import { QUERY_STALE, refreshAfterInvoiceChange } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
+import { usePagedList } from '../hooks/usePagedList';
 import settingsService from '../services/settingsService';
 import customerService from '../services/customerService';
 import customDropdownService from '../services/customDropdownService';
@@ -118,6 +119,9 @@ const normalizeInvoicesResponse = (response) => {
   };
 };
 
+/** Invoices in one list response (`{ data, count }`). */
+const invoiceRowsFromResponse = (response) => normalizeInvoicesResponse(response).invoices;
+
 const normalizeInvoiceStatsResponse = (response) => {
   const payload = response?.data?.data != null ? response.data : response;
   return payload?.data || payload || null;
@@ -200,29 +204,33 @@ const Invoices = () => {
   const debouncedSearch = useDebounce(searchValue, DEBOUNCE_DELAYS.SEARCH);
   const invoicesQueryEnabled = scopeReady && !!activeTenantId && (!shopContext?.isShopWorkspace || !!activeShopId);
 
-  const invoicesQueryParams = useMemo(() => {
-    const params = {
-      page: pagination.current,
-      limit: pagination.pageSize,
-    };
+  const invoicesFilterParams = useMemo(() => {
+    const params = {};
     if (filters.status) params.status = filters.status;
     if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
     return params;
-  }, [pagination.current, pagination.pageSize, filters.status, debouncedSearch]);
+  }, [filters.status, debouncedSearch]);
 
+  // Pages on desktop; loads as you scroll on phones and tablets.
   const {
-    data: invoicesQueryResponse,
+    rows: invoices,
+    total: totalInvoicesCount,
     error: invoicesQueryError,
     isError: invoicesQueryIsError,
     isLoading: loading,
     refetch: refetchInvoicesQuery,
-  } = useQuery({
-    queryKey: queryKeys.invoices.list(activeTenantId, activeShopId, activeStudioLocationId, invoicesQueryParams),
-    queryFn: () => invoiceService.getAll(invoicesQueryParams),
+    infinite: invoicesInfinite,
+  } = usePagedList({
+    queryKey: (params) => queryKeys.invoices.list(activeTenantId, activeShopId, activeStudioLocationId, params),
+    params: invoicesFilterParams,
+    fetchPage: (params) => invoiceService.getAll(params),
+    getRows: invoiceRowsFromResponse,
+    getTotal: (response) => normalizeInvoicesResponse(response).total,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
     enabled: invoicesQueryEnabled,
     staleTime: QUERY_STALE.LIST,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    queryOptions: { refetchOnWindowFocus: true, retry: 1 },
   });
 
   const {
@@ -238,9 +246,6 @@ const Invoices = () => {
     retry: 1,
   });
 
-  const invoicesQueryData = useMemo(() => normalizeInvoicesResponse(invoicesQueryResponse), [invoicesQueryResponse]);
-  const invoices = invoicesQueryData.invoices;
-  const totalInvoicesCount = invoicesQueryData.total;
   const stats = useMemo(() => normalizeInvoiceStatsResponse(invoiceStatsResponse), [invoiceStatsResponse]);
 
   const refetchInvoices = useCallback(async () => {
@@ -1030,6 +1035,7 @@ const Invoices = () => {
         pageSize={pagination.pageSize}
         externalPagination={{ current: pagination.current, total: totalInvoicesCount }}
         onPageChange={(newPagination) => setPagination(prev => ({ ...prev, ...newPagination }))}
+        infinite={invoicesInfinite}
         viewMode={tableViewMode}
         onViewModeChange={setTableViewMode}
       />

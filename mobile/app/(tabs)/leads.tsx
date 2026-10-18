@@ -32,7 +32,9 @@ import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
-import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListResponse';
+import { getApiErrorMessage } from '@/utils/parseApiListResponse';
+import { useInfiniteList } from '@/hooks/useInfiniteList';
+import { ListLoadMoreFooter } from '@/components/ListLoadMoreFooter';
 import { FilterChipRow } from '@/components/FilterChip';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { refreshAfterLeadChange } from '@/utils/queryInvalidation';
@@ -78,12 +80,24 @@ export default function LeadsScreen() {
 
   const debouncedSearch = useDebounce(searchValue, 400);
 
-  const { data, isLoading, refetch, isRefetching, error, isError } = useQuery({
+  const {
+    firstPage: data,
+    rows: leads,
+    isLoading,
+    refetch,
+    isPullRefreshing,
+    error,
+    isError,
+    loadMore,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useInfiniteList<LeadRow>({
     queryKey: ['leads', activeTenantId, activeShopId, activeStudioLocationId, debouncedSearch, status],
-    queryFn: async () =>
+    fetchPage: async (page, limit) =>
       leadService.getAll({
-        page: 1,
-        limit: 50,
+        page,
+        limit,
         search: debouncedSearch || undefined,
         status: status === 'all' ? undefined : status,
       }),
@@ -104,7 +118,6 @@ export default function LeadsScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const leads = useMemo(() => parseApiListResponse<LeadRow>(data), [data]);
   const loadErrorMessage = useMemo(
     () => getApiErrorMessage(error, 'Could not load leads. Pull to refresh.'),
     [error]
@@ -252,7 +265,17 @@ export default function LeadsScreen() {
           keyExtractor={(item) => item.id}
           renderItem={renderLead}
           contentContainerStyle={listContentStyleWhenEmpty(styles.listContent, leads.length === 0)}
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />}
+          refreshControl={<RefreshControl refreshing={isPullRefreshing} onRefresh={onRefresh} />}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            <ListLoadMoreFooter
+              isLoadingMore={isFetchingNextPage}
+              isError={isFetchNextPageError}
+              onRetry={() => { void fetchNextPage(); }}
+              color={colors.tint}
+            />
+          }
           ListEmptyComponent={
             <ListEmptyState
               imageKey="LEADS"

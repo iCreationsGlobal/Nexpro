@@ -32,6 +32,8 @@ import { CURRENCY } from '@/constants';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { resolveBusinessType } from '@/constants';
 import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListResponse';
+import { useInfiniteList } from '@/hooks/useInfiniteList';
+import { ListLoadMoreFooter } from '@/components/ListLoadMoreFooter';
 import { formatStatusLabel } from '@/utils/formatLabels';
 import { showListFilters } from '@/utils/listEmptyLayout';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
@@ -114,12 +116,24 @@ export default function JobsScreen() {
   useRegisterPageSearch({ scope: 'jobs', placeholder: SEARCH_PLACEHOLDERS.JOBS });
   const debouncedSearch = useDebounce(searchValue, 400);
 
-  const { data: response, isLoading, refetch, isRefetching, error, isError } = useQuery({
+  const {
+    firstPage: response,
+    rows: jobs,
+    isLoading,
+    refetch,
+    isPullRefreshing,
+    error,
+    isError,
+    loadMore,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useInfiniteList<Job>({
     queryKey: ['jobs', activeTenantId, activeShopId, activeStudioLocationId, debouncedSearch],
-    queryFn: async () => {
+    fetchPage: async (page, limit) => {
       const params: { page?: number; limit?: number; search?: string } = {
-        page: 1,
-        limit: 50,
+        page,
+        limit,
         search: debouncedSearch || undefined,
       };
       return jobService.getJobs(params);
@@ -138,7 +152,6 @@ export default function JobsScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const jobs = useMemo(() => parseApiListResponse<Job>(response), [response]);
   const customers = useMemo(() => parseApiListResponse<CustomerOption>(customersResponse), [customersResponse]);
   const loadErrorMessage = useMemo(
     () => getApiErrorMessage(error, 'Could not load jobs. Pull to refresh.'),
@@ -395,7 +408,17 @@ export default function JobsScreen() {
           renderItem={renderJobItem}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={colors.tint} />
+            <RefreshControl refreshing={isPullRefreshing} onRefresh={onRefresh} tintColor={colors.tint} />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            <ListLoadMoreFooter
+              isLoadingMore={isFetchingNextPage}
+              isError={isFetchNextPageError}
+              onRetry={() => { void fetchNextPage(); }}
+              color={colors.tint}
+            />
           }
           ListEmptyComponent={
             <ListEmptyState

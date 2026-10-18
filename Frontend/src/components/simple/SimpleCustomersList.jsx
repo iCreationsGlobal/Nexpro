@@ -1,11 +1,13 @@
 import { ChevronRight, Loader2, Search, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import InfiniteListFooter from '@/components/InfiniteListFooter';
 import { formatAmount } from '../../utils/formatNumber';
 import { formatDisplayPhone } from '../../utils/phoneUtils';
 
 /**
  * Simple Mode customers page: a big Add customer button, a search box and a plain list.
  * Customers who owe money (unpaid invoices) show the amount. Tapping one opens it.
+ * With `infinite` (phones and tablets, from usePagedList) more load on scroll instead of pages.
  */
 export default function SimpleCustomersList({
   customers,
@@ -18,6 +20,7 @@ export default function SimpleCustomersList({
   page,
   totalPages,
   onPageChange,
+  infinite = null,
 }) {
   const searching = Boolean(String(search || '').trim());
   return (
@@ -91,7 +94,9 @@ export default function SimpleCustomersList({
         </ul>
       )}
 
-      {totalPages > 1 ? (
+      {infinite && customers.length > 0 ? (
+        <InfiniteListFooter {...infinite} count={customers.length} noun="customers" />
+      ) : !infinite && totalPages > 1 ? (
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Page {page} of {totalPages}</span>
           <div className="flex gap-2">

@@ -25,6 +25,8 @@ import { buildStorefrontStoreUrl } from '../utils/storefrontUrl';
 import { resolveImageUrl } from '../utils/fileUtils';
 import { QUERY_STALE, refreshAfterOnlineOrderChange } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
+import { usePagedList } from '../hooks/usePagedList';
+import InfiniteListFooter from '../components/InfiniteListFooter';
 import DetailsDrawer from '../components/DetailsDrawer';
 import DrawerSectionCard from '../components/DrawerSectionCard';
 import { Button } from '@/components/ui/button';
@@ -189,6 +191,16 @@ const getPagination = (body, fallbackPage) => {
   const total = Number(pagination.total || pagination.count || 0);
 
   return { page, totalPages: Math.max(totalPages, 1), total };
+};
+
+/** Orders in one list response (`{ success, count, pagination, data: [...] }`). */
+const getOrderRowsFromResponse = (response) => getOrderRows(getListPayload(response));
+
+/** Matching orders across all pages (`count`), for loading more on phones and tablets. */
+const getOrdersTotalFromResponse = (response, rows) => {
+  const body = getListPayload(response);
+  const count = Number(response?.count ?? body?.count ?? getPagination(body).total);
+  return count > 0 ? count : rows.length;
 };
 
 const getCustomerName = (order) => (
@@ -390,6 +402,27 @@ const updateOrderPayload = (payload, orderId, updater, shouldKeepOrder) => {
 const patchCachedOnlineOrderResponse = (response, orderId, updater, shouldKeepOrder) => {
   const result = updateOrderPayload(response, orderId, updater, shouldKeepOrder);
   return result.changed ? result.value : response;
+};
+
+const isInfiniteQueryData = (data) => Boolean(
+  data && typeof data === 'object' && Array.isArray(data.pages) && Array.isArray(data.pageParams)
+);
+
+/**
+ * Patches one cached online-orders query: a single response (desktop list, stats, detail) or,
+ * for the phone/tablet list that loads as you scroll, every loaded page of `{ pages, pageParams }`.
+ */
+export const patchCachedOnlineOrders = (cachedData, orderId, updater, shouldKeepOrder = () => true) => {
+  if (!isInfiniteQueryData(cachedData)) {
+    return patchCachedOnlineOrderResponse(cachedData, orderId, updater, shouldKeepOrder);
+  }
+  let changed = false;
+  const pages = cachedData.pages.map((pageResponse) => {
+    const nextPage = patchCachedOnlineOrderResponse(pageResponse, orderId, updater, shouldKeepOrder);
+    if (nextPage !== pageResponse) changed = true;
+    return nextPage;
+  });
+  return changed ? { ...cachedData, pages } : cachedData;
 };
 
 const getStatusFilterFromOrderQueryKey = (queryKey) => {
@@ -701,34 +734,51 @@ const OnlineOrders = () => {
   const [cancellationReasonError, setCancellationReasonError] = useState('');
   const cancellationReasonRef = useRef(null);
 
-  const listQueryParams = useMemo(() => ({
-    page,
-    limit: PAGINATION.DEFAULT_PAGE_SIZE,
+  const listFilterParams = useMemo(() => ({
     status: statusFilter === 'all' ? undefined : statusFilter,
     includeStats: false,
     commerceChannel,
-  }), [page, statusFilter, commerceChannel]);
+  }), [statusFilter, commerceChannel]);
+
+  // Desktop's page request; the Trade Assurance dashboard keys on it too.
+  const listQueryParams = useMemo(() => ({
+    ...listFilterParams,
+    page,
+    limit: PAGINATION.DEFAULT_PAGE_SIZE,
+  }), [listFilterParams, page]);
 
   const statsQueryParams = useMemo(() => ({
     status: statusFilter === 'all' ? undefined : statusFilter,
     commerceChannel,
   }), [statusFilter, commerceChannel]);
 
+  // Pages on desktop; loads as you scroll on phones and tablets (`response` is the first page there).
   const {
-    data: response,
+    rows: orders,
+    response,
     error,
     isFetching,
     isLoading,
     refetch,
-  } = useQuery({
-    queryKey: queryKeys.store.onlineOrders.list(listQueryParams),
-    queryFn: () => storeService.getOrders(listQueryParams),
+    infinite: ordersInfinite,
+  } = usePagedList({
+    queryKey: (params) => queryKeys.store.onlineOrders.list(params),
+    params: listFilterParams,
+    fetchPage: (params) => storeService.getOrders(params),
+    getRows: getOrderRowsFromResponse,
+    getTotal: getOrdersTotalFromResponse,
+    page,
+    pageSize: PAGINATION.DEFAULT_PAGE_SIZE,
     staleTime: QUERY_STALE.TRANSACTIONAL,
-    refetchInterval: 60 * 1000,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: false,
-    retry: 1,
+    queryOptions: {
+      refetchInterval: 60 * 1000,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
   });
+  // Loading the next rows on scroll isn't a refresh.
+  const isRefreshing = isFetching && !ordersInfinite?.isLoadingMore;
 
   const { data: statsResponse, refetch: refetchStats } = useQuery({
     queryKey: queryKeys.store.onlineOrders.stats(statsQueryParams),
@@ -766,7 +816,6 @@ const OnlineOrders = () => {
   });
 
   const body = useMemo(() => getListPayload(response), [response]);
-  const orders = useMemo(() => getOrderRows(body), [body]);
   const statsBody = useMemo(() => getBody(statsResponse), [statsResponse]);
   const stats = useMemo(
     () => getStats({ ...body, stats: statsBody.data || statsBody }, orders),
@@ -819,7 +868,7 @@ const OnlineOrders = () => {
 
       previousOnlineOrders.forEach(([queryKey]) => {
         const statusFilter = getStatusFilterFromOrderQueryKey(queryKey);
-        queryClient.setQueryData(queryKey, (currentData) => patchCachedOnlineOrderResponse(
+        queryClient.setQueryData(queryKey, (currentData) => patchCachedOnlineOrders(
           currentData,
           orderId,
           optimisticUpdater,
@@ -842,7 +891,7 @@ const OnlineOrders = () => {
       if (updatedOrder?.id) {
         queryClient.getQueriesData({ queryKey: queryKeys.store.onlineOrders.all }).forEach(([queryKey]) => {
           const statusFilter = getStatusFilterFromOrderQueryKey(queryKey);
-          queryClient.setQueryData(queryKey, (currentData) => patchCachedOnlineOrderResponse(
+          queryClient.setQueryData(queryKey, (currentData) => patchCachedOnlineOrders(
             currentData,
             updatedOrder.id,
             () => updatedOrder,
@@ -1614,8 +1663,8 @@ const OnlineOrders = () => {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button className="w-full sm:w-auto" onClick={handleRefresh} disabled={isFetching}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+          <Button className="w-full sm:w-auto" onClick={handleRefresh} disabled={isRefreshing}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
@@ -1695,7 +1744,9 @@ const OnlineOrders = () => {
                 <>
                   {renderOrderTable()}
                   {renderMobileCards()}
-                  {renderPagination()}
+                  {ordersInfinite ? (
+                    <InfiniteListFooter {...ordersInfinite} count={orders.length} noun="orders" />
+                  ) : renderPagination()}
                 </>
               )}
             </CardContent>

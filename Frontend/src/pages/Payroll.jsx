@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useResponsive } from '../hooks/useResponsive';
+import { useDeviceMode } from '../hooks/useDeviceMode';
+import { usePagedList } from '../hooks/usePagedList';
 import { useCurrency } from '../hooks/useCurrency';
 // Removed Ant Design imports - using shadcn/ui only
 import { Plus, RefreshCw, Loader2, Currency, Calendar, Users, FileText } from 'lucide-react';
@@ -63,10 +65,14 @@ import {
 } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 
+/** Payroll runs in one list response (`{ data, count }`). */
+const payrollRunRowsFromResponse = (response) => (Array.isArray(response?.data) ? response.data : []);
+
 const Payroll = () => {
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
   const { isMobile } = useResponsive();
+  const { isAppShell } = useDeviceMode();
   const [runModalVisible, setRunModalVisible] = useState(false);
   const [refreshingPayroll, setRefreshingPayroll] = useState(false);
   const [viewingRun, setViewingRun] = useState(null);
@@ -90,9 +96,20 @@ const Payroll = () => {
     },
   });
 
+  // Desktop: one request with the server's default page, paged in the table below, as before.
   const runsQuery = useQuery({
     queryKey: ['payrollRuns'],
-    queryFn: () => payrollService.getRuns()
+    queryFn: () => payrollService.getRuns(),
+    enabled: !isAppShell,
+  });
+
+  // Phones and tablets: every payroll run, loaded as you scroll.
+  const shellRuns = usePagedList({
+    queryKey: (params) => ['payrollRuns', params],
+    fetchPage: (params) => payrollService.getRuns(params),
+    getRows: payrollRunRowsFromResponse,
+    getTotal: (response) => response?.count,
+    enabled: isAppShell,
   });
 
   const employeesQuery = useQuery({
@@ -125,7 +142,12 @@ const Payroll = () => {
     }
   });
 
-  const runs = runsQuery.data?.data || [];
+  const runs = isAppShell ? shellRuns.rows : (runsQuery.data?.data || []);
+  // The stats cards cover the first page in both layouts (desktop only asks for that page).
+  const runsForStats = useMemo(
+    () => (isAppShell ? payrollRunRowsFromResponse(shellRuns.response) : runs),
+    [isAppShell, shellRuns.response, runs],
+  );
   const employees = employeesQuery.data?.data || [];
 
   const handleViewRun = useCallback((record) => {
@@ -190,13 +212,13 @@ const Payroll = () => {
 
   // Calculate summary stats
   const summaryStats = useMemo(() => {
-    const totalRuns = runs.length;
-    const thisMonth = runs.filter(run => {
+    const totalRuns = runsForStats.length;
+    const thisMonth = runsForStats.filter(run => {
       const runDate = dayjs(run.payDate);
       return runDate.month() === dayjs().month() && runDate.year() === dayjs().year();
     }).length;
-    const employeesPaid = runs.reduce((sum, run) => sum + (run.totalEmployees || 0), 0);
-    const totalAmount = runs.reduce((sum, run) => sum + parseFloat(run.totalNet || 0), 0);
+    const employeesPaid = runsForStats.reduce((sum, run) => sum + (run.totalEmployees || 0), 0);
+    const totalAmount = runsForStats.reduce((sum, run) => sum + parseFloat(run.totalNet || 0), 0);
     
     return {
       totals: {
@@ -206,7 +228,7 @@ const Payroll = () => {
         totalAmount
       }
     };
-  }, [runs]);
+  }, [runsForStats]);
 
   const handleOpenRunModal = async () => {
     await employeesQuery.refetch();
@@ -327,12 +349,13 @@ const Payroll = () => {
     );
   };
 
-  // Paginate runs
+  // Paginate runs (phones and tablets show every loaded run instead)
   const paginatedRuns = useMemo(() => {
+    if (isAppShell) return runs;
     const start = (pagination.current - 1) * pagination.pageSize;
     const end = start + pagination.pageSize;
     return runs.slice(start, end);
-  }, [runs, pagination.current, pagination.pageSize]);
+  }, [isAppShell, runs, pagination.current, pagination.pageSize]);
 
   // Drawer tabs for payroll run details
   const drawerTabs = useMemo(() => {
@@ -588,7 +611,7 @@ const Payroll = () => {
       <DashboardTable
         data={paginatedRuns}
         columns={tableColumns}
-        loading={runsQuery.isLoading}
+        loading={isAppShell ? shellRuns.isLoading : runsQuery.isLoading}
         title={null}
         emptyState={payrollEmptyState}
         pageSize={pagination.pageSize}
@@ -599,6 +622,7 @@ const Payroll = () => {
           current: pagination.current,
           total: runs.length
         }}
+        infinite={shellRuns.infinite}
       />
 
       <MobileFormDialog

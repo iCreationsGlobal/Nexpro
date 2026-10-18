@@ -107,6 +107,7 @@ import { Descriptions, DescriptionItem } from '@/components/ui/descriptions';
 import { numberInputValue, handleNumberChange, handleIntegerChange, numberOrEmptySchema, integerOrEmptySchema } from '../utils/formUtils';
 import { QUERY_STALE, refreshAfterCustomerChange, refreshAfterJobChange } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
+import { usePagedList } from '../hooks/usePagedList';
 
 /** Flatten react-hook-form FieldErrors into a list of readable messages (with field context e.g. "Item 1 – Category is required"). */
 function getJobFormErrorMessages(errors) {
@@ -261,6 +262,9 @@ const customerSchema = z.object({
 });
 
 const uploadMaxSizeMb = Number.parseFloat(import.meta.env.VITE_UPLOAD_MAX_SIZE_MB ?? '') || 20;
+
+/** Jobs in one list response (`{ data: [...], count }`). */
+const jobRowsFromResponse = (response) => (Array.isArray(response?.data) ? response.data : []);
 
 const Jobs = () => {
   const navigate = useNavigate();
@@ -464,18 +468,15 @@ const Jobs = () => {
     setPagination((prev) => ({ ...prev, current: 1 }));
   }, [searchValue]);
 
-  const jobQueryParams = useMemo(() => {
-    const params = {
-      page: pagination.current,
-      limit: pagination.pageSize,
-    };
+  const jobFilterParams = useMemo(() => {
+    const params = {};
     if (filters.status !== 'all') params.status = filters.status;
     if (filters.customerId !== 'all') params.customerId = filters.customerId;
     if (filters.priority !== 'all') params.priority = filters.priority;
     if (filters.dueDate !== 'all') params.dueDate = filters.dueDate;
     if (debouncedSearch) params.search = debouncedSearch;
     return params;
-  }, [debouncedSearch, filters.customerId, filters.dueDate, filters.priority, filters.status, pagination.current, pagination.pageSize]);
+  }, [debouncedSearch, filters.customerId, filters.dueDate, filters.priority, filters.status]);
 
   const { data: summaryResponse, isLoading: summaryLoading } = useQuery({
     queryKey: queryKeys.jobs.stats(activeTenantId, activeShopId, activeStudioLocationId),
@@ -488,44 +489,45 @@ const Jobs = () => {
   });
   const summary = summaryResponse?.data || summaryResponse || null;
 
+  // Pages on desktop; loads as you scroll on phones and tablets.
   const {
-    data: jobsQueryResult,
+    rows: jobs,
+    total: jobsCount,
+    response: jobsQueryResult,
     isLoading: isJobsLoading,
     isFetching: isJobsFetching,
     error: jobsError,
-  } = useQuery({
-    queryKey: queryKeys.jobs.list(activeTenantId, activeShopId, activeStudioLocationId, jobQueryParams),
-    queryFn: async () => {
+    infinite: jobsInfinite,
+  } = usePagedList({
+    queryKey: (params) => queryKeys.jobs.list(activeTenantId, activeShopId, activeStudioLocationId, params),
+    params: jobFilterParams,
+    fetchPage: async (params) => {
       try {
-        const response = await jobService.getAll(jobQueryParams);
-        return response;
+        return await jobService.getAll(params);
       } catch (error) {
         console.error('Error in queryFn:', error);
         throw error;
       }
     },
-    keepPreviousData: true,
-    staleTime: QUERY_STALE.TRANSACTIONAL,
-    refetchOnWindowFocus: true,
-    refetchInterval: 60 * 1000,
-    refetchIntervalInBackground: false,
+    getRows: jobRowsFromResponse,
+    getTotal: (response) => response?.count || 0,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
     enabled: scopeReady && (!isStudioWorkspace || !!activeStudioLocationId || canAccessAllStudioLocations),
+    staleTime: QUERY_STALE.TRANSACTIONAL,
+    queryOptions: {
+      keepPreviousData: true,
+      refetchOnWindowFocus: true,
+      refetchInterval: 60 * 1000,
+      refetchIntervalInBackground: false,
+    },
   });
-
-  // Use backend pagination directly
-  const jobs = useMemo(() => jobsQueryResult?.data || [], [jobsQueryResult?.data]);
-  const jobsCount = jobsQueryResult?.count || 0;
   
   useEffect(() => {
     console.log('Jobs Query Result:', jobsQueryResult);
     console.log('Jobs array:', jobs);
     console.log('Jobs count:', jobsCount);
   }, [jobsQueryResult, jobs, jobsCount]);
-
-  useEffect(() => {
-    const totalCount = jobsQueryResult?.count || 0;
-    setPagination((prev) => (prev.total === totalCount ? prev : { ...prev, total: totalCount }));
-  }, [jobsQueryResult?.count]);
 
   useEffect(() => {
     if (jobsError) {
@@ -2074,7 +2076,8 @@ useEffect(() => {
         <DashboardTable
           data={jobs}
           columns={tableColumns}
-          loading={isJobsLoading || isJobsFetching || (isMobile && isRefreshing)}
+          // Loading the next rows while scrolling keeps the loaded ones on screen.
+          loading={isJobsLoading || (isJobsFetching && !jobsInfinite) || (isMobile && isRefreshing)}
           title={null}
           emptyState={jobsEmptyState}
           pageSize={pagination.pageSize}
@@ -2085,6 +2088,7 @@ useEffect(() => {
             current: pagination.current,
             total: jobsCount
           }}
+          infinite={jobsInfinite}
           viewMode={tableViewMode}
           onViewModeChange={setTableViewMode}
         />

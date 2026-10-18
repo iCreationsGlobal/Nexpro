@@ -22,6 +22,8 @@ import { SEARCH_PLACEHOLDERS } from '@/constants/searchPlaceholders';
 import { useSmartSearch } from '@/context/SmartSearchContext';
 import { useRegisterPageSearch } from '@/hooks/useRegisterPageSearch';
 import { flatListStyleForEmpty } from '@/utils/listEmptyLayout';
+import { useInfiniteList } from '@/hooks/useInfiniteList';
+import { ListLoadMoreFooter } from '@/components/ListLoadMoreFooter';
 import { customerService, type CustomerPayload } from '@/services/customerService';
 import { customDropdownService } from '@/services/customDropdownService';
 import { settingsService } from '@/services/settings';
@@ -36,7 +38,7 @@ import { FormSheetModal } from '@/components/FormSheetModal';
 import { ImportContactsSheet } from '@/components/ImportContactsSheet';
 import { PickContactSheet } from '@/components/PickContactSheet';
 import { FORM_LABELS } from '@/constants/formLabels';
-import { getApiErrorMessage, parseApiListResponse } from '@/utils/parseApiListResponse';
+import { getApiErrorMessage } from '@/utils/parseApiListResponse';
 import { ListLoadingState, ListErrorState } from '@/components/ListScreenStates';
 import { refreshAfterCustomerChange, QUERY_STALE } from '@/utils/queryInvalidation';
 import { standaloneButtonStyles, standaloneFullWidth } from '@/styles/standaloneButton';
@@ -112,20 +114,31 @@ function CustomersScreen() {
   const debouncedSearch = useDebounce(searchValue, 400);
   const customersEnabled = !!activeTenantId && hasFeature('crm') && scopeReady && !inStoreSetup;
 
-  const { data: response, isLoading, refetch, isRefetching, error, isError, isPlaceholderData } = useQuery({
+  const {
+    firstPage: response,
+    rows: customers,
+    isLoading,
+    refetch,
+    isPullRefreshing,
+    error,
+    isError,
+    isPlaceholderData,
+    loadMore,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useInfiniteList<Customer>({
     queryKey: ['customers', activeTenantId, activeShopId, activeStudioLocationId, debouncedSearch],
-    queryFn: ({ signal }) =>
+    fetchPage: (page, limit, signal) =>
       customerService.getCustomers({
-        page: 1,
-        limit: 20,
+        page,
+        limit,
         search: debouncedSearch || undefined,
       }, { signal, timeout: 15000 }),
     enabled: customersEnabled,
     retry: false,
-    placeholderData: (previous, previousQuery) => {
-      const key = previousQuery?.queryKey;
-      return key?.[1] === activeTenantId && key?.[2] === activeShopId && key?.[3] === activeStudioLocationId ? previous : undefined;
-    },
+    // Keep the current workspace's list on screen while a new search loads.
+    keepPreviousWhen: (key) => key[1] === activeTenantId && key[2] === activeShopId && key[3] === activeStudioLocationId,
     staleTime: QUERY_STALE.LIST,
     gcTime: 2 * 60 * 60 * 1000,
   });
@@ -182,7 +195,6 @@ function CustomersScreen() {
     },
   });
 
-  const customers = useMemo(() => parseApiListResponse<Customer>(response), [response]);
   const customerStats = useMemo(() => {
     const stats = (statsResponse ?? {}) as CustomerStats;
     return {
@@ -379,7 +391,17 @@ function CustomersScreen() {
           renderItem={renderCustomerItem}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={colors.tint} />
+            <RefreshControl refreshing={isPullRefreshing} onRefresh={onRefresh} tintColor={colors.tint} />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            <ListLoadMoreFooter
+              isLoadingMore={isFetchingNextPage}
+              isError={isFetchNextPageError}
+              onRetry={() => { void fetchNextPage(); }}
+              color={colors.tint}
+            />
           }
         />
       )}

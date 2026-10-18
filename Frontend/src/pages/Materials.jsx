@@ -22,6 +22,7 @@ import {
 import dayjs from 'dayjs';
 import { useDebounce } from '../hooks/useDebounce';
 import { useResponsive } from '../hooks/useResponsive';
+import { usePagedList } from '../hooks/usePagedList';
 import DetailsDrawer from '../components/DetailsDrawer';
 import DrawerSectionCard from '../components/DrawerSectionCard';
 import ActionColumn from '../components/ActionColumn';
@@ -97,6 +98,9 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { SEARCH_PLACEHOLDERS, DEBOUNCE_DELAYS, getStockStatus, PRODUCT_UNITS, RESTAURANT_UNITS, SHOP_TYPES } from '../constants';
 import { formatAmount } from '../utils/formatNumber';
+
+/** Materials in one list response (`{ data: [...], count }`). */
+const materialRowsFromResponse = (response) => (Array.isArray(response?.data) ? response.data : []);
 
 const sortCategories = (list = []) =>
   [...list].sort((a, b) => a.name.localeCompare(b.name));
@@ -187,9 +191,7 @@ const Materials = () => {
     return PRODUCT_UNITS;
   }, [shopType]);
 
-  const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
-  const [loading, setLoading] = useState(false);
   const [refreshingMaterials, setRefreshingMaterials] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summary, setSummary] = useState(null);
@@ -299,10 +301,43 @@ const Materials = () => {
     fetchSummary();
   }, []);
 
+  const materialFilterParams = useMemo(() => {
+    const params = {
+      categoryId: filters.categoryId !== 'all' ? filters.categoryId : undefined,
+      status: filters.status !== 'all' ? filters.status : undefined,
+      lowStock: filters.lowStock,
+      outOfStock: filters.outOfStock,
+    };
+    if (debouncedSearch) params.search = debouncedSearch;
+    return params;
+  }, [filters.categoryId, filters.status, filters.lowStock, filters.outOfStock, debouncedSearch]);
+
+  // Pages on desktop; loads as you scroll on phones and tablets.
+  const {
+    rows: items,
+    total: itemsCount,
+    isLoading: loading,
+    refetch: refetchItems,
+    error: itemsError,
+    infinite: itemsInfinite,
+  } = usePagedList({
+    queryKey: (params) => ['materials', 'items', activeTenantId, activeShopId, activeStudioLocationId, params],
+    params: materialFilterParams,
+    fetchPage: (params) => materialsService.getItems(params),
+    getRows: materialRowsFromResponse,
+    getTotal: (response, rows) => response?.count ?? response?.pagination?.total ?? rows.length,
+    page: pagination.current,
+    pageSize: pagination.pageSize,
+    enabled: scopeReady,
+    // Always fresh when the page opens, like before it used React Query.
+    staleTime: 0,
+  });
+
   useEffect(() => {
-    if (!scopeReady) return;
-    fetchItems();
-  }, [scopeReady, pagination.current, pagination.pageSize, filters.categoryId, filters.status, filters.lowStock, filters.outOfStock, debouncedSearch, activeShopId, activeStudioLocationId, shopContext?.isShopWorkspace]);
+    if (!itemsError) return;
+    console.error('Failed to load materials', itemsError);
+    showError(itemsError, 'Failed to load materials');
+  }, [itemsError]);
 
   useEffect(() => {
     if (!scopeReady) return;
@@ -333,45 +368,18 @@ const Materials = () => {
     }
   };
 
+  /** Reload the list (every loaded page on phones and tablets); `isRefresh` spins the refresh button. */
   const fetchItems = async (isRefresh = false) => {
-    if (isRefresh) {
-      setRefreshingMaterials(true);
-    } else {
-      setLoading(true);
-    }
+    if (isRefresh) setRefreshingMaterials(true);
     try {
-      const params = {
-        page: pagination.current,
-        limit: pagination.pageSize,
-        categoryId: filters.categoryId !== 'all' ? filters.categoryId : undefined,
-        status: filters.status !== 'all' ? filters.status : undefined,
-        lowStock: filters.lowStock,
-        outOfStock: filters.outOfStock,
-      };
-      if (debouncedSearch) params.search = debouncedSearch;
-      const response = await materialsService.getItems(params);
-
-      const payload = response || {};
-      const rows = Array.isArray(payload.data) ? payload.data : [];
-      setItems(rows);
-      const total = payload.count ?? payload.pagination?.total ?? rows.length;
-      setPagination((prev) => ({ ...prev, total }));
-    } catch (error) {
-      console.error('Failed to load materials', error);
-      showError(error, 'Failed to load materials');
-      setItems([]);
+      await refetchItems();
     } finally {
-      if (isRefresh) {
-        setRefreshingMaterials(false);
-      } else {
-        setLoading(false);
-      }
+      if (isRefresh) setRefreshingMaterials(false);
     }
   };
 
-  // Backend returns paginated data; items is already the current page
+  // Backend returns paginated data; items is the current page (every loaded row on phones and tablets)
   const paginatedItems = items;
-  const itemsCount = pagination.total ?? items.length;
 
   // Use summary from API (accurate) when available; fallback to 0
   const displayStats = useMemo(() => ({
@@ -1032,6 +1040,7 @@ const Materials = () => {
           current: pagination.current,
           total: itemsCount
         }}
+        infinite={itemsInfinite}
         viewMode={tableViewMode}
         onViewModeChange={setTableViewMode}
       />

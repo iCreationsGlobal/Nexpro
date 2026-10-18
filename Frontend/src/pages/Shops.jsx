@@ -10,6 +10,7 @@ import { useShopOptional } from '../context/ShopContext';
 import { useSmartSearch } from '../context/SmartSearchContext';
 import { useDebounce } from '../hooks/useDebounce';
 import { useResponsive } from '../hooks/useResponsive';
+import { usePagedList } from '../hooks/usePagedList';
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -79,6 +80,14 @@ const shopSchema = z.object({
   isDefault: z.boolean().optional(),
 });
 
+/** Shops in one list response (`{ data: [...], count }`; older shapes nest them). */
+const shopRowsFromResponse = (response) => {
+  if (!response) return [];
+  return Array.isArray(response.data)
+    ? response.data
+    : (response.data?.data || response.data?.shops || []);
+};
+
 const Shops = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeTenant } = useAuth();
@@ -88,8 +97,6 @@ const Shops = () => {
   const debouncedSearch = useDebounce(searchValue, DEBOUNCE_DELAYS.SEARCH);
 
   // State
-  const [shops, setShops] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 10,
@@ -143,55 +150,53 @@ const Shops = () => {
     if (isModalOpen) loadTeamMembers();
   }, [isModalOpen, loadTeamMembers]);
   
-  // Fetch shops
-  const fetchShops = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await api.get('/shops', {
-        params: {
-          page: pagination.page,
-          limit: pagination.pageSize,
-          search: debouncedSearch,
-        },
-      });
-      
-      // Handle different response structures
-      const shopsData = Array.isArray(response?.data) 
-        ? response.data 
-        : (response?.data?.data || response?.data?.shops || []);
-      const total = response?.data?.count ?? response?.count ?? shopsData.length;
-      
-      setShops(shopsData);
-      setPagination(prev => ({
-        ...prev,
-        total: total,
-      }));
-    } catch (error) {
-      console.error('Error fetching shops:', error);
-      showError('Failed to fetch shops');
-      setShops([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [pagination.page, pagination.pageSize, debouncedSearch]);
+  // Fetch shops: pages on desktop; loads as you scroll on phones and tablets.
+  const shopFilterParams = useMemo(() => ({ search: debouncedSearch }), [debouncedSearch]);
+  const {
+    rows: shops,
+    total: shopsTotal,
+    response: shopsResponse,
+    isLoading: shopsLoading,
+    isFetching: shopsFetching,
+    refetch: refetchShops,
+    error: shopsError,
+    infinite: shopsInfinite,
+  } = usePagedList({
+    queryKey: (params) => ['shops', 'list', activeTenant?.id, params],
+    params: shopFilterParams,
+    fetchPage: (params) => api.get('/shops', { params }),
+    getRows: shopRowsFromResponse,
+    getTotal: (response, rows) => response?.data?.count ?? response?.count ?? rows.length,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+    // Fetched fresh each time the page opens, as before.
+    staleTime: 0,
+    queryOptions: { retry: false },
+  });
+  // Desktop shows the skeleton on every fetch, as before; loading more on phones keeps the rows.
+  const loading = shopsLoading || (shopsFetching && !shopsInfinite);
+  const fetchShops = useCallback(() => refetchShops(), [refetchShops]);
+
+  useEffect(() => {
+    if (!shopsError) return;
+    console.error('Error fetching shops:', shopsError);
+    showError('Failed to fetch shops');
+  }, [shopsError]);
   
   useEffect(() => {
     setPageSearchConfig({ scope: 'shops', placeholder: SEARCH_PLACEHOLDERS.SHOPS });
   }, [setPageSearchConfig]);
 
-  useEffect(() => {
-    fetchShops();
-  }, [fetchShops]);
-
-  // Stats
+  // Stats (counts from the current page — the first page on phones and tablets)
   const stats = useMemo(() => {
-    const total = pagination.total;
-    const active = shops.filter(s => s.isActive).length;
-    const inactive = shops.filter(s => !s.isActive).length;
-    const cities = [...new Set(shops.map(s => s.city).filter(Boolean))].length;
+    const pageShops = shopRowsFromResponse(shopsResponse);
+    const total = shopsTotal;
+    const active = pageShops.filter(s => s.isActive).length;
+    const inactive = pageShops.filter(s => !s.isActive).length;
+    const cities = [...new Set(pageShops.map(s => s.city).filter(Boolean))].length;
     
     return { total, active, inactive, cities };
-  }, [shops, pagination.total]);
+  }, [shopsResponse, shopsTotal]);
 
   const getShopTypeLabel = useCallback(
     (shopType) => getBusinessOptionLabel(shopType) || SHOP_TYPE_LABELS[shopType] || shopType || '—',
@@ -354,8 +359,9 @@ const Shops = () => {
 
       setIsModalOpen(false);
       setLogoFile(null);
-      fetchShops();
-      shopContext?.refreshShops?.();
+      // refreshShops invalidates every ['shops', …] query, this list included.
+      if (shopContext?.refreshShops) shopContext.refreshShops();
+      else fetchShops();
     } catch (error) {
       console.error('Error saving shop:', error);
       showError(error.response?.data?.message || 'Failed to save shop');
@@ -480,8 +486,9 @@ const Shops = () => {
           </Button>
         }
         pageSize={pagination.pageSize}
-        externalPagination={{ current: pagination.page, total: pagination.total }}
+        externalPagination={{ current: pagination.page, total: shopsTotal }}
         onPageChange={handlePageChange}
+        infinite={shopsInfinite}
       />
 
       {/* View Shop Details */}

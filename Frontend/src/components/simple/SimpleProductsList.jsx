@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronRight, Loader2, Package, Plus, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import InfiniteListFooter from '@/components/InfiniteListFooter';
 import { resolveImageUrl } from '../../utils/fileUtils';
 import { formatAmount } from '../../utils/formatNumber';
 import { getCatalogUnitPrice } from '../../utils/productStock';
@@ -32,6 +33,7 @@ const ProductThumb = ({ product }) => {
 /**
  * Simple Mode products page: a big Add product button, a search box and a list with photo,
  * price and how many are left. Tapping a product opens it.
+ * With `infinite` (phones and tablets, from usePagedList) more load on scroll instead of pages.
  */
 export default function SimpleProductsList({
   products,
@@ -46,6 +48,7 @@ export default function SimpleProductsList({
   page,
   totalPages,
   onPageChange,
+  infinite = null,
 }) {
   const searching = Boolean(String(search || '').trim());
   return (
@@ -126,7 +129,9 @@ export default function SimpleProductsList({
         </ul>
       )}
 
-      {totalPages > 1 ? (
+      {infinite && products.length > 0 ? (
+        <InfiniteListFooter {...infinite} count={products.length} noun="products" />
+      ) : !infinite && totalPages > 1 ? (
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Page {page} of {totalPages}</span>
           <div className="flex gap-2">
