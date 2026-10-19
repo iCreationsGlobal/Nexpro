@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Tabs, usePathname, useRouter } from 'expo-router';
+import { Tabs, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { type ColorValue, DeviceEventEmitter, View, Pressable, StyleSheet, Text } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 
@@ -17,6 +17,7 @@ import { isRentalBusinessType, resolveBusinessType } from '@/constants';
 import { OPEN_SCAN_CAMERA_EVENT } from '@/utils/scanTabEvents';
 import { useSimpleMode } from '@/hooks/useSimpleMode';
 import type { SimpleTone } from '@/constants/simpleMode';
+import { isSlotRouteActive } from '@/utils/tabSlots';
 
 function TabBarIcon({
   name,
@@ -47,6 +48,9 @@ const SIMPLE_HIDDEN_TAB_SCREENS = [
   'customers', 'invoices', 'orders', 'online-orders', 'store', 'store-services', 'store-products', 'products', 'jobs',
   'cart', 'quotes', 'dealers', 'leads', 'tasks', 'rentals', 'deliveries',
 ] as const;
+
+/** The Orders slot ("Sell online" focus) opens the Online Store on its orders section. */
+const ORDERS_TAB_ROUTE = '/(tabs)/store?section=orders';
 
 /** Stable header component — avoids remounting Header on every TabLayout render (notification poll spam). */
 function TabsHeader() {
@@ -89,6 +93,17 @@ export default function TabLayout() {
   const showInvoicesInTab = (isRetailLike || isStudio) && hasFeature('invoices');
   const centerTabTitle = isRental ? 'New rental' : isStudio ? 'Add Job' : 'Sell';
   const isScanRoute = pathname === '/scan' || pathname.endsWith('/scan');
+  // The focus-area and Orders slots open hidden screens, so colour them from the screen on show.
+  const { section } = useGlobalSearchParams<{ section?: string | string[] }>();
+  const currentSection = Array.isArray(section) ? section[0] : section;
+  const showOrdersTab = focusAreas.includes('online_store');
+  const ordersTabActive = showOrdersTab && isSlotRouteActive(pathname, ORDERS_TAB_ROUTE, currentSection);
+  const primaryFocusActive =
+    !!primaryFocus && !ordersTabActive && isSlotRouteActive(pathname, primaryFocus.route, currentSection);
+  const slotTint = (active: boolean) => {
+    const color = active ? colors.tint : colors.tabIconDefault;
+    return { tabBarActiveTintColor: color, tabBarInactiveTintColor: color };
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const lastCenterTapRef = useRef(0);
@@ -211,6 +226,7 @@ export default function TabLayout() {
           if (primaryFocus) {
             return {
               title: primaryFocus.label,
+              ...slotTint(primaryFocusActive),
               tabBarIcon: ({ color }: { color: ColorValue }) => (
                 <TabBarIcon name={primaryFocus.icon} color={color} />
               ),
@@ -218,6 +234,7 @@ export default function TabLayout() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={primaryFocus.label}
+                  accessibilityState={{ selected: primaryFocusActive }}
                   onPress={() => router.push(primaryFocus.route as never)}
                   style={props.style}
                 >
@@ -285,15 +302,17 @@ export default function TabLayout() {
           if (isDriver) return { href: null, title: 'Invoice' };
           // "Sell online" focus: Orders matters more here than Invoices — swap this slot.
           // Invoices stays reachable via More (see moreMenuItems.ts).
-          if (focusAreas.includes('online_store')) {
+          if (showOrdersTab) {
             return {
               title: 'Orders',
+              ...slotTint(ordersTabActive),
               tabBarIcon: ({ color }: { color: ColorValue }) => <TabBarIcon name="shopping-cart" color={color} />,
               tabBarButton: (props: any) => (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Orders"
-                  onPress={() => router.push('/(tabs)/store?section=orders' as never)}
+                  accessibilityState={{ selected: ordersTabActive }}
+                  onPress={() => router.push(ORDERS_TAB_ROUTE as never)}
                   style={props.style}
                 >
                   {props.children}
