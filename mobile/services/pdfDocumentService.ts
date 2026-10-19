@@ -330,10 +330,9 @@ async function printHtmlToPdfFile(html: string, filename: string, title: string)
   });
   const sourceFile = new File(file.uri);
   const namedFile = new File(Paths.cache, filenameSafe(filename));
-  if (namedFile.exists) {
-    namedFile.delete();
-  }
-  sourceFile.copy(namedFile);
+  // `copy` is async (expo-file-system 57+): share only once the named PDF exists, or iOS
+  // refuses it with "You don't have access to the provided file".
+  await sourceFile.copy(namedFile, { overwrite: true });
 
   return {
     uri: namedFile.uri,
