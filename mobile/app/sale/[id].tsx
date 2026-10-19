@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,7 @@ import { settingsService } from '@/services/settings';
 import { formatCurrency, formatDate } from '@/utils/formatCurrency';
 import { formatStatusLabel } from '@/utils/formatLabels';
 import {
+  canTakeCardCheckout,
   getDirectMomoProviders,
   isPaymentCollectionConfigured,
   isValidDirectMomoPhone,
@@ -47,7 +48,8 @@ import { validateRecordedPaymentAmount } from '@/utils/recordPayment';
 import { refreshAfterSale } from '@/utils/queryInvalidation';
 import { resolveImageUrl } from '@/utils/fileUtils';
 import { DeliveryStatusPicker } from '@/components/DeliveryStatusPicker';
-import { SaleRecordPaymentSheet } from '@/components/SaleRecordPaymentSheet';
+import { SaleRecordPaymentSheet, type CardPaymentStatus } from '@/components/SaleRecordPaymentSheet';
+import { openCardCheckout } from '@/services/cardCheckout';
 import { usePaystackReconciliation } from '@/hooks/usePaystackReconciliation';
 
 type SaleItemDetail = {
@@ -78,6 +80,29 @@ type SaleDetail = {
 
 type SaleAction = 'receipt' | 'payment' | 'cancel' | 'deliveryStatus' | 'invoice' | 'delete';
 
+/** What the "Paystack" check reports on: a MoMo prompt or the card checkout page. */
+type PaystackCollection = 'momo' | 'card';
+
+const PAYSTACK_CHECK_COPY: Record<PaystackCollection, {
+  confirmed: string;
+  failed: string;
+  waiting: string;
+  unknown: string;
+}> = {
+  momo: {
+    confirmed: 'The mobile money payment was recorded.',
+    failed: 'The payment is not complete. Ask the customer to retry approval or start a new prompt.',
+    waiting: 'Still waiting for the customer to approve the MoMo prompt.',
+    unknown: 'Could not verify yet. Check again after the customer approves the prompt.',
+  },
+  card: {
+    confirmed: 'The card payment was recorded.',
+    failed: 'The card payment was not completed. Open the payment page again, or use another payment option.',
+    waiting: 'Waiting for the customer to finish on the payment page. Tap Check payment once they are done.',
+    unknown: 'Could not check the payment yet. Tap Check payment to try again.',
+  },
+};
+
 function getSaleItemImageUrl(item: SaleItemDetail): string | null {
   const raw = item.product?.imageUrl;
   if (!raw || typeof raw !== 'string') return null;
@@ -89,7 +114,8 @@ function getSaleItemImageUrl(item: SaleItemDetail): string | null {
 }
 
 export default function SaleDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `collect=card`: opened straight after a card sale at checkout — take the card payment now.
+  const { id, collect } = useLocalSearchParams<{ id: string; collect?: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { activeTenant, activeTenantId, isAdmin } = useAuth();
@@ -104,6 +130,10 @@ export default function SaleDetailScreen() {
   >('idle');
   const [directPaymentReference, setDirectPaymentReference] = useState<string | null>(null);
   const [directPaymentMessage, setDirectPaymentMessage] = useState<string | null>(null);
+  const [cardPaymentStatus, setCardPaymentStatus] = useState<CardPaymentStatus>('idle');
+  const [cardPaymentMessage, setCardPaymentMessage] = useState<string | null>(null);
+  const collectingByRef = useRef<PaystackCollection>('momo');
+  const autoCardCheckoutRef = useRef(false);
   const { isAnyActionActive, isActionActive, runExclusiveAction } = useExclusiveAction<SaleAction>();
 
   const { data, isLoading, refetch } = useQuery({
@@ -127,6 +157,7 @@ export default function SaleDetailScreen() {
     () => getDirectMomoProviders(paymentCollectionData),
     [paymentCollectionData]
   );
+  const cardCheckoutAvailable = useMemo(() => canTakeCardCheckout(paymentCollectionData), [paymentCollectionData]);
 
   const { data: linkedInvoicesResponse } = useQuery({
     queryKey: ['invoices', 'sale-link', id],
@@ -169,6 +200,17 @@ export default function SaleDetailScreen() {
   const reconcileSalePaystack = useCallback(async () => {
     if (!id || !sale) return;
     if (balance <= 0) return;
+    const collectingBy = collectingByRef.current;
+    const copy = PAYSTACK_CHECK_COPY[collectingBy];
+    const report = (status: 'pending' | 'success' | 'failed', message: string) => {
+      if (collectingBy === 'card') {
+        setCardPaymentStatus(status);
+        setCardPaymentMessage(message);
+      } else {
+        setDirectPaymentStatus(status);
+        setDirectPaymentMessage(message);
+      }
+    };
     try {
       const res = await saleService.checkPaystackCharge(String(id));
       const payload = res?.success !== undefined || res?.applied !== undefined ? res : res?.data ?? res;
@@ -176,23 +218,19 @@ export default function SaleDetailScreen() {
       const checkedSale = payload?.data ?? null;
       const completed = payload?.applied === true || checkedSale?.status === 'completed';
       if (completed) {
-        setDirectPaymentStatus('success');
-        setDirectPaymentMessage('Payment confirmed and recorded on this sale.');
+        report('success', 'Payment confirmed and recorded on this sale.');
         setShowPaymentForm(false);
-        Alert.alert('Payment confirmed', 'The mobile money payment was recorded.');
+        Alert.alert('Payment confirmed', copy.confirmed);
         return;
       }
       const providerStatus = payload?.paystackStatus ? String(payload.paystackStatus).toLowerCase() : '';
       if (providerStatus && !['pending', 'ongoing'].includes(providerStatus)) {
-        setDirectPaymentStatus('failed');
-        setDirectPaymentMessage('The payment is not complete. Ask the customer to retry approval or start a new prompt.');
+        report('failed', copy.failed);
         return;
       }
-      setDirectPaymentStatus('pending');
-      setDirectPaymentMessage('Still waiting for the customer to approve the MoMo prompt.');
+      report('pending', copy.waiting);
     } catch {
-      setDirectPaymentStatus('pending');
-      setDirectPaymentMessage('Could not verify yet. Check again after the customer approves the prompt.');
+      report('pending', copy.unknown);
     } finally {
       setAwaitingPaystackReturn(false);
     }
@@ -261,8 +299,50 @@ export default function SaleDetailScreen() {
   );
 
   const handleCheckDirectSalePayment = useCallback(() => {
+    collectingByRef.current = 'momo';
     void reconcileSalePaystack();
   }, [reconcileSalePaystack]);
+
+  const handleCheckCardPayment = useCallback(() => {
+    collectingByRef.current = 'card';
+    void reconcileSalePaystack();
+  }, [reconcileSalePaystack]);
+
+  /** Paystack's checkout page for the balance; the payment is checked when the cashier comes back. */
+  const handleCardCheckout = useCallback(async () => {
+    if (!sale) return;
+    if (!cardCheckoutAvailable) {
+      Alert.alert('Card payment unavailable', 'Connect a payout account in Settings → Payment Collection to take card payments.');
+      return;
+    }
+    await runExclusiveAction('payment', async () => {
+      collectingByRef.current = 'card';
+      setCardPaymentStatus('pending');
+      setCardPaymentMessage('Opening the payment page...');
+      try {
+        // Android re-checks via usePaystackReconciliation when the app returns to the foreground.
+        setAwaitingPaystackReturn(true);
+        const { returned } = await openCardCheckout(sale.id, sale.customer?.email);
+        setCardPaymentMessage(PAYSTACK_CHECK_COPY.card.waiting);
+        if (returned) await reconcileSalePaystack();
+      } catch (err: unknown) {
+        setAwaitingPaystackReturn(false);
+        const message = getApiErrorMessage(err, 'Could not open the card payment page.');
+        setCardPaymentStatus('failed');
+        setCardPaymentMessage(message);
+        Alert.alert('Card payment unavailable', message);
+      }
+    });
+  }, [cardCheckoutAvailable, reconcileSalePaystack, runExclusiveAction, sale]);
+
+  // Straight after a card sale at checkout: open the payment sheet on Card, once. The cashier taps
+  // Open Card Payment (and hands over the phone); opening the page while the sheet animates in
+  // can make iOS refuse to present it.
+  useEffect(() => {
+    if (collect !== 'card' || autoCardCheckoutRef.current || !sale || paymentCollectionLoading) return;
+    autoCardCheckoutRef.current = true;
+    if (balance > 0) setShowPaymentForm(true);
+  }, [balance, collect, paymentCollectionLoading, sale]);
 
   const handleOpenDirectSalePayment = useCallback(async (payload: { phoneNumber: string; provider: DirectMomoProvider }) => {
     if (!sale) return;
@@ -284,6 +364,7 @@ export default function SaleDetailScreen() {
       return;
     }
 
+    collectingByRef.current = 'momo';
     await runExclusiveAction('payment', async () => {
       try {
         const res = await saleService.initiateDirectMobileMoney(sale.id, {
@@ -342,6 +423,7 @@ export default function SaleDetailScreen() {
         Alert.alert('OTP required', 'Enter the OTP sent to the customer.');
         return;
       }
+      collectingByRef.current = 'momo';
       await runExclusiveAction('payment', async () => {
         try {
           const res = await saleService.submitPaystackOtp(sale.id, {
@@ -629,6 +711,17 @@ export default function SaleDetailScreen() {
               ? 'No supported MoMo provider is available for Direct payment.'
               : 'Set up Payment Collection in Settings before taking direct payments.'
         }
+        onCardPayment={handleCardCheckout}
+        onCheckCardStatus={handleCheckCardPayment}
+        cardPaymentAvailable={cardCheckoutAvailable && !paymentCollectionLoading}
+        cardUnavailableReason={
+          paymentCollectionLoading
+            ? 'Checking payment collection setup...'
+            : 'Connect a payout account in Settings → Payment Collection to take card payments.'
+        }
+        cardStatus={cardPaymentStatus}
+        cardStatusMessage={cardPaymentMessage}
+        initialFlow={collect === 'card' || cardPaymentStatus !== 'idle' ? 'card' : undefined}
         isSubmitting={isActionActive('payment')}
         disabled={isAnyActionActive}
         cardBg={cardBg}

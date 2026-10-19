@@ -45,6 +45,7 @@ import { formatCurrency } from '@/utils/formatCurrency';
 import { getApiErrorMessage, parseApiEntity } from '@/utils/parseApiListResponse';
 import { getCountryCallingCodeFromPhone, openWhatsAppChat } from '@/utils/whatsapp';
 import { isProductOutOfStock } from '@/utils/productStock';
+import { canTakeCardCheckout } from '@/utils/paymentCollection';
 
 const generateSaleClientId = () =>
   `mobile-sale-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
@@ -90,6 +91,10 @@ function computeCartTaxTotal({
   return { taxAmount, total: roundCurrency(taxable + taxAmount) };
 }
 
+/** A card sale paid on Paystack's checkout page (saved unpaid, then collected on the sale screen). */
+const isCardCheckoutSale = (payload: unknown) =>
+  (payload as { metadata?: { cardCheckout?: string } } | null)?.metadata?.cardCheckout === 'paystack';
+
 export default function CartScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ dealerId?: string; mode?: string }>();
@@ -124,6 +129,8 @@ export default function CartScreen() {
     'cash'
   );
   const [amountTendered, setAmountTendered] = useState('');
+  // Card: the customer pays on Paystack's page on this phone, unless the shop used its card machine.
+  const [cardOnMachine, setCardOnMachine] = useState(false);
   const [mobileMoneyNumber, setMobileMoneyNumber] = useState('');
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [addingCustomer, setAddingCustomer] = useState(false);
@@ -234,6 +241,15 @@ export default function CartScreen() {
     gcTime: 2 * 60 * 60 * 1000,
   });
 
+  const { data: paymentCollectionData } = useQuery({
+    queryKey: ['settings', 'payment-collection', activeTenantId],
+    queryFn: settingsService.getPaymentCollectionSettings,
+    enabled: !!activeTenantId,
+    staleTime: 5 * 60 * 1000,
+  });
+  const cardCheckoutAvailable = canTakeCardCheckout(paymentCollectionData);
+  const useCardCheckout = paymentMethod === 'card' && cardCheckoutAvailable && !cardOnMachine;
+
   const cartTotal = getTotal();
   const itemCount = getItemCount();
   const cartDiscountTotal = getSubtotal() - cartTotal;
@@ -283,6 +299,9 @@ export default function CartScreen() {
             error?.code === 'ECONNABORTED' ||
             message.includes('network') ||
             message.includes('timeout'));
+        if (shouldQueue && isCardCheckoutSale(payload)) {
+          throw new Error('Card payments need an internet connection. Try again, or choose Card machine.');
+        }
         if (shouldQueue) {
           await offlineQueueService.queueSale(payload, { tenantId: activeTenantId, userId: user?.id });
           return { _offline: true };
@@ -314,6 +333,12 @@ export default function CartScreen() {
       if (dealerSale) setSelectedDealer(null);
 
       const sale = data?.data ?? data;
+      // Card on Paystack: the sale is saved unpaid; its screen takes the card payment.
+      if (isCardCheckoutSale(variables) && sale?.id) {
+        refreshAfterSale(queryClient).catch(() => {});
+        router.push({ pathname: '/sale/[id]', params: { id: String(sale.id), collect: 'card' } } as never);
+        return;
+      }
       // Generate the invoice in the background — the share prompt below shouldn't wait
       // on this network round-trip. The sale detail screen can retry it if it fails.
       if (!dealerSale && sale?.id && sale?.customerId && !sale?.invoiceId) {
@@ -547,6 +572,10 @@ export default function CartScreen() {
       }
       payload.mobileMoneyNumber = mobileMoneyNumber.trim();
       payload.amountPaid = total;
+    } else if (paymentMethod === 'card' && useCardCheckout) {
+      payload.status = 'pending';
+      payload.amountPaid = 0;
+      payload.metadata = { ...(payload.metadata || {}), cardCheckout: 'paystack' };
     } else if (paymentMethod === 'card') {
       payload.amountPaid = total;
     } else if (paymentMethod === 'credit') {
@@ -566,6 +595,7 @@ export default function CartScreen() {
     paymentMethod,
     amountTendered,
     mobileMoneyNumber,
+    useCardCheckout,
     selectedCustomer,
     selectedDealer,
     isDealerMode,
@@ -1029,7 +1059,11 @@ export default function CartScreen() {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.payButtonText}>
-                  {isDealerMode ? FORM_LABELS.cart.completeDealerSale : FORM_LABELS.cart.completeSale}
+                  {isDealerMode
+                    ? FORM_LABELS.cart.completeDealerSale
+                    : useCardCheckout
+                      ? 'Continue to Card Payment'
+                      : FORM_LABELS.cart.completeSale}
                 </Text>
               )}
             </Pressable>
@@ -1144,6 +1178,47 @@ export default function CartScreen() {
                     }}
                     keyboardType="phone-pad"
                   />
+                </View>
+              )}
+
+              {/* Card */}
+              {paymentMethod === 'card' && (
+                <View style={styles.paymentInput}>
+                  {cardCheckoutAvailable ? (
+                    <View style={styles.paymentMethods}>
+                      {([
+                        { onMachine: false, label: 'Customer pays here' },
+                        { onMachine: true, label: 'Card machine' },
+                      ] as const).map((option) => {
+                        const selected = cardOnMachine === option.onMachine;
+                        return (
+                          <Pressable
+                            key={option.label}
+                            onPress={() => setCardOnMachine(option.onMachine)}
+                            style={[
+                              styles.paymentMethodBtn,
+                              { borderColor },
+                              selected && { backgroundColor: colors.tint, borderColor: colors.tint },
+                            ]}
+                          >
+                            <Text style={[styles.paymentMethodText, { color: selected ? '#fff' : textColor }]}>
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                  <View style={styles.paymentNote}>
+                    <AppIcon name="info-circle" size={20} color={colors.tint} />
+                    <Text style={[styles.noteText, { color: mutedColor }]}>
+                      {useCardCheckout
+                        ? "Next, the customer enters their card on Paystack's secure page on this phone. The sale is marked paid once Paystack confirms."
+                        : cardCheckoutAvailable
+                          ? 'Recorded as paid. Take the card payment on your card machine.'
+                          : 'Recorded as paid on your card machine. To let customers pay by card in the app, connect a payout account in Settings → Payment Collection.'}
+                    </Text>
+                  </View>
                 </View>
               )}
 

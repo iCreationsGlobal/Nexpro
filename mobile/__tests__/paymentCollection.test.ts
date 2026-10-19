@@ -1,4 +1,5 @@
 import {
+  canTakeCardCheckout,
   describePayoutDestination,
   getDirectMomoProviders,
   isValidDirectMomoPhone,
@@ -53,5 +54,15 @@ describe('describePayoutDestination', () => {
   it('returns null when no payout destination is connected', () => {
     expect(describePayoutDestination(null)).toBeNull();
     expect(describePayoutDestination({ settlement_type: 'momo' })).toBeNull();
+  });
+});
+
+describe('canTakeCardCheckout', () => {
+  it('needs the business own Paystack subaccount', () => {
+    expect(canTakeCardCheckout({ hasSubaccount: true, configured: true })).toBe(true);
+    // MoMo-only or direct MTN/Hubtel collection does not route card money to the business.
+    expect(canTakeCardCheckout({ configured: true, settlement_type: 'momo', momo_phone_masked: '****4567' })).toBe(false);
+    expect(canTakeCardCheckout({ hasSubaccount: false, mtn_collection: { configured: true } })).toBe(false);
+    expect(canTakeCardCheckout(null)).toBe(false);
   });
 });

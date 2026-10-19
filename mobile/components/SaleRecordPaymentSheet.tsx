@@ -26,8 +26,9 @@ import {
 const PAYMENT_METHODS = MANUAL_PAYMENT_METHODS;
 
 type PaymentMethod = (typeof PAYMENT_METHODS)[number]['value'];
-type PaymentFlow = 'direct' | 'manual';
+export type PaymentFlow = 'direct' | 'card' | 'manual';
 type DirectPaymentStatus = 'idle' | 'pending' | 'awaiting_otp' | 'success' | 'failed';
+export type CardPaymentStatus = 'idle' | 'pending' | 'success' | 'failed';
 
 type SaleRecordPaymentSheetProps = {
   visible: boolean;
@@ -47,6 +48,15 @@ type SaleRecordPaymentSheetProps = {
   directStatusMessage?: string | null;
   directPaymentAvailable?: boolean;
   directUnavailableReason?: string;
+  /** Card on Paystack's checkout page (see openCardCheckout). */
+  onCardPayment?: () => void;
+  onCheckCardStatus?: () => void;
+  cardPaymentAvailable?: boolean;
+  cardUnavailableReason?: string;
+  cardStatus?: CardPaymentStatus;
+  cardStatusMessage?: string | null;
+  /** Option to show when the sheet opens, if it is available (e.g. 'card' straight after a card sale). */
+  initialFlow?: PaymentFlow;
   isSubmitting?: boolean;
   disabled?: boolean;
   cardBg: string;
@@ -70,6 +80,13 @@ export function SaleRecordPaymentSheet({
   directStatusMessage,
   directPaymentAvailable = false,
   directUnavailableReason = 'Direct sale payment is not available from this sheet yet.',
+  onCardPayment,
+  onCheckCardStatus,
+  cardPaymentAvailable = false,
+  cardUnavailableReason = 'Connect a payout account in Settings → Payment Collection to take card payments.',
+  cardStatus = 'idle',
+  cardStatusMessage,
+  initialFlow,
   isSubmitting = false,
   disabled = false,
   cardBg,
@@ -93,6 +110,9 @@ export function SaleRecordPaymentSheet({
   );
   const canUseDirect = directPaymentAvailable && !!onDirectPayment && availableDirectProviders.length > 0;
   const isDirectSelected = paymentFlow === 'direct';
+  const canUseCard = cardPaymentAvailable && !!onCardPayment;
+  const isCardSelected = paymentFlow === 'card';
+  const cardRetry = cardStatus === 'pending' || cardStatus === 'failed';
   const normalizedDirectPhone = directPhoneNumber.trim();
   const canStartDirect = canUseDirect && isValidDirectMomoPhone(normalizedDirectPhone);
   const isAwaitingOtp = directStatus === 'awaiting_otp';
@@ -106,7 +126,11 @@ export function SaleRecordPaymentSheet({
     setPaymentType('full');
     setPaymentReference('');
     setPaymentMethod('cash');
-    setPaymentFlow(canUseDirect ? 'direct' : 'manual');
+    const openWith =
+      (initialFlow === 'card' && canUseCard) || (initialFlow === 'direct' && canUseDirect) || initialFlow === 'manual'
+        ? initialFlow
+        : null;
+    setPaymentFlow(openWith ?? (canUseDirect ? 'direct' : 'manual'));
     setDirectPhoneNumber('');
     setDirectProvider(availableDirectProviders[0]?.value ?? 'MTN');
     setDirectOtp('');
@@ -128,7 +152,7 @@ export function SaleRecordPaymentSheet({
   }, [isAwaitingOtp]);
 
   const resolvedAmount = paymentType === 'full' ? balance : parsePaymentAmount(paymentAmount);
-  const manualPaymentError = isDirectSelected
+  const manualPaymentError = paymentFlow !== 'manual'
     ? null
     : validateRecordedPaymentAmount(resolvedAmount, balance, paymentType);
 
@@ -142,6 +166,10 @@ export function SaleRecordPaymentSheet({
   };
 
   const handlePrimaryAction = () => {
+    if (isCardSelected) {
+      onCardPayment?.();
+      return;
+    }
     if (isDirectSelected) {
       if (isAwaitingOtp) {
         onSubmitDirectOtp?.(directOtp.trim());
@@ -185,7 +213,8 @@ export function SaleRecordPaymentSheet({
               isLocked
               || (isDirectSelected && isAwaitingOtp && !otpReady)
               || (isDirectSelected && !isAwaitingOtp && !canStartDirect)
-              || (!isDirectSelected && Boolean(manualPaymentError))
+              || (isCardSelected && (!canUseCard || cardStatus === 'success'))
+              || Boolean(manualPaymentError)
             }
             style={[
               styles.sheetButton,
@@ -194,7 +223,8 @@ export function SaleRecordPaymentSheet({
               (isLocked
                 || (isDirectSelected && isAwaitingOtp && !otpReady)
                 || (isDirectSelected && !isAwaitingOtp && !canStartDirect)
-                || (!isDirectSelected && Boolean(manualPaymentError)))
+                || (isCardSelected && (!canUseCard || cardStatus === 'success'))
+                || Boolean(manualPaymentError))
                 && styles.disabledButton,
             ]}
           >
@@ -202,11 +232,15 @@ export function SaleRecordPaymentSheet({
               <ActivityIndicator color="#fff" size="small" />
             ) : (
               <Text style={styles.sheetButtonPrimaryText}>
-                {isDirectSelected
-                  ? isAwaitingOtp
-                    ? 'Submit OTP'
-                    : 'Start Direct Payment'
-                  : 'Record Payment'}
+                {isCardSelected
+                  ? cardRetry
+                    ? 'Open Payment Page Again'
+                    : 'Open Card Payment'
+                  : isDirectSelected
+                    ? isAwaitingOtp
+                      ? 'Submit OTP'
+                      : 'Start Direct Payment'
+                    : 'Record Payment'}
               </Text>
             )}
           </Pressable>
@@ -236,6 +270,24 @@ export function SaleRecordPaymentSheet({
             </Text>
             {!canUseDirect ? <Text style={styles.unavailableText}>{directUnavailableReason}</Text> : null}
           </Pressable>
+          {onCardPayment ? (
+            <Pressable
+              onPress={() => canUseCard && setPaymentFlow('card')}
+              disabled={isLocked || !canUseCard}
+              style={[
+                styles.flowCard,
+                { borderColor, backgroundColor: cardBg },
+                isCardSelected && canUseCard && { borderColor: tintColor, backgroundColor: '#f0fdf4' },
+                (isLocked || !canUseCard) && styles.disabledButton,
+              ]}
+            >
+              <Text style={[styles.flowTitle, { color: textColor }]}>Card</Text>
+              <Text style={[styles.flowCopy, { color: mutedColor }]}>
+                The customer pays by card on Paystack&apos;s secure page, on this phone.
+              </Text>
+              {!canUseCard ? <Text style={styles.unavailableText}>{cardUnavailableReason}</Text> : null}
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={() => setPaymentFlow('manual')}
             disabled={isLocked}
@@ -353,6 +405,31 @@ export function SaleRecordPaymentSheet({
             </View>
           ) : null}
         </>
+      ) : isCardSelected ? (
+        <View style={[styles.directInfo, { borderColor }]}>
+          <Text style={[styles.directInfoTitle, { color: textColor }]}>
+            {cardStatus === 'success'
+              ? 'Payment confirmed'
+              : cardStatus === 'failed'
+                ? 'Payment not completed'
+                : cardStatus === 'pending'
+                  ? 'Waiting for card payment'
+                  : `Card payment of ${formatCurrency(balance)}`}
+          </Text>
+          <Text style={[styles.directInfoCopy, { color: mutedColor }]}>
+            {cardStatusMessage
+              || 'Tap Open Card Payment and hand the phone to the customer. They enter their card on Paystack\'s page (ABS never sees it). When they finish, close the page and the payment is checked here.'}
+          </Text>
+          {onCheckCardStatus && cardStatus === 'pending' ? (
+            <Pressable
+              onPress={onCheckCardStatus}
+              disabled={isLocked}
+              style={[styles.checkStatusButton, { borderColor }, isLocked && styles.disabledButton]}
+            >
+              <Text style={[styles.checkStatusText, { color: textColor }]}>Check payment</Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : (
         <>
           <View style={styles.formGroup}>

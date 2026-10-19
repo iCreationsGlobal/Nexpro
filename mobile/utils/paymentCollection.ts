@@ -1,5 +1,14 @@
 import { collapseRepeatedDialCode } from '@/utils/displayPhone';
 
+/**
+ * Whether customers can pay by card on Paystack's checkout page: only with the business's own
+ * Paystack subaccount, so card money settles to the business (not to the ABS platform account).
+ */
+export function canTakeCardCheckout(paymentCollection: unknown): boolean {
+  if (!paymentCollection || typeof paymentCollection !== 'object') return false;
+  return (paymentCollection as Record<string, unknown>).hasSubaccount === true;
+}
+
 export function isPaymentCollectionConfigured(paymentCollection: unknown): boolean {
   if (!paymentCollection || typeof paymentCollection !== 'object') return false;
   const pc = paymentCollection as Record<string, unknown>;
