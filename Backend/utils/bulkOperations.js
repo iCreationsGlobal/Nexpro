@@ -16,6 +16,16 @@ const DEFAULT_OPTIONS = {
 };
 
 /**
+ * Run one item of a batch. With continueOnError the item gets its own savepoint: Postgres aborts the
+ * whole transaction on any failed statement (e.g. a duplicate SKU), so without one every later row
+ * would fail too and the final commit would silently roll back the rows reported as done.
+ */
+const runItem = (transaction, continueOnError, work) =>
+  continueOnError
+    ? sequelize.transaction({ transaction }, (savepoint) => work(savepoint))
+    : work(transaction);
+
+/**
  * Perform bulk create operation
  * @param {Object} Model - Sequelize model
  * @param {Array} records - Array of records to create
@@ -61,7 +71,7 @@ const bulkCreate = async (Model, records, options = {}) => {
           ...(userId && { createdBy: userId }),
         };
 
-        const record = await Model.create(recordData, { transaction });
+        const record = await runItem(transaction, continueOnError, (t) => Model.create(recordData, { transaction: t }));
         created.push({
           index: i,
           id: record.id,
@@ -154,18 +164,20 @@ const bulkUpdate = async (Model, updates, options = {}) => {
           where.tenantId = tenantId;
         }
 
-        const record = await Model.findOne({ where, transaction });
+        await runItem(transaction, continueOnError, async (t) => {
+          const record = await Model.findOne({ where, transaction: t });
 
-        if (!record) {
-          throw new Error(`Record with ID ${id} not found`);
-        }
+          if (!record) {
+            throw new Error(`Record with ID ${id} not found`);
+          }
 
-        const updateData = {
-          ...data,
-          ...(userId && { updatedBy: userId }),
-        };
+          const updateData = {
+            ...data,
+            ...(userId && { updatedBy: userId }),
+          };
 
-        await record.update(updateData, { transaction });
+          await record.update(updateData, { transaction: t });
+        });
         updated.push({ index: i, id });
       } catch (error) {
         errors.push({
@@ -251,17 +263,19 @@ const bulkDelete = async (Model, ids, options = {}) => {
           where.tenantId = tenantId;
         }
 
-        const record = await Model.findOne({ where, transaction });
+        await runItem(transaction, continueOnError, async (t) => {
+          const record = await Model.findOne({ where, transaction: t });
 
-        if (!record) {
-          throw new Error(`Record with ID ${id} not found`);
-        }
+          if (!record) {
+            throw new Error(`Record with ID ${id} not found`);
+          }
 
-        if (softDelete) {
-          await record.update({ isArchived: true, archivedAt: new Date() }, { transaction });
-        } else {
-          await record.destroy({ transaction });
-        }
+          if (softDelete) {
+            await record.update({ isArchived: true, archivedAt: new Date() }, { transaction: t });
+          } else {
+            await record.destroy({ transaction: t });
+          }
+        });
 
         deleted.push({ index: i, id });
       } catch (error) {

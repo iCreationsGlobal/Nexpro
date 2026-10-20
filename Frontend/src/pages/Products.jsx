@@ -776,7 +776,10 @@ const Products = () => {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importResult, setImportResult] = useState(null);
+  const [importPreview, setImportPreview] = useState(null);
+  const [importCreateCategories, setImportCreateCategories] = useState(true);
   const [importLoading, setImportLoading] = useState(false);
+  const [importUndoing, setImportUndoing] = useState(false);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateColumns, setTemplateColumns] = useState(BASIC_PRODUCT_IMPORT_COLUMNS);
 
@@ -1405,6 +1408,30 @@ const Products = () => {
     }
   }, []);
 
+  const resetImport = useCallback((file = null) => {
+    setImportFile(file);
+    setImportPreview(null);
+    setImportResult(null);
+    setImportCreateCategories(true);
+  }, []);
+
+  // Step 1: check the file (nothing is added yet).
+  const handleImportPreview = useCallback(async () => {
+    if (!importFile) {
+      showError('Please select a CSV or Excel file');
+      return;
+    }
+    setImportLoading(true);
+    try {
+      setImportPreview(await productService.previewProductImport(importFile));
+    } catch (err) {
+      showError(err?.response?.data?.message ?? err?.message ?? 'Could not read this file');
+    } finally {
+      setImportLoading(false);
+    }
+  }, [importFile]);
+
+  // Step 2: add the products the check found.
   const handleImportSubmit = useCallback(async () => {
     if (!importFile) {
       showError('Please select a CSV or Excel file');
@@ -1413,25 +1440,42 @@ const Products = () => {
     setImportLoading(true);
     setImportResult(null);
     try {
-      const result = await productService.importProducts(importFile);
+      const result = await productService.importProducts(importFile, { createCategories: importCreateCategories });
       setImportResult(result);
+      setImportPreview(null);
       const success = result?.successCount ?? 0;
-      const failed = result?.errorCount ?? 0;
       if (success > 0) {
-        showSuccess(`${success} product(s) imported`);
+        showSuccess(`${success} product${success === 1 ? '' : 's'} added`);
         refreshAfterInventoryChange(queryClient);
       }
-      if (failed > 0 && success === 0) {
-        showError(`${failed} row(s) failed. Check the errors below.`);
-      }
     } catch (err) {
-      const msg = err?.response?.data?.message ?? err?.message ?? 'Import failed';
-      showError(msg);
-      setImportResult({ successCount: 0, errorCount: 1, errors: [{ row: 0, message: msg }] });
+      const data = err?.response?.data;
+      showError(data?.message ?? err?.message ?? 'Import failed');
+      setImportResult(data?.errors || data?.skipped
+        ? data
+        : { successCount: 0, errors: [{ row: 0, message: data?.message ?? err?.message ?? 'Import failed' }] });
+      setImportPreview(null);
     } finally {
       setImportLoading(false);
     }
-  }, [importFile, queryClient]);
+  }, [importCreateCategories, importFile, queryClient]);
+
+  const handleImportUndo = useCallback(async () => {
+    if (!importResult?.batchId) return;
+    setImportUndoing(true);
+    try {
+      const undo = await productService.undoProductImport(importResult.batchId);
+      const removed = undo?.removedCount ?? 0;
+      const kept = undo?.keptCount ?? 0;
+      showSuccess(`Import undone: ${removed} product${removed === 1 ? '' : 's'} removed${kept ? `, ${kept} kept because they are already in use` : ''}`);
+      refreshAfterInventoryChange(queryClient);
+      setImportResult((current) => ({ ...current, undo }));
+    } catch (err) {
+      showError(err?.response?.data?.message ?? err?.message ?? 'Could not undo the import');
+    } finally {
+      setImportUndoing(false);
+    }
+  }, [importResult?.batchId, queryClient]);
 
   const handleDeleteClick = (product) => {
     setProductToDelete(product);
@@ -2873,7 +2917,7 @@ const Products = () => {
                   <Package className="mr-2 h-4 w-4" />
                   Generate labels
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => { setImportModalOpen(true); setImportResult(null); setImportFile(null); }}>
+                <DropdownMenuItem onSelect={() => { setImportModalOpen(true); resetImport(); }}>
                   <Upload className="mr-2 h-4 w-4" />
                   Import products
                 </DropdownMenuItem>
@@ -4912,12 +4956,12 @@ const Products = () => {
       </AlertDialog>
 
       {/* Bulk import modal */}
-      <Dialog open={importModalOpen} onOpenChange={(open) => { setImportModalOpen(open); if (!open) { setImportResult(null); setImportFile(null); } }}>
+      <Dialog open={importModalOpen} onOpenChange={(open) => { setImportModalOpen(open); if (!open) resetImport(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Import products</DialogTitle>
             <DialogDescription>
-              Download the template and fill it in using Excel. It includes product codes, prices, stock, supplier, expiry, and rental fields. Only Product Name is required; optional columns can be left blank. Use YYYY-MM-DD for expiry dates and Yes/No for switches. Save as CSV or XLSX, then upload (max 500 rows). Add photos afterwards with Options → Upload product images.
+              Download the template and fill it in using Excel. It includes product codes, prices, stock, supplier, expiry, and rental fields. Only Product Name is required; optional columns can be left blank. Use YYYY-MM-DD for expiry dates and Yes/No for switches. Save as CSV or XLSX and upload it (up to 2,000 rows). You&apos;ll see what will be added before anything changes; products already in ABS are skipped. Add photos afterwards with Options → Upload product images.
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-4">
@@ -4963,45 +5007,124 @@ const Products = () => {
                 type="file"
                 accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 className="mt-2"
-                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => resetImport(e.target.files?.[0] ?? null)}
               />
               {importFile && <p className="text-sm text-muted-foreground mt-1">{importFile.name}</p>}
             </div>
-            {importResult && (
-              <div className="rounded-md border border-border p-3 space-y-2">
-                <p className="text-sm font-medium">
-                  {importResult.successCount ?? 0} imported, {(importResult.errors ?? []).length} error(s)
-                </p>
-                {Array.isArray(importResult.errors) && importResult.errors.length > 0 && (
-                  <ul className="text-xs text-muted-foreground max-h-32 overflow-y-auto space-y-1">
-                    {importResult.errors.slice(0, 20).map((err, i) => (
-                      <li key={i}>Row {err.row}: {err.message}</li>
-                    ))}
-                    {importResult.errors.length > 20 && <li>… and {importResult.errors.length - 20} more</li>}
-                  </ul>
-                )}
-                {(importResult.successCount ?? 0) > 0 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => { setImportModalOpen(false); setBulkImagesOpen(true); }}
-                  >
-                    <ImagePlus className="mr-2 h-4 w-4" />
-                    Now upload their photos
-                  </Button>
-                )}
-              </div>
-            )}
+            {importPreview && !importResult && (() => {
+              const { add = 0, skip = 0, error = 0 } = importPreview.summary ?? {};
+              const issues = [
+                ...(importPreview.rows ?? []).filter((r) => r.status === 'skip').map((r) => ({ row: r.row, name: r.name, reason: r.reason })),
+                ...(importPreview.errors ?? []).map((e) => ({ row: e.row, reason: e.message })),
+              ].sort((a, b) => a.row - b.row);
+              const newCategories = importPreview.newCategories ?? [];
+              return (
+                <div className="rounded-md border border-border p-3 space-y-2">
+                  <p className="text-sm font-medium">
+                    {add} to add
+                    {skip > 0 && ` · ${skip} already in your products or repeated`}
+                    {error > 0 && ` · ${error} with problems`}
+                  </p>
+                  {newCategories.length > 0 && (
+                    <label className="flex items-start gap-2 text-sm">
+                      <Checkbox
+                        checked={importCreateCategories}
+                        onCheckedChange={(checked) => setImportCreateCategories(checked === true)}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        Create {newCategories.length === 1 ? 'a new category' : `${newCategories.length} new categories`}: {newCategories.join(', ')}
+                      </span>
+                    </label>
+                  )}
+                  {issues.length > 0 && (
+                    <ul className="text-xs text-muted-foreground max-h-32 overflow-y-auto space-y-1">
+                      {issues.slice(0, 20).map((issue, i) => (
+                        <li key={i}>
+                          {issue.row > 0 ? `Row ${issue.row}: ` : ''}{issue.name ? `${issue.name}: ` : ''}{issue.reason}
+                        </li>
+                      ))}
+                      {issues.length > 20 && <li>… and {issues.length - 20} more</li>}
+                    </ul>
+                  )}
+                </div>
+              );
+            })()}
+            {importResult && (() => {
+              const issues = [
+                ...(importResult.skipped ?? []).map((r) => ({ row: r.row, name: r.name, reason: r.reason })),
+                ...(importResult.errors ?? []).map((e) => ({ row: e.row, reason: e.message })),
+              ].sort((a, b) => a.row - b.row);
+              const added = importResult.successCount ?? 0;
+              const { undo } = importResult;
+              return (
+                <div className="rounded-md border border-border p-3 space-y-2">
+                  <p className="text-sm font-medium">
+                    {undo
+                      ? `Import undone: ${undo.removedCount ?? 0} removed${undo.keptCount ? `, ${undo.keptCount} kept` : ''}`
+                      : `${added} added${importResult.skippedCount ? ` · ${importResult.skippedCount} skipped` : ''}${(importResult.errors ?? []).length ? ` · ${importResult.errors.length} with problems` : ''}`}
+                  </p>
+                  {undo?.kept?.length > 0 && (
+                    <ul className="text-xs text-muted-foreground max-h-32 overflow-y-auto space-y-1">
+                      {undo.kept.slice(0, 20).map((item) => <li key={item.id}>{item.name}: {item.reason}</li>)}
+                    </ul>
+                  )}
+                  {!undo && issues.length > 0 && (
+                    <ul className="text-xs text-muted-foreground max-h-32 overflow-y-auto space-y-1">
+                      {issues.slice(0, 20).map((issue, i) => (
+                        <li key={i}>
+                          {issue.row > 0 ? `Row ${issue.row}: ` : ''}{issue.name ? `${issue.name}: ` : ''}{issue.reason}
+                        </li>
+                      ))}
+                      {issues.length > 20 && <li>… and {issues.length - 20} more</li>}
+                    </ul>
+                  )}
+                  {!undo && added > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setImportModalOpen(false); setBulkImagesOpen(true); }}
+                      >
+                        <ImagePlus className="mr-2 h-4 w-4" />
+                        Now upload their photos
+                      </Button>
+                      {importResult.batchId && (
+                        <Button type="button" variant="outline" size="sm" onClick={handleImportUndo} disabled={importUndoing}>
+                          {importUndoing && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                          Undo import
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setImportModalOpen(false)}>
               Close
             </Button>
-            <Button type="button" onClick={handleImportSubmit} disabled={!importFile || importLoading}>
-              {importLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Import
-            </Button>
+            {!importResult && (
+              importPreview ? (
+                <Button
+                  type="button"
+                  onClick={handleImportSubmit}
+                  disabled={importLoading || !(importPreview.summary?.add > 0)}
+                >
+                  {importLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  {importPreview.summary?.add > 0
+                    ? `Add ${importPreview.summary.add} product${importPreview.summary.add === 1 ? '' : 's'}`
+                    : 'Nothing to add'}
+                </Button>
+              ) : (
+                <Button type="button" onClick={handleImportPreview} disabled={!importFile || importLoading}>
+                  {importLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Check file
+                </Button>
+              )
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -21,6 +21,8 @@ const {
   exportProducts,
   getProductImportTemplate,
   importProducts,
+  previewProductImport,
+  undoProductImport,
   uploadProductImage,
   getProductImageIndex,
   setProductImages,
@@ -64,7 +66,9 @@ router.route('/export')
 
 // Import template and import - must be before /:id
 router.get('/import/template', exportLimiter, authorize('admin', 'manager'), getProductImportTemplate);
+router.post('/import/preview', bulkOperationLimiter, authorize('admin', 'manager'), importFileUploader.single('file'), previewProductImport);
 router.post('/import', bulkOperationLimiter, authorize('admin', 'manager'), importFileUploader.single('file'), importProducts);
+router.delete('/import/:batchId', bulkOperationLimiter, authorize('admin', 'manager'), undoProductImport);
 
 // Bulk operations - must be before /:id to avoid conflict
 router.route('/bulk')

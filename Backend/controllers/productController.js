@@ -2529,91 +2529,158 @@ exports.getProductImportTemplate = (req, res) => {
   res.send(csv);
 };
 
-// @desc    Bulk import products from CSV/Excel (no images)
+/**
+ * Rows for a product import: an uploaded CSV/Excel file (`file`), or JSON `{ products: [...] }` with
+ * the template's keys (name, sku, categoryName, costPrice, sellingPrice, quantityOnHand, ...), as Lynk sends.
+ * @returns {Promise<{ rows: Array<{ row: number, data: object }>, parseErrors: Array<{ row: number, message: string }> } | null>}
+ */
+const readProductImportRows = async (req) => {
+  const { parseImportFile, mapRowToEntity } = require('../utils/importParse');
+  const { PRODUCT_IMPORT_MAX_ROWS } = require('../services/productImportService');
+  if (req.file?.buffer) {
+    const mime = req.file.mimetype || '';
+    const ext = (req.file.originalname || '').toLowerCase().slice(-5);
+    const { mapped, rowNumbers, errors } = await parseImportFile(req.file.buffer, mime || ext, 'products', {
+      maxRows: PRODUCT_IMPORT_MAX_ROWS,
+    });
+    return { rows: mapped.map((data, i) => ({ row: rowNumbers[i], data })), parseErrors: errors };
+  }
+  const list = req.body?.products;
+  if (!Array.isArray(list)) return null;
+  if (list.length > PRODUCT_IMPORT_MAX_ROWS) {
+    return { rows: [], parseErrors: [{ row: 0, message: `Maximum ${PRODUCT_IMPORT_MAX_ROWS} products per import` }] };
+  }
+  return {
+    rows: list.map((item, i) => {
+      const source = item && typeof item === 'object' ? item : {};
+      const withAliases = {
+        ...source,
+        categoryName: source.categoryName ?? source.category,
+        quantityOnHand: source.quantityOnHand ?? source.stock,
+      };
+      return { row: i + 1, data: mapRowToEntity(withAliases, 'products') };
+    }),
+    parseErrors: [],
+  };
+};
+
+/** Check an import's rows against the rules for adding one product (see createProduct). */
+const planImportForRequest = async (req) => {
+  const { planProductImport } = require('../services/productImportService');
+  const input = await readProductImportRows(req);
+  if (!input) return { input: null };
+  const shopId = attachShopToPayload(req, {}).shopId || null;
+  const plan = await planProductImport({
+    tenantId: req.tenantId,
+    shopId,
+    rows: input.rows,
+    createCategories: !['false', '0', false].includes(req.body?.createCategories),
+    prepare: (record) => {
+      const payload = sanitizePayload(record);
+      normalizeWholesalePrice(payload);
+      applyRentalTenantProductDefaults(payload, req, { isCreate: true });
+      validateProductRentalFields(payload, req, { isCreate: true });
+      return payload;
+    },
+  });
+  return { input, plan };
+};
+
+/** Rows the file could not be read into, plus rows with invalid values, as `{ row, message }`. */
+const importErrors = (input, plan, failed = []) => [
+  ...input.parseErrors.map((e) => ({ row: e.row, message: e.message })),
+  ...plan.rows.filter((r) => r.status === 'error').map((r) => ({ row: r.row, message: r.reason })),
+  ...failed.map((f) => ({ row: f.row, message: f.reason })),
+].sort((a, b) => a.row - b.row);
+
+const NO_IMPORT_INPUT = { success: false, message: 'Upload a CSV or Excel file, or send { products: [...] }' };
+
+// @desc    Check a product import without adding anything
+// @route   POST /api/products/import/preview
+// @access  Private (admin, manager)
+exports.previewProductImport = async (req, res, next) => {
+  try {
+    const { input, plan } = await planImportForRequest(req);
+    if (!input) return res.status(400).json(NO_IMPORT_INPUT);
+    res.status(200).json({
+      success: true,
+      summary: { ...plan.summary, error: plan.summary.error + input.parseErrors.length },
+      rows: plan.rows,
+      newCategories: plan.newCategories,
+      errors: importErrors(input, plan),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Bulk import products from CSV/Excel or JSON (no images). Skips duplicates; undo with the batchId.
 // @route   POST /api/products/import
 // @access  Private (admin, manager)
 exports.importProducts = async (req, res, next) => {
   try {
-    if (!req.file || !req.file.buffer) {
-      return res.status(400).json({ success: false, message: 'No file uploaded' });
-    }
-    const { parseImportFile } = require('../utils/importParse');
-    const { bulkCreate } = require('../utils/bulkOperations');
-    const mime = req.file.mimetype || '';
-    const ext = (req.file.originalname || '').toLowerCase().slice(-5);
-    const { mapped, errors: parseErrors } = await parseImportFile(
-      req.file.buffer,
-      mime || ext,
-      'products'
-    );
-
-    if (parseErrors.length > 0 && mapped.length === 0) {
+    const { commitProductImport } = require('../services/productImportService');
+    const { input, plan } = await planImportForRequest(req);
+    if (!input) return res.status(400).json(NO_IMPORT_INPUT);
+    if (plan.toAdd.length === 0) {
+      const errors = importErrors(input, plan);
+      const skipped = plan.rows.filter((r) => r.status === 'skip').map(({ row, name, reason }) => ({ row, name, reason }));
       return res.status(400).json({
         success: false,
-        message: 'Invalid file or rows',
-        errors: parseErrors,
+        message: skipped.length && !errors.length ? 'Every product is already in ABS' : 'No products could be imported',
+        successCount: 0,
+        skippedCount: skipped.length,
+        errorCount: errors.length,
+        skipped,
+        errors,
       });
     }
 
-    const categoryNames = [...new Set(mapped.map((m) => m.categoryName).filter(Boolean))];
-    const categories =
-      categoryNames.length > 0
-        ? await ProductCategory.findAll({
-            where: applyTenantFilter(req.tenantId, { name: { [Op.in]: categoryNames } }),
-            attributes: ['id', 'name'],
-            raw: true,
-          })
-        : [];
-    const categoryByName = Object.fromEntries(categories.map((c) => [c.name, c.id]));
-
-    const products = mapped.map((m) => {
-      const rec = {
-        name: m.name,
-        sku: m.sku || null,
-        barcode: m.barcode || null,
-        description: m.description || null,
-        categoryId: m.categoryName ? categoryByName[m.categoryName] || null : null,
-        costPrice: Number(m.costPrice) || 0,
-        sellingPrice: Number(m.sellingPrice) || 0,
-        quantityOnHand: Number(m.quantityOnHand) || 0,
-        reorderLevel: Number(m.reorderLevel) || 0,
-        reorderQuantity: Number(m.reorderQuantity ?? m.reorderLevel) || 0,
-        unit: (m.unit && String(m.unit).trim()) || 'pcs',
-        isActive: m.isActive !== false,
-        wholesalePrice: m.wholesalePrice ?? null,
-        brand: m.brand || null,
-        supplier: m.supplier || null,
-        trackStock: m.trackStock !== false,
-        expiryDate: m.expiryDate || null,
-        batchNumber: m.batchNumber || null,
-        isRentable: m.isRentable === true,
-        isSalable: m.isSalable !== false,
-        rentalRatePerDay: m.rentalRatePerDay ?? null,
-        metadata: m.productCode ? { productCode: m.productCode } : {},
-      };
-      return sanitizePayload(attachShopToPayload(req, rec));
-    });
-
-    const result = await bulkCreate(Product, products, {
+    const result = await commitProductImport({
+      plan,
       tenantId: req.tenantId,
-      userId: req.user?.id,
-      continueOnError: true,
-      maxBatchSize: 100,
+      tenant: req.tenant,
+      userId: req.user?.id || null,
+      openingShopId: req.shopFilterId || req.defaultShopId || null,
     });
-
     invalidateProductListCache(req.tenantId);
-    const allErrors = [
-      ...parseErrors.map((e) => ({ row: e.row, message: e.message })),
-      ...result.errors.map((e) => ({ row: e.index + 2, message: e.error })),
-    ];
-    res.status(result.success ? 201 : 207).json({
-      success: result.success,
-      successCount: result.successCount,
-      errorCount: allErrors.length,
-      totalProcessed: mapped.length,
-      created: result.created,
-      errors: allErrors.length ? allErrors : result.errors,
+
+    const errors = importErrors(input, plan, result.failed);
+    const skipped = plan.rows.filter((r) => r.status === 'skip').map(({ row, name, reason }) => ({ row, name, reason }));
+    const complete = errors.length === 0 && skipped.length === 0;
+    res.status(complete ? 201 : 207).json({
+      success: complete,
+      batchId: result.batchId,
+      successCount: result.added.length,
+      skippedCount: skipped.length,
+      errorCount: errors.length,
+      totalProcessed: input.rows.length + input.parseErrors.length,
+      created: result.added,
+      skipped,
+      errors,
+      newCategories: result.newCategories,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Undo a product import: remove its products nothing has used yet
+// @route   DELETE /api/products/import/:batchId
+// @access  Private (admin, manager)
+exports.undoProductImport = async (req, res, next) => {
+  try {
+    const { undoProductImport } = require('../services/productImportService');
+    const result = await undoProductImport({
+      tenantId: req.tenantId,
+      batchId: String(req.params.batchId || ''),
+      canAccess: (product) => userCanAccessShopId(req, product.shopId),
+    });
+    if (result.found === 0) {
+      return res.status(404).json({ success: false, message: 'Import not found, or its products were already removed' });
+    }
+    if (result.removed.length) invalidateProductListCache(req.tenantId);
+    res.status(200).json({ success: true, removedCount: result.removed.length, keptCount: result.kept.length, ...result });
   } catch (error) {
     next(error);
   }

@@ -1,3 +1,4 @@
+const ExcelJS = require('exceljs');
 const { IMPORT_COLUMNS, getTemplateCSV, parseImportFile } = require('../../../utils/importParse');
 
 describe('product import template', () => {
@@ -43,5 +44,32 @@ describe('product import template', () => {
   it('rejects negative wholesale prices', async () => {
     const result = await parseImportFile(Buffer.from('Product Name,Wholesale Price\nWater,-1'), '.csv', 'products');
     expect(result.errors).toEqual([{ row: 2, message: 'Wholesale Price cannot be negative' }]);
+  });
+});
+
+describe('reading an import file', () => {
+  it('keeps each kept row\'s spreadsheet row number, past skipped and invalid rows', async () => {
+    const csv = 'Product Name,Selling Price\nRice,10\n,\nOil,-1\nBeans,4';
+    const result = await parseImportFile(Buffer.from(csv), '.csv', 'products');
+    expect(result.mapped.map((m) => m.name)).toEqual(['Rice', 'Beans']);
+    expect(result.rowNumbers).toEqual([2, 5]);
+    expect(result.errors).toEqual([{ row: 4, message: 'Selling Price cannot be negative' }]);
+  });
+
+  it('allows a larger file when asked', async () => {
+    const csv = ['Product Name', ...Array.from({ length: 600 }, (_, i) => `Item ${i}`)].join('\n');
+    expect((await parseImportFile(Buffer.from(csv), '.csv', 'products')).errors[0].message).toBe('Maximum 500 rows allowed per file');
+    expect((await parseImportFile(Buffer.from(csv), '.csv', 'products', { maxRows: 2000 })).mapped).toHaveLength(600);
+  });
+
+  it('reads Excel formulas, dates and rich text as their values', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Stock');
+    sheet.addRow(['Product Name', 'Cost Price', 'Selling Price', 'Expiry Date']);
+    sheet.addRow([{ richText: [{ text: 'Milo ' }, { text: '400g' }] }, 10, { formula: 'B2*1.5', result: 15 }, new Date('2027-01-31')]);
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    const result = await parseImportFile(Buffer.from(buffer), '.xlsx', 'products');
+    expect(result.mapped).toEqual([{ name: 'Milo 400g', costPrice: 10, sellingPrice: 15, expiryDate: '2027-01-31' }]);
   });
 });

@@ -241,17 +241,47 @@ const productService = {
   },
 
   /**
-   * Bulk import products from CSV/Excel file (no images).
+   * Check a CSV/Excel product import without adding anything.
    * @param {File} file - CSV or XLSX file
-   * @returns {Promise<{ successCount, errorCount, errors, created }>}
+   * @param {{ createCategories?: boolean }} [options]
+   * @returns {Promise<{ summary: { total, add, skip, error }, rows: Array<{ row, name, status, reason?, warnings? }>, newCategories: string[], errors: Array<{ row, message }> }>}
    */
-  importProducts: async (file) => {
+  previewProductImport: async (file, { createCategories = true } = {}) => {
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('createCategories', String(createCategories));
+    const query = buildScopedQueryString();
+    const response = await api.post(`/products/import/preview${query ? `?${query}` : ''}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response?.data ?? response;
+  },
+
+  /**
+   * Bulk import products from CSV/Excel file (no images). Products already in ABS are skipped.
+   * @param {File} file - CSV or XLSX file
+   * @param {{ createCategories?: boolean }} [options]
+   * @returns {Promise<{ batchId, successCount, skippedCount, errorCount, created, skipped, errors, newCategories }>}
+   */
+  importProducts: async (file, { createCategories = true } = {}) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('createCategories', String(createCategories));
     const query = buildScopedQueryString();
     const response = await api.post(`/products/import${query ? `?${query}` : ''}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return response?.data ?? response;
+  },
+
+  /**
+   * Undo an import: removes its products that nothing has used yet.
+   * @param {string} batchId
+   * @returns {Promise<{ removedCount, keptCount, removed, kept: Array<{ id, name, reason }> }>}
+   */
+  undoProductImport: async (batchId) => {
+    const query = buildScopedQueryString();
+    const response = await api.delete(`/products/import/${encodeURIComponent(batchId)}${query ? `?${query}` : ''}`);
     return response?.data ?? response;
   },
 

@@ -179,6 +179,24 @@ function parseCSVLine(line) {
 }
 
 /**
+ * A cell's value as text. Formulas, rich text, links and dates are objects in ExcelJS
+ * (String() would give "[object Object]"): use the formula's result, the text, or an ISO date.
+ */
+function excelCellText(cell) {
+  const v = cell.value;
+  if (v == null) return '';
+  if (v instanceof Date) return v.toISOString().split('T')[0];
+  if (typeof v === 'object') {
+    if (v.result !== undefined) return v.result instanceof Date ? v.result.toISOString().split('T')[0] : String(v.result ?? '').trim();
+    if (Array.isArray(v.richText)) return v.richText.map((part) => part.text || '').join('').trim();
+    if (v.text !== undefined) return String(typeof v.text === 'object' ? cell.text : v.text).trim();
+    if (v.error) return '';
+    return String(cell.text ?? '').trim();
+  }
+  return String(v).trim();
+}
+
+/**
  * Parse Excel buffer; first row = headers.
  * @param {Buffer} buffer
  * @returns {Promise<{ headers: string[], rows: Array<Record<string, string>> }>}
@@ -192,8 +210,7 @@ async function parseExcel(buffer) {
   sheet.eachRow((row, rowNumber) => {
     const cells = [];
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      const v = cell.value;
-      cells[colNumber - 1] = v != null ? String(v).trim() : '';
+      cells[colNumber - 1] = excelCellText(cell);
     });
     rows.push(cells);
   });
@@ -325,9 +342,11 @@ function validateContactRow(mapped) {
  * @param {Buffer} buffer
  * @param {string} mimeTypeOrExt - e.g. 'text/csv', '.csv', 'application/vnd.openxmlformats...'
  * @param {'products'|'materials'|'equipment'|'customers'|'leads'} entity
- * @returns {Promise<{ mapped: Array<Record<string, any>>, errors: Array<{ row: number, message: string }> }>}
+ * @param {{ maxRows?: number }} [options]
+ * @returns {Promise<{ mapped: Array<Record<string, any>>, rowNumbers: number[], errors: Array<{ row: number, message: string }> }>}
+ *   `rowNumbers[i]` is the spreadsheet row of `mapped[i]` (header = row 1).
  */
-async function parseImportFile(buffer, mimeTypeOrExt, entity) {
+async function parseImportFile(buffer, mimeTypeOrExt, entity, { maxRows = MAX_ROWS } = {}) {
   const isExcel =
     mimeTypeOrExt &&
     (mimeTypeOrExt.includes('spreadsheet') ||
@@ -345,10 +364,11 @@ async function parseImportFile(buffer, mimeTypeOrExt, entity) {
     rows = parsed.rows;
   }
 
-  if (rows.length > MAX_ROWS) {
+  if (rows.length > maxRows) {
     return {
       mapped: [],
-      errors: [{ row: 0, message: `Maximum ${MAX_ROWS} rows allowed per file` }],
+      rowNumbers: [],
+      errors: [{ row: 0, message: `Maximum ${maxRows} rows allowed per file` }],
     };
   }
 
@@ -356,6 +376,7 @@ async function parseImportFile(buffer, mimeTypeOrExt, entity) {
   if (!cols) {
     return {
       mapped: [],
+      rowNumbers: [],
       errors: [{ row: 0, message: `Unknown import entity: ${entity}` }],
     };
   }
@@ -370,6 +391,7 @@ async function parseImportFile(buffer, mimeTypeOrExt, entity) {
           : validateContactRow;
 
   const mapped = [];
+  const rowNumbers = [];
   const errors = [];
   rows.forEach((row, index) => {
     const rowNum = index + 2; // 1-based + header
@@ -381,9 +403,10 @@ async function parseImportFile(buffer, mimeTypeOrExt, entity) {
       return;
     }
     mapped.push(m);
+    rowNumbers.push(rowNum);
   });
 
-  return { mapped, errors };
+  return { mapped, rowNumbers, errors };
 }
 
 module.exports = {
@@ -391,6 +414,7 @@ module.exports = {
   getTemplateCSV,
   parseCSV,
   parseExcel,
+  excelCellText,
   mapRowToEntity,
   parseImportFile,
   validateProductRow,

@@ -1,0 +1,382 @@
+/**
+ * Product import: check every row first (preview), then add the good ones (commit), and undo an import.
+ *
+ * Used by POST /api/products/import/preview, POST /api/products/import and
+ * DELETE /api/products/import/:batchId. Rows come from a CSV/Excel file or, for Lynk, a JSON list
+ * with the template's keys. Each import gets a batch id (product.metadata.importBatchId) so it can
+ * be undone while nothing has happened to its products yet.
+ */
+const crypto = require('crypto');
+const { Op, fn, col, where: sqlWhere } = require('sequelize');
+const { sequelize } = require('../config/database');
+const models = require('../models');
+const { validateProductRow } = require('../utils/importParse');
+const { applyStockChange } = require('../utils/productStockUtils');
+
+const { Product, ProductCategory, ProductShopStock, ProductStockMovement, Barcode } = models;
+
+const PRODUCT_IMPORT_MAX_ROWS = 2000;
+
+/** Records that mean a product is in use, so undoing its import keeps it (and why). */
+const IN_USE = {
+  SaleItem: 'Already sold',
+  SaleReturnItem: 'On a sale return',
+  SaleReturnExchangeItem: 'On a sale exchange',
+  QuoteItem: 'On a quote',
+  RentalItem: 'Used in a rental',
+  RentalUnit: 'Has rental units',
+  PreBookingItem: 'On a pre-booking',
+  DamageReport: 'On a damage report',
+  DealerProductPrice: 'Has dealer prices',
+  OnlineProductListing: 'Listed in the online store',
+  ProductVariant: 'Has variants',
+  StockCountItem: 'In a stock count',
+  StorefrontReview: 'Has store reviews',
+  StorefrontWishlistItem: 'On a store wishlist',
+  PartnerProgramService: 'Used in the partner programme',
+};
+
+const clean = (value) => String(value ?? '').trim().replace(/\s+/g, ' ');
+const nameKey = (value) => clean(value).toLowerCase();
+
+/** One template row (see IMPORT_COLUMNS.products) as Product fields; categoryName is resolved later. */
+function toProductRecord(m) {
+  return {
+    name: clean(m.name),
+    sku: clean(m.sku) || null,
+    barcode: clean(m.barcode) || null,
+    description: m.description || null,
+    categoryName: clean(m.categoryName) || null,
+    costPrice: Number(m.costPrice) || 0,
+    sellingPrice: Number(m.sellingPrice) || 0,
+    quantityOnHand: Number(m.quantityOnHand) || 0,
+    reorderLevel: Number(m.reorderLevel) || 0,
+    reorderQuantity: Number(m.reorderQuantity ?? m.reorderLevel) || 0,
+    unit: clean(m.unit) || 'pcs',
+    isActive: m.isActive !== false,
+    wholesalePrice: m.wholesalePrice ?? null,
+    brand: m.brand || null,
+    supplier: m.supplier || null,
+    trackStock: m.trackStock !== false,
+    expiryDate: m.expiryDate || null,
+    batchNumber: m.batchNumber || null,
+    isRentable: m.isRentable === true,
+    isSalable: m.isSalable !== false,
+    rentalRatePerDay: m.rentalRatePerDay ?? null,
+    metadata: m.productCode ? { productCode: m.productCode } : {},
+  };
+}
+
+/** Two rows are the same product when their names match and no SKU or barcode tells them apart. */
+const sameProduct = (a, b) =>
+  !(a.sku && b.sku && a.sku !== b.sku) && !(a.barcode && b.barcode && a.barcode !== b.barcode);
+
+/**
+ * Check rows without writing anything.
+ * @param {object} args
+ * @param {string} args.tenantId
+ * @param {string|null} [args.shopId] - Shop the products go into (names are compared within it)
+ * @param {Array<{ row: number, data: object }>} args.rows - Template rows (see importParse.mapRowToEntity)
+ * @param {boolean} [args.createCategories=true] - Create categories that don't exist yet
+ * @param {(record: object) => object} [args.prepare] - Applies product rules; throws to reject the row
+ * @returns {Promise<{
+ *   summary: { total: number, add: number, skip: number, error: number },
+ *   rows: Array<{ row: number, name: string, status: 'add'|'skip'|'error', reason?: string, warnings?: string[] }>,
+ *   newCategories: string[],
+ *   toAdd: Array<{ row: number, record: object }>,
+ *   categoryIds: Record<string, string>,
+ * }>} `toAdd` and `categoryIds` are for commitProductImport, not for clients.
+ */
+async function planProductImport({ tenantId, shopId = null, rows, createCategories = true, prepare }) {
+  const results = [];
+  const bySku = new Map();
+  const byBarcode = new Map();
+  const byName = new Map();
+
+  for (const { row, data } of rows) {
+    const entry = { row, name: clean(data?.name), status: 'add', warnings: [] };
+    results.push(entry);
+    const valid = validateProductRow({ ...data, name: entry.name });
+    if (!valid.valid) {
+      Object.assign(entry, { status: 'error', reason: valid.error });
+      continue;
+    }
+    let record = { ...toProductRecord(data), ...(shopId ? { shopId } : {}) };
+    if (prepare) {
+      try {
+        record = prepare(record);
+      } catch (err) {
+        Object.assign(entry, { status: 'error', reason: err.message });
+        continue;
+      }
+    }
+    const earlier =
+      (record.sku && bySku.get(record.sku) && { what: 'SKU', row: bySku.get(record.sku) })
+      || (record.barcode && byBarcode.get(record.barcode) && { what: 'barcode', row: byBarcode.get(record.barcode) })
+      || ((byName.get(nameKey(record.name)) || []).find((other) => sameProduct(other, record)) && {
+        what: 'name',
+        row: (byName.get(nameKey(record.name)) || []).find((other) => sameProduct(other, record)).row,
+      });
+    if (earlier) {
+      Object.assign(entry, { status: 'skip', reason: `Same ${earlier.what} as row ${earlier.row}` });
+      continue;
+    }
+    if (record.sku) bySku.set(record.sku, row);
+    if (record.barcode) byBarcode.set(record.barcode, row);
+    byName.set(nameKey(record.name), [...(byName.get(nameKey(record.name)) || []), { row, sku: record.sku, barcode: record.barcode }]);
+    entry.record = record;
+  }
+
+  const pending = () => results.filter((entry) => entry.status === 'add');
+  const skip = (entry, reason) => Object.assign(entry, { status: 'skip', reason });
+
+  // Already in ABS: SKU and barcode across the business, names within the shop the products go into.
+  const skus = pending().map((entry) => entry.record.sku).filter(Boolean);
+  const barcodes = pending().map((entry) => entry.record.barcode).filter(Boolean);
+  const names = [...new Set(pending().map((entry) => nameKey(entry.record.name)))];
+  const [skuOwners, barcodeOwners, barcodeAliases, sameNamed] = await Promise.all([
+    skus.length
+      ? Product.findAll({ where: { tenantId, sku: { [Op.in]: skus } }, attributes: ['name', 'sku'], raw: true })
+      : [],
+    barcodes.length
+      ? Product.findAll({ where: { tenantId, barcode: { [Op.in]: barcodes } }, attributes: ['name', 'barcode'], raw: true })
+      : [],
+    barcodes.length
+      ? Barcode.findAll({ where: { tenantId, barcode: { [Op.in]: barcodes } }, attributes: ['barcode'], raw: true })
+      : [],
+    names.length
+      ? Product.findAll({
+          where: {
+            tenantId,
+            [Op.and]: [
+              sqlWhere(fn('lower', fn('trim', col('name'))), { [Op.in]: names }),
+              ...(shopId ? [{ [Op.or]: [{ shopId }, { shopId: null }] }] : []),
+            ],
+          },
+          attributes: ['name', 'sku', 'barcode'],
+          raw: true,
+        })
+      : [],
+  ]);
+  const skuOwner = new Map(skuOwners.map((product) => [product.sku, product.name]));
+  const barcodeOwner = new Map(barcodeOwners.map((product) => [product.barcode, product.name]));
+  const aliasBarcodes = new Set(barcodeAliases.map((alias) => alias.barcode));
+  for (const entry of pending()) {
+    const { sku, barcode, name } = entry.record;
+    if (sku && skuOwner.has(sku)) {
+      skip(entry, `SKU ${sku} is already used by "${skuOwner.get(sku)}"`);
+    } else if (barcode && (barcodeOwner.has(barcode) || aliasBarcodes.has(barcode))) {
+      skip(entry, barcodeOwner.has(barcode)
+        ? `Barcode ${barcode} is already used by "${barcodeOwner.get(barcode)}"`
+        : `Barcode ${barcode} is already used by another product`);
+    } else if (sameNamed.some((product) => nameKey(product.name) === nameKey(name) && sameProduct(product, entry.record))) {
+      skip(entry, `"${name}" is already in your products`);
+    }
+  }
+
+  // Categories: match by name ignoring case; create the missing ones, or add without a category.
+  const categoryIds = {};
+  // Lower-cased name → the first spelling in the file (that spelling names a new category).
+  const spelling = new Map();
+  pending().forEach(({ record }) => {
+    if (record.categoryName && !spelling.has(nameKey(record.categoryName))) spelling.set(nameKey(record.categoryName), record.categoryName);
+  });
+  const wanted = [...spelling.entries()];
+  if (wanted.length) {
+    const existing = await ProductCategory.findAll({
+      where: { tenantId, [Op.and]: [sqlWhere(fn('lower', fn('trim', col('name'))), { [Op.in]: wanted.map(([key]) => key) })] },
+      attributes: ['id', 'name'],
+      raw: true,
+    });
+    existing.forEach((category) => { categoryIds[nameKey(category.name)] = category.id; });
+  }
+  const newCategories = wanted.filter(([key]) => !categoryIds[key]).map(([, label]) => label);
+  if (!createCategories) {
+    for (const entry of pending()) {
+      const category = entry.record.categoryName;
+      if (category && !categoryIds[nameKey(category)]) entry.warnings.push(`Category "${category}" not found; added without a category`);
+    }
+  }
+
+  const toAdd = pending().map((entry) => ({ row: entry.row, record: entry.record }));
+  const count = (status) => results.filter((entry) => entry.status === status).length;
+  return {
+    summary: { total: results.length, add: count('add'), skip: count('skip'), error: count('error') },
+    rows: results.map(({ record, warnings, ...entry }) => ({ ...entry, ...(warnings.length ? { warnings } : {}) })),
+    newCategories: createCategories ? newCategories : [],
+    toAdd,
+    categoryIds,
+  };
+}
+
+const CATEGORY_BUSINESS_TYPES = ['shop', 'studio', 'pharmacy'];
+const CATEGORY_STUDIO_TYPES = ['printing_press', 'mechanic', 'barber', 'salon'];
+
+/** Business type fields for a new category, as createProductCategory sets them (only values the columns allow). */
+function categoryDefaults(tenant) {
+  const { resolveBusinessType } = require('../config/businessTypes');
+  const type = tenant ? resolveBusinessType(tenant.businessType) : null;
+  const businessType = CATEGORY_BUSINESS_TYPES.includes(type) ? type : null;
+  const studioType = businessType === 'studio' && CATEGORY_STUDIO_TYPES.includes(tenant?.metadata?.studioType)
+    ? tenant.metadata.studioType
+    : null;
+  const shopType = businessType === 'shop' ? tenant?.metadata?.shopType || null : null;
+  return { businessType, studioType, shopType };
+}
+
+const failureReason = (err) =>
+  err?.name === 'SequelizeUniqueConstraintError'
+    ? 'Already in your products (same SKU or barcode)'
+    : err?.message || 'Could not add this product';
+
+/**
+ * Add a checked import: new categories, then each product (with its opening stock) in its own
+ * savepoint, so one failure doesn't undo the rest.
+ * @param {object} args
+ * @param {object} args.plan - From planProductImport
+ * @param {string} args.tenantId
+ * @param {object} [args.tenant] - For new categories' business type
+ * @param {string|null} [args.userId]
+ * @param {string|null} [args.openingShopId] - Shop for opening stock when a row has none
+ * @returns {Promise<{ batchId: string, added: Array<{ row: number, id: string, name: string }>, failed: Array<{ row: number, name: string, reason: string }>, newCategories: string[] }>}
+ */
+async function commitProductImport({ plan, tenantId, tenant = null, userId = null, openingShopId = null }) {
+  const batchId = crypto.randomUUID();
+  const importedAt = new Date().toISOString();
+  const added = [];
+  const failed = [];
+  const createdCategories = [];
+  const categoryIds = { ...plan.categoryIds };
+
+  await sequelize.transaction(async (outer) => {
+    for (const name of plan.newCategories) {
+      try {
+        const category = await sequelize.transaction({ transaction: outer }, (t) =>
+          ProductCategory.create({ ...categoryDefaults(tenant), name, tenantId, metadata: { importBatchId: batchId } }, { transaction: t }));
+        categoryIds[nameKey(name)] = category.id;
+        createdCategories.push(name);
+      } catch {
+        const existing = await ProductCategory.findOne({ where: { tenantId, name }, attributes: ['id'], transaction: outer });
+        if (existing) categoryIds[nameKey(name)] = existing.id;
+      }
+    }
+
+    for (const { row, record } of plan.toAdd) {
+      const { categoryName, ...fields } = record;
+      const openingQty = Number(fields.quantityOnHand) || 0;
+      const stockShopId = fields.shopId || openingShopId;
+      const recordOpening = Boolean(stockShopId && openingQty > 0 && fields.trackStock !== false);
+      try {
+        const product = await sequelize.transaction({ transaction: outer }, async (t) => {
+          const created = await Product.create({
+            ...fields,
+            categoryId: categoryName ? categoryIds[nameKey(categoryName)] || null : null,
+            // Opening stock goes on the shop's stock with a ledger entry, as when adding one product.
+            quantityOnHand: recordOpening ? 0 : openingQty,
+            metadata: { ...(fields.metadata || {}), importBatchId: batchId, importedAt },
+            tenantId,
+          }, { transaction: t });
+          if (recordOpening) {
+            await applyStockChange({
+              tenantId,
+              productId: created.id,
+              shopId: stockShopId,
+              setTo: openingQty,
+              type: 'opening',
+              reason: 'Opening stock from import',
+              userId,
+              metadata: { source: 'import', importBatchId: batchId },
+              transaction: t,
+            });
+          }
+          return created;
+        });
+        added.push({ row, id: product.id, name: product.name });
+      } catch (err) {
+        failed.push({ row, name: fields.name, reason: failureReason(err) });
+      }
+    }
+  });
+
+  return { batchId, added, failed, newCategories: createdCategories };
+}
+
+/**
+ * Undo an import: remove its products that nothing has used yet (no sales, quotes, rentals, variants,
+ * store listings, or stock changes after the opening stock), and the categories it created that are
+ * left empty. Products in use are kept and listed with the reason.
+ * @param {object} args
+ * @param {string} args.tenantId
+ * @param {string} args.batchId
+ * @param {(product: { id: string, shopId: string|null }) => boolean} [args.canAccess] - Shop access check
+ * @returns {Promise<{ found: number, removed: Array<{ id: string, name: string }>, kept: Array<{ id: string, name: string, reason: string }> }>}
+ */
+async function undoProductImport({ tenantId, batchId, canAccess = () => true }) {
+  const products = await Product.findAll({
+    where: { tenantId, metadata: { importBatchId: batchId } },
+    attributes: ['id', 'name', 'shopId'],
+    raw: true,
+  });
+  if (products.length === 0) return { found: 0, removed: [], kept: [] };
+
+  const ids = products.map((product) => product.id);
+  const keptReason = new Map();
+  products.filter((product) => !canAccess(product)).forEach((product) => keptReason.set(product.id, 'In a shop you cannot manage'));
+
+  for (const [modelName, reason] of Object.entries(IN_USE)) {
+    const Model = models[modelName];
+    if (!Model?.rawAttributes?.productId) continue;
+    const used = await Model.findAll({
+      where: { productId: { [Op.in]: ids } },
+      attributes: ['productId'],
+      group: ['productId'],
+      raw: true,
+    });
+    used.forEach(({ productId }) => { if (!keptReason.has(productId)) keptReason.set(productId, reason); });
+  }
+  const movements = await ProductStockMovement.findAll({
+    where: { productId: { [Op.in]: ids } },
+    attributes: ['productId', 'type', 'metadata'],
+    raw: true,
+  });
+  movements
+    .filter((movement) => !(movement.type === 'opening' && movement.metadata?.importBatchId === batchId))
+    .forEach(({ productId }) => { if (!keptReason.has(productId)) keptReason.set(productId, 'Stock has changed since the import'); });
+
+  const removable = ids.filter((id) => !keptReason.has(id));
+  if (removable.length) {
+    await sequelize.transaction(async (transaction) => {
+      const where = { productId: { [Op.in]: removable } };
+      await ProductStockMovement.destroy({ where, transaction });
+      await ProductShopStock.destroy({ where, transaction });
+      await Barcode.destroy({ where, transaction });
+      await Product.destroy({ where: { tenantId, id: { [Op.in]: removable } }, transaction });
+
+      const categories = await ProductCategory.findAll({
+        where: { tenantId, metadata: { importBatchId: batchId } },
+        attributes: ['id'],
+        raw: true,
+        transaction,
+      });
+      for (const { id } of categories) {
+        const stillUsed = await Product.count({ where: { tenantId, categoryId: id }, transaction });
+        if (!stillUsed) await ProductCategory.destroy({ where: { tenantId, id }, transaction });
+      }
+    });
+  }
+
+  const nameOf = new Map(products.map((product) => [product.id, product.name]));
+  return {
+    found: products.length,
+    removed: removable.map((id) => ({ id, name: nameOf.get(id) })),
+    kept: [...keptReason.entries()].map(([id, reason]) => ({ id, name: nameOf.get(id), reason })),
+  };
+}
+
+module.exports = {
+  PRODUCT_IMPORT_MAX_ROWS,
+  toProductRecord,
+  planProductImport,
+  commitProductImport,
+  undoProductImport,
+};
