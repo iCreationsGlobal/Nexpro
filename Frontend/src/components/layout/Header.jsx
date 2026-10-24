@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { Lock, RefreshCw } from 'lucide-react';
+import { Lock, RefreshCw, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import NotificationBell from '@/components/NotificationBell';
@@ -7,12 +7,14 @@ import { useSimpleMode } from '@/hooks/useSimpleMode';
 import { lockSimpleMode } from '@/components/simple/SimpleModePinGate';
 import SmartSearchField from './SmartSearchField';
 import UserMenu from './UserMenu';
+import { useLynkAi } from '../../context/LynkAiContext';
 
 /**
  * Top bar for the sidebar (desktop) layout. Phones and tablets use AppHeader instead.
  */
 export function Header() {
   const simpleMode = useSimpleMode();
+  const lynk = useLynkAi();
 
   const handleHardRefresh = useCallback(() => {
     window.location.reload();
@@ -36,6 +38,25 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3 flex-shrink-0">
+          {/* Lynk AI beside the page: ask about the business (owners, admins, managers) */}
+          {lynk.canUse && !simpleMode.isRestricted && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={lynk.panelOpen ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={lynk.togglePanel}
+                  aria-pressed={lynk.panelOpen}
+                  className="h-9 gap-1.5 border-border"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  <span>Lynk AI</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Ask about your sales, stock, money owed and customers</TooltipContent>
+            </Tooltip>
+          )}
+
           {/* Hard refresh */}
           <Tooltip>
             <TooltipTrigger asChild>

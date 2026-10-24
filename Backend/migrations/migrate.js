@@ -513,6 +513,10 @@ const migrate = async () => {
     const createLynkImports = require('./create-lynk-imports');
     await createLynkImports({ closeConnection: false });
 
+    // Lynk AI inside ABS: Lynk's questions are answered only for sessions ABS opened, as that person, in their shop
+    const createLynkAiSessions = require('./create-lynk-ai-sessions');
+    await createLynkAiSessions({ closeConnection: false });
+
     console.log('\n✅ Database migration completed successfully!');
     console.log('📊 Incremental schema updates applied.');
     console.log('👤 User model has been enhanced with new fields.');

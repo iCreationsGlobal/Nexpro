@@ -56,6 +56,10 @@ export function getAppShellRouteMeta(pathname = '/', { destinations = [] } = {})
   if (path === '/' || path === '/dashboard') {
     return { kind: 'root', title: 'Dashboard', backTo: null, hideTabBar: false };
   }
+  // Lynk AI (also in the More sheet) has its own typing box at the bottom, where the tab bar would be.
+  if (path === '/lynk') {
+    return { kind: 'inner', title: 'Lynk AI', backTo: '/dashboard', hideTabBar: true };
+  }
   if (exactRoot) {
     return { kind: 'root', title: exactRoot.label, backTo: null, hideTabBar: false };
   }

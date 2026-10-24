@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Lock } from 'lucide-react';
+import { ChevronLeft, Lock, Sparkles } from 'lucide-react';
 import { useSmartSearch } from '@/context/SmartSearchContext';
 import { useSimpleMode } from '@/hooks/useSimpleMode';
 import { useWorkspaceBrand } from '@/hooks/useWorkspaceNav';
@@ -9,6 +9,7 @@ import SidebarScopeSwitcher from '@/components/SidebarScopeSwitcher';
 import AppLogo from '@/components/AppLogo';
 import SmartSearchField from './SmartSearchField';
 import UserMenu from './UserMenu';
+import { useLynkAi } from '@/context/LynkAiContext';
 
 /** Round 40px icon button matching NotificationBell. */
 const headerIconButtonClass =
@@ -49,9 +50,15 @@ export default function AppHeader({ meta }) {
   const { pageConfig } = useSmartSearch();
   const { appName, primaryColor, orgName, subtitle, showScopeSwitcher } = useWorkspaceBrand();
   const showSearch = Boolean(pageConfig) && !simpleMode.isRestricted;
+  const lynk = useLynkAi();
 
   const actions = (
     <div className="flex flex-shrink-0 items-center gap-2">
+      {lynk.canUse && !simpleMode.isRestricted && (
+        <button type="button" onClick={() => navigate('/lynk')} className={headerIconButtonClass} aria-label="Lynk AI" title="Lynk AI">
+          <Sparkles className="h-5 w-5 text-primary" />
+        </button>
+      )}
       {!simpleMode.isSimple && (
         <div data-tour="header-notifications" className="inline-flex">
           <NotificationBell />

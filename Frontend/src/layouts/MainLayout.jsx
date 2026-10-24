@@ -36,6 +36,8 @@ import { useDismissibleDashboardBanner } from '../hooks/useDismissibleDashboardB
 import authService from '../services/authService';
 import { showSuccess, showError } from '../utils/toast';
 import { releaseBodyInteractionLocks } from '../utils/releaseBodyInteractionLocks';
+import { LynkAiProvider, useLynkAi } from '../context/LynkAiContext';
+import LynkAiPanel, { LYNK_PANEL_WIDTH } from '../components/lynk/LynkAiPanel';
 
 /**
  * Phone/tablet chrome state: header meta, tabs, More sheet, scroll memory.
@@ -89,6 +91,9 @@ function WorkspaceFrame({ isAppShell, collapsed, onCollapse, children }) {
   const chrome = useAppShellChrome(isAppShell);
   const { setMoreOpen } = chrome;
   const openMore = useCallback(() => setMoreOpen(true), [setMoreOpen]);
+  // Lynk AI's side panel (desktop): the page moves over while it's open.
+  const { panelOpen } = useLynkAi();
+  const withPanel = panelOpen && !isAppShell;
 
   return (
     <div className="min-h-screen bg-background" data-layout={isAppShell ? 'app' : 'desktop'}>
@@ -98,10 +103,12 @@ function WorkspaceFrame({ isAppShell, collapsed, onCollapse, children }) {
           'transition-all duration-300',
           !isAppShell && (collapsed ? 'ml-20' : 'ml-64')
         )}
+        style={withPanel ? { marginRight: LYNK_PANEL_WIDTH } : undefined}
       >
         {isAppShell ? <AppHeader meta={chrome.meta} /> : <Header />}
         <div ref={chrome.contentRef}>{children}</div>
       </div>
+      {!isAppShell && <LynkAiPanel />}
       {isAppShell && (
         <>
           <ShellPullToRefresh />
@@ -219,6 +226,7 @@ const MainLayout = () => {
     <SmartSearchProvider>
       <StudioLocationProvider>
       <ShopProvider>
+      <LynkAiProvider>
       <NotificationWebSocketListener />
       <WorkspaceFrame isAppShell={isAppShell} collapsed={collapsed} onCollapse={setCollapsed}>
           <SupportAccessBanner />
@@ -293,6 +301,7 @@ const MainLayout = () => {
             </div>
           </main>
       </WorkspaceFrame>
+      </LynkAiProvider>
       </ShopProvider>
       </StudioLocationProvider>
     </SmartSearchProvider>

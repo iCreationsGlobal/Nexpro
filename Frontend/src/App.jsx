@@ -32,6 +32,7 @@ import SimpleModePinGate from './components/simple/SimpleModePinGate';
 const PartnerPortal = lazy(() => import('./pages/PartnerPortal'));
 
 const Products = lazy(() => import('./pages/Products'));
+const LynkAi = lazy(() => import('./pages/LynkAi'));
 const TourProvider = lazy(() => import('./components/tour/TourProvider'));
 const Login = lazy(() => import('./pages/Login'));
 const Signup = lazy(() => import('./pages/Signup'));
@@ -344,6 +345,7 @@ function AppContent() {
           >
             <Route index element={<WorkspaceIndexRedirect />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="lynk" element={<LynkAi />} />
             <Route path="workspace" element={<Navigate to="/dashboard" replace />} />
             <Route path="tasks" element={<Tasks />} />
             <Route path="customers" element={<FeatureRoute featureKey="crm"><Customers /></FeatureRoute>} />

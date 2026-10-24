@@ -90,6 +90,7 @@ const WhatsAppMessageEvent = require('./WhatsAppMessageEvent');
 const MarketingCampaign = require('./MarketingCampaign');
 const MarketingCampaignRecipient = require('./MarketingCampaignRecipient');
 const LynkImport = require('./LynkImport');
+const LynkAiSession = require('./LynkAiSession');
 const StudioLocation = require('./StudioLocation');
 const UserStudioLocation = require('./UserStudioLocation');
 const UserShop = require('./UserShop');
@@ -1153,6 +1154,7 @@ module.exports = {
   MarketingCampaign,
   MarketingCampaignRecipient,
   LynkImport,
+  LynkAiSession,
   StudioLocation,
   UserStudioLocation,
   UserShop,

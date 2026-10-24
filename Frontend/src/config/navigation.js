@@ -23,6 +23,7 @@ import {
   Building2,
   Globe,
   CalendarClock,
+  Sparkles,
 } from 'lucide-react';
 import { isQuotesEnabledForTenant, STUDIO_LIKE_TYPES } from '@/constants';
 import { isSabitoStoreEnabled } from '@/utils/sabitoStoreFeature';
@@ -35,6 +36,7 @@ import { isSabitoStoreEnabled } from '@/utils/sabitoStoreFeature';
 /** Hint text for menu items – simple language for market women */
 export const MENU_HINTS = {
   '/dashboard': 'See your sales and money today',
+  '/lynk': 'Ask about your business, see what needs attention, make posts',
   '/sales': 'List of all your sales',
   '/orders': 'Orders from customers',
   '/products': 'Things you sell',
@@ -117,6 +119,10 @@ export const getMenuItems = (
   const baseItems = [
     { key: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', tooltip: MENU_HINTS['/dashboard'] },
   ];
+  // Lynk AI (pages/LynkAi.jsx): owners, admins and managers.
+  if (!isPlatformAdmin) {
+    baseItems.push({ key: '/lynk', icon: Sparkles, label: 'Lynk AI', tooltip: MENU_HINTS['/lynk'], managerOnly: true });
+  }
 
   if ((businessType === 'shop' || businessType === 'rental') && hasFeature('paymentsExpenses')) {
     if (businessType === 'rental' && hasFeature('rentals')) {
