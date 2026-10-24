@@ -121,12 +121,12 @@ app.use(
     limit: '10mb',
     verify: (req, res, buf) => {
       const pathHint = `${req.originalUrl || ''} ${req.url || ''} ${req.path || ''}`;
-      if (req.method === 'POST' && /webhooks\/(whatsapp|paystack)/.test(pathHint)) {
+      if (req.method === 'POST' && /webhooks\/(whatsapp|paystack|lynk)/.test(pathHint)) {
         req.rawBody = buf;
       }
     }
   })
-); // Increased limit for base64 images; raw body for Meta signature verification
+); // Increased limit for base64 images; raw body for Meta, Paystack and Lynk signature verification
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(compression());
 app.use('/api', requestTiming);

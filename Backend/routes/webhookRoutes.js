@@ -6,6 +6,7 @@ const {
   handlePaystackWebhook,
 } = require('../controllers/webhookController');
 const { mtnWebhook, airtelWebhook, hubtelWebhook } = require('../controllers/mobileMoneyController');
+const { lynkImportCheck, lynkImportFinished } = require('../controllers/lynkImportController');
 
 // Sabito webhook endpoint (no auth middleware - uses API key authentication)
 router.post('/sabito/customer', handleSabitoCustomerWebhook);
@@ -21,6 +22,10 @@ router.post('/hubtel', hubtelWebhook);
 
 // Paystack (subscriptions, invoices, POS)
 router.post('/paystack', handlePaystackWebhook);
+
+// Lynk AI product import (signed by Lynk: controllers/lynkImportController.js)
+router.post('/lynk/import-check', lynkImportCheck);
+router.post('/lynk/import-finished', lynkImportFinished);
 
 module.exports = router;
 

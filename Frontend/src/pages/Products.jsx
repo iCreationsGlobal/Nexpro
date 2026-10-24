@@ -47,6 +47,7 @@ import {
   MoreVertical,
   Globe,
   ChevronRight,
+  Sparkles,
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import { useDebounce } from '../hooks/useDebounce';
@@ -100,6 +101,7 @@ import ReceiveStockModal from '../components/ReceiveStockModal';
 import StockTransferModal from '../components/StockTransferModal';
 const ProductQRGenerateModal = lazy(() => import('../components/ProductQRGenerateModal'));
 const BulkProductLabels = lazy(() => import('../components/BulkProductLabels'));
+const LynkImportDialog = lazy(() => import('../components/LynkImportDialog'));
 import ViewToggle from '../components/ViewToggle';
 import ResponsiveSheet from '../components/ResponsiveSheet';
 import { Button } from '@/components/ui/button';
@@ -780,6 +782,8 @@ const Products = () => {
   const [importCreateCategories, setImportCreateCategories] = useState(true);
   const [importLoading, setImportLoading] = useState(false);
   const [importUndoing, setImportUndoing] = useState(false);
+  // Bring in products with Lynk AI (components/LynkImportDialog.jsx)
+  const [lynkImportOpen, setLynkImportOpen] = useState(false);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateColumns, setTemplateColumns] = useState(BASIC_PRODUCT_IMPORT_COLUMNS);
 
@@ -1459,6 +1463,15 @@ const Products = () => {
       setImportLoading(false);
     }
   }, [importCreateCategories, importFile, queryClient]);
+
+  // Lynk's products are in: show them as an import result (with Undo and photos), like ABS's own import.
+  const handleLynkImportSaved = useCallback(({ batchId, addedCount, leftOut }) => {
+    showSuccess(`${addedCount} product${addedCount === 1 ? '' : 's'} added with Lynk AI`);
+    refreshAfterInventoryChange(queryClient);
+    resetImport();
+    setImportResult({ batchId, successCount: addedCount, skippedCount: leftOut.length, skipped: leftOut.map((l) => ({ row: 0, name: l.name, reason: l.why })), errors: [] });
+    setImportModalOpen(true);
+  }, [queryClient, resetImport]);
 
   const handleImportUndo = useCallback(async () => {
     if (!importResult?.batchId) return;
@@ -4955,6 +4968,12 @@ const Products = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      {lynkImportOpen && (
+        <Suspense fallback={null}>
+          <LynkImportDialog open={lynkImportOpen} onOpenChange={setLynkImportOpen} onSaved={handleLynkImportSaved} />
+        </Suspense>
+      )}
+
       {/* Bulk import modal */}
       <Dialog open={importModalOpen} onOpenChange={(open) => { setImportModalOpen(open); if (!open) resetImport(); }}>
         <DialogContent className="sm:max-w-md">
@@ -4965,6 +4984,16 @@ const Products = () => {
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-4">
+            {!importResult && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
+                <p className="text-sm font-medium">Any file, no template: Lynk AI</p>
+                <p className="text-sm text-muted-foreground">Send an Excel or CSV in any layout, a PDF price list, a Word file or a photo of your stock book, or just say what you sell. Lynk AI arranges it, asks about anything missing (like cost prices, colours and sizes), and adds the products here.</p>
+                <Button type="button" className="w-full" onClick={() => { setImportModalOpen(false); setLynkImportOpen(true); }}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Bring in with Lynk AI
+                </Button>
+              </div>
+            )}
             <details className="rounded-md border border-border p-3">
               <summary className="cursor-pointer text-sm font-medium">
                 Template columns ({templateColumns.length} selected)

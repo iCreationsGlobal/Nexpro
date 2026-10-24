@@ -6,6 +6,7 @@ jest.mock('../../../models', () => ({
   ProductShopStock: { destroy: jest.fn() },
   ProductStockMovement: { findAll: jest.fn(), destroy: jest.fn() },
   Barcode: { findAll: jest.fn(), destroy: jest.fn() },
+  ProductVariant: { rawAttributes: { productId: {} }, findAll: jest.fn(), create: jest.fn(), destroy: jest.fn() },
   SaleItem: { rawAttributes: { productId: {} }, findAll: jest.fn() },
   QuoteItem: { rawAttributes: { productId: {} }, findAll: jest.fn() },
 }));
@@ -17,20 +18,25 @@ jest.mock('../../../config/database', () => ({
   },
 }));
 
-jest.mock('../../../utils/productStockUtils', () => ({ applyStockChange: jest.fn() }));
+jest.mock('../../../utils/productStockUtils', () => ({ applyStockChange: jest.fn(), syncParentQuantityFromVariants: jest.fn() }));
 
 const models = require('../../../models');
-const { applyStockChange } = require('../../../utils/productStockUtils');
+const { applyStockChange, syncParentQuantityFromVariants } = require('../../../utils/productStockUtils');
 const {
   planProductImport,
   commitProductImport,
   undoProductImport,
 } = require('../../../services/productImportService');
 
-const { Product, ProductCategory, ProductStockMovement, Barcode, SaleItem, QuoteItem } = models;
+const { Product, ProductCategory, ProductStockMovement, Barcode, SaleItem, QuoteItem, ProductVariant } = models;
 
 /** Existing ABS data the plan checks against. */
-function givenExisting({ products = [], aliases = [], categories = [] } = {}) {
+function givenExisting({ products = [], aliases = [], categories = [], variants = [] } = {}) {
+  ProductVariant.findAll.mockImplementation(async ({ where }) => {
+    if (where?.productId) return [];
+    const wanted = (where[Op.or] || []).flatMap((w) => (w.sku ? w.sku[Op.in] : w.barcode[Op.in]));
+    return variants.filter((v) => wanted.includes(v.sku) || wanted.includes(v.barcode));
+  });
   Product.findAll.mockImplementation(async ({ where }) => {
     if (where.sku) return products.filter((p) => p.sku && where.sku[Op.in].includes(p.sku));
     if (where.barcode) return products.filter((p) => p.barcode && where.barcode[Op.in].includes(p.barcode));
@@ -241,5 +247,51 @@ describe('undoProductImport', () => {
     Product.findAll.mockResolvedValue([]);
     await expect(undoProductImport({ tenantId: 't1', batchId: 'nope' })).resolves.toEqual({ found: 0, removed: [], kept: [] });
     expect(Product.destroy).not.toHaveBeenCalled();
+  });
+});
+
+describe('colours and sizes (variants, from Lynk)', () => {
+  const polo = { name: 'Polo shirt', sellingPrice: 50, quantityOnHand: 5 };
+  const choices = [
+    { attributes: { colour: 'Red', size: 'XL' }, sku: 'POLO-R-XL', sellingPrice: 50, quantityOnHand: 3 },
+    { attributes: { colour: 'Blue', size: 'M' }, sku: 'POLO-B-M', sellingPrice: '55', quantityOnHand: 2 },
+  ];
+
+  it('checks each colour and size with its product, and skips a code ABS already uses', async () => {
+    let plan = await planProductImport({ tenantId: 't1', rows: [{ row: 'r1', data: polo, variants: choices }] });
+    expect(plan.rows[0].status).toBe('add');
+    expect(plan.toAdd[0].record.variants.map((v) => [v.name, v.sku, v.sellingPrice])).toEqual([['Red / XL', 'POLO-R-XL', 50], ['Blue / M', 'POLO-B-M', 55]]);
+
+    givenExisting({ variants: [{ sku: 'POLO-B-M', product: { name: 'Old polo' } }] });
+    plan = await planProductImport({ tenantId: 't1', rows: [{ row: 'r1', data: polo, variants: choices }] });
+    expect(plan.rows[0]).toMatchObject({ status: 'skip', reason: 'SKU POLO-B-M is already used by "Old polo"' });
+
+    plan = await planProductImport({ tenantId: 't1', rows: [{ row: 'r1', data: polo, variants: [{ attributes: { size: 'S' }, quantityOnHand: -1 }] }] });
+    expect(plan.rows[0].status).toBe('error');
+  });
+
+  it('adds the colours and sizes with their own opening stock, and the product\'s total follows them', async () => {
+    Product.create.mockImplementation(async (data) => ({ id: 'p-polo', ...data }));
+    ProductVariant.create.mockImplementation(async (data) => ({ id: `v-${data.sku}`, ...data }));
+    const plan = await planProductImport({ tenantId: 't1', rows: [{ row: 'r1', data: polo, variants: choices }] });
+    const result = await commitProductImport({ plan, tenantId: 't1', openingShopId: 'shop-osu', batchId: 'lynk-imp1' });
+    expect(result.batchId).toBe('lynk-imp1');
+    expect(Product.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Polo shirt', hasVariants: true, quantityOnHand: 0 }), expect.anything());
+    expect(ProductVariant.create).toHaveBeenCalledTimes(2);
+    expect(ProductVariant.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Red / XL', productId: 'p-polo', quantityOnHand: 0, metadata: expect.objectContaining({ importBatchId: 'lynk-imp1' }) }), expect.anything());
+    expect(applyStockChange).toHaveBeenCalledWith(expect.objectContaining({ productVariantId: 'v-POLO-R-XL', shopId: 'shop-osu', setTo: 3, type: 'opening' }));
+    expect(syncParentQuantityFromVariants).toHaveBeenCalledWith('p-polo', expect.anything());
+  });
+
+  it('undo removes the colours and sizes the import made, with their product', async () => {
+    Product.findAll.mockResolvedValue([{ id: 'p-polo', name: 'Polo shirt', shopId: null }]);
+    ProductStockMovement.findAll.mockResolvedValue([]);
+    SaleItem.findAll.mockResolvedValue([]);
+    QuoteItem.findAll.mockResolvedValue([]);
+    ProductCategory.findAll.mockResolvedValue([]);
+    const result = await undoProductImport({ tenantId: 't1', batchId: 'lynk-imp1' });
+    expect(result.removed).toEqual([{ id: 'p-polo', name: 'Polo shirt' }]);
+    expect(ProductVariant.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ [Op.not]: { metadata: { importBatchId: 'lynk-imp1' } } }) }));
+    expect(ProductVariant.destroy).toHaveBeenCalled();
   });
 });

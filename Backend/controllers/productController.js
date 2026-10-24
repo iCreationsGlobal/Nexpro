@@ -2564,6 +2564,17 @@ const readProductImportRows = async (req) => {
   };
 };
 
+/** One imported product made ready by the rules for adding one product (see createProduct); throws what they reject. */
+const prepareImportRecord = (record, req) => {
+  const payload = sanitizePayload(record);
+  normalizeWholesalePrice(payload);
+  applyRentalTenantProductDefaults(payload, req, { isCreate: true });
+  validateProductRentalFields(payload, req, { isCreate: true });
+  return payload;
+};
+// For imports that arrive from Lynk (controllers/lynkImportController.js), with the tenant but no signed-in user.
+exports._prepareImportRecord = prepareImportRecord;
+
 /** Check an import's rows against the rules for adding one product (see createProduct). */
 const planImportForRequest = async (req) => {
   const { planProductImport } = require('../services/productImportService');
@@ -2575,13 +2586,7 @@ const planImportForRequest = async (req) => {
     shopId,
     rows: input.rows,
     createCategories: !['false', '0', false].includes(req.body?.createCategories),
-    prepare: (record) => {
-      const payload = sanitizePayload(record);
-      normalizeWholesalePrice(payload);
-      applyRentalTenantProductDefaults(payload, req, { isCreate: true });
-      validateProductRentalFields(payload, req, { isCreate: true });
-      return payload;
-    },
+    prepare: (record) => prepareImportRecord(record, req),
   });
   return { input, plan };
 };

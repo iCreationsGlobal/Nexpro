@@ -46,6 +46,7 @@ const {
 } = require('../controllers/rentalUnitController');
 const { requireFeature } = require('../middleware/featureAccess');
 
+const { startLynkImport, lynkImportStatus } = require('../controllers/lynkImportController');
 const router = express.Router();
 
 router.use(protect);
@@ -68,6 +69,9 @@ router.route('/export')
 router.get('/import/template', exportLimiter, authorize('admin', 'manager'), getProductImportTemplate);
 router.post('/import/preview', bulkOperationLimiter, authorize('admin', 'manager'), importFileUploader.single('file'), previewProductImport);
 router.post('/import', bulkOperationLimiter, authorize('admin', 'manager'), importFileUploader.single('file'), importProducts);
+// Bring in products with Lynk AI (controllers/lynkImportController.js)
+router.post('/import/lynk', bulkOperationLimiter, authorize('admin', 'manager'), startLynkImport);
+router.get('/import/lynk/:importId', authorize('admin', 'manager'), lynkImportStatus);
 router.delete('/import/:batchId', bulkOperationLimiter, authorize('admin', 'manager'), undoProductImport);
 
 // Bulk operations - must be before /:id to avoid conflict

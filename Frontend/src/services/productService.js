@@ -275,6 +275,27 @@ const productService = {
   },
 
   /**
+   * Start bringing in products with Lynk AI: Lynk's screen address, to open inside ABS.
+   * @returns {Promise<{ importId: string, screenUrl: string }>}
+   */
+  startLynkImport: async () => {
+    const query = buildScopedQueryString();
+    const response = await api.post(`/products/import/lynk${query ? `?${query}` : ''}`, {});
+    return response?.data ?? response;
+  },
+
+  /**
+   * Whether a Lynk import's products are in ABS yet, and its batch (for Undo).
+   * @param {string} importId
+   * @returns {Promise<{ saved: boolean, addedCount: number, batchId: string }>}
+   */
+  lynkImportStatus: async (importId) => {
+    const query = buildScopedQueryString();
+    const response = await api.get(`/products/import/lynk/${encodeURIComponent(importId)}${query ? `?${query}` : ''}`);
+    return response?.data ?? response;
+  },
+
+  /**
    * Undo an import: removes its products that nothing has used yet.
    * @param {string} batchId
    * @returns {Promise<{ removedCount, keptCount, removed, kept: Array<{ id, name, reason }> }>}

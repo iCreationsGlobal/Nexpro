@@ -11,9 +11,9 @@ const { Op, fn, col, where: sqlWhere } = require('sequelize');
 const { sequelize } = require('../config/database');
 const models = require('../models');
 const { validateProductRow } = require('../utils/importParse');
-const { applyStockChange } = require('../utils/productStockUtils');
+const { applyStockChange, syncParentQuantityFromVariants } = require('../utils/productStockUtils');
 
-const { Product, ProductCategory, ProductShopStock, ProductStockMovement, Barcode } = models;
+const { Product, ProductCategory, ProductShopStock, ProductStockMovement, ProductVariant, Barcode } = models;
 
 const PRODUCT_IMPORT_MAX_ROWS = 2000;
 
@@ -29,7 +29,7 @@ const IN_USE = {
   DamageReport: 'On a damage report',
   DealerProductPrice: 'Has dealer prices',
   OnlineProductListing: 'Listed in the online store',
-  ProductVariant: 'Has variants',
+  ProductVariant: 'Has variants added since the import',
   StockCountItem: 'In a stock count',
   StorefrontReview: 'Has store reviews',
   StorefrontWishlistItem: 'On a store wishlist',
@@ -37,6 +37,43 @@ const IN_USE = {
 };
 
 const clean = (value) => String(value ?? '').trim().replace(/\s+/g, ' ');
+
+const money = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const n = typeof value === 'number' ? value : Number.parseFloat(String(value).replace(/[^\d.-]/g, ''));
+  return Number.isFinite(n) ? n : NaN;
+};
+
+/**
+ * A product's colours and sizes (variants), as Lynk sends them: `[{ attributes: { colour, size }, sku, barcode,
+ * costPrice, sellingPrice, wholesalePrice, quantityOnHand }]`. Each becomes a ProductVariant named by its attributes
+ * ("Red / XL"). Returns the cleaned list, or an error for a negative price or quantity.
+ */
+function cleanVariants(list) {
+  if (!Array.isArray(list) || !list.length) return { variants: [] };
+  const variants = [];
+  for (const [i, raw] of list.slice(0, 200).entries()) {
+    const v = raw && typeof raw === 'object' ? raw : {};
+    const attributes = Object.fromEntries(Object.entries(v.attributes && typeof v.attributes === 'object' ? v.attributes : {})
+      .map(([k, val]) => [clean(k).toLowerCase().slice(0, 30), clean(val).slice(0, 60)])
+      .filter(([k, val]) => k && val)
+      .slice(0, 4));
+    const prices = { costPrice: money(v.costPrice), sellingPrice: money(v.sellingPrice), wholesalePrice: money(v.wholesalePrice) };
+    const quantity = money(v.quantityOnHand ?? v.stock);
+    if (Object.values(prices).some((p) => Number.isNaN(p) || p < 0) || Number.isNaN(quantity) || quantity < 0) {
+      return { error: `Colour or size ${i + 1} has a price or quantity that isn't a number above 0` };
+    }
+    variants.push({
+      name: Object.values(attributes).join(' / ') || `Option ${i + 1}`,
+      attributes,
+      sku: clean(v.sku) || null,
+      barcode: clean(v.barcode) || null,
+      ...prices,
+      quantityOnHand: quantity ?? 0,
+    });
+  }
+  return { variants };
+}
 const nameKey = (value) => clean(value).toLowerCase();
 
 /** One template row (see IMPORT_COLUMNS.products) as Product fields; categoryName is resolved later. */
@@ -93,7 +130,7 @@ async function planProductImport({ tenantId, shopId = null, rows, createCategori
   const byBarcode = new Map();
   const byName = new Map();
 
-  for (const { row, data } of rows) {
+  for (const { row, data, variants: rawVariants } of rows) {
     const entry = { row, name: clean(data?.name), status: 'add', warnings: [] };
     results.push(entry);
     const valid = validateProductRow({ ...data, name: entry.name });
@@ -121,20 +158,36 @@ async function planProductImport({ tenantId, shopId = null, rows, createCategori
       Object.assign(entry, { status: 'skip', reason: `Same ${earlier.what} as row ${earlier.row}` });
       continue;
     }
+    // Colours and sizes: their own codes must be new too, in the file and in ABS.
+    const { variants, error } = cleanVariants(rawVariants);
+    if (error) {
+      Object.assign(entry, { status: 'error', reason: error });
+      continue;
+    }
+    const variantClash = variants
+      .map((v) => (v.sku && bySku.get(v.sku) && `SKU ${v.sku}`) || (v.barcode && byBarcode.get(v.barcode) && `barcode ${v.barcode}`))
+      .find(Boolean)
+      || variants.map((v) => v.sku).find((sku, i, all) => sku && (sku === record.sku || all.indexOf(sku) !== i));
+    if (variantClash) {
+      Object.assign(entry, { status: 'skip', reason: `A colour or size uses the same ${variantClash.startsWith('SKU') || variantClash.startsWith('barcode') ? variantClash : `SKU ${variantClash}`} as another product in the file` });
+      continue;
+    }
     if (record.sku) bySku.set(record.sku, row);
     if (record.barcode) byBarcode.set(record.barcode, row);
+    variants.forEach((v) => { if (v.sku) bySku.set(v.sku, row); if (v.barcode) byBarcode.set(v.barcode, row); });
     byName.set(nameKey(record.name), [...(byName.get(nameKey(record.name)) || []), { row, sku: record.sku, barcode: record.barcode }]);
-    entry.record = record;
+    entry.record = variants.length ? { ...record, variants } : record;
   }
 
   const pending = () => results.filter((entry) => entry.status === 'add');
   const skip = (entry, reason) => Object.assign(entry, { status: 'skip', reason });
 
   // Already in ABS: SKU and barcode across the business, names within the shop the products go into.
-  const skus = pending().map((entry) => entry.record.sku).filter(Boolean);
-  const barcodes = pending().map((entry) => entry.record.barcode).filter(Boolean);
+  const variantsOf = (entry) => entry.record.variants || [];
+  const skus = pending().flatMap((entry) => [entry.record.sku, ...variantsOf(entry).map((v) => v.sku)]).filter(Boolean);
+  const barcodes = pending().flatMap((entry) => [entry.record.barcode, ...variantsOf(entry).map((v) => v.barcode)]).filter(Boolean);
   const names = [...new Set(pending().map((entry) => nameKey(entry.record.name)))];
-  const [skuOwners, barcodeOwners, barcodeAliases, sameNamed] = await Promise.all([
+  const [skuOwners, barcodeOwners, barcodeAliases, sameNamed, variantOwners] = await Promise.all([
     skus.length
       ? Product.findAll({ where: { tenantId, sku: { [Op.in]: skus } }, attributes: ['name', 'sku'], raw: true })
       : [],
@@ -157,13 +210,34 @@ async function planProductImport({ tenantId, shopId = null, rows, createCategori
           raw: true,
         })
       : [],
+    // Codes already on another product's colours and sizes.
+    skus.length || barcodes.length
+      ? ProductVariant.findAll({
+          where: { [Op.or]: [...(skus.length ? [{ sku: { [Op.in]: skus } }] : []), ...(barcodes.length ? [{ barcode: { [Op.in]: barcodes } }] : [])] },
+          include: [{ model: Product, as: 'product', where: { tenantId }, attributes: ['name'] }],
+          attributes: ['sku', 'barcode'],
+        })
+      : [],
   ]);
+  const variantSku = new Map();
+  const variantBarcode = new Map();
+  for (const v of variantOwners) {
+    const owner = v.product?.name ?? 'another product';
+    if (v.sku) variantSku.set(v.sku, owner);
+    if (v.barcode) variantBarcode.set(v.barcode, owner);
+  }
   const skuOwner = new Map(skuOwners.map((product) => [product.sku, product.name]));
   const barcodeOwner = new Map(barcodeOwners.map((product) => [product.barcode, product.name]));
   const aliasBarcodes = new Set(barcodeAliases.map((alias) => alias.barcode));
   for (const entry of pending()) {
     const { sku, barcode, name } = entry.record;
-    if (sku && skuOwner.has(sku)) {
+    const usedVariantCode = [sku, ...variantsOf(entry).map((v) => v.sku)].filter(Boolean).find((code) => variantSku.has(code) || (code !== sku && skuOwner.has(code)));
+    const usedVariantBarcode = [barcode, ...variantsOf(entry).map((v) => v.barcode)].filter(Boolean).find((code) => variantBarcode.has(code) || (code !== barcode && (barcodeOwner.has(code) || aliasBarcodes.has(code))));
+    if (usedVariantCode) {
+      skip(entry, `SKU ${usedVariantCode} is already used by "${variantSku.get(usedVariantCode) ?? skuOwner.get(usedVariantCode)}"`);
+    } else if (usedVariantBarcode) {
+      skip(entry, `Barcode ${usedVariantBarcode} is already used by "${variantBarcode.get(usedVariantBarcode) ?? barcodeOwner.get(usedVariantBarcode) ?? 'another product'}"`);
+    } else if (sku && skuOwner.has(sku)) {
       skip(entry, `SKU ${sku} is already used by "${skuOwner.get(sku)}"`);
     } else if (barcode && (barcodeOwner.has(barcode) || aliasBarcodes.has(barcode))) {
       skip(entry, barcodeOwner.has(barcode)
@@ -240,8 +314,9 @@ const failureReason = (err) =>
  * @param {string|null} [args.openingShopId] - Shop for opening stock when a row has none
  * @returns {Promise<{ batchId: string, added: Array<{ row: number, id: string, name: string }>, failed: Array<{ row: number, name: string, reason: string }>, newCategories: string[] }>}
  */
-async function commitProductImport({ plan, tenantId, tenant = null, userId = null, openingShopId = null }) {
-  const batchId = crypto.randomUUID();
+async function commitProductImport({ plan, tenantId, tenant = null, userId = null, openingShopId = null, batchId: givenBatchId = null }) {
+  // Lynk's imports give their own id, so sending the same import twice adds nothing twice (see productsInBatch).
+  const batchId = givenBatchId || crypto.randomUUID();
   const importedAt = new Date().toISOString();
   const added = [];
   const failed = [];
@@ -262,9 +337,10 @@ async function commitProductImport({ plan, tenantId, tenant = null, userId = nul
     }
 
     for (const { row, record } of plan.toAdd) {
-      const { categoryName, ...fields } = record;
-      const openingQty = Number(fields.quantityOnHand) || 0;
+      const { categoryName, variants = [], ...fields } = record;
       const stockShopId = fields.shopId || openingShopId;
+      // With colours and sizes, the stock is theirs (the product's total follows them).
+      const openingQty = variants.length ? 0 : Number(fields.quantityOnHand) || 0;
       const recordOpening = Boolean(stockShopId && openingQty > 0 && fields.trackStock !== false);
       try {
         const product = await sequelize.transaction({ transaction: outer }, async (t) => {
@@ -274,8 +350,34 @@ async function commitProductImport({ plan, tenantId, tenant = null, userId = nul
             // Opening stock goes on the shop's stock with a ledger entry, as when adding one product.
             quantityOnHand: recordOpening ? 0 : openingQty,
             metadata: { ...(fields.metadata || {}), importBatchId: batchId, importedAt },
+            ...(variants.length ? { hasVariants: true } : {}),
             tenantId,
           }, { transaction: t });
+          for (const v of variants) {
+            const qty = Number(v.quantityOnHand) || 0;
+            const opening = Boolean(stockShopId && qty > 0 && fields.trackStock !== false);
+            const variant = await ProductVariant.create({
+              ...v,
+              quantityOnHand: opening ? 0 : qty,
+              productId: created.id,
+              metadata: { importBatchId: batchId, importedAt },
+            }, { transaction: t });
+            if (opening) {
+              await applyStockChange({
+                tenantId,
+                productId: created.id,
+                productVariantId: variant.id,
+                shopId: stockShopId,
+                setTo: qty,
+                type: 'opening',
+                reason: 'Opening stock from import',
+                userId,
+                metadata: { source: 'import', importBatchId: batchId },
+                transaction: t,
+              });
+            }
+          }
+          if (variants.length) await syncParentQuantityFromVariants(created.id, t);
           if (recordOpening) {
             await applyStockChange({
               tenantId,
@@ -327,7 +429,8 @@ async function undoProductImport({ tenantId, batchId, canAccess = () => true }) 
     const Model = models[modelName];
     if (!Model?.rawAttributes?.productId) continue;
     const used = await Model.findAll({
-      where: { productId: { [Op.in]: ids } },
+      // Colours and sizes this import made aren't "in use": they go with the product.
+      where: { productId: { [Op.in]: ids }, ...(modelName === 'ProductVariant' ? { [Op.not]: { metadata: { importBatchId: batchId } } } : {}) },
       attributes: ['productId'],
       group: ['productId'],
       raw: true,
@@ -350,6 +453,7 @@ async function undoProductImport({ tenantId, batchId, canAccess = () => true }) 
       await ProductStockMovement.destroy({ where, transaction });
       await ProductShopStock.destroy({ where, transaction });
       await Barcode.destroy({ where, transaction });
+      if (ProductVariant?.destroy) await ProductVariant.destroy({ where, transaction });
       await Product.destroy({ where: { tenantId, id: { [Op.in]: removable } }, transaction });
 
       const categories = await ProductCategory.findAll({
@@ -373,7 +477,14 @@ async function undoProductImport({ tenantId, batchId, canAccess = () => true }) 
   };
 }
 
+/** The products an import added (by its batch id): how ABS knows a Lynk import is already in. */
+async function productsInBatch({ tenantId, batchId }) {
+  return Product.findAll({ where: { tenantId, metadata: { importBatchId: batchId } }, attributes: ['id', 'name'], raw: true });
+}
+
 module.exports = {
+  productsInBatch,
+  cleanVariants,
   PRODUCT_IMPORT_MAX_ROWS,
   toProductRecord,
   planProductImport,
