@@ -82,7 +82,9 @@ function ProductsScreen() {
   const router = useRouter();
   const { colors, bg, cardBg, borderColor, textColor, mutedColor, inputBg } = useScreenColors();
   const queryClient = useQueryClient();
-  const { activeTenant, activeTenantId, hasFeature } = useAuth();
+  const { activeTenant, activeTenantId, hasFeature, isAdmin, isManager } = useAuth();
+  // Bring in with Lynk AI (app/lynk-import.tsx): owners and managers, like ABS's own import.
+  const canBringIn = isAdmin || isManager;
   const shop = useShopOptional();
   const { activeShopId, activeStudioLocationId, isShopWorkspace } = useWorkspaceScope();
   const resolvedType = resolveBusinessType(activeTenant?.businessType);
@@ -466,6 +468,9 @@ function ProductsScreen() {
           backgroundColor={colors.tint}
         />
       )}
+      {!showProductsLoading && products.length > 0 && canBringIn && (
+        <BringInWithLynkButton onPress={() => router.push('/lynk-import')} tint={colors.tint} />
+      )}
 
       {shopStillLoading ? (
         <ListLoadingState message="Loading shop..." />
@@ -487,6 +492,7 @@ function ProductsScreen() {
             onPress={() => setAddModalVisible(true)}
             backgroundColor={colors.tint}
           />
+          {canBringIn && <BringInWithLynkButton onPress={() => router.push('/lynk-import')} tint={colors.tint} />}
         </ListEmptyState>
       ) : (
         <FlatList
@@ -699,7 +705,35 @@ function ProductsScreen() {
   );
 }
 
+/** Bring in products with Lynk AI: any file, a photo of the stock book, or words (app/lynk-import.tsx). */
+function BringInWithLynkButton({ onPress, tint }: { onPress: () => void; tint: string }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.lynkButton, { borderColor: tint }, pressed && styles.pressed]}
+    >
+      <AppIcon name="sparkles" size={18} color={tint} />
+      <Text style={[styles.lynkButtonText, { color: tint }]}>Bring in with Lynk AI</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  lynkButton: {
+    minHeight: TOUCH_TARGET.standard,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: BORDER_WIDTH.standard,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  lynkButtonText: { fontSize: 16, fontWeight: '600' },
   container: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   loadingText: { marginTop: 12, fontSize: 14 },

@@ -21,6 +21,7 @@ export default {
         NSCameraUsageDescription: 'ABS (African Business Suite) uses the camera to scan products and attach business images when you choose to use those features.',
         NSPhotoLibraryUsageDescription: 'ABS (African Business Suite) uses your photo library to upload logos, profile photos, receipts, and other business images you choose.',
         NSContactsUsageDescription: 'ABS uses your contacts so you can import customers or leads into your business.',
+        NSMicrophoneUsageDescription: 'ABS uses the microphone when you talk to Lynk AI, for example to tell it what products you sell.',
       },
       config: {
         usesNonExemptEncryption: false,
@@ -37,11 +38,11 @@ export default {
         backgroundColor: '#0b3d26',
       },
       edgeToEdgeEnabled: true,
-      permissions: ['READ_CONTACTS'],
-      // The app only reads contacts and plays a scan beep; libraries add these by default and
+      // Microphone: talking to Lynk AI (its screen in components/LynkWebView.tsx), only while it's open.
+      permissions: ['READ_CONTACTS', 'RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS'],
+      // The app reads contacts and plays a scan beep; libraries add these by default and
       // Play asks for a justification (or a foreground-service declaration) for each.
       blockedPermissions: [
-        'android.permission.RECORD_AUDIO',
         'android.permission.WRITE_CONTACTS',
         'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
       ],

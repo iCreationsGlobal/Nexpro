@@ -250,4 +250,38 @@ export const productService = {
     const res = await api.delete(`/products/variants/${variantId}`);
     return res.data;
   },
+
+  /** Bring in products with Lynk AI: starts the import on Lynk; returns its screen's address (with a one-time pass). */
+  startLynkImport: async (): Promise<{ importId: string; screenUrl: string }> => {
+    const query = await buildScopedQueryString();
+    const res = await api.post(query ? `/products/import/lynk?${query}` : '/products/import/lynk', {});
+    return res.data;
+  },
+
+  /** Whether a Lynk import's products are in ABS yet (Lynk sends them to ABS's server), and what happened to each. */
+  lynkImportStatus: async (importId: string): Promise<LynkImportStatus> => {
+    const query = await buildScopedQueryString();
+    const path = `/products/import/lynk/${encodeURIComponent(importId)}`;
+    const res = await api.get(query ? `${path}?${query}` : path);
+    return res.data;
+  },
+
+  /** Undo an import: removes its new products nothing has used yet, and puts back what it updated. */
+  undoProductImport: async (batchId: string): Promise<{ removedCount: number; restoredCount: number; keptCount: number; kept: { id: string; name: string; reason: string }[] }> => {
+    const query = await buildScopedQueryString();
+    const path = `/products/import/${encodeURIComponent(batchId)}`;
+    const res = await api.delete(query ? `${path}?${query}` : path);
+    return res.data;
+  },
+};
+
+export type LynkImportStatus = {
+  finished: boolean;
+  undone: boolean;
+  batchId: string;
+  addedCount: number;
+  updatedCount: number;
+  leftOut: { name: string | null; reason: string }[];
+  skipped: { row: string; name: string; reason: string }[];
+  failed: { row: string; name: string; reason: string }[];
 };
