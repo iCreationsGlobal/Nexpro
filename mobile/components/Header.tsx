@@ -33,7 +33,9 @@ export function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { activeTenantId, isDriver } = useAuth();
+  const { activeTenantId, isDriver, isAdmin, isManager } = useAuth();
+  // Lynk AI (app/lynk.tsx): owners, admins and managers.
+  const canUseLynk = isAdmin || isManager;
   const { colors, headerBg, borderColor, inputBg, textColor, mutedColor } = useScreenColors();
   const { pageConfig, searchValue, setSearchValue } = useSmartSearch();
   const inStoreSetup = useIsStoreSetupRoute();
@@ -67,6 +69,10 @@ export function Header() {
   const handleAccountPress = useCallback(() => {
     router.push('/account');
   }, [router]);
+
+  const handleLynkPress = useCallback(() => {
+    router.push({ pathname: '/lynk', params: { from: pathname } });
+  }, [router, pathname]);
 
   return (
     <View
@@ -104,6 +110,17 @@ export function Header() {
         )}
         {!isDriver && !isSimple && (
           <View style={styles.topRowRight}>
+            {canUseLynk && (
+              <Pressable
+                onPress={handleLynkPress}
+                style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Lynk AI"
+              >
+                <AppIcon name="sparkles" size={22} color={colors.tint} />
+              </Pressable>
+            )}
             <Pressable
               onPress={handleNotificationPress}
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}

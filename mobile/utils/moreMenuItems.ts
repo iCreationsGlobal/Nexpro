@@ -23,6 +23,8 @@ type BuildMoreMenuArgs = {
   isPlatformAdmin?: boolean;
   /** Ranked "what matters most to you" picks — see constants/focusAreas.ts */
   focusAreas?: string[];
+  /** Lynk AI (app/lynk.tsx): owners, admins and managers. */
+  canUseLynk?: boolean;
 };
 
 /**
@@ -36,6 +38,7 @@ export function buildMoreMenuSections({
   hasStoreSettings,
   isPlatformAdmin,
   focusAreas,
+  canUseLynk,
 }: BuildMoreMenuArgs): MoreMenuSection[] {
   if (isDriver) {
     return [
@@ -63,6 +66,9 @@ export function buildMoreMenuSections({
   const main: MoreMenuItem[] = [
     { id: 'home', label: 'Home', icon: 'home', route: '/(tabs)/' },
   ];
+  if (canUseLynk && isPlatformAdmin !== true) {
+    main.push({ id: 'lynk', label: 'Lynk AI', icon: 'sparkles', route: '/lynk' });
+  }
   if (hasFeature('crm')) {
     // Customers live on the tab bar by default. Once a focus-area pick displaces that tab
     // slot, Customers would otherwise be unreachable — surface it here instead.

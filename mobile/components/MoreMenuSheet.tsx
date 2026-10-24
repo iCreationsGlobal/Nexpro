@@ -35,7 +35,7 @@ type MoreMenuSheetProps = {
 export function MoreMenuSheet({ visible, onClose }: MoreMenuSheetProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { activeTenant, activeTenantId, hasFeature, user, isDriver, isManager } = useAuth();
+  const { activeTenant, activeTenantId, hasFeature, user, isDriver, isManager, isAdmin } = useAuth();
   const { mutedColor } = useScreenColors();
   const inStoreSetup = useIsStoreSetupRoute();
   const { focusAreas } = useFocusAreas();
@@ -65,8 +65,11 @@ export function MoreMenuSheet({ visible, onClose }: MoreMenuSheetProps) {
         hasStoreSettings,
         isPlatformAdmin: user?.isPlatformAdmin === true,
         focusAreas,
+        canUseLynk: isAdmin || isManager,
       }),
     [
+      isAdmin,
+      isManager,
       isDriver,
       activeTenant?.businessType,
       activeTenant?.metadata?.shopType,

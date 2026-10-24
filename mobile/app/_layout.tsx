@@ -391,6 +391,7 @@ function RootLayoutNav() {
           <Stack.Screen name="notifications" options={{ ...innerScreenOptions, title: 'Notifications', headerShown: false }} />
           <Stack.Screen name="notification-settings" options={{ ...innerScreenOptions, title: 'Notification settings', headerShown: false }} />
           <Stack.Screen name="lynk-import" options={{ ...innerScreenOptions, title: 'Bring in with Lynk AI', headerShown: false }} />
+          <Stack.Screen name="lynk" options={{ ...innerScreenOptions, title: 'Lynk AI', headerShown: false }} />
           <Stack.Screen name="focus-areas" options={{ ...innerScreenOptions, title: 'What matters most to you', headerShown: false }} />
           <Stack.Screen name="store-order/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="store-setup" options={{ headerShown: false }} />
