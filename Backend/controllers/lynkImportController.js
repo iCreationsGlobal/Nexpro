@@ -10,6 +10,7 @@ const { invalidateProductListCache } = require('../middleware/cache');
 const { userCanAccessShopId } = require('../utils/shopUtils');
 const { planProductImport, commitProductImport } = require('../services/productImportService');
 const { startImport, verifyLynkSignature, rowsFromLynk, batchIdFor, lynkConfigured } = require('../services/lynkImport');
+const { photosOf, savePhotos } = require('../services/lynkPhotos');
 
 /** What the owner's window needs to know about an import (GET …/lynk/:importId). */
 const statusOf = (row) => ({
@@ -167,6 +168,21 @@ exports.lynkImportFinished = async (req, res, next) => {
       });
       if (result.added.length || result.updated.length) invalidateProductListCache(tenant.id);
       res.status(200).json({ success: true, batchId: record.batchId, addedCount: result.added.length, updatedCount: result.updated.length, failed: result.failed, newCategories: result.newCategories });
+
+      // Their photos (Lynk's photo step), fetched after Lynk has its answer: ABS keeps its own copies.
+      const byRow = new Map((Array.isArray(req.body?.products) ? req.body.products : []).map((p) => [String(p?.row ?? ''), photosOf(p)]));
+      const withPhotos = [...result.added, ...result.updated].map((p) => ({ ...p, photos: byRow.get(String(p.row)) || [] })).filter((p) => p.photos.length);
+      if (withPhotos.length) {
+        setImmediate(() => {
+          savePhotos({ tenantId: tenant.id, products: withPhotos })
+            .then((photoFailures) => {
+              invalidateProductListCache(tenant.id);
+              if (photoFailures.length) return record.update({ result: { ...(record.result || {}), photoFailures } });
+              return null;
+            })
+            .catch((err) => console.error('[lynk-import] photos', err));
+        });
+      }
     } catch (error) {
       // Let Lynk's next try go ahead.
       await LynkImport.update({ status: 'started' }, { where: { id: record.id, status: 'saving' } }).catch(() => {});
