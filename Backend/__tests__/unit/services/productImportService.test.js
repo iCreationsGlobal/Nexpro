@@ -1,12 +1,12 @@
 const { Op } = require('sequelize');
 
 jest.mock('../../../models', () => ({
-  Product: { findAll: jest.fn(), create: jest.fn(), destroy: jest.fn(), count: jest.fn() },
+  Product: { findAll: jest.fn(), findOne: jest.fn(), create: jest.fn(), destroy: jest.fn(), count: jest.fn() },
   ProductCategory: { findAll: jest.fn(), findOne: jest.fn(), create: jest.fn(), destroy: jest.fn() },
   ProductShopStock: { destroy: jest.fn() },
-  ProductStockMovement: { findAll: jest.fn(), destroy: jest.fn() },
+  ProductStockMovement: { findAll: jest.fn(), destroy: jest.fn(), count: jest.fn() },
   Barcode: { findAll: jest.fn(), destroy: jest.fn() },
-  ProductVariant: { rawAttributes: { productId: {} }, findAll: jest.fn(), create: jest.fn(), destroy: jest.fn() },
+  ProductVariant: { rawAttributes: { productId: {} }, findAll: jest.fn(), findOne: jest.fn(), create: jest.fn(), destroy: jest.fn() },
   SaleItem: { rawAttributes: { productId: {} }, findAll: jest.fn() },
   QuoteItem: { rawAttributes: { productId: {} }, findAll: jest.fn() },
 }));
@@ -68,7 +68,7 @@ describe('planProductImport', () => {
       rows: rows({ name: 'Rice 5kg', sellingPrice: 120 }, { name: '', sellingPrice: 5 }, { name: 'Oil', costPrice: -2 }),
     });
 
-    expect(plan.summary).toEqual({ total: 3, add: 1, skip: 0, error: 2 });
+    expect(plan.summary).toEqual({ total: 3, add: 1, update: 0, skip: 0, error: 2 });
     expect(byRow(plan)[3]).toMatchObject({ status: 'error', reason: 'Product Name is required' });
     expect(byRow(plan)[4]).toMatchObject({ status: 'error', reason: 'Cost Price cannot be negative' });
     expect(plan.toAdd).toEqual([{ row: 2, record: expect.objectContaining({ name: 'Rice 5kg', sellingPrice: 120 }) }]);
@@ -245,7 +245,7 @@ describe('undoProductImport', () => {
 
   it('reports an unknown batch', async () => {
     Product.findAll.mockResolvedValue([]);
-    await expect(undoProductImport({ tenantId: 't1', batchId: 'nope' })).resolves.toEqual({ found: 0, removed: [], kept: [] });
+    await expect(undoProductImport({ tenantId: 't1', batchId: 'nope' })).resolves.toEqual({ found: 0, removed: [], restored: [], kept: [] });
     expect(Product.destroy).not.toHaveBeenCalled();
   });
 });
@@ -309,5 +309,86 @@ describe('colours and sizes (variants, from Lynk)', () => {
     const result = await undoProductImport({ tenantId: 't1', batchId: 'lynk-imp1' });
     expect(result.removed).toEqual([]);
     expect(result.kept).toEqual([expect.objectContaining({ id: 'p-polo', reason: 'Has variants added since the import' })]);
+  });
+});
+
+describe('updates to products already in ABS (Lynk, when the owner chose "update")', () => {
+  /** A product as Sequelize returns it: its values, and update() that records what was set. */
+  const record = (values) => {
+    const r = { ...values, updates: [] };
+    r.update = jest.fn(async (changes) => { r.updates.push(changes); Object.assign(r, changes); return r; });
+    return r;
+  };
+  const MILO = '11111111-1111-4111-8111-111111111111';
+  const POLO = '22222222-2222-4222-8222-222222222222';
+
+  it('plans only the prices and count the file gives, and checks the product is still there', async () => {
+    givenExisting();
+    Product.findAll.mockImplementation(async ({ where }) => (where.id ? [
+      { id: MILO, name: 'Milo 400g', shopId: null, hasVariants: false, variants: [] },
+      { id: POLO, name: 'Polo shirt', shopId: null, hasVariants: true, variants: [{ id: 'v-red-xl', name: 'Red / XL', sku: null, attributes: { Color: 'red', size: 'XL' } }] },
+    ] : []));
+    const plan = await planProductImport({
+      tenantId: 't1',
+      rows: [
+        { row: 'r1', data: { name: 'Milo 400g', sellingPrice: 48, quantityOnHand: 30 }, update: { id: MILO } },
+        { row: 'r2', data: { name: 'Polo shirt', sellingPrice: 60 }, update: { id: POLO }, variants: [{ attributes: { colour: 'Red', size: 'xl' }, quantityOnHand: 4 }, { attributes: { colour: 'Green', size: 'S' }, quantityOnHand: 1 }] },
+        { row: 'r3', data: { name: 'Gone' }, update: { id: '33333333-3333-4333-8333-333333333333' } },
+      ],
+    });
+    expect(plan.summary).toMatchObject({ update: 2, error: 1 });
+    expect(plan.toUpdate[0]).toEqual({ row: 'r1', productId: MILO, name: 'Milo 400g', fields: { sellingPrice: 48, quantityOnHand: 30 }, variants: [] });
+    // The product's own count isn't set when its colours and sizes hold the stock; an unknown colour is left out.
+    expect(plan.toUpdate[1]).toMatchObject({ productId: POLO, fields: { sellingPrice: 60 }, variants: [{ id: 'v-red-xl', fields: { quantityOnHand: 4 } }] });
+    expect(plan.rows[1].warnings).toEqual(["Green / S isn't one of its colours or sizes in ABS, so it's left out"]);
+    expect(plan.rows[2]).toMatchObject({ status: 'error', reason: 'Not found in your products any more' });
+    expect(plan.toAdd).toEqual([]);
+  });
+
+  it('updates the price, sets the stock to the new count, and keeps what it was for Undo', async () => {
+    const milo = record({ id: MILO, name: 'Milo 400g', sellingPrice: '45.00', costPrice: '40.00', hasVariants: false, shopId: null, metadata: { importBatchId: 'old' } });
+    Product.findOne.mockResolvedValue(milo);
+    applyStockChange.mockResolvedValue({ skipped: false, previousQuantity: 12, newQuantity: 30, quantityDelta: 18, movement: { id: 'm1' } });
+    const plan = { newCategories: [], categoryIds: {}, toAdd: [], toUpdate: [{ row: 'r1', productId: MILO, name: 'Milo 400g', fields: { sellingPrice: 48, costPrice: 40, quantityOnHand: 30 }, variants: [] }] };
+    const result = await commitProductImport({ plan, tenantId: 't1', openingShopId: 'shop-osu', batchId: 'lynk-imp2', via: 'lynk', userId: 'u1' });
+    expect(result.updated).toEqual([{ row: 'r1', id: MILO, name: 'Milo 400g' }]);
+    // Only what changed: the cost was already 40.
+    expect(milo.updates[0]).toEqual({ sellingPrice: 48 });
+    expect(applyStockChange).toHaveBeenCalledWith(expect.objectContaining({ productId: MILO, shopId: 'shop-osu', setTo: 30, type: 'import', userId: 'u1', reason: 'Stock count from Lynk AI import' }));
+    expect(milo.metadata).toEqual({
+      importBatchId: 'old',
+      lastImportUpdate: expect.objectContaining({ batchId: 'lynk-imp2', via: 'lynk', before: { sellingPrice: 45 }, after: { sellingPrice: 48 }, stock: [{ variantId: null, shopId: 'shop-osu', before: 12, after: 30, movementId: 'm1' }] }),
+    });
+
+    // The same import sent again changes nothing.
+    applyStockChange.mockClear();
+    const again = await commitProductImport({ plan, tenantId: 't1', openingShopId: 'shop-osu', batchId: 'lynk-imp2', via: 'lynk' });
+    expect(again.updated).toEqual([]);
+    expect(applyStockChange).not.toHaveBeenCalled();
+  });
+
+  it('undo puts back the price and count, unless they changed again after the import', async () => {
+    const at = '2026-10-24T10:00:00.000Z';
+    const lastImportUpdate = { batchId: 'lynk-imp2', at, before: { sellingPrice: 45, costPrice: 38 }, after: { sellingPrice: 48, costPrice: 40 }, stock: [{ variantId: null, shopId: 'shop-osu', before: 12, after: 30, movementId: 'm1' }], variants: [] };
+    // Since the import, the cost was changed by hand (41); the price is still the import's.
+    const milo = record({ id: MILO, name: 'Milo 400g', sellingPrice: '48.00', costPrice: '41.00', metadata: { importBatchId: 'old', lastImportUpdate } });
+    Product.findAll.mockImplementation(async ({ where }) => (where.metadata?.lastImportUpdate ? [{ id: MILO, name: 'Milo 400g', shopId: null, metadata: milo.metadata }] : []));
+    Product.findOne.mockResolvedValue(milo);
+    ProductStockMovement.count.mockResolvedValue(0);
+    const result = await undoProductImport({ tenantId: 't1', batchId: 'lynk-imp2', userId: 'u1' });
+    expect(result.restored).toEqual([{ id: MILO, name: 'Milo 400g' }]);
+    expect(milo.updates[0]).toEqual({ sellingPrice: 45 });
+    expect(result.kept).toEqual([{ id: MILO, name: 'Milo 400g', reason: 'Its price changed after the import, so the new price stays' }]);
+    expect(ProductStockMovement.count).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ productId: MILO, id: { [Op.ne]: 'm1' } }) }));
+    expect(applyStockChange).toHaveBeenCalledWith(expect.objectContaining({ productId: MILO, shopId: 'shop-osu', setTo: 12, reason: 'Import undone' }));
+    expect(milo.metadata).toEqual({ importBatchId: 'old' });
+
+    // When the stock moved again (a sale), the new count stays.
+    applyStockChange.mockClear();
+    milo.metadata = { importBatchId: 'old', lastImportUpdate };
+    ProductStockMovement.count.mockResolvedValue(1);
+    const second = await undoProductImport({ tenantId: 't1', batchId: 'lynk-imp2' });
+    expect(applyStockChange).not.toHaveBeenCalled();
+    expect(second.kept[0].reason).toContain('Its stock changed after the import, so the new count stays');
   });
 });

@@ -50,8 +50,13 @@ export default function LynkImportDialog({ open, onOpenChange, onSaved }) {
       for (let i = 0; i < 45; i += 1) {
         try {
           const status = await productService.lynkImportStatus(importId.current);
-          if (status?.saved) {
-            onSaved?.({ batchId: status.batchId, addedCount: status.addedCount, leftOut: event.data.result?.left_out ?? [] });
+          if (status?.finished) {
+            onSaved?.({
+              batchId: status.batchId,
+              addedCount: status.addedCount ?? 0,
+              updatedCount: status.updatedCount ?? 0,
+              notIn: [...(status.leftOut ?? []), ...(status.skipped ?? []), ...(status.failed ?? [])],
+            });
             onOpenChange(false);
             return;
           }

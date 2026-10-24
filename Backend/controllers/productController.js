@@ -2676,16 +2676,29 @@ exports.importProducts = async (req, res, next) => {
 exports.undoProductImport = async (req, res, next) => {
   try {
     const { undoProductImport } = require('../services/productImportService');
+    const batchId = String(req.params.batchId || '');
     const result = await undoProductImport({
       tenantId: req.tenantId,
-      batchId: String(req.params.batchId || ''),
+      batchId,
       canAccess: (product) => userCanAccessShopId(req, product.shopId),
+      userId: req.user?.id || null,
     });
+    // A Lynk import is never taken again once undone (a late resend of its products is ignored).
+    const { LynkImport } = require('../models');
+    if (batchId.startsWith('lynk-')) {
+      await LynkImport.update({ status: 'undone', undoneAt: new Date() }, { where: { tenantId: req.tenantId, batchId, status: 'finished' } });
+    }
     if (result.found === 0) {
       return res.status(404).json({ success: false, message: 'Import not found, or its products were already removed' });
     }
-    if (result.removed.length) invalidateProductListCache(req.tenantId);
-    res.status(200).json({ success: true, removedCount: result.removed.length, keptCount: result.kept.length, ...result });
+    if (result.removed.length || result.restored.length) invalidateProductListCache(req.tenantId);
+    res.status(200).json({
+      success: true,
+      removedCount: result.removed.length,
+      restoredCount: result.restored.length,
+      keptCount: result.kept.length,
+      ...result,
+    });
   } catch (error) {
     next(error);
   }

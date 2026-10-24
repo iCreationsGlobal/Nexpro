@@ -76,6 +76,99 @@ function cleanVariants(list) {
 }
 const nameKey = (value) => clean(value).toLowerCase();
 
+/** What an import may change on a product already in ABS (when the owner chose "update"): its prices and count. */
+const UPDATABLE = ['sellingPrice', 'costPrice', 'wholesalePrice', 'quantityOnHand'];
+const PRICE_KEYS = ['sellingPrice', 'costPrice', 'wholesalePrice'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The prices and count a row gives (only those it has, never a default), as numbers. */
+function givenUpdates(source) {
+  const out = {};
+  for (const key of UPDATABLE) {
+    const value = key === 'quantityOnHand' ? source?.quantityOnHand ?? source?.stock : source?.[key];
+    if (value === undefined || value === null || value === '') continue;
+    const n = money(value);
+    if (Number.isFinite(n) && n >= 0) out[key] = n;
+  }
+  return out;
+}
+
+const pick = (fields, keys) => Object.fromEntries(keys.filter((key) => fields?.[key] !== undefined).map((key) => [key, fields[key]]));
+
+/** A colour and size the same way whatever the spelling ("Color: RED" is "colour=red"). */
+const attributeKey = (attributes) => Object.entries(attributes && typeof attributes === 'object' ? attributes : {})
+  .map(([k, v]) => [clean(k).toLowerCase().replace(/^color$/, 'colour'), clean(v).toLowerCase()])
+  .filter(([k, v]) => k && v)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([k, v]) => `${k}=${v}`)
+  .join('|');
+
+/**
+ * Rows that update a product already in ABS: the product must still be there (and in the import's shop), and each
+ * colour or size must be one of its own (by SKU, then colour and size, then name). Marks the ones that can't be
+ * updated; the rest get what to change (`entry.update`).
+ */
+async function resolveUpdates({ tenantId, shopId, entries }) {
+  if (!entries.length) return;
+  const ids = [...new Set(entries.map((entry) => entry.update.productId).filter((id) => UUID_RE.test(id)))];
+  const targets = ids.length
+    ? await Product.findAll({
+        where: { tenantId, id: { [Op.in]: ids } },
+        attributes: ['id', 'name', 'shopId', 'hasVariants'],
+        include: [{ model: ProductVariant, as: 'variants', attributes: ['id', 'name', 'sku', 'attributes'], required: false }],
+      })
+    : [];
+  const byId = new Map(targets.map((product) => [product.id, product]));
+  const seen = new Set();
+  for (const entry of entries) {
+    const target = byId.get(entry.update.productId);
+    if (!target) {
+      Object.assign(entry, { status: 'error', reason: 'Not found in your products any more' });
+      continue;
+    }
+    if (shopId && target.shopId && target.shopId !== shopId) {
+      Object.assign(entry, { status: 'skip', reason: `"${target.name}" is in another shop` });
+      continue;
+    }
+    if (seen.has(target.id)) {
+      Object.assign(entry, { status: 'skip', reason: `"${target.name}" is updated by an earlier row` });
+      continue;
+    }
+    seen.add(target.id);
+    const raw = Array.isArray(entry.update.choices) ? entry.update.choices.slice(0, 200) : [];
+    const { variants: choices, error } = cleanVariants(raw);
+    if (error) {
+      Object.assign(entry, { status: 'error', reason: error });
+      continue;
+    }
+    const variants = [];
+    if (choices.length && !target.hasVariants) entry.warnings.push('Its colours and sizes are left as they are: it has none in ABS');
+    if (choices.length && target.hasVariants) {
+      const own = target.variants || [];
+      choices.forEach((choice, i) => {
+        const key = attributeKey(choice.attributes);
+        const match = (choice.sku && own.find((v) => v.sku && v.sku === choice.sku))
+          || (key && own.find((v) => attributeKey(v.attributes) === key))
+          || own.find((v) => nameKey(v.name) === nameKey(choice.name));
+        if (!match) {
+          entry.warnings.push(`${choice.name} isn't one of its colours or sizes in ABS, so it's left out`);
+          return;
+        }
+        const fields = givenUpdates(raw[i]);
+        if (Object.keys(fields).length) variants.push({ id: match.id, name: match.name, fields });
+      });
+    }
+    const fields = { ...entry.update.fields };
+    // With colours and sizes the stock is theirs, so the product's own count isn't set.
+    if (target.hasVariants) delete fields.quantityOnHand;
+    if (!Object.keys(fields).length && !variants.length) {
+      Object.assign(entry, { status: 'skip', reason: 'Nothing to update: no price or quantity given' });
+      continue;
+    }
+    entry.update = { productId: target.id, name: target.name, fields, variants };
+  }
+}
+
 /** One template row (see IMPORT_COLUMNS.products) as Product fields; categoryName is resolved later. */
 function toProductRecord(m) {
   return {
@@ -130,7 +223,7 @@ async function planProductImport({ tenantId, shopId = null, rows, createCategori
   const byBarcode = new Map();
   const byName = new Map();
 
-  for (const { row, data, variants: rawVariants } of rows) {
+  for (const { row, data, variants: rawVariants, update } of rows) {
     const entry = { row, name: clean(data?.name), status: 'add', warnings: [] };
     results.push(entry);
     const valid = validateProductRow({ ...data, name: entry.name });
@@ -139,7 +232,8 @@ async function planProductImport({ tenantId, shopId = null, rows, createCategori
       continue;
     }
     let record = { ...toProductRecord(data), ...(shopId ? { shopId } : {}) };
-    if (prepare) {
+    // An update changes only prices and stock, so the rules for adding a product don't apply to it.
+    if (prepare && !update?.id) {
       try {
         record = prepare(record);
       } catch (err) {
@@ -156,6 +250,14 @@ async function planProductImport({ tenantId, shopId = null, rows, createCategori
       });
     if (earlier) {
       Object.assign(entry, { status: 'skip', reason: `Same ${earlier.what} as row ${earlier.row}` });
+      continue;
+    }
+    // Already in ABS, and the owner chose to update it (Lynk's imports): checked against that product below.
+    if (update?.id) {
+      Object.assign(entry, { status: 'update', update: { productId: String(update.id), fields: givenUpdates(data), choices: rawVariants } });
+      if (record.sku) bySku.set(record.sku, row);
+      if (record.barcode) byBarcode.set(record.barcode, row);
+      byName.set(nameKey(record.name), [...(byName.get(nameKey(record.name)) || []), { row, sku: record.sku, barcode: record.barcode }]);
       continue;
     }
     // Colours and sizes: their own codes must be new too, in the file and in ABS.
@@ -181,6 +283,7 @@ async function planProductImport({ tenantId, shopId = null, rows, createCategori
 
   const pending = () => results.filter((entry) => entry.status === 'add');
   const skip = (entry, reason) => Object.assign(entry, { status: 'skip', reason });
+  await resolveUpdates({ tenantId, shopId, entries: results.filter((entry) => entry.status === 'update') });
 
   // Already in ABS: SKU and barcode across the business, names within the shop the products go into.
   const variantsOf = (entry) => entry.record.variants || [];
@@ -273,12 +376,14 @@ async function planProductImport({ tenantId, shopId = null, rows, createCategori
   }
 
   const toAdd = pending().map((entry) => ({ row: entry.row, record: entry.record }));
+  const toUpdate = results.filter((entry) => entry.status === 'update').map((entry) => ({ row: entry.row, ...entry.update }));
   const count = (status) => results.filter((entry) => entry.status === status).length;
   return {
-    summary: { total: results.length, add: count('add'), skip: count('skip'), error: count('error') },
-    rows: results.map(({ record, warnings, ...entry }) => ({ ...entry, ...(warnings.length ? { warnings } : {}) })),
+    summary: { total: results.length, add: count('add'), update: count('update'), skip: count('skip'), error: count('error') },
+    rows: results.map(({ record, update, warnings, ...entry }) => ({ ...entry, ...(warnings.length ? { warnings } : {}) })),
     newCategories: createCategories ? newCategories : [],
     toAdd,
+    toUpdate,
     categoryIds,
   };
 }
@@ -304,6 +409,62 @@ const failureReason = (err) =>
     : err?.message || 'Could not add this product';
 
 /**
+ * One product already in ABS, updated by an import: its prices, and its stock (or its colours' and sizes') set to the
+ * new count with a ledger entry. What it was is kept on the product (metadata.lastImportUpdate) for Undo.
+ * @returns {Promise<'updated'|'unchanged'|'already'>} 'already' when this import updated it before (sent twice)
+ */
+async function applyImportUpdate({ tenantId, productId, fields, variants = [], stockShopId, userId, batchId, at, via, transaction }) {
+  const product = await Product.findOne({ where: { id: productId, tenantId }, transaction, lock: true });
+  if (!product) throw new Error('Not found in your products any more');
+  if (product.metadata?.lastImportUpdate?.batchId === batchId) return 'already';
+  const shopId = stockShopId || product.shopId || null;
+  const change = { batchId, at, ...(via ? { via } : {}), before: {}, after: {}, stock: [], variants: [] };
+  const changedPrices = (record, wanted, into) => {
+    for (const [key, value] of Object.entries(pick(wanted, PRICE_KEYS))) {
+      const current = record[key] == null ? null : Number(record[key]);
+      if (current === value) continue;
+      into.before[key] = current;
+      into.after[key] = value;
+    }
+    return Object.keys(into.after).length > 0;
+  };
+  const setStock = async (productVariantId, quantity) => {
+    if (!shopId) return;
+    const result = await applyStockChange({
+      tenantId,
+      productId,
+      productVariantId,
+      shopId,
+      setTo: quantity,
+      type: 'import',
+      reason: via === 'lynk' ? 'Stock count from Lynk AI import' : 'Stock count from import',
+      userId,
+      metadata: { source: via || 'import', importBatchId: batchId },
+      transaction,
+    });
+    if (!result.skipped && result.quantityDelta) {
+      change.stock.push({ variantId: productVariantId, shopId, before: result.previousQuantity, after: result.newQuantity, movementId: result.movement?.id ?? null });
+    }
+  };
+
+  if (changedPrices(product, fields, change)) await product.update(change.after, { transaction });
+  if (fields.quantityOnHand !== undefined && !product.hasVariants) await setStock(null, fields.quantityOnHand);
+  for (const v of variants) {
+    const variant = await ProductVariant.findOne({ where: { id: v.id, productId }, transaction, lock: true });
+    if (!variant) continue;
+    const entry = { id: variant.id, before: {}, after: {} };
+    if (changedPrices(variant, v.fields, entry)) {
+      await variant.update(entry.after, { transaction });
+      change.variants.push(entry);
+    }
+    if (v.fields.quantityOnHand !== undefined) await setStock(variant.id, v.fields.quantityOnHand);
+  }
+  if (!Object.keys(change.after).length && !change.stock.length && !change.variants.length) return 'unchanged';
+  await product.update({ metadata: { ...(product.metadata || {}), lastImportUpdate: change } }, { transaction });
+  return 'updated';
+}
+
+/**
  * Add a checked import: new categories, then each product (with its opening stock) in its own
  * savepoint, so one failure doesn't undo the rest.
  * @param {object} args
@@ -312,13 +473,17 @@ const failureReason = (err) =>
  * @param {object} [args.tenant] - For new categories' business type
  * @param {string|null} [args.userId]
  * @param {string|null} [args.openingShopId] - Shop for opening stock when a row has none
- * @returns {Promise<{ batchId: string, added: Array<{ row: number, id: string, name: string }>, failed: Array<{ row: number, name: string, reason: string }>, newCategories: string[] }>}
+ * @param {string|null} [args.batchId] - Lynk's imports give their own, so the same import twice adds nothing twice
+ * @param {'lynk'|null} [args.via] - Where the import came from, kept on its products and stock entries
+ * @returns {Promise<{ batchId: string, added: Array<{ row: number, id: string, name: string }>, updated: Array<{ row: number, id: string, name: string }>, failed: Array<{ row: number, name: string, reason: string }>, newCategories: string[] }>}
  */
-async function commitProductImport({ plan, tenantId, tenant = null, userId = null, openingShopId = null, batchId: givenBatchId = null }) {
-  // Lynk's imports give their own id, so sending the same import twice adds nothing twice (see productsInBatch).
+async function commitProductImport({ plan, tenantId, tenant = null, userId = null, openingShopId = null, batchId: givenBatchId = null, via = null }) {
   const batchId = givenBatchId || crypto.randomUUID();
   const importedAt = new Date().toISOString();
+  const openingReason = via === 'lynk' ? 'Opening stock from Lynk AI import' : 'Opening stock from import';
+  const stockSource = via || 'import';
   const added = [];
+  const updated = [];
   const failed = [];
   const createdCategories = [];
   const categoryIds = { ...plan.categoryIds };
@@ -349,7 +514,7 @@ async function commitProductImport({ plan, tenantId, tenant = null, userId = nul
             categoryId: categoryName ? categoryIds[nameKey(categoryName)] || null : null,
             // Opening stock goes on the shop's stock with a ledger entry, as when adding one product.
             quantityOnHand: recordOpening ? 0 : openingQty,
-            metadata: { ...(fields.metadata || {}), importBatchId: batchId, importedAt },
+            metadata: { ...(fields.metadata || {}), importBatchId: batchId, importedAt, ...(via ? { importedVia: via } : {}) },
             ...(variants.length ? { hasVariants: true } : {}),
             tenantId,
           }, { transaction: t });
@@ -370,9 +535,9 @@ async function commitProductImport({ plan, tenantId, tenant = null, userId = nul
                 shopId: stockShopId,
                 setTo: qty,
                 type: 'opening',
-                reason: 'Opening stock from import',
+                reason: openingReason,
                 userId,
-                metadata: { source: 'import', importBatchId: batchId },
+                metadata: { source: stockSource, importBatchId: batchId },
                 transaction: t,
               });
             }
@@ -385,9 +550,9 @@ async function commitProductImport({ plan, tenantId, tenant = null, userId = nul
               shopId: stockShopId,
               setTo: openingQty,
               type: 'opening',
-              reason: 'Opening stock from import',
+              reason: openingReason,
               userId,
-              metadata: { source: 'import', importBatchId: batchId },
+              metadata: { source: stockSource, importBatchId: batchId },
               transaction: t,
             });
           }
@@ -398,28 +563,117 @@ async function commitProductImport({ plan, tenantId, tenant = null, userId = nul
         failed.push({ row, name: fields.name, reason: failureReason(err) });
       }
     }
+
+    // Products already in ABS that the owner chose to update (Lynk's imports).
+    for (const { row, productId, name, fields, variants } of plan.toUpdate || []) {
+      try {
+        const done = await sequelize.transaction({ transaction: outer }, (t) => applyImportUpdate({
+          tenantId, productId, fields, variants, stockShopId: openingShopId, userId, batchId, at: importedAt, via, transaction: t,
+        }));
+        if (done !== 'already') updated.push({ row, id: productId, name });
+      } catch (err) {
+        failed.push({ row, name, reason: err?.message || 'Could not update this product' });
+      }
+    }
   });
 
-  return { batchId, added, failed, newCategories: createdCategories };
+  return { batchId, added, updated, failed, newCategories: createdCategories };
+}
+
+/**
+ * Undo an import's updates: each product's prices and stock go back to what they were, unless they changed again
+ * after the import (then the new value stays, and says so).
+ * @returns {Promise<{ found: number, restored: Array<{ id: string, name: string }>, kept: Array<{ id: string, name: string, reason: string }> }>}
+ */
+async function undoImportUpdates({ tenantId, batchId, canAccess, userId }) {
+  const products = await Product.findAll({
+    where: { tenantId, metadata: { lastImportUpdate: { batchId } } },
+    attributes: ['id', 'name', 'shopId', 'metadata'],
+    raw: true,
+  });
+  const updated = products.filter((product) => product.metadata?.lastImportUpdate?.batchId === batchId);
+  const restored = [];
+  const kept = [];
+  for (const product of updated) {
+    if (!canAccess(product)) {
+      kept.push({ id: product.id, name: product.name, reason: 'In a shop you cannot manage' });
+      continue;
+    }
+    const change = product.metadata.lastImportUpdate;
+    const notes = new Set();
+    await sequelize.transaction(async (transaction) => {
+      const putBack = async (record, entry) => {
+        const values = {};
+        for (const [key, value] of Object.entries(entry.after || {})) {
+          if (record[key] != null && Number(record[key]) === Number(value)) values[key] = entry.before?.[key] ?? null;
+          else notes.add('Its price changed after the import, so the new price stays');
+        }
+        if (Object.keys(values).length) await record.update(values, { transaction });
+      };
+      const locked = await Product.findOne({ where: { id: product.id, tenantId }, transaction, lock: true });
+      if (!locked) return;
+      await putBack(locked, change);
+      for (const entry of change.variants || []) {
+        const variant = await ProductVariant.findOne({ where: { id: entry.id, productId: product.id }, transaction, lock: true });
+        if (variant) await putBack(variant, entry);
+      }
+      for (const stock of change.stock || []) {
+        const since = await ProductStockMovement.count({
+          where: {
+            productId: product.id,
+            productVariantId: stock.variantId || null,
+            shopId: stock.shopId,
+            createdAt: { [Op.gt]: new Date(change.at) },
+            ...(stock.movementId ? { id: { [Op.ne]: stock.movementId } } : {}),
+          },
+          transaction,
+        });
+        if (since) {
+          notes.add('Its stock changed after the import, so the new count stays');
+          continue;
+        }
+        await applyStockChange({
+          tenantId,
+          productId: product.id,
+          productVariantId: stock.variantId || null,
+          shopId: stock.shopId,
+          setTo: stock.before,
+          type: 'adjustment',
+          reason: 'Import undone',
+          userId,
+          metadata: { source: 'import_undo', importBatchId: batchId },
+          transaction,
+        });
+      }
+      const { lastImportUpdate, ...rest } = locked.metadata || {};
+      await locked.update({ metadata: rest }, { transaction });
+    });
+    restored.push({ id: product.id, name: product.name });
+    if (notes.size) kept.push({ id: product.id, name: product.name, reason: [...notes].join('; ') });
+  }
+  return { found: updated.length, restored, kept };
 }
 
 /**
  * Undo an import: remove its products that nothing has used yet (no sales, quotes, rentals, variants,
  * store listings, or stock changes after the opening stock), and the categories it created that are
- * left empty. Products in use are kept and listed with the reason.
+ * left empty; put back the prices and stock of products it updated. Products in use are kept and listed
+ * with the reason.
  * @param {object} args
  * @param {string} args.tenantId
  * @param {string} args.batchId
  * @param {(product: { id: string, shopId: string|null }) => boolean} [args.canAccess] - Shop access check
- * @returns {Promise<{ found: number, removed: Array<{ id: string, name: string }>, kept: Array<{ id: string, name: string, reason: string }> }>}
+ * @param {string|null} [args.userId] - Who undid it (on the stock entries that put counts back)
+ * @returns {Promise<{ found: number, removed: Array<{ id: string, name: string }>, restored: Array<{ id: string, name: string }>, kept: Array<{ id: string, name: string, reason: string }> }>}
  */
-async function undoProductImport({ tenantId, batchId, canAccess = () => true }) {
+async function undoProductImport({ tenantId, batchId, canAccess = () => true, userId = null }) {
+  const updates = await undoImportUpdates({ tenantId, batchId, canAccess, userId });
   const products = await Product.findAll({
     where: { tenantId, metadata: { importBatchId: batchId } },
     attributes: ['id', 'name', 'shopId'],
     raw: true,
   });
-  if (products.length === 0) return { found: 0, removed: [], kept: [] };
+  if (products.length === 0) return { found: updates.found, removed: [], restored: updates.restored, kept: updates.kept };
 
   const ids = products.map((product) => product.id);
   const keptReason = new Map();
@@ -477,15 +731,20 @@ async function undoProductImport({ tenantId, batchId, canAccess = () => true }) 
 
   const nameOf = new Map(products.map((product) => [product.id, product.name]));
   return {
-    found: products.length,
+    found: products.length + updates.found,
     removed: removable.map((id) => ({ id, name: nameOf.get(id) })),
-    kept: [...keptReason.entries()].map(([id, reason]) => ({ id, name: nameOf.get(id), reason })),
+    restored: updates.restored,
+    kept: [...[...keptReason.entries()].map(([id, reason]) => ({ id, name: nameOf.get(id), reason })), ...updates.kept],
   };
 }
 
-/** The products an import added (by its batch id): how ABS knows a Lynk import is already in. */
+/** The products an import added or updated (by its batch id). */
 async function productsInBatch({ tenantId, batchId }) {
-  return Product.findAll({ where: { tenantId, metadata: { importBatchId: batchId } }, attributes: ['id', 'name'], raw: true });
+  return Product.findAll({
+    where: { tenantId, [Op.or]: [{ metadata: { importBatchId: batchId } }, { metadata: { lastImportUpdate: { batchId } } }] },
+    attributes: ['id', 'name'],
+    raw: true,
+  });
 }
 
 module.exports = {

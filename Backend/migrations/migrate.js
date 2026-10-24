@@ -509,6 +509,10 @@ const migrate = async () => {
     const dropAiAutomationsAndWatch = require('./drop-ai-automations-and-watch');
     await dropAiAutomationsAndWatch({ closeConnection: false });
 
+    // "Bring in with Lynk AI" imports: ABS takes Lynk's products only for imports it started, once each
+    const createLynkImports = require('./create-lynk-imports');
+    await createLynkImports({ closeConnection: false });
+
     console.log('\n✅ Database migration completed successfully!');
     console.log('📊 Incremental schema updates applied.');
     console.log('👤 User model has been enhanced with new fields.');

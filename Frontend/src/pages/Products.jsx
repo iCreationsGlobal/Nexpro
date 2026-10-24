@@ -92,7 +92,7 @@ import { useAuth } from '../context/AuthContext';
 import { useShopOptional } from '../context/ShopContext';
 import { useWorkspaceScope } from '../hooks/useWorkspaceScope';
 import { useSmartSearch } from '../context/SmartSearchContext';
-import { getErrorMessage, showSuccess, showError } from '../utils/toast';
+import { getErrorMessage, showSuccess, showError, showInfo } from '../utils/toast';
 import { QUERY_STALE, refreshAfterInventoryChange } from '../utils/queryInvalidation';
 import { queryKeys } from '../utils/queryKeys';
 import { EMPTY_STATES, FEATURE_NOT_AVAILABLE } from '../constants/microcopy';
@@ -1465,11 +1465,23 @@ const Products = () => {
   }, [importCreateCategories, importFile, queryClient]);
 
   // Lynk's products are in: show them as an import result (with Undo and photos), like ABS's own import.
-  const handleLynkImportSaved = useCallback(({ batchId, addedCount, leftOut }) => {
-    showSuccess(`${addedCount} product${addedCount === 1 ? '' : 's'} added with Lynk AI`);
+  const handleLynkImportSaved = useCallback(({ batchId, addedCount, updatedCount, notIn }) => {
+    const done = [
+      addedCount ? `${addedCount} product${addedCount === 1 ? '' : 's'} added` : null,
+      updatedCount ? `${updatedCount} updated` : null,
+    ].filter(Boolean).join(', ');
+    if (done) showSuccess(`${done} with Lynk AI`);
+    else showInfo('Nothing new to add: Lynk AI\'s products were already in ABS or left out');
     refreshAfterInventoryChange(queryClient);
     resetImport();
-    setImportResult({ batchId, successCount: addedCount, skippedCount: leftOut.length, skipped: leftOut.map((l) => ({ row: 0, name: l.name, reason: l.why })), errors: [] });
+    setImportResult({
+      batchId,
+      successCount: addedCount,
+      updatedCount,
+      skippedCount: notIn.length,
+      skipped: notIn.map((item) => ({ row: 0, name: item.name, reason: item.reason })),
+      errors: [],
+    });
     setImportModalOpen(true);
   }, [queryClient, resetImport]);
 
@@ -1479,8 +1491,9 @@ const Products = () => {
     try {
       const undo = await productService.undoProductImport(importResult.batchId);
       const removed = undo?.removedCount ?? 0;
+      const restored = undo?.restoredCount ?? 0;
       const kept = undo?.keptCount ?? 0;
-      showSuccess(`Import undone: ${removed} product${removed === 1 ? '' : 's'} removed${kept ? `, ${kept} kept because they are already in use` : ''}`);
+      showSuccess(`Import undone: ${removed} product${removed === 1 ? '' : 's'} removed${restored ? `, ${restored} put back as they were` : ''}${kept ? `, ${kept} kept (see why)` : ''}`);
       refreshAfterInventoryChange(queryClient);
       setImportResult((current) => ({ ...current, undo }));
     } catch (err) {
@@ -5085,13 +5098,14 @@ const Products = () => {
                 ...(importResult.errors ?? []).map((e) => ({ row: e.row, reason: e.message })),
               ].sort((a, b) => a.row - b.row);
               const added = importResult.successCount ?? 0;
+              const updated = importResult.updatedCount ?? 0;
               const { undo } = importResult;
               return (
                 <div className="rounded-md border border-border p-3 space-y-2">
                   <p className="text-sm font-medium">
                     {undo
-                      ? `Import undone: ${undo.removedCount ?? 0} removed${undo.keptCount ? `, ${undo.keptCount} kept` : ''}`
-                      : `${added} added${importResult.skippedCount ? ` · ${importResult.skippedCount} skipped` : ''}${(importResult.errors ?? []).length ? ` · ${importResult.errors.length} with problems` : ''}`}
+                      ? `Import undone: ${undo.removedCount ?? 0} removed${undo.restoredCount ? `, ${undo.restoredCount} put back` : ''}${undo.keptCount ? `, ${undo.keptCount} kept` : ''}`
+                      : `${added} added${updated ? ` · ${updated} updated` : ''}${importResult.skippedCount ? ` · ${importResult.skippedCount} not brought in` : ''}${(importResult.errors ?? []).length ? ` · ${importResult.errors.length} with problems` : ''}`}
                   </p>
                   {undo?.kept?.length > 0 && (
                     <ul className="text-xs text-muted-foreground max-h-32 overflow-y-auto space-y-1">
@@ -5108,17 +5122,19 @@ const Products = () => {
                       {issues.length > 20 && <li>… and {issues.length - 20} more</li>}
                     </ul>
                   )}
-                  {!undo && added > 0 && (
+                  {!undo && (added > 0 || updated > 0) && (
                     <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => { setImportModalOpen(false); setBulkImagesOpen(true); }}
-                      >
-                        <ImagePlus className="mr-2 h-4 w-4" />
-                        Now upload their photos
-                      </Button>
+                      {added > 0 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => { setImportModalOpen(false); setBulkImagesOpen(true); }}
+                        >
+                          <ImagePlus className="mr-2 h-4 w-4" />
+                          Now upload their photos
+                        </Button>
+                      )}
                       {importResult.batchId && (
                         <Button type="button" variant="outline" size="sm" onClick={handleImportUndo} disabled={importUndoing}>
                           {importUndoing && <Loader2 className="h-4 w-4 animate-spin mr-2" />}

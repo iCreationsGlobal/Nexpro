@@ -66,7 +66,8 @@ async function startImport({ tenant, user, categories, units, shops, existing },
     user: { id: String(tenant.id), name: tenant.name || undefined, email: user?.email || undefined },
     screen: true,
     variants: true,
-    can_update: false,
+    // Products already in ABS: Lynk asks the owner whether to update their prices and stock, or skip them.
+    can_update: true,
     details: absDetails(),
     lists: {
       categories: categories.slice(0, 2000),
@@ -87,12 +88,16 @@ function verifyLynkSignature(rawBody, signature, secret = process.env.LYNK_IMPOR
   return given.length === expected.length && crypto.timingSafeEqual(given, expected);
 }
 
-/** Lynk's products as ABS import rows: the template's keys, and each colour or size as a variant. */
+/**
+ * Lynk's products as ABS import rows: the template's keys, each colour or size as a variant, and (when the owner chose
+ * to update a product already in ABS) the product it updates.
+ */
 function rowsFromLynk(products) {
   return (Array.isArray(products) ? products : []).slice(0, 2000).map((p) => ({
     row: String(p?.row ?? ''),
     data: mapRowToEntity(p?.values && typeof p.values === 'object' ? p.values : {}, 'products'),
     variants: (Array.isArray(p?.choices) ? p.choices : []).map((c) => ({ attributes: c?.attributes || {}, ...(c?.values || {}) })),
+    ...(p?.action === 'update' && p?.match?.id ? { update: { id: String(p.match.id) } } : {}),
   }));
 }
 

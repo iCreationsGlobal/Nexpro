@@ -34,6 +34,9 @@ describe('Lynk AI product import (services/lynkImport.js)', () => {
     expect(rows[0].data).toMatchObject({ name: 'Polo shirt', sellingPrice: 50, categoryName: 'Clothes' });
     expect(rows[0].variants).toEqual([{ attributes: { colour: 'Red', size: 'XL' }, sellingPrice: 50, quantityOnHand: 3, sku: 'P-R-XL' }]);
     expect(rows[1].variants).toEqual([]);
+    expect(rows[1].update).toBeUndefined();
+    const [update] = rowsFromLynk([{ row: 'r3', action: 'update', match: { by: 'sku', id: 'p-9', name: 'Milo' }, values: { name: 'Milo', sellingPrice: 48 } }]);
+    expect(update.update).toEqual({ id: 'p-9' });
     expect(batchIdFor('cm123abc')).toBe('lynk-cm123abc');
     expect(batchIdFor('../x')).toBe('lynk-x');
   });
@@ -49,7 +52,7 @@ describe('Lynk AI product import (services/lynkImport.js)', () => {
     expect(url).toBe('https://lynk.test/api/v1/products/imports');
     expect(init.headers.Authorization).toBe('Bearer lynk_test');
     const body = JSON.parse(init.body);
-    expect(body).toMatchObject({ user: { id: 't1', name: 'Glow Mart', email: 'ama@glow.test' }, screen: true, variants: true, can_update: false, lists: { categories: ['Drinks'], units: ['pcs'], shops: [{ id: 's1', name: 'Osu' }] }, check_url: 'https://api.abs.test/api/webhooks/lynk/import-check', webhook_url: 'https://api.abs.test/api/webhooks/lynk/import-finished' });
+    expect(body).toMatchObject({ user: { id: 't1', name: 'Glow Mart', email: 'ama@glow.test' }, screen: true, variants: true, can_update: true, lists: { categories: ['Drinks'], units: ['pcs'], shops: [{ id: 's1', name: 'Osu' }] }, check_url: 'https://api.abs.test/api/webhooks/lynk/import-check', webhook_url: 'https://api.abs.test/api/webhooks/lynk/import-finished' });
     expect(body.existing).toEqual([{ id: 'p1', name: 'Milo', sku: 'M1' }]);
 
     const refused = jest.fn(async () => ({ ok: false, status: 402, json: async () => ({ error: { message: 'Insufficient Lynk wallet balance' } }) }));
