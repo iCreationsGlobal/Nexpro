@@ -1,5 +1,48 @@
 # Lynk AI in ABS ("Ask Lynk")
 
+**Status (2026-10-24): built on both sides; not live.**
+- **Lynk side:** branch `lynk-ai-for-apps` in `SafeServer` (`9512390`; its worktree is `../SafeServer-ai`). It isn't merged into Lynk's `main` yet and merges cleanly. Plan: `SafeServer/docs/plan/lynk-ai-for-apps.md`.
+- **ABS side:** on `abs-v2`, not pushed:
+  - `1f7e7ca` the web and the answers;
+  - `9f53ae8` the phone app screen.
+- **The import** is `.plans/lynk-ai-product-import.md`.
+
+**As built (2026-10-24), replacing the "How it fits together" design below.** Lynk AI uses Lynk's general **Lynk AI for apps** API, the same model as the product import:
+- ABS's server holds one Lynk key.
+- Each ABS business is an app user with its own Lynk credit, bought in the screen.
+- Lynk's screen opens with a one-time pass in its address. There is no Settings → Lynk switch-on, no Lynk pass into ABS's API, and no ABS subdomain.
+
+**How it works:**
+- **Opening a session.** `POST /api/lynk/session` (owners, admins, managers) asks Lynk for a session in the shop the person has open. `lynk_ai_sessions` ties it to that person, shop and device.
+- **Lynk asks ABS.** Lynk sends signed questions to `POST /api/webhooks/lynk/ask`. ABS answers only for sessions it opened, for the same business and person.
+  - **How:** it runs ABS's own request context (tenant, shop, studio) and the same reports and lists ABS shows (`services/lynkAsk.js`).
+  - **What it answers:** the period summary with the period before, best sellers, low and out of stock, money owed, top, newest and quiet customers, sales (invoices for studios), expenses by category, products, search, and one record.
+  - Lists carry labels and links for the web or the app.
+- **Web.**
+  - **Header button** (desktop): Ask in a side panel that pushes the page aside and stays open across pages. It knows the open page and record, and its buttons move the page.
+  - **Menu item:** the full **Lynk AI** page (`/lynk`) with Ask, Insights, Design and Import.
+  - **Phones:** the header button opens the page, without the tab bar.
+  - **"Bring in products"** opens the Lynk import from any page.
+- **Native app.** A sparkle in the header and "Lynk AI" in More open the same screen in a WebView, with the screen they came from. Lynk's buttons open the app's own screens.
+- **Insights** are free rules on ABS's answers.
+- **Design** uses Lynk's design maker with ABS's business details (logo, colours, phone, address, socials) and products. The price is shown first and taken from the business's Lynk credit.
+
+**Settings:** as in `.plans/lynk-ai-product-import.md`. The Lynk key also needs **Lynk AI in your app** access.
+
+**Left to do:**
+- Merge `lynk-ai-for-apps` into Lynk's `main` (agree with the Lynk session).
+- Lynk's own deploy (with its migration), and ABS's.
+- Switch on Lynk's design for businesses (`LYNK_DESIGN_FOR_BUSINESSES`), or Design says "coming soon".
+- A real test, both apps on the web and the phone app.
+- The phone app release.
+- The privacy and Terms question below.
+
+**Privacy and Terms (to decide):** Lynk processes ABS businesses' numbers when an owner uses Lynk AI. The 20 Oct plan asked for a consent note at switch-on, and a clause in ABS's Terms (the AI clauses were removed on 18 Oct). Neither is written yet: the Terms wording is the owner's to approve.
+
+---
+
+*The planning history follows (2026-10-20 and 2026-10-23). Where it differs from "As built" above, "As built" is what exists.*
+
 **Status:** planned, 2026-10-20; updated 2026-10-23 after checking Lynk again. Step 0 (the ABS import fix) is done (`7dc9f55`). Nothing else is built.
 
 **Decided (2026-10-20, by the owner):**
