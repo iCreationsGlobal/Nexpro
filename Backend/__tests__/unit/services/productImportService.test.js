@@ -291,7 +291,23 @@ describe('colours and sizes (variants, from Lynk)', () => {
     ProductCategory.findAll.mockResolvedValue([]);
     const result = await undoProductImport({ tenantId: 't1', batchId: 'lynk-imp1' });
     expect(result.removed).toEqual([{ id: 'p-polo', name: 'Polo shirt' }]);
-    expect(ProductVariant.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ [Op.not]: { metadata: { importBatchId: 'lynk-imp1' } } }) }));
+    expect(ProductVariant.findAll).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        [Op.or]: [{ metadata: { importBatchId: { [Op.ne]: 'lynk-imp1' } } }, { metadata: { importBatchId: null } }],
+      }),
+    }));
     expect(ProductVariant.destroy).toHaveBeenCalled();
+  });
+
+  it('undo keeps a product that was given a colour or size after the import', async () => {
+    Product.findAll.mockResolvedValue([{ id: 'p-polo', name: 'Polo shirt', shopId: null }]);
+    ProductStockMovement.findAll.mockResolvedValue([]);
+    SaleItem.findAll.mockResolvedValue([]);
+    QuoteItem.findAll.mockResolvedValue([]);
+    ProductCategory.findAll.mockResolvedValue([]);
+    ProductVariant.findAll.mockResolvedValueOnce([{ productId: 'p-polo' }]);
+    const result = await undoProductImport({ tenantId: 't1', batchId: 'lynk-imp1' });
+    expect(result.removed).toEqual([]);
+    expect(result.kept).toEqual([expect.objectContaining({ id: 'p-polo', reason: 'Has variants added since the import' })]);
   });
 });

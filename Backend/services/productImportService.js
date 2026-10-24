@@ -429,8 +429,14 @@ async function undoProductImport({ tenantId, batchId, canAccess = () => true }) 
     const Model = models[modelName];
     if (!Model?.rawAttributes?.productId) continue;
     const used = await Model.findAll({
-      // Colours and sizes this import made aren't "in use": they go with the product.
-      where: { productId: { [Op.in]: ids }, ...(modelName === 'ProductVariant' ? { [Op.not]: { metadata: { importBatchId: batchId } } } : {}) },
+      // Colours and sizes this import made aren't "in use": they go with the product. Ones added since have no
+      // importBatchId, and NOT (NULL = batchId) matches nothing in SQL, so they're asked for by "other or none".
+      where: {
+        productId: { [Op.in]: ids },
+        ...(modelName === 'ProductVariant'
+          ? { [Op.or]: [{ metadata: { importBatchId: { [Op.ne]: batchId } } }, { metadata: { importBatchId: null } }] }
+          : {}),
+      },
       attributes: ['productId'],
       group: ['productId'],
       raw: true,
