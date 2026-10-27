@@ -124,7 +124,13 @@ export function SimpleProductsScreen() {
         </SimpleList>
       )}
       <SimplePager page={page} totalPages={Math.max(Math.ceil(count / PAGE_SIZE), 1)} onChange={setPage} />
-      <SimpleProductSheet visible={formOpen} product={editing} onClose={() => { setFormOpen(false); setEditing(null); }} />
+      <SimpleProductSheet
+        visible={formOpen}
+        product={editing}
+        onClose={() => { setFormOpen(false); setEditing(null); }}
+        // Adding one that's already there opens it instead, where its stock count can be changed.
+        onOpenProduct={setEditing}
+      />
     </ScrollView>
   );
 }

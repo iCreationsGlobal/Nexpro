@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppBottomSheet, APP_SHEET_HEIGHT_TALL } from '@/components/AppBottomSheet';
 import { AppIcon } from '@/components/AppIcon';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
+import { ProductNameSuggest } from '@/components/ProductNameSuggest';
+import { duplicateNameConflict, productNameKey } from '@/utils/productNameMatch';
 import { SimpleBigButton, SimpleField, simpleStyles } from '@/components/simple/SimpleUI';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { productService } from '@/services/productService';
@@ -20,10 +22,11 @@ const cleanNumber = (text: string) => text.replace(/[^\d.]/g, '');
 /**
  * Simple Mode product form: photo, name, selling price, cost (optional), how many are in stock
  * and a barcode (typed, from a Bluetooth scanner, or scanned with the camera). Stock changes on
- * an existing product go through adjust-stock so a stock movement is recorded.
+ * an existing product go through adjust-stock so a stock movement is recorded. When adding, the
+ * name box lists products already there; onOpenProduct opens one of them here instead.
  */
-export function SimpleProductSheet({ visible, product, onClose }: {
-  visible: boolean; product: AnyProduct | null; onClose: () => void;
+export function SimpleProductSheet({ visible, product, onClose, onOpenProduct }: {
+  visible: boolean; product: AnyProduct | null; onClose: () => void; onOpenProduct?: (product: AnyProduct) => void;
 }) {
   const queryClient = useQueryClient();
   const { textColor, mutedColor, borderColor, cardBg } = useScreenColors();
@@ -35,6 +38,9 @@ export function SimpleProductSheet({ visible, product, onClose }: {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [error, setError] = useState('');
+  // The product the server said already has this name, and the name the user said is a different product.
+  const [nameConflict, setNameConflict] = useState<AnyProduct | null>(null);
+  const allowedDuplicateNameRef = useRef<string | null>(null);
   const [variantDraft, setVariantDraft] = useState<null | {
     id?: string; size: string; color: string; price: string; quantity: string;
   }>(null);
@@ -61,6 +67,8 @@ export function SimpleProductSheet({ visible, product, onClose }: {
     setImageUri(null);
     setVariantDraft(null);
     setError('');
+    setNameConflict(null);
+    allowedDuplicateNameRef.current = null;
   }, [visible, product]);
 
   const pickPhoto = async (from: 'camera' | 'library') => {
@@ -99,7 +107,12 @@ export function SimpleProductSheet({ visible, product, onClose }: {
         ...(imageUrl ? { imageUrl } : {}),
       };
       if (!product?.id) {
-        return productService.createProduct({ ...base, quantityOnHand: qty, trackStock: true });
+        return productService.createProduct({
+          ...base,
+          quantityOnHand: qty,
+          trackStock: true,
+          checkDuplicateName: productNameKey(base.name) !== allowedDuplicateNameRef.current,
+        });
       }
       const result = await productService.updateProduct(String(product.id), base);
       if (!product.hasVariants && qty !== Number(product.quantityOnHand ?? 0)) {
@@ -112,8 +125,20 @@ export function SimpleProductSheet({ visible, product, onClose }: {
       void queryClient.invalidateQueries({ queryKey: ['products'] });
       onClose();
     },
-    onError: (err: unknown) => Alert.alert('Product', getApiErrorMessage(err, 'Could not save this product.')),
+    onError: (err: unknown) => {
+      const existing = product?.id ? null : duplicateNameConflict(err);
+      if (existing) setNameConflict(existing);
+      Alert.alert(existing ? 'Already in your products' : 'Product', getApiErrorMessage(err, 'Could not save this product.'));
+    },
   });
+
+  const handleDifferentName = (typed: string) => {
+    allowedDuplicateNameRef.current = productNameKey(typed);
+    if (nameConflict) {
+      setNameConflict(null);
+      save.mutate();
+    }
+  };
 
   const saveVariant = useMutation({
     mutationFn: async () => {
@@ -195,8 +220,10 @@ export function SimpleProductSheet({ visible, product, onClose }: {
           </View>
 
           <SimpleField label="Product name">
-            <TextInput value={name} onChangeText={(t) => { setName(t); setError(''); }} placeholder="e.g. Bel Aqua 500ml"
-              placeholderTextColor={mutedColor} style={inputStyle} accessibilityLabel="Product name" />
+            {/* Lists products already there as the name is typed, so the same one isn't added twice. */}
+            <ProductNameSuggest value={name} onChangeText={(t) => { setName(t); setError(''); }} placeholder="e.g. Bel Aqua 500ml"
+              placeholderTextColor={mutedColor} inputStyle={inputStyle} accessibilityLabel="Product name"
+              enabled={!product} conflict={nameConflict} onOpen={onOpenProduct} onDifferent={handleDifferentName} />
           </SimpleField>
           <View style={styles.twoCols}>
             <View style={{ flex: 1 }}>
