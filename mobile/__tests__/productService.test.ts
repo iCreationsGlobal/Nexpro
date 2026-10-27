@@ -128,3 +128,31 @@ describe('productService.getProducts', () => {
     expect(result.data[0].name).toBe('Banner');
   });
 });
+
+describe('productService.createProduct', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends the duplicate-name check when asked', async () => {
+    jest.mocked(api.post).mockResolvedValue({ data: { success: true, data: { id: 'p1' } } });
+
+    await productService.createProduct({ name: 'MacBook M4', sellingPrice: 14500, checkDuplicateName: true });
+
+    expect(api.post).toHaveBeenCalledWith('/products', expect.objectContaining({
+      name: 'MacBook M4',
+      checkDuplicateName: true,
+    }));
+  });
+});
+
+describe('productService.getProducts sort', () => {
+  it('passes sort=relevance through for the name box', async () => {
+    const { buildScopedQueryString } = jest.requireMock('@/utils/shopScope');
+    jest.mocked(api.get).mockResolvedValue({ data: { success: true, data: [] } });
+
+    await productService.getProducts({ search: 'mac', limit: 5, isActive: true, sort: 'relevance' });
+
+    expect(buildScopedQueryString).toHaveBeenCalledWith(expect.objectContaining({ search: 'mac', sort: 'relevance' }));
+  });
+});

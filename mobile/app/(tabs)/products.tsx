@@ -1,6 +1,6 @@
 import { useSimpleMode } from '@/hooks/useSimpleMode';
 import { SimpleProductsScreen } from '@/components/simple/SimpleProductsScreen';
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import {
   View,
@@ -13,6 +13,7 @@ import {
   TextInput,
   Alert,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
@@ -32,6 +33,8 @@ import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
 import { RestockProductSheet } from '@/components/RestockProductSheet';
+import { ProductNameSuggest } from '@/components/ProductNameSuggest';
+import { duplicateNameConflict, productNameKey } from '@/utils/productNameMatch';
 import { SHOP_TYPES, resolveBusinessType } from '@/constants';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { resolveDisplayImageUrl } from '@/utils/fileUtils';
@@ -113,6 +116,10 @@ function ProductsScreen() {
   const [imagePreviewUri, setImagePreviewUri] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [productToRestock, setProductToRestock] = useState<Product | null>(null);
+  // Adding a product whose name is already there: the product the server returned, and the name
+  // the user said is a different product.
+  const [nameConflict, setNameConflict] = useState<Product | null>(null);
+  const allowedDuplicateNameRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (params.search) setSearchValue(String(params.search));
@@ -157,6 +164,8 @@ function ProductsScreen() {
     });
     setImagePreviewUri(null);
     setUploadingImage(false);
+    setNameConflict(null);
+    allowedDuplicateNameRef.current = null;
   }, []);
 
   const createProductMutation = useMutation({
@@ -172,7 +181,9 @@ function ProductsScreen() {
       });
     },
     onError: (error: unknown) => {
-      Alert.alert('Error', getApiErrorMessage(error, 'Failed to create product'));
+      const existing = duplicateNameConflict(error);
+      if (existing) setNameConflict(existing as Product);
+      Alert.alert(existing ? 'Already in your products' : 'Error', getApiErrorMessage(error, 'Failed to create product'));
     },
   });
 
@@ -347,8 +358,29 @@ function ProductsScreen() {
       imageUrl: formData.imageUrl.trim() || undefined,
       unit: isRestaurant ? 'serving' : undefined,
       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+      checkDuplicateName: productNameKey(formData.name) !== allowedDuplicateNameRef.current,
     });
   }, [formData, createProductMutation, uploadingImage, isRestaurant]);
+
+  // The name typed is a product already there: go to it instead of adding it again.
+  const handleExistingProductAddStock = useCallback((product: Record<string, any>) => {
+    setAddModalVisible(false);
+    resetAddForm();
+    // iOS can't present the restock sheet while the add sheet is still sliding away.
+    setTimeout(() => setProductToRestock(product as Product), Platform.OS === 'ios' ? 400 : 0);
+  }, [resetAddForm]);
+  const handleExistingProductOpen = useCallback((product: Record<string, any>) => {
+    setAddModalVisible(false);
+    resetAddForm();
+    router.push(`/product/${product.id}` as never);
+  }, [resetAddForm, router]);
+  const handleDifferentProductName = useCallback((name: string) => {
+    allowedDuplicateNameRef.current = productNameKey(name);
+    if (nameConflict) {
+      setNameConflict(null);
+      handleCreateProduct();
+    }
+  }, [nameConflict, handleCreateProduct]);
 
   // Must stay above early returns — auth/businessType can resolve after first paint.
   const addFormImageUri = useMemo(() => {
@@ -569,12 +601,16 @@ function ProductsScreen() {
                 </View>
                 <View style={styles.formGroup}>
                   <Text style={[styles.formLabel, { color: textColor }]}>{FORM_LABELS.product.name}</Text>
-                  <TextInput
-                    style={[styles.formInput, { color: textColor, borderColor, backgroundColor: inputBg }]}
+                  <ProductNameSuggest
+                    inputStyle={[styles.formInput, { color: textColor, borderColor, backgroundColor: inputBg }]}
                     placeholder="Product name"
                     placeholderTextColor={mutedColor}
                     value={formData.name}
                     onChangeText={(text) => setFormData({ ...formData, name: text })}
+                    conflict={nameConflict}
+                    onAddStock={handleExistingProductAddStock}
+                    onOpen={handleExistingProductOpen}
+                    onDifferent={handleDifferentProductName}
                   />
                 </View>
                 <View style={styles.formGroup}>

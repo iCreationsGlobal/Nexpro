@@ -30,6 +30,8 @@ export type CreateProductPayload = {
   shopId?: string;
   imageUrl?: string;
   metadata?: Record<string, unknown>;
+  /** Refuse with 409 DUPLICATE_PRODUCT_NAME (data: the product) when this name is already there. */
+  checkDuplicateName?: boolean;
 };
 
 const isNotFoundError = (error: unknown) =>
