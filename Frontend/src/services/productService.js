@@ -142,6 +142,7 @@ const productService = {
    * @param {string} query - Search query
    * @param {Object} [options] - Additional options
    * @param {number} [options.limit] - Max results (default 50)
+   * @param {string} [options.sort] - e.g. 'relevance' for the closest names first
    * @returns {Promise<Object>} - { products }
    */
   searchProducts: async (query, options = {}) => {
@@ -150,6 +151,7 @@ const productService = {
       search: query,
       limit: options.limit || 50,
       isActive: options.isActive ?? true,
+      ...(options.sort ? { sort: options.sort } : {}),
       ...(options.includeVariants ? { includeVariants: true } : {}),
       ...(options.shopId ? { shopId: options.shopId } : {}),
       ...(options.isRentable != null ? { isRentable: options.isRentable } : {}),

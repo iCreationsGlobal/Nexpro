@@ -271,6 +271,26 @@ const resolveProductListSort = (rawSort) => {
   };
 };
 
+/**
+ * Order for sort=relevance with a search: the exact name first, then names that start with the
+ * search, then names with a word that starts with it, then the rest; each group by name.
+ * The add-product name box uses this so "MacBook M4" is on top as soon as "mac" is typed.
+ * @param {string} search
+ * @returns {Array}
+ */
+const productNameRelevanceOrder = (search) => {
+  const term = String(search).trim().toLowerCase();
+  const name = 'lower(trim("Product"."name"))';
+  return [
+    [Product.sequelize.literal(`CASE
+      WHEN ${name} = ${Product.sequelize.escape(term)} THEN 0
+      WHEN ${name} LIKE ${Product.sequelize.escape(`${term}%`)} THEN 1
+      WHEN ${name} LIKE ${Product.sequelize.escape(`% ${term}%`)} THEN 2
+      ELSE 3 END`), 'ASC'],
+    ...PRODUCT_LIST_SORT_ORDERS.name_asc,
+  ];
+};
+
 const formatProductForList = (record, req) => {
   const stripped = stripSensitiveProductFields(record, req);
   const plain = typeof stripped?.get === 'function'
@@ -472,7 +492,9 @@ exports.getProducts = async (req, res, next) => {
     const lowStock = req.query.lowStock === 'true';
     const outOfStock = req.query.outOfStock === 'true';
     const includeVariants = req.query.includeVariants === 'true' || req.query.forPOS === 'true';
-    const { order } = resolveProductListSort(req.query.sort || req.query.sortBy);
+    const order = req.query.sort === 'relevance' && search.trim()
+      ? productNameRelevanceOrder(search)
+      : resolveProductListSort(req.query.sort || req.query.sortBy).order;
 
     let where = applyTenantFilter(req.tenantId, {});
     const scoped = applyProductShopScope(req, where, shopId);
@@ -1498,9 +1520,34 @@ exports.deleteProductCategory = async (req, res, next) => {
   }
 };
 
+/**
+ * The active product this shop can see that already has this name, case and spaces ignored
+ * (the same rule the import uses to skip products already in ABS), or null.
+ * @returns {Promise<object|null>} the product as the list sends it, with this shop's stock
+ */
+const findProductWithSameName = async (req, name, shopId, transaction) => {
+  const key = String(name ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+  if (!key) return null;
+  const { sequelize } = Product;
+  const { where, effectiveShopId } = applyProductShopScope(req, applyTenantFilter(req.tenantId, {
+    isActive: true,
+    [Op.and]: [sequelize.where(sequelize.fn('lower', sequelize.fn('trim', sequelize.col('Product.name'))), key)],
+  }), shopId);
+  const match = await Product.findOne({ where, order: [['createdAt', 'ASC']], transaction });
+  if (!match) return null;
+  let [product] = formatProductListResponse([match], req);
+  if (effectiveShopId) {
+    [product] = await attachShopStockToProducts([product], { tenantId: req.tenantId, shopId: effectiveShopId });
+  }
+  return applyEffectiveProductQuantity(product);
+};
+
 // @desc    Create new product
 // @route   POST /api/products
 // @access  Private
+// Send checkDuplicateName: true to get a 409 (code DUPLICATE_PRODUCT_NAME, data: the product)
+// when a product with this name is already there. Off by default: Quick Sale and older apps
+// create products without asking.
 exports.createProduct = async (req, res, next) => {
   const transaction = await Product.sequelize.transaction();
   let transactionFinished = false;
@@ -1508,6 +1555,8 @@ exports.createProduct = async (req, res, next) => {
     const payload = sanitizePayload(
       attachShopToPayload(req, req.body)
     );
+    const checkDuplicateName = payload.checkDuplicateName === true;
+    delete payload.checkDuplicateName;
     stripStaffProductWritePayload(payload, req);
     try {
       normalizeWholesalePrice(payload);
@@ -1539,6 +1588,20 @@ exports.createProduct = async (req, res, next) => {
       && payload.hasVariants !== true
       && payload.trackStock !== false
     );
+
+    if (checkDuplicateName) {
+      const existing = await findProductWithSameName(req, payload.name, openingShopId, transaction);
+      if (existing) {
+        await transaction.rollback();
+        transactionFinished = true;
+        return res.status(409).json({
+          success: false,
+          code: 'DUPLICATE_PRODUCT_NAME',
+          message: `"${existing.name}" is already in your products.`,
+          data: existing,
+        });
+      }
+    }
 
     const product = await Product.create({
       ...payload,

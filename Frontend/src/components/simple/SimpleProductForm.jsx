@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Barcode, Camera, ChevronRight, Loader2, Package, Plus, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import ProductNameSuggest from '../ProductNameSuggest';
 import { PRODUCT_IMAGE_ACCEPT } from '../../utils/compressProductImage';
 import { resolveImageUrl } from '../../utils/fileUtils';
 import { formatAmount } from '../../utils/formatNumber';
@@ -39,6 +40,9 @@ const MoneyField = ({ label, value, onChange, hint }) => (
  *   imageUploading?: boolean,
  *   onPickImage: (file: File) => void,
  *   onRemoveImage: () => void,
+ *   nameConflict?: object|null,
+ *   onOpenExisting?: (product: object) => void,
+ *   onDifferentName?: (name: string) => void,
  *   saving?: boolean,
  *   variants?: Array<object>,
  *   onAddVariant?: () => void,
@@ -54,6 +58,9 @@ export default function SimpleProductForm({
   imageUploading = false,
   onPickImage,
   onRemoveImage,
+  nameConflict = null,
+  onOpenExisting,
+  onDifferentName,
   saving = false,
   variants = [],
   onAddVariant,
@@ -155,16 +162,25 @@ export default function SimpleProductForm({
               </div>
             </div>
 
-            <label className="block">
+            <div>
               <span className="text-base font-semibold">Product name</span>
-              <input
+              {/* Lists products already there as the name is typed, so the same one isn't added twice. */}
+              <ProductNameSuggest
                 value={name}
-                onChange={(e) => { setName(e.target.value); setError(''); }}
-                placeholder="e.g. Bel Aqua 500ml"
-                aria-label="Product name"
-                className="mt-2 h-16 w-full rounded-2xl border-2 border-border bg-card px-5 text-lg outline-none focus:ring-2 focus:ring-brand"
-              />
-            </label>
+                enabled={!product}
+                conflict={nameConflict}
+                onOpen={onOpenExisting}
+                onDifferent={onDifferentName}
+              >
+                <input
+                  value={name}
+                  onChange={(e) => { setName(e.target.value); setError(''); }}
+                  placeholder="e.g. Bel Aqua 500ml"
+                  aria-label="Product name"
+                  className="mt-2 h-16 w-full rounded-2xl border-2 border-border bg-card px-5 text-lg outline-none focus:ring-2 focus:ring-brand"
+                />
+              </ProductNameSuggest>
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <MoneyField label="Selling price" value={price} onChange={(v) => { setPrice(v); setError(''); }} />
