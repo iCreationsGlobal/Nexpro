@@ -148,6 +148,30 @@ describe('productController list sort', () => {
       );
     });
 
+    it('relevance with a search puts the exact name, then names starting with it, first', async () => {
+      Product.sequelize.escape = jest.fn((value) => `'${value}'`);
+      const req = { tenantId: 't1', query: { sort: 'relevance', search: ' MacBook ' }, shopScoped: false };
+
+      await productController.getProducts(req, mockRes(), jest.fn());
+
+      const { order } = Product.findAndCountAll.mock.calls[0][0];
+      expect(order.slice(1)).toEqual([['name', 'ASC'], ['id', 'ASC']]);
+      expect(order[0][1]).toBe('ASC');
+      expect(order[0][0].literal).toContain("= 'macbook' THEN 0");
+      expect(order[0][0].literal).toContain("LIKE 'macbook%' THEN 1");
+      expect(order[0][0].literal).toContain("LIKE '% macbook%' THEN 2");
+    });
+
+    it('relevance without a search falls back to name_asc', async () => {
+      const req = { tenantId: 't1', query: { sort: 'relevance' }, shopScoped: false };
+
+      await productController.getProducts(req, mockRes(), jest.fn());
+
+      expect(Product.findAndCountAll).toHaveBeenCalledWith(
+        expect.objectContaining({ order: [['name', 'ASC'], ['id', 'ASC']] }),
+      );
+    });
+
     it('rejects unknown sort and uses name_asc', async () => {
       const req = { tenantId: 't1', query: { sort: 'not_a_real_sort' }, shopScoped: false };
       const res = mockRes();

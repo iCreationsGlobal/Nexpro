@@ -70,6 +70,7 @@ import SimpleProductsList from '../components/simple/SimpleProductsList';
 import BulkProductImagesDialog from '../components/BulkProductImagesDialog';
 import BulkPublishToStoreDialog from '../components/BulkPublishToStoreDialog';
 import SimpleProductForm from '../components/simple/SimpleProductForm';
+import ProductNameSuggest, { duplicateNameConflict, productNameKey } from '../components/ProductNameSuggest';
 import FeatureNotAvailable from '../components/FeatureNotAvailable';
 import productService from '../services/productService';
 import { PRODUCT_IMPORT_COLUMNS, BASIC_PRODUCT_IMPORT_COLUMNS } from '../constants/productImportColumns';
@@ -695,6 +696,11 @@ const Products = () => {
   // Simple Mode: add button, search and a plain list; a short photo/name/price/stock form.
   const { isRestricted: isSimpleProducts } = useSimpleMode();
   const [editingProduct, setEditingProduct] = useState(null);
+  // Adding a product whose name is already there: the product the server returned, the name the
+  // user said is a different product, and the values to save again for "Add it anyway".
+  const [nameConflict, setNameConflict] = useState(null);
+  const allowedDuplicateNameRef = useRef(null);
+  const lastCreateValuesRef = useRef(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
   const [rentalUnits, setRentalUnits] = useState([]);
@@ -1774,7 +1780,11 @@ const Products = () => {
         await productService.updateProduct(editingProduct.id, payload);
         showSuccess('Product updated successfully');
       } else {
-        await productService.createProduct(payload);
+        lastCreateValuesRef.current = values;
+        await productService.createProduct({
+          ...payload,
+          checkDuplicateName: productNameKey(payload.name) !== allowedDuplicateNameRef.current,
+        });
         showSuccess('Product created successfully');
       }
 
@@ -1782,9 +1792,45 @@ const Products = () => {
       setEditingProduct(null);
       refreshAfterInventoryChange(queryClient);
     } catch (error) {
+      const existing = editingProduct ? null : duplicateNameConflict(error);
+      if (existing) setNameConflict(existing);
       showError(error, editingProduct ? 'Failed to update product' : 'Failed to create product');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (formOpen) return;
+    setNameConflict(null);
+    allowedDuplicateNameRef.current = null;
+    lastCreateValuesRef.current = null;
+  }, [formOpen]);
+
+  // The name typed is a product already there: go to it instead of adding it again.
+  const closeAddForm = () => {
+    cancelPendingProductImage();
+    setFormOpen(false);
+    setEditingProduct(null);
+  };
+  const handleExistingProductAddStock = (product) => {
+    closeAddForm();
+    handleOpenReceiveStock(product);
+  };
+  const handleExistingProductOpen = (product) => {
+    if (isSimpleProducts) {
+      // Simple Mode opens a product in the same form, where its stock count can be changed.
+      handleEditProduct(product);
+      return;
+    }
+    closeAddForm();
+    handleViewProduct(product);
+  };
+  const handleDifferentProductName = (name) => {
+    allowedDuplicateNameRef.current = productNameKey(name);
+    if (nameConflict && lastCreateValuesRef.current) {
+      setNameConflict(null);
+      handleFormSubmit(lastCreateValuesRef.current);
     }
   };
 
@@ -2998,6 +3044,9 @@ const Products = () => {
         imageUploading={productImageUploading}
         onPickImage={handleProductImageSelect}
         onRemoveImage={handleRemoveProductImage}
+        nameConflict={nameConflict}
+        onOpenExisting={handleExistingProductOpen}
+        onDifferentName={handleDifferentProductName}
         saving={submitting}
         // Merge over the loaded form values so fields this form doesn't show keep what was saved.
         // Parent stock stays on the variants, so a simple save does not overwrite it.
@@ -3267,9 +3316,18 @@ const Products = () => {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Product Name *</FormLabel>
-                        <FormControl>
-                          <Input placeholder={placeholders.productName} {...field} />
-                        </FormControl>
+                        <ProductNameSuggest
+                          value={field.value}
+                          enabled={!editingProduct}
+                          conflict={nameConflict}
+                          onAddStock={handleExistingProductAddStock}
+                          onOpen={handleExistingProductOpen}
+                          onDifferent={handleDifferentProductName}
+                        >
+                          <FormControl>
+                            <Input placeholder={placeholders.productName} {...field} />
+                          </FormControl>
+                        </ProductNameSuggest>
                         <FormMessage />
                       </FormItem>
                     )}
