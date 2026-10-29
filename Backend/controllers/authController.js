@@ -128,7 +128,7 @@ const toPlainJsonSafe = (value) => {
 const normalizeMembershipsForResponse = (memberships = []) =>
   (memberships || []).map((membership) => normalizeMembershipForResponse(membership));
 
-const { buildTrialSubscriptionSettingValue } = require('../utils/subscriptionDefaults');
+const { buildTrialSubscriptionSettingValue, getTrialEndDate } = require('../utils/subscriptionDefaults');
 const {
   resolveSignupPlanAssignment,
   buildSignupSubscriptionSettingValue,
@@ -280,7 +280,7 @@ exports.register = async (req, res, next) => {
       const transaction = await sequelize.transaction();
       try {
         const slug = await generateUniqueSlug(trimmedCompanyName, transaction);
-        const trialEndDate = dayjs().add(1, 'month').toDate();
+        const trialEndDate = await getTrialEndDate();
         const metadata = {
           signupSource: 'admin_invite',
           shopType: DEFAULT_SHOP_TYPE,
@@ -928,11 +928,7 @@ exports.googleAuth = async (req, res, next) => {
     try {
       const trimmedCompanyName = (companyName || 'My Business').trim();
       const slug = await generateUniqueSlug(trimmedCompanyName, transaction);
-      const { SubscriptionPlan } = require('../models');
-      const planAssignment = await resolveSignupPlanAssignment({
-        req,
-        SubscriptionPlan,
-      });
+      const planAssignment = await resolveSignupPlanAssignment({ req });
       const trialEndDate = new Date(planAssignment.trialEndsAt);
       finalBusinessType = resolveBusinessType(businessType);
       metadata = {
@@ -2030,8 +2026,7 @@ exports.sabitoSSO = async (req, res, next) => {
         const tenantName = sabitoBusiness?.name || `Workspace for ${sabitoUser.name || sabitoUser.email}`;
         const tenantSlug = await generateUniqueSlug(tenantName);
         
-        // Set trial end date to 1 month from now
-        const trialEndDate = dayjs().add(1, 'month').toDate();
+        const trialEndDate = await getTrialEndDate();
         
         console.log('[SSO POST] 🏢 Creating default tenant for new user:', {
           tenantName,
@@ -2126,8 +2121,7 @@ exports.sabitoSSO = async (req, res, next) => {
         const tenantName = sabitoBusiness?.name || `Workspace for ${user.name || user.email}`;
         const tenantSlug = await generateUniqueSlug(tenantName);
         
-        // Set trial end date to 1 month from now
-        const trialEndDate = dayjs().add(1, 'month').toDate();
+        const trialEndDate = await getTrialEndDate();
         
         console.log('[SSO POST] 🏢 Creating tenant for existing user without membership:', {
           tenantName,

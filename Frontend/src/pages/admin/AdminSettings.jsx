@@ -132,6 +132,15 @@ const formatPlanLabel = (name = '') =>
     .replace(/\s{2,}/g, ' ')
     .trim();
 
+/** Trial length is whole months, 1–TRIAL_MONTHS_MAX (same rule as the server's normalizeTrialMonths). */
+const TRIAL_MONTHS_MAX = 12;
+const isValidTrialMonths = (months) =>
+  Number.isInteger(months) && months >= 1 && months <= TRIAL_MONTHS_MAX;
+const planTrialMonths = (plan) => {
+  const months = Number(plan?.metadata?.trialMonths);
+  return isValidTrialMonths(months) ? months : 1;
+};
+
 const AdminsTable = ({ columns, data }) => (
   <Table>
     <TableHeader>
@@ -269,6 +278,7 @@ const AdminSettings = () => {
       seatLimit: '', seatPricePerAdditional: '', branchLimit: '', storageLimitMB: '', storagePrice100GB: '',
       highlights: '', marketingEnabled: true, marketingPerks: '', marketingPopular: false,
       marketingBadgeLabel: '', onboardingEnabled: true, onboardingSubtitle: '', onboardingIsDefault: false,
+      trialMonths: 1,
     }
   });
   
@@ -866,6 +876,7 @@ const AdminSettings = () => {
       seatLimit: '', seatPricePerAdditional: '', branchLimit: '', storageLimitMB: '', storagePrice100GB: '',
       highlights: '', marketingEnabled: true, marketingPerks: '', marketingPopular: false,
       marketingBadgeLabel: '', onboardingEnabled: true, onboardingSubtitle: '', onboardingIsDefault: false,
+      trialMonths: 1,
       selectedEnterpriseTier: 'business',
     });
     setPlanModalVisible(true);
@@ -898,6 +909,7 @@ const AdminSettings = () => {
       onboardingIsDefault: plan.onboarding?.isDefault,
       isActive: plan.isActive,
       selectedEnterpriseTier: plan.metadata?.selectedEnterpriseTier || 'business',
+      trialMonths: planTrialMonths(plan),
       ...featureFlags,
     };
     planForm.reset(values);
@@ -930,6 +942,7 @@ const AdminSettings = () => {
   const platformSmsActiveLabel = platformSmsActiveProvider === 'mnotify' ? 'Mnotify' : 'Arkesel';
   const platformSmsActiveBlob = platformSmsActiveProvider === 'mnotify' ? platformSmsMnotify : platformSmsArkesel;
   const isEnterprisePlanForm = String(watchedPlanId || '').toLowerCase() === 'enterprise';
+  const isTrialPlanForm = String(watchedPlanId || '').toLowerCase() === 'trial';
 
   const handleEnterpriseTierChange = useCallback((tierId) => {
     planForm.setValue('selectedEnterpriseTier', tierId);
@@ -975,6 +988,12 @@ const AdminSettings = () => {
   };
 
   const handlePlanSubmit = planForm.handleSubmit(async (values) => {
+    const isTrialPlan = String(values.planId || '').toLowerCase() === 'trial';
+    const trialMonths = Number(values.trialMonths);
+    if (isTrialPlan && !isValidTrialMonths(trialMonths)) {
+      planForm.setError('trialMonths', { message: `Enter whole months from 1 to ${TRIAL_MONTHS_MAX}` });
+      return;
+    }
     try {
       // Extract feature flags from form values (use allFeatures from modules)
       const featureFlags = {};
@@ -1028,6 +1047,10 @@ const AdminSettings = () => {
           planData.branchLimit = tier.branchLimit;
           planData.storageLimitMB = tier.storageLimitMB;
         }
+      }
+
+      if (isTrialPlan) {
+        planData.metadata = { ...(editingPlan?.metadata || {}), trialMonths };
       }
 
       if (editingPlan) {
@@ -1101,7 +1124,16 @@ const AdminSettings = () => {
       title: 'Price',
       dataIndex: ['price', 'display'],
       key: 'price',
-      render: (display) => display || '—',
+      render: (display, record) => {
+        if (record.planId !== 'trial') return display || '—';
+        const months = planTrialMonths(record);
+        return (
+          <span>
+            {display || '—'}
+            <Badge variant="secondary" className="ml-1">{months} month{months === 1 ? '' : 's'} trial</Badge>
+          </span>
+        );
+      },
     },
     {
       title: 'Seats',
@@ -2442,6 +2474,25 @@ const AdminSettings = () => {
                   </FormItem>
                 )}
               />
+
+              {isTrialPlanForm && (
+                <FormField
+                  control={planForm.control}
+                  name="trialMonths"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Trial length (months)</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={1} max={TRIAL_MONTHS_MAX} step={1} placeholder="1" {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} />
+                      </FormControl>
+                      <FormDescription>
+                        Every new business gets this many months free, whether it signs up on the web or in the app. Trials already running keep their end date. Update the price text above to match.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               {isEnterprisePlanForm && (
                 <div className="rounded-lg border border-border p-4 space-y-3 bg-muted/30">

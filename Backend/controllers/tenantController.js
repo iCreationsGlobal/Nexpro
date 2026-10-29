@@ -143,12 +143,8 @@ exports.signupTenant = async (req, res, next) => {
       }
     }
 
-    const { SubscriptionPlan } = require('../models');
-    const planAssignment = await resolveSignupPlanAssignment({
-      req,
-      SubscriptionPlan,
-    });
-    // Channel-driven only — ignore any client-supplied plan body field.
+    const planAssignment = await resolveSignupPlanAssignment({ req });
+    // Always the trial — ignore any client-supplied plan body field.
     const initialPlan = planAssignment.planId;
     const trialEndDate = new Date(planAssignment.trialEndsAt);
 

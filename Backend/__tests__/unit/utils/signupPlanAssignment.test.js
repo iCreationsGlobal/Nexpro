@@ -1,14 +1,21 @@
+jest.mock('../../../models', () => ({
+  SubscriptionPlan: { findOne: jest.fn() },
+}));
+
 const dayjs = require('dayjs');
+const { SubscriptionPlan } = require('../../../models');
 const {
-  MOBILE_FREE_PLAN_ID,
-  MOBILE_FREE_ACCESS_MONTHS,
   isMobileSignupClient,
-  buildWebTrialAssignment,
   resolveSignupPlanAssignment,
   buildSignupSubscriptionSettingValue,
 } = require('../../../utils/signupPlanAssignment');
 
 describe('signupPlanAssignment', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    SubscriptionPlan.findOne.mockResolvedValue(null);
+  });
+
   describe('isMobileSignupClient', () => {
     it('detects X-Client: mobile', () => {
       expect(isMobileSignupClient({ headers: { 'x-client': 'mobile' }, body: {} })).toBe(true);
@@ -29,100 +36,70 @@ describe('signupPlanAssignment', () => {
     });
   });
 
-  describe('buildWebTrialAssignment', () => {
-    it('assigns trial with ~1 month access', () => {
-      const at = new Date('2026-06-15T12:00:00.000Z');
-      const assignment = buildWebTrialAssignment({ at });
-      expect(assignment.channel).toBe('web');
-      expect(assignment.planId).toBe('trial');
-      expect(assignment.subscriptionStatus).toBe('trialing');
-      expect(dayjs(assignment.trialEndsAt).diff(at, 'month')).toBe(1);
-    });
-  });
-
   describe('resolveSignupPlanAssignment', () => {
     const at = new Date('2026-06-15T12:00:00.000Z');
 
-    it('returns web trial when not mobile', async () => {
-      const SubscriptionPlan = { findOne: jest.fn() };
-      const assignment = await resolveSignupPlanAssignment({
-        req: { headers: {}, body: {} },
-        SubscriptionPlan,
-        at,
+    it('puts a web signup on the trial', async () => {
+      const assignment = await resolveSignupPlanAssignment({ req: { headers: {}, body: {} }, at });
+      expect(assignment).toMatchObject({
+        channel: 'web',
+        planId: 'trial',
+        subscriptionStatus: 'trialing',
+        metadataExtras: { signupChannel: 'web' },
       });
-      expect(assignment.planId).toBe('trial');
-      expect(assignment.channel).toBe('web');
-      expect(SubscriptionPlan.findOne).not.toHaveBeenCalled();
+      expect(dayjs(assignment.trialEndsAt).diff(at, 'month')).toBe(1);
     });
 
-    it('assigns free_plan with 12-month access for mobile when plan exists', async () => {
-      const SubscriptionPlan = {
-        findOne: jest.fn().mockResolvedValue({
-          id: 'plan-row-1',
-          planId: MOBILE_FREE_PLAN_ID,
-          name: 'Free',
-          isActive: true,
-        }),
-      };
+    it('puts an app signup on the trial too, and records that it came from the app', async () => {
       const assignment = await resolveSignupPlanAssignment({
         req: { headers: { 'x-client': 'mobile' }, body: {} },
-        SubscriptionPlan,
         at,
       });
-      expect(assignment.channel).toBe('mobile');
-      expect(assignment.planId).toBe(MOBILE_FREE_PLAN_ID);
-      expect(assignment.subscriptionStatus).toBe('active');
-      expect(assignment.planId).not.toBe('free');
-      expect(dayjs(assignment.accessEndsAt).diff(at, 'month')).toBe(MOBILE_FREE_ACCESS_MONTHS);
-      expect(assignment.trialEndsAt).toEqual(assignment.accessEndsAt);
-      expect(assignment.metadataExtras.signupChannel).toBe('mobile');
+      expect(assignment).toMatchObject({
+        channel: 'mobile',
+        planId: 'trial',
+        subscriptionStatus: 'trialing',
+        metadataExtras: { signupChannel: 'mobile' },
+      });
+      expect(dayjs(assignment.trialEndsAt).diff(at, 'month')).toBe(1);
+    });
+
+    it('uses the trial length the admin set on the Trial plan', async () => {
+      SubscriptionPlan.findOne.mockResolvedValue({ metadata: { trialMonths: 3 } });
+      const assignment = await resolveSignupPlanAssignment({
+        req: { headers: { 'x-client': 'mobile' }, body: {} },
+        at,
+      });
+      expect(dayjs(assignment.trialEndsAt).diff(at, 'month')).toBe(3);
       expect(SubscriptionPlan.findOne).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { planId: MOBILE_FREE_PLAN_ID, isActive: true },
-        })
+        expect.objectContaining({ where: { planId: 'trial' } })
       );
     });
 
-    it('falls back to trial when free_plan missing (default)', async () => {
-      const SubscriptionPlan = { findOne: jest.fn().mockResolvedValue(null) };
+    it('ignores a plan the client asks for', async () => {
       const assignment = await resolveSignupPlanAssignment({
-        req: { headers: { 'x-client': 'mobile' }, body: {} },
-        SubscriptionPlan,
+        req: { headers: {}, body: { plan: 'enterprise' } },
         at,
       });
       expect(assignment.planId).toBe('trial');
-      expect(assignment.metadataExtras.planAssignmentFallback).toBe('trial_missing_free_plan');
-      expect(assignment.metadataExtras.signupChannel).toBe('mobile');
-    });
-
-    it('throws FREE_PLAN_NOT_CONFIGURED when fallback disabled', async () => {
-      const SubscriptionPlan = { findOne: jest.fn().mockResolvedValue(null) };
-      await expect(
-        resolveSignupPlanAssignment({
-          req: { headers: { 'x-client': 'mobile' }, body: {} },
-          SubscriptionPlan,
-          at,
-          options: { allowMissingFreePlanFallback: false },
-        })
-      ).rejects.toMatchObject({ errorCode: 'FREE_PLAN_NOT_CONFIGURED', statusCode: 503 });
     });
   });
 
   describe('buildSignupSubscriptionSettingValue', () => {
-    it('marks mobile free as active complimentary', () => {
-      const at = new Date('2026-06-15T12:00:00.000Z');
-      const accessEndsAt = dayjs(at).add(12, 'month').toDate();
+    it('stores the trial as trialing', () => {
+      const trialEndsAt = new Date('2026-07-15T12:00:00.000Z');
       const value = buildSignupSubscriptionSettingValue({
         channel: 'mobile',
-        planId: MOBILE_FREE_PLAN_ID,
-        subscriptionStatus: 'active',
-        accessEndsAt,
-        trialEndsAt: accessEndsAt,
+        planId: 'trial',
+        subscriptionStatus: 'trialing',
+        trialEndsAt,
       });
-      expect(value).toMatchObject({
-        plan: MOBILE_FREE_PLAN_ID,
-        status: 'active',
-        complimentary: true,
+      expect(value).toEqual({
+        plan: 'trial',
+        status: 'trialing',
+        trialEndsAt,
+        paymentMethod: null,
+        seats: 1,
       });
     });
   });

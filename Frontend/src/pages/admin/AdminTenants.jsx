@@ -2203,7 +2203,7 @@ const AdminTenants = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Reset free trial?</AlertDialogTitle>
             <AlertDialogDescription>
-              Grant another 1-month free trial?
+              Grant another free trial, starting today, for the trial length set on the Trial plan?
               {selectedTenant?.name ? (
                 <>
                   {' '}

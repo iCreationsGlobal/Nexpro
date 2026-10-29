@@ -1,25 +1,17 @@
 const { Op } = require('sequelize');
-const dayjs = require('dayjs');
 const { Tenant, Setting, SubscriptionPayment, TenantAccessAudit } = require('../models');
 const { normalizeTenantInstanceForRequest } = require('../utils/tenantClassification');
 const { getFallbackAmountPesewas } = require('../config/paystackPlans');
 const {
-  DEFAULT_TRIAL_MONTHS,
+  getTrialEndDate,
   buildTrialSubscriptionSettingValue,
 } = require('../utils/subscriptionDefaults');
 
 const PAID_PLANS = new Set(['starter', 'professional', 'enterprise']);
-/**
- * Complimentary / Free-tier plan ids (admin-created). Not product trials.
- * Do NOT include planId `free` — that aliases to trial elsewhere.
- * Access window uses tenant.trialEndsAt as complimentary end (see signupPlanAssignment).
- */
-const COMPLIMENTARY_PLANS = new Set(['free_plan']);
 const PAYMENT_STATUSES = new Set(['success', 'pending', 'failed', 'refunded']);
 const DEFAULT_GRACE_DAYS = Number(process.env.SUBSCRIPTION_GRACE_DAYS || 7);
 
 const normalizePlan = (plan = '') => String(plan || '').trim().toLowerCase();
-const isComplimentaryPlan = (plan = '') => COMPLIMENTARY_PLANS.has(normalizePlan(plan));
 const normalizeBillingPeriod = (value = '') =>
   String(value).trim().toLowerCase() === 'yearly' ? 'yearly' : 'monthly';
 const normalizePaymentStatus = (value = '') => {
@@ -197,43 +189,8 @@ async function resolveBillingStatus(tenantOrId, options = {}) {
     };
   }
 
-  // Mobile Free (`free_plan`): complimentary access until trialEndsAt (12-month window at signup).
-  // Keep plan id as free_plan so entitlements use Free limits — do not remap to "trial".
-  // No access end → treat as ongoing complimentary (admin cleared date / legacy).
-  // After access end → grace then lock (same unpaid path), lockReason complimentary_expired.
-  if (isComplimentaryPlan(plan)) {
-    if (!trialEndsAt) {
-      return {
-        billingStatus: 'active',
-        lockReason: null,
-        canAccessApp: true,
-        trialEndsAt: null,
-        currentPeriodEnd: null,
-        graceEndsAt: null,
-        daysRemaining: null,
-        plan,
-        activePayment: null,
-      };
-    }
-    if (at < trialEndsAt) {
-      return {
-        billingStatus: 'active',
-        lockReason: null,
-        canAccessApp: true,
-        trialEndsAt,
-        currentPeriodEnd: null,
-        graceEndsAt: null,
-        daysRemaining: daysBetween(at, trialEndsAt),
-        plan,
-        activePayment: null,
-      };
-    }
-  }
-
-  // Product trial only. Unknown non-paid plans still follow trial-like gating but keep their plan id
-  // when not the canonical trial alias — complimentary plans are handled above.
-  const isTrialPlan =
-    plan === 'trial' || plan === 'free' || (!PAID_PLANS.has(plan) && !isComplimentaryPlan(plan));
+  // Product trial. Unknown non-paid plans follow the same trial gating.
+  const isTrialPlan = plan === 'trial' || plan === 'free' || !PAID_PLANS.has(plan);
   if (isTrialPlan && !trialEndsAt) {
     return {
       billingStatus: 'trialing',
@@ -267,17 +224,12 @@ async function resolveBillingStatus(tenantOrId, options = {}) {
       : DEFAULT_GRACE_DAYS;
   const periodEndForGrace = trialEndsAt || currentPeriodEnd;
   const graceEndsAt = periodEndForGrace ? addDays(periodEndForGrace, graceDays) : addDays(at, graceDays);
-  const complimentaryExpired = isComplimentaryPlan(plan) && trialEndsAt && at >= trialEndsAt;
-  const trialExpired = !complimentaryExpired && trialEndsAt && at >= trialEndsAt;
+  const trialExpired = trialEndsAt && at >= trialEndsAt;
 
   if (periodEndForGrace && at < graceEndsAt) {
     return {
       billingStatus: 'grace',
-      lockReason: complimentaryExpired
-        ? 'complimentary_expired'
-        : trialExpired
-          ? 'trial_expired'
-          : 'subscription_expired',
+      lockReason: trialExpired ? 'trial_expired' : 'subscription_expired',
       canAccessApp: true,
       trialEndsAt,
       currentPeriodEnd,
@@ -290,11 +242,7 @@ async function resolveBillingStatus(tenantOrId, options = {}) {
 
   return {
     billingStatus: 'locked',
-    lockReason: complimentaryExpired
-      ? 'complimentary_expired'
-      : trialExpired
-        ? 'trial_expired'
-        : 'payment_required',
+    lockReason: trialExpired ? 'trial_expired' : 'payment_required',
     canAccessApp: false,
     trialEndsAt,
     currentPeriodEnd,
@@ -483,7 +431,7 @@ async function applySubscriptionFromPaystackTransaction(paymentData, source = 'v
 }
 
 /**
- * Grant another free trial period (now + DEFAULT_TRIAL_MONTHS) for a tenant.
+ * Grant another free trial period (now + the trial length set on the Trial plan) for a tenant.
  * Allowed for expired/unpaid/trialing tenants. Blocked when there is an active
  * paid subscription period or an active enterprise contract plan.
  *
@@ -511,7 +459,7 @@ async function resetTenantTrial(tenantId, options = {}) {
   const reason =
     options.reason != null && String(options.reason).trim()
       ? String(options.reason).trim().slice(0, 500)
-      : 'Granted another 1-month free trial';
+      : 'Granted another free trial';
 
   if (!tenantId) {
     const err = new Error('Tenant id is required');
@@ -545,7 +493,7 @@ async function resetTenantTrial(tenantId, options = {}) {
     throw err;
   }
 
-  const trialEndsAt = dayjs(at).add(DEFAULT_TRIAL_MONTHS, 'month').toDate();
+  const trialEndsAt = await getTrialEndDate(at);
   const beforeSnapshot = {
     plan: tenant.plan,
     trialEndsAt: tenant.trialEndsAt || subscriptionSetting?.trialEndsAt || null,
@@ -683,10 +631,8 @@ function toBillingPayload(billing) {
 
 module.exports = {
   PAID_PLANS,
-  COMPLIMENTARY_PLANS,
   DEFAULT_GRACE_DAYS,
   normalizePlan,
-  isComplimentaryPlan,
   normalizeBillingPeriod,
   normalizePaymentStatus,
   addPeriod,

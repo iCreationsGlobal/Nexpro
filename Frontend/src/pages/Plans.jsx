@@ -170,6 +170,7 @@ const Plans = () => {
   const navigate = useNavigate();
   const [billingPeriod, setBillingPeriod] = useState('yearly');
   const [plans, setPlans] = useState(FALLBACK_PLANS);
+  const [trialMonths, setTrialMonths] = useState(1);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -181,6 +182,7 @@ const Plans = () => {
         if (cancelled || !json?.success) return;
         const normalized = normalizeMarketingPlans(json.data, json.enterprise);
         if (normalized?.length) setPlans(normalized);
+        if (Number.isInteger(json.trialMonths) && json.trialMonths > 0) setTrialMonths(json.trialMonths);
       })
       .catch(() => {})
       .finally(() => {
@@ -234,7 +236,7 @@ const Plans = () => {
         <div className="text-center mb-10">
           <h1 className="text-3xl font-bold text-foreground mb-2">Choose Your Plan</h1>
           <p className="text-muted-foreground max-w-xl mx-auto">
-            Select the plan that best fits your business needs. All plans include a 1-month free trial.
+            Select the plan that best fits your business needs. All plans include a {trialMonths}-month free trial.
           </p>
 
           <div className="flex items-center justify-center gap-2 mt-6">

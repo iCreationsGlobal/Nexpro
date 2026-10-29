@@ -1,4 +1,5 @@
 jest.mock('../../../models', () => ({
+  SubscriptionPlan: { findOne: jest.fn().mockResolvedValue(null) },
   SubscriptionPayment: { findOne: jest.fn().mockResolvedValue(null), create: jest.fn() },
   Setting: { findOne: jest.fn().mockResolvedValue(null), findOrCreate: jest.fn() },
   TenantAccessAudit: { create: jest.fn() },
@@ -18,7 +19,7 @@ const {
   resetTenantTrial,
 } = require('../../../services/subscriptionBillingService');
 
-const { Tenant, Setting, SubscriptionPayment, TenantAccessAudit } = require('../../../models');
+const { Tenant, Setting, SubscriptionPlan, SubscriptionPayment, TenantAccessAudit } = require('../../../models');
 
 const baseTenant = (overrides = {}) => ({
   id: 'tenant-1',
@@ -119,51 +120,6 @@ describe('subscriptionBillingService', () => {
       expect(billing.billingStatus).toBe('locked');
       expect(billing.canAccessApp).toBe(false);
       expect(billing.lockReason).toBe('platform_locked');
-    });
-
-    it('keeps free_plan active during complimentary access window (not remapped to trial)', async () => {
-      const accessEndsAt = new Date('2027-06-15');
-      const billing = await resolveBillingStatus(
-        baseTenant({
-          plan: 'free_plan',
-          trialEndsAt: accessEndsAt,
-        }),
-        { at: new Date('2026-08-01'), subscriptionSetting: {} }
-      );
-      expect(billing.billingStatus).toBe('active');
-      expect(billing.canAccessApp).toBe(true);
-      expect(billing.plan).toBe('free_plan');
-      expect(billing.lockReason).toBeNull();
-    });
-
-    it('locks free_plan after complimentary window and grace (not as trial_expired)', async () => {
-      const accessEndsAt = new Date('2026-01-01');
-      const at = new Date(accessEndsAt);
-      at.setDate(at.getDate() + DEFAULT_GRACE_DAYS + 1);
-      const billing = await resolveBillingStatus(
-        baseTenant({
-          plan: 'free_plan',
-          trialEndsAt: accessEndsAt,
-        }),
-        { at, subscriptionSetting: {} }
-      );
-      expect(billing.billingStatus).toBe('locked');
-      expect(billing.canAccessApp).toBe(false);
-      expect(billing.plan).toBe('free_plan');
-      expect(billing.lockReason).toBe('complimentary_expired');
-    });
-
-    it('keeps free_plan unlocked when access end is cleared', async () => {
-      const billing = await resolveBillingStatus(
-        baseTenant({
-          plan: 'free_plan',
-          trialEndsAt: null,
-        }),
-        { at: new Date('2026-08-01'), subscriptionSetting: {} }
-      );
-      expect(billing.billingStatus).toBe('active');
-      expect(billing.canAccessApp).toBe(true);
-      expect(billing.plan).toBe('free_plan');
     });
 
     it('returns locked after trial and grace', async () => {
@@ -288,6 +244,22 @@ describe('subscriptionBillingService', () => {
       expect(result.plan).toBe('trial');
       expect(result.billing.billingStatus).toBe('trialing');
       expect(result.billing.canAccessApp).toBe(true);
+    });
+
+    it('resets to the trial length set on the Trial plan', async () => {
+      SubscriptionPlan.findOne.mockResolvedValueOnce({ metadata: { trialMonths: 3 } });
+      const tenant = baseTenant({ trialEndsAt: new Date('2026-01-01') });
+      Tenant.findByPk.mockResolvedValueOnce(tenant).mockResolvedValueOnce(tenant);
+
+      const result = await resetTenantTrial(tenant.id, { actorUserId: 'admin-1', at });
+
+      expect(result.trialEndsAt).toEqual(new Date('2026-09-15T12:00:00.000Z'));
+      expect(tenant.update).toHaveBeenCalledWith(
+        expect.objectContaining({ plan: 'trial', trialEndsAt: new Date('2026-09-15T12:00:00.000Z') })
+      );
+      expect(TenantAccessAudit.create).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'Granted another free trial' })
+      );
     });
 
     it('blocks reset when tenant has an active paid subscription', async () => {

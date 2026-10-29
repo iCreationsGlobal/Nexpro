@@ -1,6 +1,7 @@
 const { plans: configPlans, lastUpdated: configLastUpdated } = require('../config/plans');
 const { SubscriptionPlan } = require('../models');
 const { pickKnownFeatureFlags } = require('../config/features');
+const { normalizeTrialMonths } = require('../utils/subscriptionDefaults');
 const {
   expandPlansWithPaystackVariants,
   getEnterprisePublicPricing,
@@ -145,6 +146,8 @@ exports.getPublicPlans = async (req, res) => {
     }
 
     const enterprise = getEnterprisePublicPricing();
+    // How long the free trial is (set by the admin on the Trial plan), for "every plan starts with …" copy.
+    const trialMonths = normalizeTrialMonths(plans.find((plan) => plan.id === 'trial')?.metadata?.trialMonths);
 
     res.status(200).json({
       success: true,
@@ -152,6 +155,7 @@ exports.getPublicPlans = async (req, res) => {
       count: dataset.length,
       data: dataset,
       enterprise,
+      trialMonths,
       lastUpdated,
       source,
     });
