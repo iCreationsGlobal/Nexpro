@@ -192,7 +192,7 @@ export const authService = {
     termsVersion?: string;
   }) => {
     logger.info('Auth', 'Tenant signup attempt:', payload.adminEmail);
-    // Plan is assigned by signup channel on the backend (mobile → free_plan).
+    // The backend puts every new business on the trial.
     // Do not send planId from the client.
     const body = {
       companyName: payload.companyName ?? 'My Business',

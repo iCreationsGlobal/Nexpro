@@ -517,6 +517,10 @@ const migrate = async () => {
     const createLynkAiSessions = require('./create-lynk-ai-sessions');
     await createLynkAiSessions({ closeConnection: false });
 
+    // No Free plan: businesses the app put on `free_plan` move to the trial; the plan is switched off
+    const retireFreePlan = require('./retire-free-plan');
+    await retireFreePlan.up({ closeConnection: false });
+
     console.log('\n✅ Database migration completed successfully!');
     console.log('📊 Incremental schema updates applied.');
     console.log('👤 User model has been enhanced with new fields.');
