@@ -205,8 +205,8 @@ const ConnectDomainDialog = ({
 }) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent
-      className="sm:max-w-xl"
-      style={{ '--modal-w': '36rem', '--modal-min-h': 'auto', '--modal-max-h': '90vh' }}
+      className="sm:max-w-3xl"
+      style={{ '--modal-w': 'min(92vw, 48rem)', '--modal-min-h': 'auto', '--modal-max-h': '90vh' }}
       onInteractOutside={(event) => event.preventDefault()}
     >
       <DialogHeader>
