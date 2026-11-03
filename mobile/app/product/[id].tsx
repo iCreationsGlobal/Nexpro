@@ -41,6 +41,7 @@ import { resolveDisplayImageUrl } from '@/utils/fileUtils';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { getApiErrorMessage, parseApiEntity } from '@/utils/parseApiListResponse';
 import { refreshAfterInventoryChange } from '@/utils/queryInvalidation';
+import { optionName } from '@/utils/productOptions';
 import {
   getOutOfStockMessage,
   getProductStockQuantity,
@@ -217,8 +218,7 @@ export default function ProductDetailScreen() {
   const buildVariantPayload = useCallback(() => {
     const variantName =
       variantEditForm.model.trim() ||
-      variantEditForm.size.trim() ||
-      variantEditForm.color.trim() ||
+      optionName(variantEditForm.size, variantEditForm.color) ||
       selectedVariant?.name ||
       '';
     const attributes: Record<string, string> = {};

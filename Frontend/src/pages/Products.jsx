@@ -4633,7 +4633,7 @@ const Products = () => {
         open={variantFormOpen}
         onOpenChange={(open) => !open && handleCloseVariantForm()}
         title={editingVariant ? 'Edit Variant' : 'Add Variant'}
-        description={editingVariant ? 'Update variant details (e.g. Small, Medium, Large).' : `Add a variant to ${selectedProduct?.name || 'this product'}.`}
+        description={editingVariant ? 'Update variant details (e.g. Size 5 in Red).' : `Add a size, colour or model of ${selectedProduct?.name || 'this product'}.`}
         footer={
           <>
             <Button variant="outline" onClick={handleCloseVariantForm}>
@@ -4647,30 +4647,41 @@ const Products = () => {
       >
             <Form {...variantForm}>
               <form id="variant-form" onSubmit={variantForm.handleSubmit(handleVariantFormSubmit)} className="space-y-4">
-                <FormField
-                  control={variantForm.control}
-                  name="size"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Size (optional)</FormLabel>
-                      <Select value={field.value || undefined} onValueChange={field.onChange}>
+                {/* Size and colour are typed (with common ones suggested), so "Size 5" in "Red" works. */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={variantForm.control}
+                    name="size"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Size (optional)</FormLabel>
                         <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select size" />
-                          </SelectTrigger>
+                          <Input placeholder="e.g. M or Size 5" list="variant-size-options" autoComplete="off" {...field} value={field.value || ''} />
                         </FormControl>
-                        <SelectContent>
-                          {SIZE_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        <datalist id="variant-size-options">
+                          {SIZE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </datalist>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={variantForm.control}
+                    name="color"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Colour (optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g. Red" list="variant-color-options" autoComplete="off" {...field} value={field.value || ''} />
+                        </FormControl>
+                        <datalist id="variant-color-options">
+                          {COLOR_OPTIONS.map((opt) => <option key={opt.value} value={opt.label} />)}
+                        </datalist>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
                 {(selectedProduct?.metadata?.models || '').split(',').map((s) => s.trim()).filter(Boolean).length > 0 ? (
                   <FormField
                     control={variantForm.control}
