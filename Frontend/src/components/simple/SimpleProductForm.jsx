@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Barcode, Camera, ChevronRight, Loader2, Package, Plus, Upload, X } from 'lucide-react';
+import { Barcode, Camera, ChevronRight, Loader2, Package, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import ProductNameSuggest from '../ProductNameSuggest';
 import { PRODUCT_IMAGE_ACCEPT } from '../../utils/compressProductImage';
 import { resolveImageUrl } from '../../utils/fileUtils';
 import { formatAmount } from '../../utils/formatNumber';
+import { groupOptionsBySize, newOptionCombos, optionListsFromVariants } from '../../utils/productOptions';
 
 const toNumberText = (value) => (value === null || value === undefined || value === '' ? '' : String(Number(value)));
 const cleanNumber = (text) => String(text).replace(/[^\d.]/g, '');
@@ -31,6 +32,8 @@ const MoneyField = ({ label, value, onChange, hint }) => (
 /**
  * Simple Mode product form: photo, name, selling price, what it cost (optional), how many are in
  * stock and an optional barcode (a USB/Bluetooth scanner types straight into it). Photos go through the Products page's existing upload (so paste works too).
+ * Sizes and colours are typed as lists ("Size 5, Size 6"); each new size/colour gets its own stock count
+ * and is passed to onSave as newOptions.
  *
  * @param {{
  *   open: boolean,
@@ -45,9 +48,11 @@ const MoneyField = ({ label, value, onChange, hint }) => (
  *   onDifferentName?: (name: string) => void,
  *   saving?: boolean,
  *   variants?: Array<object>,
- *   onAddVariant?: () => void,
  *   onOpenVariant?: (variant: object) => void,
- *   onSave: (values: { name: string, sellingPrice: number, costPrice: number|'', quantityOnHand: number, barcode: string }) => void,
+ *   onSave: (values: {
+ *     name: string, sellingPrice: number, costPrice: number|'', quantityOnHand: number, barcode: string,
+ *     newOptions: Array<{ name: string, size: string, color: string, quantityOnHand: number }>,
+ *   }) => void,
  * }} props
  */
 export default function SimpleProductForm({
@@ -63,7 +68,6 @@ export default function SimpleProductForm({
   onDifferentName,
   saving = false,
   variants = [],
-  onAddVariant,
   onOpenVariant,
   onSave,
 }) {
@@ -72,12 +76,18 @@ export default function SimpleProductForm({
   const [cost, setCost] = useState('');
   const [quantity, setQuantity] = useState('');
   const [barcode, setBarcode] = useState('');
+  const [sizes, setSizes] = useState('');
+  const [colors, setColors] = useState('');
+  const [optionQuantities, setOptionQuantities] = useState({});
   const [error, setError] = useState('');
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
   const initializedFor = useRef(null);
+  const optionsTyped = useRef(false);
   const variantRows = Array.isArray(variants) ? variants : [];
-  const hasVariants = Boolean(product?.hasVariants) || variantRows.length > 0;
+  const variantKey = variantRows.map((v) => `${v.id}:${v.attributes?.size || ''}:${v.attributes?.color || ''}`).join(',');
+  const newOptions = newOptionCombos(sizes, colors, variantRows);
+  const hasVariants = Boolean(product?.hasVariants) || variantRows.length > 0 || newOptions.length > 0;
   const previewUrl = resolveImageUrl(imageUrl);
 
   useEffect(() => {
@@ -94,8 +104,20 @@ export default function SimpleProductForm({
     setCost(product?.costPrice && Number(product.costPrice) > 0 ? toNumberText(product.costPrice) : '');
     setQuantity(product ? toNumberText(product.quantityOnHand ?? 0) : '');
     setBarcode(product?.barcode || '');
+    setOptionQuantities({});
+    optionsTyped.current = false;
     setError('');
   }, [open, product]);
+
+  // The boxes start with the sizes and colours already added, until the user types in them.
+  useEffect(() => {
+    if (!open || optionsTyped.current) return;
+    const lists = optionListsFromVariants(variantRows);
+    setSizes(lists.sizes);
+    setColors(lists.colors);
+    // variantKey stands for variantRows, which is a new array on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, product?.id, variantKey]);
 
   const handleSave = () => {
     const sellingPrice = Number(price);
@@ -107,6 +129,12 @@ export default function SimpleProductForm({
       costPrice: cost === '' ? '' : Number(cost),
       quantityOnHand: quantity === '' ? 0 : Math.max(0, Number(quantity)),
       barcode: barcode.trim(),
+      newOptions: newOptions.map(({ key, name: optionName, size, color }) => ({
+        name: optionName,
+        size,
+        color,
+        quantityOnHand: Math.max(0, Number(optionQuantities[key]) || 0),
+      })),
     });
     return undefined;
   };
@@ -205,40 +233,77 @@ export default function SimpleProductForm({
 
             <div className="space-y-3">
               <span className="text-base font-semibold">Sizes and colours (optional)</span>
-              {product?.id ? (
+              {variantRows.length > 0 ? (
                 <>
-                  {variantRows.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No sizes or colours yet. Add one if this product comes in different options.
-                    </p>
-                  ) : (
-                    <ul className="divide-y divide-border overflow-hidden rounded-2xl border-2 border-border">
-                      {variantRows.map((variant) => (
-                        <li key={variant.id}>
-                          <button
-                            type="button"
-                            onClick={() => onOpenVariant?.(variant)}
-                            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/60"
-                          >
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">{variant.name}</span>
-                              <span className="block text-sm text-muted-foreground">Stock: {variant.quantityOnHand ?? 0}</span>
-                            </span>
-                            <span className="text-lg font-bold">{formatAmount(variant.sellingPrice ?? product?.sellingPrice)}</span>
-                            <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <Button type="button" variant="outline" className="h-12 w-full rounded-xl text-base" onClick={onAddVariant}>
-                    <Plus className="mr-2 h-5 w-5" />
-                    Add size or colour
-                  </Button>
+                  <ul className="divide-y divide-border overflow-hidden rounded-2xl border-2 border-border">
+                    {variantRows.map((variant) => (
+                      <li key={variant.id}>
+                        <button
+                          type="button"
+                          onClick={() => onOpenVariant?.(variant)}
+                          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/60"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">{variant.name}</span>
+                            <span className="block text-sm text-muted-foreground">Stock: {variant.quantityOnHand ?? 0}</span>
+                          </span>
+                          <span className="text-lg font-bold">{formatAmount(variant.sellingPrice ?? product?.sellingPrice)}</span>
+                          <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-sm text-muted-foreground">Tap one to change its price or stock, or to delete it.</p>
                 </>
-              ) : (
-                <p className="text-sm text-muted-foreground">Save the product first, then you can add sizes or colours.</p>
-              )}
+              ) : null}
+              {[
+                ['Sizes', sizes, setSizes, 'e.g. Size 5, Size 6, Size 7'],
+                ['Colours', colors, setColors, 'e.g. Blue, Black, Red'],
+              ].map(([label, value, setValue, placeholder]) => (
+                <label key={label} className="block">
+                  <span className="text-sm font-medium">{label}</span>
+                  <input
+                    value={value}
+                    onChange={(e) => { optionsTyped.current = true; setValue(e.target.value); }}
+                    placeholder={placeholder}
+                    aria-label={label}
+                    autoComplete="off"
+                    className="mt-1 h-14 w-full rounded-2xl border-2 border-border bg-card px-5 text-lg outline-none focus:ring-2 focus:ring-brand"
+                  />
+                </label>
+              ))}
+              <p className="text-sm text-muted-foreground">Put a comma between each one.</p>
+              {newOptions.length > 0 ? (
+                <div className="space-y-2">
+                  <span className="text-base font-semibold">How many of each do you have?</span>
+                  {/* Grouped by size (the main option), with its colours under it. */}
+                  <div className="divide-y divide-border overflow-hidden rounded-2xl border-2 border-border">
+                    {groupOptionsBySize(newOptions).map((group) => (
+                      <div key={group.size || group.options[0].key}>
+                        {group.size ? <p className="bg-muted/60 px-4 py-2 font-semibold">{group.size}</p> : null}
+                        <ul className="divide-y divide-border">
+                          {group.options.map((option) => (
+                            <li key={option.key} className="flex items-center justify-between gap-3 px-4 py-2">
+                              <span className="min-w-0 truncate font-medium">{group.size ? option.color : option.name}</span>
+                              <input
+                                inputMode="numeric"
+                                value={optionQuantities[option.key] ?? ''}
+                                onChange={(e) => {
+                                  const text = cleanNumber(e.target.value);
+                                  setOptionQuantities((prev) => ({ ...prev, [option.key]: text }));
+                                }}
+                                placeholder="0"
+                                aria-label={`How many ${option.name}`}
+                                className="h-12 w-24 shrink-0 rounded-xl border-2 border-border bg-card px-3 text-center text-lg font-bold outline-none focus:ring-2 focus:ring-brand"
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <label className="block">

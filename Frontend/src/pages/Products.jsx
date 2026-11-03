@@ -188,6 +188,7 @@ import {
 import { numberInputValue, handleNumberChange } from "../utils/formUtils";
 import { formatAmount, formatInteger } from "../utils/formatNumber";
 import { getCatalogUnitPrice, getProductStockQuantity, getProductStockValue } from "../utils/productStock";
+import { optionName } from "../utils/productOptions";
 // =============================================
 // HELPER FUNCTIONS
 // =============================================
@@ -1642,9 +1643,9 @@ const Products = () => {
     if (!selectedProduct?.id) return;
     setSubmitting(true);
     try {
-      // Use model, size, or color for variant display name
+      // Use model, or size and color (e.g. "Size 5 / Blue"), for variant display name
       const sizeOption = SIZE_OPTIONS.find(opt => opt.value === values.size);
-      const variantName = values.model || (sizeOption ? sizeOption.label : values.size) || values.color || values.name || '';
+      const variantName = values.model || optionName(sizeOption ? sizeOption.label : values.size, values.color) || values.name || '';
       
       const payload = {
         name: variantName,
@@ -1776,16 +1777,41 @@ const Products = () => {
 
       if (!guardOnline(showError)) return;
 
+      let savedProductId = editingProduct?.id;
       if (editingProduct) {
         await productService.updateProduct(editingProduct.id, payload);
-        showSuccess('Product updated successfully');
       } else {
         lastCreateValuesRef.current = values;
-        await productService.createProduct({
+        const created = await productService.createProduct({
           ...payload,
           checkDuplicateName: productNameKey(payload.name) !== allowedDuplicateNameRef.current,
         });
-        showSuccess('Product created successfully');
+        savedProductId = created?.data?.id;
+      }
+
+      // Sizes and colours typed in the simple form, one at a time so the stock totals stay right.
+      const notAdded = [];
+      const newOptions = Array.isArray(values.newOptions) ? values.newOptions : [];
+      for (const option of savedProductId ? newOptions : []) {
+        try {
+          await productService.createProductVariant(savedProductId, {
+            name: option.name,
+            sellingPrice: payload.sellingPrice,
+            ...(canViewProductSensitiveFields ? { costPrice: payload.costPrice } : {}),
+            quantityOnHand: option.quantityOnHand,
+            attributes: {
+              ...(option.size ? { size: option.size } : {}),
+              ...(option.color ? { color: option.color } : {}),
+            },
+          });
+        } catch {
+          notAdded.push(option.name);
+        }
+      }
+      if (notAdded.length) {
+        showError(null, `The product was saved, but ${notAdded.join(', ')} could not be added. Open it and try again.`);
+      } else {
+        showSuccess(editingProduct ? 'Product updated successfully' : 'Product created successfully');
       }
 
       setFormOpen(false);
@@ -3028,12 +3054,6 @@ const Products = () => {
         }}
         product={editingProduct}
         variants={editingProduct?.id && selectedProduct?.id === editingProduct.id ? (selectedProduct.variants || editingProduct.variants || []) : []}
-        onAddVariant={() => {
-          if (!editingProduct?.id) return;
-          setSelectedProduct((prev) => (prev?.id === editingProduct.id ? prev : editingProduct));
-          pauseSimpleProductForm();
-          handleOpenVariantForm();
-        }}
         onOpenVariant={(variant) => {
           setSelectedProduct((prev) => (prev?.id === editingProduct?.id ? prev : editingProduct));
           pauseSimpleProductForm();
@@ -3053,7 +3073,9 @@ const Products = () => {
         onSave={(values) => {
           const current = form.getValues();
           const variantRows = (selectedProduct?.id === editingProduct?.id ? selectedProduct?.variants : null) || [];
-          const hasVariantRows = Boolean(current.hasVariants || editingProduct?.hasVariants || variantRows.length);
+          const hasVariantRows = Boolean(
+            current.hasVariants || editingProduct?.hasVariants || variantRows.length || values.newOptions?.length,
+          );
           const next = {
             ...current,
             ...values,
