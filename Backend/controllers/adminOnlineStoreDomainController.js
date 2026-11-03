@@ -148,10 +148,19 @@ exports.updateCustomDomainStatus = async (req, res, next) => {
       throw error;
     }
 
+    const hosting = require('../services/storeDomainHosting');
+    // With the hosting's settings in place, verifying puts the domain on the store's hosting too and rejecting takes it off.
+    const onHosting = (work) => (hosting.isConfigured() ? work().catch((err) => {
+      console.error('[AdminDomains] Store hosting change failed:', err?.message || err);
+    }) : Promise.resolve());
+
     if (action === 'verify') {
       await settings.update({ customDomainStatus: 'verified' });
+      await onHosting(() => hosting.addToHosting(settings.customDomain));
     } else if (action === 'reject') {
+      const removed = settings.customDomain;
       await settings.update({ customDomain: null, customDomainStatus: 'none' });
+      await onHosting(() => hosting.removeFromHosting(removed));
     } else {
       await settings.update({ customDomainStatus: 'pending' });
     }

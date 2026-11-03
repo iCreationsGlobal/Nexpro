@@ -71,8 +71,8 @@ const StoreSetupComplete = ({ publicStoreUrl, isStudioStore = false, onEditStep 
   ), [preferredStoreUrl]);
 
   const dnsRecord = useMemo(
-    () => buildDnsRecord(customDomain, cnameTarget),
-    [customDomain, cnameTarget],
+    () => buildDnsRecord(customDomain, cnameTarget, domainData),
+    [customDomain, cnameTarget, domainData],
   );
 
   const productsPath = isStudioStore ? '/store/services' : '/products';
@@ -120,10 +120,12 @@ const StoreSetupComplete = ({ publicStoreUrl, isStudioStore = false, onEditStep 
 
   const handleCopyAllRecord = useCallback(async () => {
     if (!dnsRecord) return;
-    const text = `Type: ${dnsRecord.type}\nHost / Name: ${dnsRecord.host}\nValue / Target / Points to: ${dnsRecord.value}`;
+    const text = dnsRecord.records
+      .map((record) => `Type: ${record.type}\nHost / Name: ${record.host}\nValue / Target / Points to: ${record.value}`)
+      .join('\n\n');
     try {
       await navigator.clipboard.writeText(text);
-      showSuccess('DNS record copied');
+      showSuccess(dnsRecord.records.length > 1 ? 'DNS records copied' : 'DNS record copied');
     } catch {
       showError('Could not copy to clipboard');
     }
