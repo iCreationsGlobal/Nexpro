@@ -58,6 +58,11 @@ const OnlineStore = () => {
   const { data: response, isLoading } = useQuery({
     queryKey: ['store', 'domain'],
     queryFn: () => storeService.getDomainSettings(),
+    // A pending domain is checked again on each fetch (when ABS connects domains by itself), so it turns Connected on its own.
+    refetchInterval: (query) => {
+      const d = query.state.data?.data ?? query.state.data;
+      return d?.autoConnect && d?.customDomainStatus === 'pending' ? 60_000 : false;
+    },
   });
 
   const data = response?.data ?? response ?? {};
@@ -450,8 +455,8 @@ const OnlineStore = () => {
   );
 
   const dnsRecord = useMemo(
-    () => buildDnsRecord(data.customDomain, cnameTarget),
-    [data.customDomain, cnameTarget],
+    () => buildDnsRecord(data.customDomain, cnameTarget, data),
+    [data, cnameTarget],
   );
 
   const storeName = useMemo(
@@ -484,10 +489,12 @@ const OnlineStore = () => {
 
   const handleCopyAllRecord = useCallback(async () => {
     if (!dnsRecord) return;
-    const text = `Type: ${dnsRecord.type}\nHost / Name: ${dnsRecord.host}\nValue / Target / Points to: ${dnsRecord.value}`;
+    const text = dnsRecord.records
+      .map((record) => `Type: ${record.type}\nHost / Name: ${record.host}\nValue / Target / Points to: ${record.value}`)
+      .join('\n\n');
     try {
       await navigator.clipboard.writeText(text);
-      showSuccess('DNS record copied');
+      showSuccess(dnsRecord.records.length > 1 ? 'DNS records copied' : 'DNS record copied');
     } catch {
       showError('Could not copy to clipboard');
     }

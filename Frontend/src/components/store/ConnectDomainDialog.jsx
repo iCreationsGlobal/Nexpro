@@ -81,13 +81,19 @@ export const DomainStatusBadge = ({ status }) => {
   );
 };
 
+/** Where a domain itself (no www) points when the server doesn't send its records. */
+const DEFAULT_A_RECORD = '216.198.79.1';
+
 /**
- * Builds the DNS record a merchant should add at their registrar.
+ * Builds the DNS records a merchant should add at their registrar. The server sends the exact list (`dnsRecords`: an
+ * A record for a domain itself, CNAMEs for www and subdomains, any ownership record) and what its last check found;
+ * without them the same records are worked out here.
  * @param {string} customDomain
  * @param {string} cnameTarget
- * @returns {{ type: string, host: string, value: string, isApex: boolean, fqdn: string } | null}
+ * @param {{ dnsRecords?: { type: string, host: string, value: string }[], autoConnect?: boolean, hosting?: { state: string, message: string|null } | null }} [domainData]
+ * @returns {{ type: string, host: string, value: string, isApex: boolean, fqdn: string, records: { type: string, host: string, value: string }[], autoConnect: boolean, hosting: object|null } | null}
  */
-export const buildDnsRecord = (customDomain, cnameTarget) => {
+export const buildDnsRecord = (customDomain, cnameTarget, domainData = {}) => {
   const host = String(customDomain || '').trim().toLowerCase();
   const target = String(cnameTarget || '').trim().toLowerCase();
   if (!host || !target) return null;
@@ -96,15 +102,34 @@ export const buildDnsRecord = (customDomain, cnameTarget) => {
   if (labels.length < 2) return null;
 
   const isApex = labels.length === 2;
-  const recordHost = isApex ? '@' : labels.slice(0, -2).join('.');
+  const isWwwOfApex = labels.length === 3 && labels[0] === 'www';
+  const fallback = isApex || isWwwOfApex
+    ? [{ type: 'A', host: '@', value: DEFAULT_A_RECORD }, { type: 'CNAME', host: 'www', value: target }]
+    : [{ type: 'CNAME', host: labels.slice(0, -2).join('.'), value: target }];
+  const records = domainData?.dnsRecords?.length ? domainData.dnsRecords : fallback;
 
   return {
-    type: 'CNAME',
-    host: recordHost,
-    value: target,
+    ...records[0],
     isApex,
     fqdn: host,
+    records,
+    autoConnect: Boolean(domainData?.autoConnect),
+    hosting: domainData?.hosting || null,
   };
+};
+
+/**
+ * What the last check of the domain found, in a line the merchant can act on.
+ * @param {{ status: string, hosting: { state: string, message: string|null } | null }} props
+ */
+const HostingProgress = ({ status, hosting }) => {
+  if (status !== 'pending' || !hosting) return null;
+  const problem = hosting.state === 'problem';
+  return (
+    <p className={`rounded-md border p-3 text-sm ${problem ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+      {hosting.message || 'Waiting for your records. This updates by itself.'}
+    </p>
+  );
 };
 
 /**
@@ -222,11 +247,14 @@ const ConnectDomainDialog = ({
                 <span className="font-mono text-foreground">www.yourbusiness.com</span>).
               </li>
               <li>Go to your domain provider&apos;s DNS settings (Namecheap, GoDaddy, Cloudflare, etc.).</li>
-              <li>Add the CNAME record from the table below, then wait for DNS to propagate.</li>
+              <li>
+                Add {dnsRecord?.records?.length > 1 ? 'both records' : 'the record'} from the table below, then wait for DNS to propagate.
+              </li>
             </ol>
             <p className="mt-3 text-xs text-muted-foreground">
-              Note: automatic DNS/SSL verification isn&apos;t live yet — our team confirms new domains
-              manually before flipping them to &quot;Connected&quot;. HTTPS is provisioned once verified.
+              {dnsRecord?.autoConnect
+                ? 'Once the records are in place we connect your domain and set up HTTPS by ourselves, usually within an hour. The status turns to "Connected" on its own.'
+                : 'Note: our team confirms new domains before flipping them to "Connected". HTTPS is provisioned once verified.'}
             </p>
           </div>
 
@@ -235,7 +263,7 @@ const ConnectDomainDialog = ({
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-sm font-medium">
-                    {domainStatus === 'pending' ? 'DNS record to add' : 'DNS record'}
+                    {domainStatus === 'pending' ? 'DNS records to add' : 'DNS records'}
                   </p>
                   <p className="mt-0.5 text-sm text-muted-foreground">
                     Paste these values at your registrar for{' '}
@@ -264,40 +292,35 @@ const ConnectDomainDialog = ({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    <TableRow>
-                      <TableCell>
-                        <DnsCopyField label="Type" value={dnsRecord.type} />
-                      </TableCell>
-                      <TableCell>
-                        <DnsCopyField label="Host" value={dnsRecord.host} />
-                      </TableCell>
-                      <TableCell>
-                        <DnsCopyField label="Value" value={dnsRecord.value} />
-                      </TableCell>
-                    </TableRow>
+                    {dnsRecord.records.map((record) => (
+                      <TableRow key={`${record.type}-${record.host}-${record.value}`}>
+                        <TableCell>
+                          <DnsCopyField label="Type" value={record.type} />
+                        </TableCell>
+                        <TableCell>
+                          <DnsCopyField label="Host" value={record.host} />
+                        </TableCell>
+                        <TableCell>
+                          <DnsCopyField label="Value" value={record.value} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </div>
 
-              {dnsRecord.isApex ? (
-                <p className="text-xs text-amber-800">
-                  Apex / root domains (e.g. <span className="font-mono">example.com</span>) often
-                  cannot use a CNAME. Prefer a subdomain like{' '}
-                  <span className="font-mono">www.example.com</span>, or use an ALIAS/ANAME record
-                  if your provider supports it (same target:{' '}
-                  <span className="font-mono">{dnsRecord.value}</span>).
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Some providers label Host as &quot;Name&quot; or &quot;Hostname&quot;, and Value as
-                  &quot;Points to&quot;, &quot;Target&quot;, or &quot;Content&quot;. TTL can stay at
-                  the default (or 300 / Automatic).
-                </p>
-              )}
+              <HostingProgress status={domainStatus} hosting={dnsRecord.hosting} />
+
+              <p className="text-xs text-muted-foreground">
+                &quot;@&quot; means the domain itself. Some providers label Host as &quot;Name&quot; or
+                &quot;Hostname&quot;, and Value as &quot;Points to&quot;, &quot;Target&quot;, or
+                &quot;Content&quot;. Replace any other A or CNAME record on the same host. TTL can stay
+                at the default (or 300 / Automatic).
+              </p>
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-              Save a domain above to generate the exact DNS record (Type, Host, Value) to add at
+              Save a domain above to generate the exact DNS records (Type, Host, Value) to add at
               your provider. Target will be{' '}
               <span className="font-mono text-foreground">{cnameTarget}</span>.
             </div>

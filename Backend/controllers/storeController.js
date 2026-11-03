@@ -2696,27 +2696,13 @@ exports.checkSlugAvailability = async (req, res, next) => {
 };
 
 // --- "Online Store" custom domain (customer-owned domain -> single-store template) ---
-// Independent of the Sabito marketplace `enabled` flag. See docs/CUSTOM_DOMAIN.md-style
-// notes inline below for what is and is not automated yet.
+// Independent of the Sabito marketplace `enabled` flag. Putting the domain on the store's hosting and checking it is
+// in services/storeDomainHosting.js (automatic once its Vercel settings are set; by hand without them).
 
-/**
- * Host merchants must CNAME their custom domain to (documented, not auto-provisioned).
- * Defaults to the ABS Online Store host — never Sabito's STOREFRONT_URL (marketplace).
- */
-const DEFAULT_ONLINE_STORE_CNAME_TARGET = 'store.absghana.com';
+const storeDomainHosting = require('../services/storeDomainHosting');
 
-const hostFromUrl = (value) => String(value || '')
-  .trim()
-  .replace(/^https?:\/\//i, '')
-  .replace(/\/+$/g, '')
-  .split('/')[0]
-  .toLowerCase();
-
-const getCustomDomainCnameTarget = () => (
-  hostFromUrl(process.env.STOREFRONT_CNAME_TARGET)
-  || hostFromUrl(process.env.ONLINE_STORE_URL)
-  || DEFAULT_ONLINE_STORE_CNAME_TARGET
-);
+/** Host merchants CNAME their custom domain to (the ABS Online Store host, never Sabito's marketplace). */
+const getCustomDomainCnameTarget = () => storeDomainHosting.cnameTarget();
 
 /**
  * Normalizes a user-entered domain: strips protocol/path/port, lowercases, trims.
@@ -2801,12 +2787,21 @@ const serializeDomainSettings = (settings) => {
     customDomain: settings?.customDomain || null,
     customDomainStatus: settings?.customDomainStatus || 'none',
     cnameTarget: getCustomDomainCnameTarget(),
+    // The exact records to add (an A record for a domain itself, CNAMEs for www and subdomains), plus any ownership
+    // record the hosting asked for; whether ABS connects it by itself; and what the last check found.
+    dnsRecords: settings?.customDomain
+      ? [...storeDomainHosting.dnsRecordsFor(settings.customDomain), ...(storeDomainHosting.hostingView(settings)?.verification || [])]
+      : [],
+    autoConnect: storeDomainHosting.isConfigured(),
+    hosting: storeDomainHosting.hostingView(settings),
   };
 };
 
 exports.getDomainSettings = async (req, res, next) => {
   try {
     const settings = await getCurrentStoreSettings(req);
+    // A pending domain is looked at again when the page opens, so the merchant sees it connect.
+    if (storeDomainHosting.dueForCheck(settings)) await storeDomainHosting.checkStoreDomain(settings);
     res.status(200).json({ success: true, data: serializeDomainSettings(settings) });
   } catch (error) {
     next(error);
@@ -2825,7 +2820,14 @@ exports.updateDomain = async (req, res, next) => {
     const rawDomain = req.body.customDomain;
     // Empty string / null disconnects the domain.
     if (rawDomain === null || rawDomain === undefined || String(rawDomain).trim() === '') {
-      await settings.update({ customDomain: null, customDomainStatus: 'none' });
+      const removed = settings.customDomain;
+      const { domainHosting, ...metadata } = settings.metadata || {};
+      await settings.update({ customDomain: null, customDomainStatus: 'none', ...(domainHosting ? { metadata } : {}) });
+      if (removed && storeDomainHosting.isConfigured()) {
+        await storeDomainHosting.removeFromHosting(removed).catch((err) => {
+          console.error('[StoreDomain] Failed taking the old domain off the hosting:', err?.message || err);
+        });
+      }
       require('../utils/corsUtils').refreshVerifiedDomainOrigins().catch((err) => {
         console.error('[StoreDomain] Failed refreshing CORS custom-domain origins:', err?.message || err);
       });
@@ -2836,15 +2838,23 @@ exports.updateDomain = async (req, res, next) => {
     assertValidCustomDomain(host);
     await ensureCustomDomainAvailable({ host, tenantId: req.tenantId, currentId: settings.id });
 
-    // NOTE: DNS/SSL verification is not automated yet. Saving marks the domain
-    // "pending" — an operator (or a future scheduled job) should confirm the
-    // CNAME resolves to `getCustomDomainCnameTarget()` before flipping this to
-    // "verified". Until verified, `resolveStoreByDomain` below still serves the
-    // store (best-effort), since most CNAME setups work within minutes.
+    // Saving marks the domain "pending". With the hosting's settings in place, ABS adds it to the store's hosting now
+    // and flips it to "verified" once the records point here (on save, when the page opens, and every 10 minutes);
+    // without them an operator verifies it in Admin → Online Store → Domains. Until verified,
+    // `resolveStoreByDomain` below still serves the store (best-effort).
     // CORS allowlist includes pending hosts so the storefront SPA can call the API.
     const previousDomain = settings.customDomain;
     const previousStatus = settings.customDomainStatus;
-    await settings.update({ customDomain: host, customDomainStatus: 'pending' });
+    const changed = String(previousDomain || '').toLowerCase() !== host;
+    await settings.update({ customDomain: host, customDomainStatus: changed ? 'pending' : previousStatus === 'verified' ? 'verified' : 'pending' });
+    if (storeDomainHosting.isConfigured()) {
+      if (previousDomain && changed) {
+        await storeDomainHosting.removeFromHosting(previousDomain, storeDomainHosting.hostingNames(host)).catch((err) => {
+          console.error('[StoreDomain] Failed taking the old domain off the hosting:', err?.message || err);
+        });
+      }
+      await storeDomainHosting.checkStoreDomain(settings);
+    }
 
     // Keep API CORS allowlist in sync so the new host can resolve immediately.
     require('../utils/corsUtils').refreshVerifiedDomainOrigins().catch((err) => {

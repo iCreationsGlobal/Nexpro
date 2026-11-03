@@ -432,6 +432,10 @@ if (!IS_VERCEL_SERVERLESS) {
     require('./utils/corsUtils').refreshVerifiedDomainOrigins().catch((err) => {
       console.error('[Server] Failed loading custom-domain CORS origins:', err?.message || err);
     });
+    // Online Store domains: put on the store's hosting and checked every 10 minutes (needs VERCEL_STORE_PROJECT_ID).
+    if (process.env.STORE_DOMAIN_CHECKS_ENABLED !== 'false') {
+      require('./services/storeDomainScheduler').start();
+    }
     if (process.env.PARTNER_COMMISSION_RECONCILIATION_ENABLED !== 'false') {
       require('./services/partnerCommissionScheduler').start();
     }
