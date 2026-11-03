@@ -43,18 +43,38 @@ describe('SimpleProductForm', () => {
     fireEvent.change(screen.getByLabelText('Quantity in stock'), { target: { value: '12' } });
     fireEvent.change(screen.getByLabelText('Barcode'), { target: { value: ' 6034000181142 ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save product' }));
-    expect(onSave).toHaveBeenCalledWith({ name: 'Rexona Men', sellingPrice: 35, costPrice: '', quantityOnHand: 12, barcode: '6034000181142' });
+    expect(onSave).toHaveBeenCalledWith({
+      name: 'Rexona Men', sellingPrice: 35, costPrice: '', quantityOnHand: 12, barcode: '6034000181142', newOptions: [],
+    });
+  });
+
+  it('turns typed sizes and colours into options, each with its own stock', () => {
+    const onSave = vi.fn();
+    render(<SimpleProductForm {...base} onSave={onSave} />);
+    fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'Canvas shoe' } });
+    fireEvent.change(screen.getByLabelText('Selling price'), { target: { value: '150' } });
+    fireEvent.change(screen.getByLabelText('Sizes'), { target: { value: 'Size 5, Size 6' } });
+    fireEvent.change(screen.getByLabelText('Colours'), { target: { value: 'Blue, Black' } });
+    // Stock is now counted on each size and colour.
+    expect(screen.queryByLabelText('Quantity in stock')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('How many Size 5 / Blue'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('How many Size 6 / Black'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save product' }));
+    expect(onSave.mock.calls[0][0].newOptions).toEqual([
+      { name: 'Size 5 / Blue', size: 'Size 5', color: 'Blue', quantityOnHand: 3 },
+      { name: 'Size 5 / Black', size: 'Size 5', color: 'Black', quantityOnHand: 0 },
+      { name: 'Size 6 / Blue', size: 'Size 6', color: 'Blue', quantityOnHand: 0 },
+      { name: 'Size 6 / Black', size: 'Size 6', color: 'Black', quantityOnHand: 2 },
+    ]);
   });
 
   it('edits products with sizes or colours and opens the variant editor', () => {
-    const onAddVariant = vi.fn();
     const onOpenVariant = vi.fn();
-    const variant = { id: 'v1', name: 'Medium', sellingPrice: 20, quantityOnHand: 4 };
+    const variant = { id: 'v1', name: 'Medium', sellingPrice: 20, quantityOnHand: 4, attributes: { size: 'Medium' } };
     render(
       <SimpleProductForm
         {...base}
         onSave={vi.fn()}
-        onAddVariant={onAddVariant}
         onOpenVariant={onOpenVariant}
         product={{ id: 'p1', name: 'Shirt', hasVariants: true, sellingPrice: 20, quantityOnHand: 0 }}
         variants={[variant]}
@@ -63,8 +83,12 @@ describe('SimpleProductForm', () => {
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
     expect(screen.getByText('Medium')).toBeInTheDocument();
     expect(screen.queryByLabelText('Quantity in stock')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Add size or colour' }));
-    expect(onAddVariant).toHaveBeenCalled();
+    // The sizes already added fill the box; only newly typed ones get a stock count.
+    expect(screen.getByLabelText('Sizes')).toHaveValue('Medium');
+    expect(screen.queryByText('How many of each do you have?')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Sizes'), { target: { value: 'Medium, Large' } });
+    expect(screen.getByLabelText('How many Large')).toBeInTheDocument();
+    expect(screen.queryByLabelText('How many Medium')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Medium/ }));
     expect(onOpenVariant).toHaveBeenCalledWith(variant);
   });
