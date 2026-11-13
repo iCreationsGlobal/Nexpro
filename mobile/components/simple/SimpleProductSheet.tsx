@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { ensureCameraPermission } from '@/utils/cameraPermission';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppBottomSheet, APP_SHEET_HEIGHT_TALL } from '@/components/AppBottomSheet';
 import { AppIcon } from '@/components/AppIcon';
@@ -95,10 +96,11 @@ export function SimpleProductSheet({ visible, product, onClose, onOpenProduct }:
 
   const pickPhoto = async (from: 'camera' | 'library') => {
     try {
-      const permission = from === 'camera'
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (permission.status !== 'granted') return;
+      if (from === 'camera') {
+        if (!(await ensureCameraPermission('take a product photo'))) return;
+      } else if ((await ImagePicker.requestMediaLibraryPermissionsAsync()).status !== 'granted') {
+        return;
+      }
       const options: ImagePicker.ImagePickerOptions = {
         mediaTypes: ['images'],
         allowsEditing: true,

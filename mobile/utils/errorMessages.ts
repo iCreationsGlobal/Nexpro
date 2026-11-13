@@ -26,6 +26,14 @@ export function getNetworkErrorMessage(): string {
   return __DEV__ ? NETWORK_ERROR_HINT_DEV : NETWORK_ERROR_HINT;
 }
 
+/**
+ * The server's lock reply says "Renew your plan…" (and carries a web checkout link) for the web
+ * dashboard. The native app may not point people to paying elsewhere (App Store 3.1.1), so it
+ * says this instead.
+ */
+export const WORKSPACE_LOCKED_MESSAGE =
+  "This workspace's ABS plan has ended, so this can't be done right now. Contact ABS support to restore access.";
+
 export function getErrorMessage(
   error: unknown,
   defaultMessage = 'Something went wrong. Please try again.'
@@ -33,13 +41,26 @@ export function getErrorMessage(
   if (typeof error === 'string') return error;
 
   const err = error as {
-    response?: { data?: { error?: string; message?: string; errors?: string[] | Record<string, unknown> } };
+    response?: {
+      data?: {
+        error?: string;
+        message?: string;
+        errors?: string[] | Record<string, unknown>;
+        errorCode?: string;
+        billingStatus?: string;
+      };
+    };
     message?: string;
     code?: string;
   };
 
   if (err?.response?.data) {
     const data = err.response.data;
+    if (data.errorCode === 'SUBSCRIPTION_LOCKED') {
+      return data.billingStatus === 'suspended'
+        ? 'Workspace access is suspended. Contact ABS support.'
+        : WORKSPACE_LOCKED_MESSAGE;
+    }
     if (data.message) return data.message;
     if (data.error) return data.error;
     if (data.errors && Array.isArray(data.errors)) return data.errors.join(', ');

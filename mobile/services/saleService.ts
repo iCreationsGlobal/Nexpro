@@ -1,6 +1,11 @@
 import { api } from './api';
 import { buildScopedQueryString } from '@/utils/shopScope';
 
+/** Plain "payment finished" page on the API that Paystack returns the phone's browser to after a card sale. */
+export function cardPaymentReturnUrl(): string {
+  return `${String(api.defaults.baseURL || '').replace(/\/$/, '')}/public/payment-complete`;
+}
+
 type SaleParams = {
   page?: number;
   limit?: number;
@@ -121,7 +126,8 @@ export const saleService = {
   ) => {
     const body: Record<string, string> = {};
     if (payload.email) body.email = payload.email;
-    if (payload.callbackUrl) body.callbackUrl = payload.callbackUrl;
+    // Without one, Paystack uses the account's default page, which may be the web dashboard.
+    body.callbackUrl = payload.callbackUrl || cardPaymentReturnUrl();
     const res = await api.post(`/sales/${saleId}/initialize-paystack`, body);
     return res.data;
   },

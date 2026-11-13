@@ -8,6 +8,7 @@ const OPTIONAL_USER_COLUMNS = {
   lastLogin: 'lastLogin',
   sabitoUserId: 'sabito_user_id',
   googleId: 'google_id',
+  appleId: 'apple_id',
   failedLoginAttempts: 'failed_login_attempts',
   lockoutUntil: 'lockout_until',
   emailVerifiedAt: 'email_verified_at',
@@ -98,6 +99,12 @@ const User = sequelize.define('User', {
     allowNull: true,
     unique: true,
     field: 'google_id'
+  },
+  appleId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true,
+    field: 'apple_id'
   },
   failedLoginAttempts: {
     type: DataTypes.INTEGER,

@@ -14,6 +14,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { ensureCameraPermission } from '@/utils/cameraPermission';
 
 import { useLocalSearchParams } from 'expo-router';
 
@@ -156,11 +157,7 @@ export default function ProfileScreen() {
 
   const takePhoto = useCallback(async () => {
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Allow camera access to take a profile picture.');
-        return;
-      }
+      if (!(await ensureCameraPermission('take a profile picture'))) return;
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: true,

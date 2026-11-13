@@ -24,6 +24,8 @@ const isBillingExemptRequest = (req) => {
     if (path === '/profile' || path === '/profile/avatar') return true;
     if (method === 'GET' && path === '/subscription') return true;
     if (method === 'GET' && path === '/organization') return true;
+    // Account deletion must always be possible (App Store 5.1.1(v)), locked or not.
+    if (method === 'POST' && path === '/data-deletion-request') return true;
     return false;
   }
 

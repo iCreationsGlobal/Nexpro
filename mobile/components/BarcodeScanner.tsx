@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, ActivityIndicator, AppState } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useAudioPlayer } from 'expo-audio';
 import Colors from '@/constants/Colors';
 import { createScanSessionGate } from '@/utils/scanSessionGate';
 import { useColorScheme } from '@/components/useColorScheme';
+import { cameraBlockedMessage, getCameraAccess, openAppSettings } from '@/utils/cameraPermission';
 
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 interface BarcodeScannerProps {
@@ -17,7 +18,8 @@ interface BarcodeScannerProps {
 const SCAN_BEEP_SOURCE = require('@/assets/sounds/scan-beep.wav');
 
 export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps) {
-  const [permission, requestPermission] = useCameraPermissions();
+  const [permission, requestPermission, getPermission] = useCameraPermissions();
+  const access = getCameraAccess(permission);
   const [scanned, setScanned] = useState(false);
   const scanGate = useRef(createScanSessionGate()).current;
   const colorScheme = useColorScheme();
@@ -28,15 +30,32 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
     if (visible) {
       scanGate.open();
       setScanned(false);
+      // The answer may have changed in Settings since this screen mounted.
+      void getPermission();
     } else {
       scanGate.close();
     }
     return () => scanGate.close();
-  }, [visible, scanGate]);
+  }, [visible, scanGate, getPermission]);
 
   const closeScanner = () => {
     scanGate.close();
     onClose();
+  };
+
+  // Back from Settings: check again, so the scanner opens if the camera was turned on.
+  useEffect(() => {
+    if (!visible || access !== 'blocked') return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void getPermission();
+    });
+    return () => subscription.remove();
+  }, [visible, access, getPermission]);
+
+  /** The only way this screen asks: straight into the system prompt. A "no" closes the scanner. */
+  const handleContinue = async () => {
+    const result = await requestPermission();
+    if (!result.granted) closeScanner();
   };
 
   const handleBarCodeScanned = ({ data }: { data: string }) => {
@@ -55,40 +74,64 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
 
   if (!visible) return null;
 
-  if (!permission) {
+  if (access === 'checking') {
     return (
       <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={closeScanner}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.centerContent}>
             <ActivityIndicator size="large" color={colors.tint} />
-            <Text style={[styles.text, { color: colors.text }]}>Requesting camera permission...</Text>
           </View>
         </View>
       </Modal>
     );
   }
 
-  if (!permission.granted) {
+  // Before the system prompt: one explanation and one button (App Review 5.1.1(iv): no Cancel here).
+  if (access === 'ask') {
     return (
       <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={closeScanner}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.centerContent}>
             <AppIcon name="camera" size={64} color={colors.tint} style={styles.icon} />
-            <Text style={[styles.title, { color: colors.text }]}>Camera Permission Required</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Allow ABS to use your camera</Text>
             <Text style={[styles.text, { color: colors.text }]}>
-              We need access to your camera to scan barcodes.
+              ABS uses your camera to scan product barcodes, so you can find and sell products quickly.
             </Text>
             <Pressable
+              accessibilityRole="button"
               style={[styles.button, { backgroundColor: colors.tint }]}
-              onPress={requestPermission}
+              onPress={() => { void handleContinue(); }}
             >
-              <Text style={styles.buttonText}>Grant Permission</Text>
+              <Text style={styles.buttonText}>Continue</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  // After "Don't Allow": never ask again, say how to turn it on in Settings.
+  if (access === 'blocked') {
+    return (
+      <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={closeScanner}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+          <View style={styles.centerContent}>
+            <AppIcon name="camera" size={64} color={colors.tint} style={styles.icon} />
+            <Text style={[styles.title, { color: colors.text }]}>Camera access is off</Text>
+            <Text style={[styles.text, { color: colors.text }]}>{cameraBlockedMessage('scan barcodes')}</Text>
+            <Pressable
+              accessibilityRole="button"
+              style={[styles.button, { backgroundColor: colors.tint }]}
+              onPress={openAppSettings}
+            >
+              <Text style={styles.buttonText}>Open Settings</Text>
             </Pressable>
             <Pressable
+              accessibilityRole="button"
               style={[styles.button, styles.secondaryButton, { borderColor: colors.tint }]}
               onPress={closeScanner}
             >
-              <Text style={[styles.buttonText, { color: colors.tint }]}>Cancel</Text>
+              <Text style={[styles.buttonText, { color: colors.tint }]}>Close</Text>
             </Pressable>
           </View>
         </View>

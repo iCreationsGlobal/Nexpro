@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { ensureCameraPermission } from '@/utils/cameraPermission';
 
 import { AppIcon } from '@/components/AppIcon';
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
@@ -72,11 +73,7 @@ export default function StoreSetupLogoScreen() {
 
   const takePhoto = useCallback(async () => {
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Allow camera access to take a logo photo.');
-        return;
-      }
+      if (!(await ensureCameraPermission('take a logo photo'))) return;
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         quality: 0.85,

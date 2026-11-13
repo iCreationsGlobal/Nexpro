@@ -18,6 +18,8 @@ import { useAuth } from '@/context/AuthContext';
 import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { authService } from '@/services/auth';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
+import { AppleSignInButton, useAppleSignInAvailable } from '@/components/AppleSignInButton';
+import type { AppleAuthCredential } from '@/services/auth';
 import { logger } from '@/utils/logger';
 
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
@@ -54,8 +56,9 @@ export default function SignupScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState('');
-  const { tenantSignup, googleAuth } = useAuth();
+  const { tenantSignup, googleAuth, appleAuth } = useAuth();
   const { googleClientId, googleIosClientId, googleAndroidClientId } = usePublicConfig();
+  const appleAvailable = useAppleSignInAvailable();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
@@ -75,7 +78,14 @@ export default function SignupScreen() {
       googleAuth(idToken, options),
     retry: false,
   });
-  const loading = signupMutation.isPending || googleSignupMutation.isPending || checkingEmail;
+  const appleSignupMutation = useMutation({
+    mutationKey: SIGNUP_MUTATION_KEY,
+    mutationFn: (credential: AppleAuthCredential) =>
+      appleAuth(credential, { companyName: 'My Business', termsVersion: TERMS_VERSION }),
+    retry: false,
+  });
+  const loading =
+    signupMutation.isPending || googleSignupMutation.isPending || appleSignupMutation.isPending || checkingEmail;
 
   const canContinueStep1 = name.trim().length >= 2 && isValidEmail(email) && acceptedTerms;
   const canCreateAccount = password.length >= 6 && confirmPassword.length > 0 && password === confirmPassword;
@@ -160,6 +170,14 @@ export default function SignupScreen() {
         termsVersion: TERMS_VERSION,
       },
     });
+    router.push('/signup-welcome');
+  };
+
+  /** The Terms line under the Apple button is the agreement, so the checkbox isn't needed here. */
+  const handleAppleSuccess = async (credential: AppleAuthCredential) => {
+    setError('');
+    logger.info('Signup', 'Attempting Apple sign-up');
+    appleSignupMutation.mutate(credential);
     router.push('/signup-welcome');
   };
 
@@ -377,22 +395,30 @@ export default function SignupScreen() {
             </Pressable>
           )}
 
-          {googleClientId && step === 1 ? (
+          {(appleAvailable || googleClientId) && step === 1 ? (
             <>
               <View style={styles.orRow}>
                 <View style={styles.orLine} />
                 <Text style={styles.orText}>or</Text>
                 <View style={styles.orLine} />
               </View>
-              <GoogleSignInButton
-                webClientId={googleClientId}
-                iosClientId={googleIosClientId || undefined}
-                androidClientId={googleAndroidClientId || undefined}
+              <AppleSignInButton
                 mode="signup"
-                onSuccess={handleGoogleSuccess}
+                onSuccess={handleAppleSuccess}
                 onError={setError}
                 disabled={loading}
               />
+              {googleClientId ? (
+                <GoogleSignInButton
+                  webClientId={googleClientId}
+                  iosClientId={googleIosClientId || undefined}
+                  androidClientId={googleAndroidClientId || undefined}
+                  mode="signup"
+                  onSuccess={handleGoogleSuccess}
+                  onError={setError}
+                  disabled={loading}
+                />
+              ) : null}
             </>
           ) : null}
 
