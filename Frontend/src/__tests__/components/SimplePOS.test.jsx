@@ -18,6 +18,13 @@ describe('Simple POS', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Add Water to cart'}));
     expect(p.onAdd).toHaveBeenCalledWith(products[0]);
   });
+  it('finds a product from any of its words, in any order', () => {
+    const p = props(); p.products = [...products, { id: 3, name: 'Luminous Body Splash 250ml', sellingPrice: 30, quantityOnHand: 4 }];
+    render(<SimplePOS {...p} />);
+    fireEvent.change(screen.getByLabelText('Find a product'), { target: { value: '  body   splash luminous ' } });
+    expect(screen.getByRole('button', {name: 'Add Luminous Body Splash 250ml to cart'})).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Add Water to cart'})).not.toBeInTheDocument();
+  });
   it('uses existing quantity and payment callbacks, and confirms clearing', () => {
     const p = props(); p.cart = [{ id: 'line1', productId: 1, name: 'Water', quantity: 2, unitPrice: 4 }]; p.totals = { itemCount: 2, total: 8 };
     render(<SimplePOS {...p} />);

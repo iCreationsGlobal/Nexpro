@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import JsBarcode from 'jsbarcode';
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import productService from '../services/productService';
-import { DEFAULT_LABEL_SETTINGS, labelDocument, labelGeometry } from '../utils/productLabels';
+import { DEFAULT_LABEL_SETTINGS, autoLabelName, barcodeAreaWidth, labelDocument, labelGeometry, labelTextFor, savedLabelName } from '../utils/productLabels';
+import { barcodeFits, barcodeSvg, generateInStoreBarcode } from '../utils/barcodeImage';
 
 const rowsOf = r => Array.isArray(r?.data) ? r.data : Array.isArray(r?.products) ? r.products : [];
 const fieldClass = 'border rounded-md bg-background p-2 w-full';
@@ -46,7 +46,7 @@ export default function BulkProductLabels({ onClose, shopId, profileKey, onSaved
     try {
       const result=await productService.getProductVariants(product.id);
       const variants=Array.isArray(result)?result:rowsOf(result);
-      setRows(old=>{const existing=new Set(old.map(keyOf));return old.flatMap(p=>p.id===product.id&&!p.variantId?[p,...variants.filter(v=>v.isActive!==false&&!existing.has(`variant:${v.id}`)).map(v=>({...v,id:product.id,variantId:v.id,name:`${product.name} — ${v.name}`,sellingPrice:v.sellingPrice??product.sellingPrice,hasVariants:false}))]:[p]);});
+      setRows(old=>{const existing=new Set(old.map(keyOf));return old.flatMap(p=>p.id===product.id&&!p.variantId?[p,...variants.filter(v=>v.isActive!==false&&!existing.has(`variant:${v.id}`)).map(v=>({...v,id:product.id,variantId:v.id,name:`${product.name} — ${v.name}`,baseName:product.name,baseLabelName:savedLabelName(product),variantName:v.name,sellingPrice:v.sellingPrice??product.sellingPrice,hasVariants:false}))]:[p]);});
       if(!variants.length)setError('No variants found for this product.');
     }catch(e){setError(e.message||'Could not load variants.');}finally{setBusy(false);}
   }
@@ -54,11 +54,10 @@ export default function BulkProductLabels({ onClose, shopId, profileKey, onSaved
     setBusy(true);setError('');
     try {
       for(const item of items.filter(p=>!p.barcode)){
-        const bytes=crypto.getRandomValues(new Uint32Array(2));
         const freshResult = item.variantId ? await productService.getProductVariants(item.id) : await productService.getProductById(item.id);
         const fresh = item.variantId ? rowsOf(freshResult).find(v=>v.id===item.variantId) : freshResult?.data;
         if (!fresh?.id) throw new Error(`Could not verify ${item.name}. Refresh the catalog.`);
-        const barcode=fresh.barcode || `20${String(bytes[0]%100000).padStart(5,'0')}${String(bytes[1]%100000).padStart(5,'0')}`;
+        const barcode=fresh.barcode || generateInStoreBarcode();
         if (!fresh.barcode) {
           const saved = item.variantId ? await productService.updateProductVariant(item.variantId,{barcode}) : await productService.updateProduct(item.id,{barcode});
           if (saved?.data?.barcode !== barcode) throw new Error(`Barcode was not saved for ${item.name}. Check product-edit permissions.`);
@@ -68,6 +67,25 @@ export default function BulkProductLabels({ onClose, shopId, profileKey, onSaved
       }
     }catch(e){setError(`Some codes could not be saved. Successfully saved codes are retained. ${e.message||''}`);}finally{setBusy(false);onSaved?.();}
   }
+  // Remember sticker names that were typed, so the next print uses them. Typing the automatic name
+  // back (or clearing the box) removes the saved one. Printing never waits on this succeeding.
+  async function saveLabelNames(){
+    const failed=[];
+    for(const item of items){
+      const typed=typeof item.labelText==='string'?item.labelText.trim():null;
+      if(typed===null)continue;
+      const target=!typed||typed===autoLabelName(item)?'':typed;
+      if(target===savedLabelName(item))continue;
+      try {
+        if(item.variantId)await productService.updateProductVariant(item.variantId,{labelName:target});
+        else await productService.updateProduct(item.id,{labelName:target});
+        const key=keyOf(item);
+        setSelected(old=>old[key]?{...old,[key]:{...old[key],savedLabelName:target}}:old);
+        setRows(old=>old.map(p=>keyOf(p)===key?{...p,savedLabelName:target}:p));
+      }catch{failed.push(item.name);}
+    }
+    return failed;
+  }
   async function preview(){
     setBusy(true);setError('');
     try {
@@ -75,6 +93,7 @@ export default function BulkProductLabels({ onClose, shopId, profileKey, onSaved
       if(!items.length)throw new Error('Select at least one product.');
       const code=settings.design!=='price';
       if(code&&items.some(p=>!p.barcode))throw new Error('Generate and save missing barcodes before continuing.');
+      const unsaved=await saveLabelNames();
       const labels=[];
       for(const item of orderLabelItems(items, sort)){
         if(!Number.isFinite(Number(item.sellingPrice))||Number(item.sellingPrice)<0)throw new Error(`Check the selling price for ${item.name}.`);
@@ -86,14 +105,14 @@ export default function BulkProductLabels({ onClose, shopId, profileKey, onSaved
           if(Math.min((Number(settings.width)-4)/2,Number(settings.height)-4)/modules<0.25) throw new Error(`The QR code for ${item.name} needs a larger sticker.`);
           image=await QRCode.toDataURL(payload,{width:400,margin:4,errorCorrectionLevel:'M'});
         }else if(code){
-          const canvas=document.createElement('canvas');
-          JsBarcode(canvas,item.barcode,{format:'CODE128',width:2,height:64,margin:20,displayValue:false,lineColor:'#000',background:'#fff'});
-          if((Number(settings.width)-4)/canvas.width*2<0.25)throw new Error(`The barcode for ${item.name} needs a wider sticker. Increase the width or choose QR.`);
-          image=canvas.toDataURL('image/png');
+          const art=barcodeSvg(item.barcode);
+          if(!barcodeFits(art.units,barcodeAreaWidth(settings)))throw new Error(`The barcode for ${item.name} needs a wider sticker. Increase the width or choose QR.`);
+          image=art.dataUrl;
         }
-        labels.push({...item,image});
+        labels.push({...item,image,labelName:labelTextFor(item)});
       }
       setDocumentHtml(labelDocument(labels,settings));setPrepared(labels);setStep(3);
+      if(unsaved.length)setError(`Labels are ready, but the sticker names for ${unsaved.join(', ')} were not saved for next time.`);
     }catch(e){setError(e.message||'Could not prepare labels.');}finally{setBusy(false);}
   }
   function print(test=false){
@@ -125,8 +144,8 @@ export default function BulkProductLabels({ onClose, shopId, profileKey, onSaved
         {[['width','Width (mm)',25,210],['height','Height (mm)',20,297],['columns','Labels across',1,8],['gap','Gap (mm)',0,20],['margin','Sheet margin (mm)',0,30],['offsetX','Horizontal offset (mm)',-10,10],['offsetY','Vertical offset (mm)',-10,10],['start','Skip used stickers',0,100]].map(([key,label,min,max])=><label key={key}>{label}<input className={fieldClass} type="number" step={['columns','start'].includes(key)?1:0.5} min={min} max={max} value={settings[key]} onChange={e=>setSetting(key,e.target.value)}/></label>)}
         <label>Currency symbol<input className={fieldClass} maxLength={5} value={settings.currency} onChange={e=>setSetting('currency',e.target.value)}/></label>
       </div>
-      <p className="text-sm my-3">Default: generic thermal printer, 50 × 30 mm. Match the loaded stickers. Long product names are shortened on the label. Check the preview and print one test sticker first.</p>
-      <details className="my-3"><summary>Review {ordered.length} selected products / quantities</summary>{ordered.map(p=><div key={keyOf(p)} className="flex items-center gap-3 my-2"><span className="flex-1">{p.name}</span><input type="number" min="1" max="500" aria-label={`Copies of ${p.name}`} className={`${fieldClass} max-w-20`} value={p.quantity} onChange={e=>{const quantity=e.target.value;setSelected(old=>({...old,[keyOf(p)]:{...p,quantity}}));}}/><button className="underline" onClick={()=>toggle(p)}>Remove</button></div>)}</details>
+      <p className="text-sm my-3">Default: thermal printer, 40 × 30 mm. Match the loaded stickers. Stickers show a short name (never the description), the price and a large barcode. Check the preview and print one test sticker first.</p>
+      <details open className="my-3"><summary>Sticker names and copies ({ordered.length} products)</summary><p className="text-sm text-muted-foreground my-2">Change a sticker name if you like; it is remembered for next time.</p>{ordered.map(p=><div key={keyOf(p)} className="flex flex-wrap items-end gap-3 my-2 border-b pb-2"><label className="flex-1 min-w-48 text-sm"><span className="block text-muted-foreground truncate">{p.name}</span><input aria-label={`Sticker name for ${p.name}`} maxLength={60} className={fieldClass} value={p.labelText??(savedLabelName(p)||autoLabelName(p))} onChange={e=>{const labelText=e.target.value;setSelected(old=>({...old,[keyOf(p)]:{...old[keyOf(p)],labelText}}));setDocumentHtml('');}}/></label><input type="number" min="1" max="500" aria-label={`Copies of ${p.name}`} className={`${fieldClass} max-w-20`} value={p.quantity} onChange={e=>{const quantity=e.target.value;setSelected(old=>({...old,[keyOf(p)]:{...old[keyOf(p)],quantity}}));}}/><button className="underline" onClick={()=>toggle(p)}>Remove</button></div>)}</details>
       {settings.design!=='price'&&items.some(p=>!p.barcode)&&<div className="p-3 border rounded my-3"><p>{items.filter(p=>!p.barcode).length} products need a barcode. This saves a new internal code to each selected product or variant; existing codes stay unchanged.</p><Button disabled={busy} onClick={generateMissing}>Generate and save missing codes</Button></div>}
       <div className="flex flex-wrap gap-3"><Button variant="outline" disabled={busy} onClick={()=>setStep(1)}>Back</Button><Button variant="outline" onClick={()=>{try{labelGeometry(settings);localStorage.setItem(profileKey,JSON.stringify(settings));setError('');}catch(e){setError(e.message||'Could not save printer profile.');}}}>Save printer profile</Button><Button disabled={busy||!items.length} onClick={preview}>{busy?'Preparing…':'Preview labels'}</Button></div>
     </>}
