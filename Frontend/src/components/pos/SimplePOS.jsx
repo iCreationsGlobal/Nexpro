@@ -24,7 +24,12 @@ export default function SimplePOS({ products, loading, error, onRetry, cart, tot
   const [cartOpen, setCartOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   // Simple Mode keeps selling to pictures and a search box; no category filters.
-  const visible = products.filter(p => `${p.name || ''} ${p.barcode || ''} ${p.sku || ''}`.toLowerCase().includes(search.toLowerCase().trim()));
+  // Every typed word must appear somewhere, in any order ("body splash luminous" finds "Luminous Body Splash").
+  const terms = search.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const visible = products.filter(p => {
+    const text = `${p.name || ''} ${p.barcode || ''} ${p.sku || ''}`.toLowerCase();
+    return terms.every(term => text.includes(term));
+  });
   const quantities = useMemo(() => {
     const result = {};
     cart.forEach(item => { result[item.productId] = (result[item.productId] || 0) + item.quantity; });

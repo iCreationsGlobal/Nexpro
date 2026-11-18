@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import SimpleProductsList, { getSimpleStockLabel } from '../../components/simple/SimpleProductsList';
-import SimpleProductForm from '../../components/simple/SimpleProductForm';
+import SimpleProductForm, { barcodeFromScan } from '../../components/simple/SimpleProductForm';
 
 vi.mock('../../utils/fileUtils', () => ({ resolveImageUrl: (value) => value || '' }));
 
@@ -106,5 +106,23 @@ describe('SimpleProductForm barcode', () => {
     expect(field).toHaveValue('6034000181142');
     const enter = fireEvent.keyDown(field, { key: 'Enter' });
     expect(enter).toBe(false); // default prevented
+  });
+});
+
+describe('SimpleProductForm camera scan', () => {
+  const base = { open: true, onOpenChange: vi.fn(), onPickImage: vi.fn(), onRemoveImage: vi.fn(), onSave: vi.fn() };
+
+  it('offers the phone camera next to the barcode box unless scanning is turned off', () => {
+    const { rerender } = render(<SimpleProductForm {...base} />);
+    expect(screen.getByRole('button', { name: 'Scan barcode with camera' })).toBeInTheDocument();
+    rerender(<SimpleProductForm {...base} scanningEnabled={false} />);
+    expect(screen.queryByRole('button', { name: 'Scan barcode with camera' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Barcode')).toBeInTheDocument();
+  });
+
+  it('takes the number from a barcode, or the barcode inside one of our QR labels', () => {
+    expect(barcodeFromScan(' 6034000181142 ')).toBe('6034000181142');
+    expect(barcodeFromScan('{"name":"Gown","barcode":"2012345678903"}')).toBe('2012345678903');
+    expect(barcodeFromScan('{"name":"Gown"}')).toBe('');
   });
 });

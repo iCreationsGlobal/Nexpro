@@ -291,6 +291,29 @@ const productNameRelevanceOrder = (search) => {
   ];
 };
 
+/** Longest short name printed on product stickers (Frontend utils/productLabels.js). */
+const LABEL_NAME_MAX_LENGTH = 60;
+
+/**
+ * The short name printed on stickers is kept in metadata.labelName; clients send it as `labelName`.
+ * Moves it into metadata merged over what is already there, so productCode, storeImages and other
+ * metadata stay. An empty value removes it (the sticker then uses the automatic short name).
+ * @param {{ metadata?: object }} record - the product or variant being updated
+ * @param {object} updatePayload - mutated
+ */
+const applyLabelNamePayload = (record, updatePayload) => {
+  if (!updatePayload || !Object.prototype.hasOwnProperty.call(updatePayload, 'labelName')) return;
+  const raw = updatePayload.labelName;
+  delete updatePayload.labelName;
+  const labelName = typeof raw === 'string' ? raw.trim().slice(0, LABEL_NAME_MAX_LENGTH) : '';
+  const incoming = updatePayload.metadata && typeof updatePayload.metadata === 'object' ? updatePayload.metadata : null;
+  const existing = record?.metadata && typeof record.metadata === 'object' ? record.metadata : {};
+  const metadata = { ...(incoming || existing) };
+  if (labelName) metadata.labelName = labelName;
+  else delete metadata.labelName;
+  updatePayload.metadata = metadata;
+};
+
 const formatProductForList = (record, req) => {
   const stripped = stripSensitiveProductFields(record, req);
   const plain = typeof stripped?.get === 'function'
@@ -300,6 +323,8 @@ const formatProductForList = (record, req) => {
   if (!plain || typeof plain !== 'object') return plain;
 
   plain.productCode = resolveCatalogProductCode(plain) || null;
+  const labelName = plain.labelName ?? plain.metadata?.labelName;
+  plain.labelName = typeof labelName === 'string' && labelName.trim() ? labelName.trim() : null;
 
   if (plain.metadata && typeof plain.metadata === 'object') {
     delete plain.metadata;
@@ -585,6 +610,7 @@ exports.getProducts = async (req, res, next) => {
         include: [
           [Product.sequelize.literal(`"Product"."metadata"->>'productCode'`), 'productCode'],
           [Product.sequelize.literal(`"Product"."metadata"->'storeImages'`), 'storeImages'],
+          [Product.sequelize.literal(`"Product"."metadata"->>'labelName'`), 'labelName'],
           [Product.sequelize.literal(`(
             SELECT COALESCE(SUM(pv."quantityOnHand"), 0)
             FROM product_variants pv
@@ -643,6 +669,7 @@ exports.getProducts = async (req, res, next) => {
 
 // Exported for unit tests
 exports._resolveProductListSort = resolveProductListSort;
+exports._applyLabelNamePayload = applyLabelNamePayload;
 exports._validateProductRentalFields = validateProductRentalFields;
 exports._applyRentalTenantProductDefaults = applyRentalTenantProductDefaults;
 
@@ -1733,6 +1760,7 @@ exports.updateProduct = async (req, res, next) => {
     if (hasQtyPayload && !product.hasVariants && stockShopId) {
       delete updatePayload.quantityOnHand;
     }
+    applyLabelNamePayload(product, updatePayload);
 
     await product.update(updatePayload, { transaction });
     if (hasAliasPayload) {
@@ -2312,6 +2340,7 @@ exports.updateProductVariant = async (req, res, next) => {
     }
     delete updatePayload.shopId;
     delete updatePayload.reason;
+    applyLabelNamePayload(variant, updatePayload);
 
     await variant.update(updatePayload, { transaction });
 

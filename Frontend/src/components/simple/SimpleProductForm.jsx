@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Barcode, Camera, ChevronRight, Loader2, Package, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -7,6 +7,25 @@ import { PRODUCT_IMAGE_ACCEPT } from '../../utils/compressProductImage';
 import { resolveImageUrl } from '../../utils/fileUtils';
 import { formatAmount } from '../../utils/formatNumber';
 import { groupOptionsBySize, newOptionCombos, optionListsFromVariants } from '../../utils/productOptions';
+
+// The same camera scanner the till uses (reads shop barcodes and QR labels); loaded only when tapped.
+const CameraScanner = lazy(() => import('../pos/POSProductSearch').then((module) => ({ default: module.QRCodeScanner })));
+
+/**
+ * The barcode number from a camera scan. Our own QR labels hold JSON with the barcode inside.
+ * @param {string} text
+ * @returns {string} '' when a QR label has no barcode
+ */
+export function barcodeFromScan(text) {
+  const code = String(text ?? '').trim();
+  if (!code.startsWith('{')) return code;
+  try {
+    const data = JSON.parse(code);
+    return String(data?.barcode ?? data?.product?.barcode ?? '').trim();
+  } catch {
+    return code;
+  }
+}
 
 const toNumberText = (value) => (value === null || value === undefined || value === '' ? '' : String(Number(value)));
 const cleanNumber = (text) => String(text).replace(/[^\d.]/g, '');
@@ -31,7 +50,7 @@ const MoneyField = ({ label, value, onChange, hint }) => (
 
 /**
  * Simple Mode product form: photo, name, selling price, what it cost (optional), how many are in
- * stock and an optional barcode (a USB/Bluetooth scanner types straight into it). Photos go through the Products page's existing upload (so paste works too).
+ * stock and an optional barcode (a USB/Bluetooth scanner types straight into it, or Scan uses the phone's camera). Photos go through the Products page's existing upload (so paste works too).
  * Sizes and colours are typed as lists ("Size 5, Size 6"); each new size/colour gets its own stock count
  * and is passed to onSave as newOptions.
  *
@@ -49,6 +68,7 @@ const MoneyField = ({ label, value, onChange, hint }) => (
  *   saving?: boolean,
  *   variants?: Array<object>,
  *   onOpenVariant?: (variant: object) => void,
+ *   scanningEnabled?: boolean,
  *   onSave: (values: {
  *     name: string, sellingPrice: number, costPrice: number|'', quantityOnHand: number, barcode: string,
  *     newOptions: Array<{ name: string, size: string, color: string, quantityOnHand: number }>,
@@ -69,6 +89,7 @@ export default function SimpleProductForm({
   saving = false,
   variants = [],
   onOpenVariant,
+  scanningEnabled = true,
   onSave,
 }) {
   const [name, setName] = useState('');
@@ -80,6 +101,7 @@ export default function SimpleProductForm({
   const [colors, setColors] = useState('');
   const [optionQuantities, setOptionQuantities] = useState({});
   const [error, setError] = useState('');
+  const [cameraOpen, setCameraOpen] = useState(false);
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
   const initializedFor = useRef(null);
@@ -306,25 +328,42 @@ export default function SimpleProductForm({
               ) : null}
             </div>
 
-            <label className="block">
-              <span className="text-base font-semibold">Barcode (optional)</span>
-              <span className="mt-2 flex h-16 items-center gap-3 rounded-2xl border-2 border-border bg-card px-5 focus-within:ring-2 focus-within:ring-brand">
-                <Barcode className="h-6 w-6 shrink-0 text-muted-foreground" />
-                <input
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  // Scanners finish with Enter; keep it from doing anything else here.
-                  onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                  placeholder="Tap here, then scan"
-                  aria-label="Barcode"
-                  autoComplete="off"
-                  className="h-full w-full min-w-0 bg-transparent text-lg tracking-wide outline-none"
-                />
-              </span>
+            <div>
+              <label htmlFor="simple-product-barcode" className="text-base font-semibold">Barcode (optional)</label>
+              <div className="mt-2 flex gap-2">
+                <span className="flex h-16 min-w-0 flex-1 items-center gap-3 rounded-2xl border-2 border-border bg-card px-5 focus-within:ring-2 focus-within:ring-brand">
+                  <Barcode className="h-6 w-6 shrink-0 text-muted-foreground" />
+                  <input
+                    id="simple-product-barcode"
+                    value={barcode}
+                    onChange={(e) => setBarcode(e.target.value)}
+                    // Scanners finish with Enter; keep it from doing anything else here.
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                    placeholder="Tap here, then scan"
+                    aria-label="Barcode"
+                    autoComplete="off"
+                    className="h-full w-full min-w-0 bg-transparent text-lg tracking-wide outline-none"
+                  />
+                </span>
+                {scanningEnabled ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCameraOpen(true)}
+                    className="h-16 shrink-0 gap-2 rounded-2xl border-2 px-4 text-base font-semibold"
+                    aria-label="Scan barcode with camera"
+                  >
+                    <Camera className="h-6 w-6" />
+                    Scan
+                  </Button>
+                ) : null}
+              </div>
               <span className="mt-1 block text-sm text-muted-foreground">
-                Tap the box and scan the product with your barcode scanner, or type the number.
+                {scanningEnabled
+                  ? 'Tap Scan to use the camera, scan into the box with a barcode scanner, or type the number.'
+                  : 'Tap the box and scan the product with your barcode scanner, or type the number.'}
               </span>
-            </label>
+            </div>
 
             {error ? <p role="alert" className="text-base font-semibold text-red-700">{error}</p> : null}
 
@@ -338,6 +377,24 @@ export default function SimpleProductForm({
               {product ? 'Save changes' : 'Save product'}
             </Button>
         </>
+        {cameraOpen ? (
+          <Suspense fallback={null}>
+            <CameraScanner
+              isOpen
+              cameraEnabled
+              onScan={(text) => {
+                const code = barcodeFromScan(text);
+                if (code) {
+                  setBarcode(code);
+                  setError('');
+                } else {
+                  setError('That QR code has no barcode number. Scan the barcode instead.');
+                }
+              }}
+              onClose={() => setCameraOpen(false)}
+            />
+          </Suspense>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

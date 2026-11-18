@@ -66,6 +66,7 @@ import DashboardTable from '../components/DashboardTable';
 import DashboardStatsCard from '../components/DashboardStatsCard';
 import WelcomeSection from '../components/WelcomeSection';
 import { useSimpleMode } from '../hooks/useSimpleMode';
+import { useScanningEnabled } from '../hooks/usePOSConfig';
 import SimpleProductsList from '../components/simple/SimpleProductsList';
 import BulkProductImagesDialog from '../components/BulkProductImagesDialog';
 import BulkPublishToStoreDialog from '../components/BulkPublishToStoreDialog';
@@ -696,6 +697,7 @@ const Products = () => {
   const [formOpen, setFormOpen] = useState(false);
   // Simple Mode: add button, search and a plain list; a short photo/name/price/stock form.
   const { isRestricted: isSimpleProducts } = useSimpleMode();
+  const { scanningEnabled } = useScanningEnabled();
   const [editingProduct, setEditingProduct] = useState(null);
   // Adding a product whose name is already there: the product the server returned, the name the
   // user said is a different product, and the values to save again for "Add it anyway".
@@ -3067,6 +3069,7 @@ const Products = () => {
         nameConflict={nameConflict}
         onOpenExisting={handleExistingProductOpen}
         onDifferentName={handleDifferentProductName}
+        scanningEnabled={scanningEnabled}
         saving={submitting}
         // Merge over the loaded form values so fields this form doesn't show keep what was saved.
         // Parent stock stays on the variants, so a simple save does not overwrite it.
@@ -4047,7 +4050,7 @@ const Products = () => {
         onOpenChange={(open) => { if (!open) setBulkPublishIds(null); }}
         initialSelectedIds={bulkPublishIds || []}
       />
-      {bulkLabelsOpen && <BulkProductLabels key={`${activeTenantId}:${activeShopId}`} shopId={activeShopId} profileKey={`abs-label-printer:${activeTenantId}:${activeShopId}`} onClose={() => setBulkLabelsOpen(false)} onSaved={refetchProducts} />}
+      {bulkLabelsOpen && <BulkProductLabels key={`${activeTenantId}:${activeShopId}`} shopId={activeShopId} profileKey={`abs-label-printer:${activeTenantId}:${activeShopId}`} onClose={() => setBulkLabelsOpen(false)} onSaved={fetchProducts} />}
       {qrGenerateOpen && <ProductQRGenerateModal
         open={qrGenerateOpen}
         onClose={() => {
@@ -4055,6 +4058,8 @@ const Products = () => {
           setProductForQR(null);
         }}
         product={productForQR}
+        profileKey={`abs-label-printer:${activeTenantId}:${activeShopId}`}
+        onSaved={fetchProducts}
       />}
       </Suspense>
 

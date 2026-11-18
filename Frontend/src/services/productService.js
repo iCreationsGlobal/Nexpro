@@ -8,6 +8,12 @@
 import api, { postFormDataWithProgress } from './api';
 import { buildScopedQueryString, withActiveShopScope } from '../utils/shopScope';
 
+/** The server's largest page (Backend config pagination.maxPageSize). */
+const ACTIVE_PRODUCTS_PAGE_SIZE = 100;
+/** Up to 5,000 products for selling screens; beyond that, barcode lookup and the full POS search still ask the server. */
+const ACTIVE_PRODUCTS_MAX_PAGES = 50;
+const ACTIVE_PRODUCTS_PARALLEL_PAGES = 4;
+
 const productService = {
   // =============================================
   // CORE PRODUCT OPERATIONS
@@ -172,17 +178,39 @@ const productService = {
    * @returns {Promise<Array>} - Array of products
    */
   getAllActiveProducts: async () => {
-    const params = new URLSearchParams();
-    const scoped = withActiveShopScope({ isActive: true, limit: 1000 });
-    Object.entries(scoped).forEach(([key, value]) => {
-      if (value === undefined || value === null || value === '') return;
-      params.append(key, value);
+    // The server returns at most 100 products per request (MAX_PAGE_SIZE), so asking for more in one
+    // request silently stopped at the first 100 A–Z and later products were missing from selling.
+    const fetchPage = async (page) => {
+      const params = new URLSearchParams();
+      const scoped = withActiveShopScope({ isActive: true, limit: ACTIVE_PRODUCTS_PAGE_SIZE, page });
+      Object.entries(scoped).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        params.append(key, value);
+      });
+      const response = await api.get(`/products?${params.toString()}`);
+      // API response interceptor returns response.data, so response is already { success, data, pagination }
+      const body = response && typeof response === 'object' ? response : {};
+      const list = Array.isArray(body.data) ? body.data : (Array.isArray(body.products) ? body.products : []);
+      return { list, totalPages: Number(body.pagination?.totalPages) || 1 };
+    };
+    const first = await fetchPage(1);
+    const pageCount = Math.min(first.totalPages, ACTIVE_PRODUCTS_MAX_PAGES);
+    const pages = [first.list];
+    for (let start = 2; start <= pageCount; start += ACTIVE_PRODUCTS_PARALLEL_PAGES) {
+      const batch = [];
+      for (let page = start; page < start + ACTIVE_PRODUCTS_PARALLEL_PAGES && page <= pageCount; page += 1) {
+        batch.push(fetchPage(page));
+      }
+      (await Promise.all(batch)).forEach(({ list }) => pages.push(list));
+    }
+    // A product edited between page requests can shift pages; keep each product once.
+    const seen = new Set();
+    return pages.flat().filter((product) => {
+      if (!product?.id) return true;
+      if (seen.has(product.id)) return false;
+      seen.add(product.id);
+      return true;
     });
-    const response = await api.get(`/products?${params.toString()}`);
-    // API response interceptor returns response.data, so response is already { success, data, pagination }
-    const body = response && typeof response === 'object' ? response : {};
-    const list = Array.isArray(body.data) ? body.data : (Array.isArray(body.products) ? body.products : []);
-    return list;
   },
 
   /**
