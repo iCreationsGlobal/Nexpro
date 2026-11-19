@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import SimpleProductsList from '../../components/simple/SimpleProductsList';
 
 vi.mock('../../utils/fileUtils', () => ({ resolveImageUrl: (value) => value || '' }));
+vi.mock('../../hooks/usePOSConfig', () => ({ useScanningEnabled: () => ({ scanningEnabled: true }) }));
 
 const products = Array.from({ length: 20 }, (_, i) => ({
   id: `p${i + 1}`, name: `Product ${i + 1}`, sellingPrice: 5, quantityOnHand: 10,

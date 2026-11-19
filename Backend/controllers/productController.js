@@ -330,6 +330,16 @@ const formatProductForList = (record, req) => {
     delete plain.metadata;
   }
 
+  // Each size's or colour's saved sticker name, without the rest of its metadata (Generate labels).
+  if (Array.isArray(plain.variants)) {
+    plain.variants = plain.variants.map((variant) => {
+      if (!variant || typeof variant !== 'object' || !('metadata' in variant)) return variant;
+      const { metadata, ...rest } = variant;
+      const saved = metadata?.labelName;
+      return { ...rest, labelName: typeof saved === 'string' && saved.trim() ? saved.trim() : null };
+    });
+  }
+
   // Oversized data-URL images OOM React Native Product grids (same class of crash as Profile avatars).
   if (plain.imageUrl != null) {
     plain.imageUrl = sanitizeInlineDataUrlForClient(plain.imageUrl);
@@ -559,7 +569,20 @@ exports.getProducts = async (req, res, next) => {
         attributes: ['productId'],
         raw: true,
       });
-      const aliasProductIds = [...new Set(aliasMatches.map((row) => row.productId).filter(Boolean))];
+      // A size's or colour's own barcode or SKU finds its product (a scanned size label in any search box).
+      const variantMatches = await ProductVariant.findAll({
+        where: {
+          isActive: true,
+          [Op.or]: [
+            { barcode: { [Op.iLike]: searchPattern } },
+            { sku: { [Op.iLike]: searchPattern } },
+          ],
+        },
+        include: [{ model: Product, as: 'product', attributes: [], where: applyTenantFilter(req.tenantId, {}), required: true }],
+        attributes: ['productId'],
+        raw: true,
+      });
+      const aliasProductIds = [...new Set([...aliasMatches, ...variantMatches].map((row) => row.productId).filter(Boolean))];
       if (aliasProductIds.length > 0) {
         searchOrConditions.push({ id: { [Op.in]: aliasProductIds } });
       }
@@ -636,7 +659,8 @@ exports.getProducts = async (req, res, next) => {
           separate: true,
           required: false,
           where: { isActive: true },
-          attributes: ['id', 'productId', 'name', 'sku', 'barcode', 'sellingPrice', 'wholesalePrice', 'quantityOnHand', 'attributes', 'isActive', 'trackStock']
+          // metadata only for the saved sticker name: formatProductForList keeps that and drops the rest.
+          attributes: ['id', 'productId', 'name', 'sku', 'barcode', 'sellingPrice', 'wholesalePrice', 'quantityOnHand', 'attributes', 'isActive', 'trackStock', 'metadata']
         }] : [])
       ],
       distinct: true,

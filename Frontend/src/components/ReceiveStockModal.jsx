@@ -533,7 +533,7 @@ export default function ReceiveStockModal({ open, onClose, onSuccess, initialPro
                     <Input
                       aria-label="Scan or search products"
                       placeholder="Search name, SKU or barcode"
-                      className="h-11 pl-9"
+                      className={`h-11 pl-9 ${scanningEnabled ? 'pr-12' : ''}`}
                       value={query}
                       disabled={busy}
                       onChange={(event) => { setQuery(event.target.value); setPage(1); }}
@@ -543,13 +543,12 @@ export default function ReceiveStockModal({ open, onClose, onSuccess, initialPro
                         if (query.trim()) scan(query.trim(), { typed: true });
                       }}
                     />
+                    {scanningEnabled && (
+                      <button type="button" aria-label="Scan with camera" title="Scan with camera" className="absolute right-1 top-1/2 flex h-9 w-9 min-h-0 min-w-0 -translate-y-1/2 items-center justify-center rounded-full p-0 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50" disabled={busy} onClick={() => setCameraOpen(true)}>
+                        <Camera className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
-                  {scanningEnabled && (
-                    <Button type="button" variant="outline" className="h-11 shrink-0 gap-2 px-3" disabled={busy} onClick={() => setCameraOpen(true)}>
-                      <Camera className="h-4 w-4" />
-                      <span className="sr-only sm:not-sr-only">Scan with camera</span>
-                    </Button>
-                  )}
                 </div>
 
                 <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" role="group" aria-label="Filter products">

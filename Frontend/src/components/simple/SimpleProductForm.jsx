@@ -6,26 +6,14 @@ import ProductNameSuggest from '../ProductNameSuggest';
 import { PRODUCT_IMAGE_ACCEPT } from '../../utils/compressProductImage';
 import { resolveImageUrl } from '../../utils/fileUtils';
 import { formatAmount } from '../../utils/formatNumber';
+import { barcodeFromScan } from '../../utils/barcodeFromScan';
 import { groupOptionsBySize, newOptionCombos, optionListsFromVariants } from '../../utils/productOptions';
 
 // The same camera scanner the till uses (reads shop barcodes and QR labels); loaded only when tapped.
 const CameraScanner = lazy(() => import('../pos/POSProductSearch').then((module) => ({ default: module.QRCodeScanner })));
 
-/**
- * The barcode number from a camera scan. Our own QR labels hold JSON with the barcode inside.
- * @param {string} text
- * @returns {string} '' when a QR label has no barcode
- */
-export function barcodeFromScan(text) {
-  const code = String(text ?? '').trim();
-  if (!code.startsWith('{')) return code;
-  try {
-    const data = JSON.parse(code);
-    return String(data?.barcode ?? data?.product?.barcode ?? '').trim();
-  } catch {
-    return code;
-  }
-}
+// Re-exported for the tests and older imports.
+export { barcodeFromScan };
 
 const toNumberText = (value) => (value === null || value === undefined || value === '' ? '' : String(Number(value)));
 const cleanNumber = (text) => String(text).replace(/[^\d.]/g, '');

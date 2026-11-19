@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/select';
 import POSNumpad from './POSNumpad';
 import POSQuantityDialog from './POSQuantityDialog';
+import CartItemDetailsDialog from './CartItemDetailsDialog';
 import { usePOSConfig } from '../../hooks/usePOSConfig';
 import { CURRENCY } from '../../constants';
 import { formatAmount, parseDecimalInput } from '../../utils/formatNumber';
@@ -46,7 +47,7 @@ import { formatAmount, parseDecimalInput } from '../../utils/formatNumber';
 /**
  * Cart item component
  */
-const CartItem = ({ item, onUpdateQuantity, onRemove, onEditDiscount, onEditPrice, onEditQuantity }) => {
+const CartItem = ({ item, onUpdateQuantity, onRemove, onEditDiscount, onEditPrice, onEditQuantity, onOpenDetails }) => {
   const unitPrice = Number(item.unitPrice);
   const catalogUnitPrice = Number(item.catalogUnitPrice ?? item.baseUnitPrice ?? item.unitPrice);
   const quantity = Number(item.quantity) || 0;
@@ -60,7 +61,11 @@ const CartItem = ({ item, onUpdateQuantity, onRemove, onEditDiscount, onEditPric
       {/* Left 50%: name + unit price */}
       <div className="min-w-0 w-full">
         <div className="flex items-center gap-2 min-w-0">
-          <p className="font-medium text-foreground truncate">{item.name}</p>
+          {onOpenDetails && !isCustomItem ? (
+            <button type="button" onClick={() => onOpenDetails(item)} className="min-w-0 truncate text-left font-medium text-foreground underline-offset-4 hover:underline" aria-label={`See the details of ${item.name}`}>{item.name}</button>
+          ) : (
+            <p className="font-medium text-foreground truncate">{item.name}</p>
+          )}
           {isCustomItem && (
             <Badge variant="outline" className="shrink-0 text-[10px] uppercase tracking-wide text-[#166534] border-[#166534]">
               Custom
@@ -242,6 +247,9 @@ const POSCart = ({
 }) => {
   const [discountDialogOpen, setDiscountDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  // The line whose details are open (looked up in items, so quantity changes show at once).
+  const [detailsItemId, setDetailsItemId] = useState(null);
+  const detailsItem = detailsItemId ? items.find((line) => line.id === detailsItemId) ?? null : null;
   const [discountValue, setDiscountValue] = useState('');
   const [priceDialogOpen, setPriceDialogOpen] = useState(false);
   const [priceValue, setPriceValue] = useState('');
@@ -589,9 +597,18 @@ const POSCart = ({
                   onEditDiscount={handleEditItemDiscount}
                   onEditPrice={handleEditItemPrice}
                   onEditQuantity={handleEditItemQuantity}
+                  onOpenDetails={(line) => setDetailsItemId(line.id)}
                 />
               ))}
             </ScrollArea>
+            {detailsItem && (
+              <CartItemDetailsDialog
+                item={detailsItem}
+                onClose={() => setDetailsItemId(null)}
+                onUpdateQuantity={onUpdateQuantity}
+                onRemove={onRemoveItem}
+              />
+            )}
 
             {/* Totals */}
             <div className="p-4 bg-muted border-t border-border">

@@ -17,6 +17,7 @@ import productService from '../services/productService';
 import { compressProductImageFile, isProductImageFile, PRODUCT_IMAGE_ACCEPT, PRODUCT_IMAGE_MAX_INPUT_BYTES } from '../utils/compressProductImage';
 import { resolveImageUrl } from '../utils/fileUtils';
 import { existingSlotImage, matchImagesToProducts, planProductImageSaves, PRODUCT_IMAGE_SLOTS } from '../utils/productImageMatching';
+import ScanSearchButton from '@/components/ScanSearchButton';
 
 const SAVE_CONCURRENCY = 3;
 const ROWS_PER_PAGE = 60;
@@ -44,6 +45,7 @@ function ProductPicker({ products, suggestions = [], onPick }) {
           aria-label="Find product"
           className="h-9 w-full bg-transparent text-sm outline-none"
         />
+        <ScanSearchButton onCode={setQuery} className="h-8 w-8" />
       </label>
       {results.map((product) => (
         <button

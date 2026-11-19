@@ -1206,6 +1206,7 @@ const Products = () => {
     setPageSearchConfig({
       scope: 'products',
       placeholder: SEARCH_PLACEHOLDERS.PRODUCTS,
+      scan: true, // camera in the search box: scan a label to find its product
     });
     return () => setPageSearchConfig(null);
   }, [setPageSearchConfig]);

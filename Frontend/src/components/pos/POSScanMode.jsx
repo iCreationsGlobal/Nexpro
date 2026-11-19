@@ -11,6 +11,7 @@
  */
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
+import CartItemDetailsDialog from './CartItemDetailsDialog';
 import { 
   X, 
   ShoppingCart, 
@@ -189,7 +190,7 @@ const PAYMENT_METHODS = [
 /**
  * Cart Item Component for Review Screen – with image
  */
-const CartItemRow = ({ item, onUpdateQuantity, onRemove, onEditPrice, onEditQuantity }) => {
+const CartItemRow = ({ item, onUpdateQuantity, onRemove, onEditPrice, onEditQuantity, onOpenDetails }) => {
   const { isMobile } = useResponsive();
   const itemTotal = item.unitPrice * item.quantity;
   const imageSrc = item.imageUrl ? resolveImageUrl(item.imageUrl) : null;
@@ -208,7 +209,11 @@ const CartItemRow = ({ item, onUpdateQuantity, onRemove, onEditPrice, onEditQuan
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className={`font-medium text-foreground truncate ${isMobile ? 'text-xs' : 'text-sm'}`}>{item.name}</p>
+        {onOpenDetails && item.productId ? (
+          <button type="button" onClick={() => onOpenDetails(item)} aria-label={`See the details of ${item.name}`} className={`block max-w-full truncate text-left font-medium text-foreground underline-offset-4 hover:underline ${isMobile ? 'text-xs' : 'text-sm'}`}>{item.name}</button>
+        ) : (
+          <p className={`font-medium text-foreground truncate ${isMobile ? 'text-xs' : 'text-sm'}`}>{item.name}</p>
+        )}
         <p className={`${isMobile ? 'text-xs' : 'text-xs'} text-muted-foreground`}>
           {formatCurrency(item.unitPrice)} each
         </p>
@@ -306,6 +311,9 @@ const POSScanMode = ({
   
   // Cart state
   const [cart, setCart] = useState([]);
+  // The line whose details are open (from the cart, so quantity changes show at once).
+  const [detailsItemId, setDetailsItemId] = useState(null);
+  const detailsItem = detailsItemId ? cart.find((line) => line.id === detailsItemId) ?? null : null;
   const [lastScannedItem, setLastScannedItem] = useState(null);
   const [variantPickerProduct, setVariantPickerProduct] = useState(null);
   const [priceDialogItem, setPriceDialogItem] = useState(null);
@@ -757,8 +765,17 @@ const POSScanMode = ({
                         onRemove={removeCartItem}
                         onEditPrice={openPriceDialog}
                         onEditQuantity={openQuantityDialog}
+                        onOpenDetails={(line) => setDetailsItemId(line.id)}
                       />
                     ))}
+                    {detailsItem && (
+                      <CartItemDetailsDialog
+                        item={detailsItem}
+                        onClose={() => setDetailsItemId(null)}
+                        onUpdateQuantity={updateCartItemQuantity}
+                        onRemove={removeCartItem}
+                      />
+                    )}
                   </div>
                 </ScrollArea>
               </div>

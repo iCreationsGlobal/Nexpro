@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useSmartSearch } from '@/context/SmartSearchContext';
 import { cn } from '@/lib/utils';
+import ScanSearchButton from '@/components/ScanSearchButton';
 
 /**
  * Header search bound to the page's SmartSearch scope, with per-scope recent searches.
@@ -15,6 +16,7 @@ import { cn } from '@/lib/utils';
  */
 export default function SmartSearchField({ className, inputClassName, autoFocus = false }) {
   const {
+    pageConfig,
     placeholder,
     scope,
     searchValue,
@@ -61,6 +63,8 @@ export default function SmartSearchField({ className, inputClassName, autoFocus 
   }, [recentSearches, searchValue]);
 
   const hasSearchValue = searchValue.trim().length > 0;
+  // Pages that search products ask for a camera in the box (setPageSearchConfig({ scan: true })).
+  const canScan = Boolean(pageConfig?.scan);
   const shouldShowRecentSearches = isSuggestionsOpen && recentSearchOptions.length > 0;
 
   const commitSearchTerm = useCallback((term) => {
@@ -137,9 +141,15 @@ export default function SmartSearchField({ className, inputClassName, autoFocus 
         onFocus={() => setIsSuggestionsOpen(true)}
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}
-        className={cn('w-full rounded-full pl-10', hasSearchValue && 'pr-10', inputClassName)}
+        className={cn('w-full rounded-full pl-10', canScan ? (hasSearchValue ? 'pr-20' : 'pr-10') : hasSearchValue && 'pr-10', inputClassName)}
         aria-label={placeholder}
       />
+      {canScan && (
+        <ScanSearchButton
+          onCode={commitSearchTerm}
+          className={cn('absolute top-1/2 -translate-y-1/2', hasSearchValue ? 'right-10' : 'right-1')}
+        />
+      )}
       {hasSearchValue && (
         <button
           type="button"

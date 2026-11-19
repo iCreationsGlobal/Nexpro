@@ -46,6 +46,7 @@ import {
   SALE_RETURN_TYPES,
   PAYMENT_METHODS,
 } from '../../constants';
+import ScanSearchButton from '@/components/ScanSearchButton';
 
 const STEPS = ['items', 'reason', 'exchange', 'money', 'confirm'];
 
@@ -511,11 +512,12 @@ export default function SaleReturnWizard({
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
-                        className="pl-9"
+                        className="pl-9 pr-11"
                         placeholder="Search products…"
                         value={productSearch}
                         onChange={(e) => setProductSearch(e.target.value)}
                       />
+                      <ScanSearchButton onCode={setProductSearch} className="absolute right-1 top-1/2 -translate-y-1/2" />
                     </div>
                     {searchingProducts && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">

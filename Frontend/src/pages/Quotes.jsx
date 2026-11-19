@@ -151,6 +151,7 @@ import {
 } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { SEARCH_PLACEHOLDERS, DEBOUNCE_DELAYS } from '../constants';
+import ScanSearchButton from '@/components/ScanSearchButton';
 
 /**
  * GET /customers returns `{ success, data: Customer[] }` after the API interceptor unwraps axios.
@@ -386,9 +387,10 @@ const QuoteProductPicker = forwardRef(({
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
               placeholder="Search product name, SKU, or barcode"
-              className="h-9 pl-9"
+              className="h-9 pl-9 pr-11"
               autoFocus
             />
+            <ScanSearchButton onCode={setSearchText} className="absolute right-0.5 top-1/2 h-8 w-8 -translate-y-1/2" />
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
             Searches the full active shop catalog.

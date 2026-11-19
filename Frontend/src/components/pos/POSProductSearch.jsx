@@ -7,6 +7,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
+import { createScanRepeatGate } from '../../utils/scanRepeatGate';
+import { showError } from '../../utils/toast';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useNavigate } from 'react-router-dom';
 import { Search, Camera, X, Package, AlertCircle, Loader2, List, LayoutGrid, Plus, Minus, Circle, Calculator } from 'lucide-react';
@@ -337,6 +339,7 @@ const ProductCard = memo(function ProductCard({
  * @param {number} props.scannedCount - Number of items already scanned (for display)
  * @param {string} props.lastScannedItem - Name of last scanned item (for display)
  * @param {boolean} [props.cameraEnabled] - When false, camera UI is not mounted
+ * @param {string} [props.closeLabel] - The keep-scanning screen's close button ("Close" when scanned items stay in the sale)
  */
 const QRCodeScanner = ({
   isOpen,
@@ -347,6 +350,7 @@ const QRCodeScanner = ({
   lastScannedItem = null,
   onDone,
   cameraEnabled = true,
+  closeLabel = 'Cancel',
 }) => {
   const { isMobile } = useResponsive();
   const scannerRef = useRef(null);
@@ -359,6 +363,7 @@ const QRCodeScanner = ({
   const [lastScannedQR, setLastScannedQR] = useState(null);
   const lastScannedQRRef = useRef(null);
   const scanCooldownRef = useRef(false);
+  const repeatGateRef = useRef(createScanRepeatGate());
 
   // Reset states when scanner closes
   useEffect(() => {
@@ -436,6 +441,19 @@ const QRCodeScanner = ({
     setLastScannedQR(null);
 
     let mounted = true;
+    repeatGateRef.current.reset();
+    scanCooldownRef.current = false;
+
+    // Single mode takes one code. Several items in a row: a different code counts at once, the same
+    // code again only after it was out of view for 1.5 s (utils/scanRepeatGate.js, as in the phone app).
+    const acceptDecoded = (decodedText) => {
+      if (!continuousMode) {
+        if (scanCooldownRef.current) return false;
+        scanCooldownRef.current = true;
+        return true;
+      }
+      return repeatGateRef.current.accept(decodedText);
+    };
 
     const startScanner = async function startScanner() {
       try {
@@ -495,10 +513,7 @@ const QRCodeScanner = ({
             cameraConfig,
             scanConfig,
           (decodedText) => {
-            if (scanCooldownRef.current) return;
-            if (continuousMode && decodedText === lastScannedQRRef.current) return;
-
-            scanCooldownRef.current = true;
+            if (!acceptDecoded(decodedText)) return;
             lastScannedQRRef.current = decodedText;
             setLastScannedQR(decodedText);
 
@@ -519,11 +534,7 @@ const QRCodeScanner = ({
             console.log('[SCANNER] ✅ QR code scanned:', decodedText);
             onScan(decodedText);
 
-            if (continuousMode) {
-              setTimeout(() => { scanCooldownRef.current = false; }, 1500);
-            } else {
-              onClose();
-            }
+            if (!continuousMode) onClose();
           },
           () => {}
           );
@@ -541,10 +552,7 @@ const QRCodeScanner = ({
               { facingMode: 'user' },
               scanConfig,
               (decodedText) => {
-                if (scanCooldownRef.current) return;
-                if (continuousMode && decodedText === lastScannedQRRef.current) return;
-
-                scanCooldownRef.current = true;
+                if (!acceptDecoded(decodedText)) return;
                 lastScannedQRRef.current = decodedText;
                 setLastScannedQR(decodedText);
 
@@ -569,15 +577,8 @@ const QRCodeScanner = ({
                 console.log('[SCANNER] ✅ Code scanned (front camera):', decodedText);
                 onScan(decodedText);
 
-                if (continuousMode) {
-                  // In continuous mode, keep scanning but with cooldown
-                  setTimeout(() => {
-                    scanCooldownRef.current = false;
-                  }, 1500); // 1.5 second cooldown between scans
-                } else {
-                  // In single mode, close after scan
-                  onClose();
-                }
+                // Single mode closes after one scan; continuous mode keeps going.
+                if (!continuousMode) onClose();
               },
               () => {
                 // QR code scan failure - ignore, keep scanning
@@ -602,9 +603,7 @@ const QRCodeScanner = ({
                   firstCameraId,
                   scanConfig,
                   (decodedText) => {
-                    if (scanCooldownRef.current) return;
-                    if (continuousMode && decodedText === lastScannedQRRef.current) return;
-                    scanCooldownRef.current = true;
+                    if (!acceptDecoded(decodedText)) return;
                     lastScannedQRRef.current = decodedText;
                     setLastScannedQR(decodedText);
                     try {
@@ -621,11 +620,7 @@ const QRCodeScanner = ({
                     if (navigator.vibrate) navigator.vibrate(100);
                     console.log('[SCANNER] ✅ Code scanned (first available camera):', decodedText);
                     onScan(decodedText);
-                    if (continuousMode) {
-                      setTimeout(() => { scanCooldownRef.current = false; }, 1500);
-                    } else {
-                      onClose();
-                    }
+                    if (!continuousMode) onClose();
                   },
                   () => {}
                 );
@@ -1055,7 +1050,7 @@ const QRCodeScanner = ({
             onClick={onClose}
             className={`flex-1 ${isMobile ? 'h-11' : 'h-12'} border-gray-300 ${isMobile ? 'rounded-md' : 'rounded-lg'}`}
           >
-            Cancel
+            {closeLabel}
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1194,7 +1189,7 @@ const QRCodeScanner = ({
                 onClick={onClose}
                 className={`${isMobile ? 'h-11 flex-1' : 'h-12'} border-border ${isMobile ? 'rounded-md' : 'rounded-lg'}`}
               >
-                Cancel
+                {closeLabel}
               </Button>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1388,6 +1383,9 @@ const POSProductSearch = ({
   const [results, setResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  // The camera in the search box keeps scanning: each item goes into the sale until Done.
+  const [scanRun, setScanRun] = useState({ count: 0, last: null });
+  const openScanner = useCallback(() => { setScanRun({ count: 0, last: null }); setScannerOpen(true); }, []);
   const [searchError, setSearchError] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [viewMode, setViewMode] = useState('card');
@@ -1480,12 +1478,13 @@ const POSProductSearch = ({
         if (product) {
           console.log('[POS Scan] Product resolved from QR:', { productId: product.id, name: product.name });
           onSelectProduct(product);
-          setScannerOpen(false);
+          setScanRun((run) => ({ count: run.count + 1, last: product.name }));
           setSearchQuery('');
           setResults([]);
         } else {
           console.warn('[POS Scan] No product matched QR payload:', result.data);
           setSearchError('Product not found for this QR code');
+          showError('No product found for this QR code');
         }
       } else {
         if (!getProductByBarcode) {
@@ -1498,12 +1497,13 @@ const POSProductSearch = ({
         if (product) {
           console.log('[POS Scan] Product resolved from barcode:', { code: text, productId: product.id, name: product.name });
           onSelectProduct(product);
-          setScannerOpen(false);
+          setScanRun((run) => ({ count: run.count + 1, last: product.name }));
           setSearchQuery('');
           setResults([]);
         } else {
           console.warn('[POS Scan] No product matched barcode:', text);
           setSearchError('Product not found for this barcode');
+          showError(`No product found for barcode "${text}"`);
         }
       }
     } catch (error) {
@@ -1541,9 +1541,22 @@ const POSProductSearch = ({
                   placeholder={isMobile ? 'Search' : 'Search by name, SKU, or scan barcode/QR...'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-10 h-12 text-base sm:text-lg"
+                  className={cn('pl-10 h-12 text-base sm:text-lg', scanningEnabled ? ((searchQuery || isSearching) ? 'pr-24' : 'pr-12') : 'pr-10')}
                   autoComplete="off"
                 />
+            {scanningEnabled && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn('absolute top-1/2 -translate-y-1/2 h-10 w-10', (searchQuery || isSearching) ? 'right-12' : 'right-1')}
+                onClick={openScanner}
+                aria-label="Scan barcodes to sell"
+                title="Scan barcodes to sell"
+              >
+                <Camera className="h-5 w-5 text-muted-foreground" />
+              </Button>
+            )}
             {(searchQuery || isSearching) && (
               <Button
                 variant="ghost"
@@ -1768,7 +1781,12 @@ const POSProductSearch = ({
         <QRCodeScanner
           isOpen={scannerOpen}
           onClose={() => setScannerOpen(false)}
+          onDone={() => setScannerOpen(false)}
           onScan={handleScan}
+          continuousMode
+          scannedCount={scanRun.count}
+          lastScannedItem={scanRun.last}
+          closeLabel="Close"
           cameraEnabled={scanningEnabled}
         />
       )}

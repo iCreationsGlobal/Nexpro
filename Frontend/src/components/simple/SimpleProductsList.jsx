@@ -3,6 +3,7 @@ import { ChevronRight, Loader2, Package, Plus, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import InfiniteListFooter from '@/components/InfiniteListFooter';
+import ScanSearchButton from '@/components/ScanSearchButton';
 import { resolveImageUrl } from '../../utils/fileUtils';
 import { formatAmount } from '../../utils/formatNumber';
 import { getCatalogUnitPrice } from '../../utils/productStock';
@@ -90,6 +91,7 @@ export default function SimpleProductsList({
           aria-label="Search products"
           className="h-full w-full min-w-0 bg-transparent text-base outline-none"
         />
+        <ScanSearchButton onCode={onSearchChange} className="h-11 w-11" />
       </label>
 
       <p className="text-sm text-muted-foreground">

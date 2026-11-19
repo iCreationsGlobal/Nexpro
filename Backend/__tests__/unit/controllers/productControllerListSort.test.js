@@ -23,7 +23,9 @@ jest.mock('../../../models', () => ({
       where: jest.fn((attr, ...rest) => ({ where: attr, rest })),
     },
   },
-  ProductVariant: {},
+  ProductVariant: {
+    findAll: jest.fn().mockResolvedValue([]),
+  },
   Shop: {},
   ProductCategory: {},
   Barcode: {
@@ -160,6 +162,26 @@ describe('productController list sort', () => {
       expect(order[0][0].literal).toContain("= 'macbook' THEN 0");
       expect(order[0][0].literal).toContain("LIKE 'macbook%' THEN 1");
       expect(order[0][0].literal).toContain("LIKE '% macbook%' THEN 2");
+    });
+
+    it('a size\'s barcode or SKU finds its product, within this business', async () => {
+      const { ProductVariant } = require('../../../models');
+      ProductVariant.findAll.mockResolvedValueOnce([{ productId: 'gown' }]);
+      const req = { tenantId: 't1', query: { search: '2012345678903' }, shopScoped: false };
+
+      await productController.getProducts(req, mockRes(), jest.fn());
+
+      const { Op } = require('sequelize');
+      const variantQuery = ProductVariant.findAll.mock.calls.at(-1)[0];
+      expect(variantQuery.where[Op.or]).toEqual([
+        { barcode: { [Op.iLike]: '%2012345678903%' } },
+        { sku: { [Op.iLike]: '%2012345678903%' } },
+      ]);
+      expect(variantQuery.include[0]).toEqual(expect.objectContaining({ as: 'product', required: true }));
+      expect(require('../../../utils/tenantUtils').applyTenantFilter).toHaveBeenCalledWith('t1', {});
+      const { where } = Product.findAndCountAll.mock.calls.at(-1)[0];
+      const search = where[Op.and].find((c) => c[Op.or]);
+      expect(search[Op.or]).toEqual(expect.arrayContaining([{ id: { [Op.in]: ['gown'] } }]));
     });
 
     it('relevance without a search falls back to name_asc', async () => {
