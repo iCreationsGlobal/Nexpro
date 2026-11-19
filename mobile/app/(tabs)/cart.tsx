@@ -20,6 +20,7 @@ import { FormSheetModal } from '@/components/FormSheetModal';
 import { TOUCH_TARGET, BORDER_WIDTH } from '@/constants/sizing';
 import { CartAmountSheet } from '@/components/CartAmountSheet';
 import { CartQuantitySheet } from '@/components/CartQuantitySheet';
+import { CartLineDetailSheet } from '@/components/CartLineDetailSheet';
 import { FORM_LABELS } from '@/constants/formLabels';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
@@ -139,6 +140,8 @@ export default function CartScreen() {
   const [findingCustomer, setFindingCustomer] = useState(false);
   const [sendToKitchen, setSendToKitchen] = useState(true);
   const [quantityEditItem, setQuantityEditItem] = useState<(typeof items)[number] | null>(null);
+  const [detailItemId, setDetailItemId] = useState<string | null>(null);
+  const closeDetail = useCallback(() => setDetailItemId(null), []);
   const [amountEdit, setAmountEdit] = useState<{
     mode: 'price' | 'discount';
     item: (typeof items)[number];
@@ -693,6 +696,12 @@ export default function CartScreen() {
             return (
               <View key={item.id} style={[styles.cartItem, { backgroundColor: cardBg, borderColor }]}>
                 <View style={styles.itemTopRow}>
+                  <Pressable
+                    onPress={() => setDetailItemId(item.id)}
+                    style={({ pressed }) => [styles.itemTapArea, pressed && { opacity: 0.7 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Show details for ${item.name}`}
+                  >
                   {item.imageUrl ? (
                     <Image
                       source={{ uri: resolveImageUrl(item.imageUrl) }}
@@ -743,6 +752,7 @@ export default function CartScreen() {
                       </Text>
                     ) : null}
                   </View>
+                  </Pressable>
 
                   <View style={styles.itemRightCol}>
                     <View style={styles.quantityControls}>
@@ -1235,6 +1245,8 @@ export default function CartScreen() {
               )}
       </FormSheetModal>
 
+      <CartLineDetailSheet itemId={detailItemId} onClose={closeDetail} />
+
       <CartQuantitySheet
         visible={!!quantityEditItem}
         item={quantityEditItem}
@@ -1375,6 +1387,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  itemTapArea: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   itemDetails: { flex: 1, minWidth: 0, gap: 4 },
   itemName: {
     fontFamily: FontFamily.semiBold,

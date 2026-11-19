@@ -20,6 +20,7 @@ export function useRegisterPageSearch(config: PageSearchConfig | null) {
       config?.enabled,
       config?.title,
       config?.subtitle,
+      config?.scan,
     ])
   );
 }

@@ -18,9 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { useScanToSell } from '@/hooks/useScanToSell';
 import { settingsService } from '@/services/settings';
-import { isRentalBusinessType, resolveBusinessType } from '@/constants';
 import { authService } from '@/services/auth';
 import { getErrorMessage } from '@/utils/errorMessages';
 import { useScreenColors } from '@/hooks/useScreenColors';
@@ -53,14 +51,8 @@ export default function SettingsScreen() {
   const [savingShowAdvanced, setSavingShowAdvanced] = useState(false);
   const { isSimple, showAdvanced } = useSimpleMode();
   const { theme, setTheme } = useTheme();
-  const { scanToSell, setScanToSell, isLoading: loadingScanToSell } = useScanToSell();
   const { colors, cardBg, borderColor, textColor, mutedColor, resolvedTheme } = useScreenColors();
   const [resendLoading, setResendLoading] = useState(false);
-
-  const businessType = activeTenant?.businessType ?? 'printing_press';
-  const isStudio = resolveBusinessType(businessType) === 'studio';
-  const isRental = isRentalBusinessType(businessType);
-  const showPosSettings = !isStudio && !isRental && hasFeature('products');
 
   useQuery({
     queryKey: ['settings', 'profile'],
@@ -297,34 +289,6 @@ export default function SettingsScreen() {
             })
           )}
         </View>
-
-        {showPosSettings ? (
-          <>
-            <Text style={[styles.sectionTitle, { color: textColor }]}>POS</Text>
-            <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
-              <View style={styles.toggleRow}>
-                <View style={styles.toggleTextWrap}>
-                  <Text style={[styles.linkLabel, { color: textColor }]}>Scan to sell</Text>
-                  <Text style={[styles.linkSubtitle, { color: mutedColor }]}>
-                    When on, scanning a barcode adds the product straight to your cart. When off, scans show
-                    the product so you can review before adding.
-                  </Text>
-                </View>
-                {loadingScanToSell ? (
-                  <ActivityIndicator color={brand} size="small" />
-                ) : (
-                  <Switch
-                    value={scanToSell}
-                    onValueChange={setScanToSell}
-                    trackColor={{ false: borderColor, true: `${brand}88` }}
-                    thumbColor={scanToSell ? brand : '#f4f4f5'}
-                    accessibilityLabel="Scan to sell"
-                  />
-                )}
-              </View>
-            </View>
-          </>
-        ) : null}
 
         <Text style={[styles.sectionTitle, { color: textColor }]}>Simple Mode</Text>
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, ActivityIndicator, AppState } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
@@ -8,20 +8,39 @@ import { createScanSessionGate } from '@/utils/scanSessionGate';
 import { useColorScheme } from '@/components/useColorScheme';
 import { cameraBlockedMessage, getCameraAccess, openAppSettings } from '@/utils/cameraPermission';
 
-import { AppIcon, type AppIconName } from '@/components/AppIcon';
+import { AppIcon } from '@/components/AppIcon';
 interface BarcodeScannerProps {
   visible: boolean;
   onClose: () => void;
   onScan: (barcode: string) => void;
+  /**
+   * Keep the camera open after each scan (selling). The same code counts again only once it
+   * has been out of view for 1.5 s; a different code counts at once. Default: one scan, then close.
+   */
+  continuous?: boolean;
+  /** Keep-scanning mode: the camera stays on but codes are not counted (e.g. a size is being chosen). */
+  paused?: boolean;
+  /** Keep-scanning mode: shown at the bottom of the camera screen (strip and buttons). */
+  footer?: React.ReactNode;
+  /** Rendered inside the camera's own modal, so a sheet opened here shows above the camera. */
+  children?: React.ReactNode;
 }
 
 const SCAN_BEEP_SOURCE = require('@/assets/sounds/scan-beep.wav');
 
-export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps) {
+export function BarcodeScanner({
+  visible,
+  onClose,
+  onScan,
+  continuous = false,
+  paused = false,
+  footer,
+  children,
+}: BarcodeScannerProps) {
   const [permission, requestPermission, getPermission] = useCameraPermissions();
   const access = getCameraAccess(permission);
   const [scanned, setScanned] = useState(false);
-  const scanGate = useRef(createScanSessionGate()).current;
+  const scanGate = useMemo(() => createScanSessionGate({ continuous }), [continuous]);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const beepPlayer = useAudioPlayer(SCAN_BEEP_SOURCE, { keepAudioSessionActive: true });
@@ -59,8 +78,13 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
   };
 
   const handleBarCodeScanned = ({ data }: { data: string }) => {
-    if (!visible || !scanGate.accept(data)) return;
-    setScanned(true);
+    if (!visible) return;
+    if (continuous && paused) {
+      scanGate.observe(data);
+      return;
+    }
+    if (!scanGate.accept(data)) return;
+    if (!continuous) setScanned(true);
     // Haptic feedback on successful scan
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     beepPlayer
@@ -69,6 +93,10 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
       .catch(() => {
         beepPlayer.play();
       });
+    if (continuous) {
+      onScan(data);
+      return;
+    }
     try { onScan(data); } finally { closeScanner(); }
   };
 
@@ -167,12 +195,28 @@ export function BarcodeScanner({ visible, onClose, onScan }: BarcodeScannerProps
             ],
           }}
         />
-        <Pressable onPress={closeScanner} style={styles.closeButton} hitSlop={12}>
+        <Pressable
+          onPress={closeScanner}
+          style={styles.closeButton}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Close camera"
+        >
           <AppIcon name="times" size={26} color="#fff" />
         </Pressable>
-        <View style={styles.footer} pointerEvents="none">
-          <Text style={styles.instructionText}>Point camera at barcode</Text>
-        </View>
+        {continuous && footer ? (
+          <View style={styles.continuousFooter} pointerEvents="box-none">
+            <Text style={[styles.instructionText, styles.instructionAboveFooter]} pointerEvents="none">
+              Point camera at barcode
+            </Text>
+            {footer}
+          </View>
+        ) : (
+          <View style={styles.footer} pointerEvents="none">
+            <Text style={styles.instructionText}>Point camera at barcode</Text>
+          </View>
+        )}
+        {children}
       </View>
     </Modal>
   );
@@ -204,6 +248,20 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingBottom: 50,
     alignItems: 'center',
+  },
+  continuousFooter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 34,
+    alignItems: 'stretch',
+    gap: 12,
+  },
+  instructionAboveFooter: {
+    alignSelf: 'center',
+    overflow: 'hidden',
   },
   instructionText: {
     color: '#fff',
