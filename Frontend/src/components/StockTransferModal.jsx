@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import productService from '../services/productService';
 import { getErrorMessage, showError, showSuccess } from '../utils/toast';
+import ScanSearchButton from '@/components/ScanSearchButton';
 
 const EMPTY_VARIANT_VALUE = '__none__';
 
@@ -289,8 +290,9 @@ export default function StockTransferModal({
                           value={productQuery}
                           onChange={(event) => setProductQuery(event.target.value)}
                           placeholder="Search product name, SKU, or barcode"
-                          className="pl-9"
+                          className="pl-9 pr-11"
                         />
+                        <ScanSearchButton onCode={setProductQuery} className="absolute right-1 top-1/2 -translate-y-1/2" />
                       </div>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <p className="text-xs text-muted-foreground">

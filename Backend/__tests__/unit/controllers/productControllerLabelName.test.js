@@ -104,4 +104,26 @@ describe('product sticker names (labelName)', () => {
       [{ literal: `"Product"."metadata"->>'labelName'` }, 'labelName'],
     ]));
   });
+
+  it('sends each size\'s saved sticker name with the list, and none of the rest of its metadata', async () => {
+    Product.findAndCountAll.mockResolvedValue({
+      count: 1,
+      rows: [{
+        id: 'gown', name: 'Gown', hasVariants: true,
+        variants: [
+          { id: 'v-m', name: 'M', quantityOnHand: 20, metadata: { labelName: ' Gown M ', images: ['big'] } },
+          { id: 'v-l', name: 'L', quantityOnHand: 3, metadata: {} },
+        ],
+      }],
+    });
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
+    await productController.getProducts({ tenantId: 't1', query: { includeVariants: 'true' }, shopScoped: false }, res, jest.fn());
+    const variantsInclude = Product.findAndCountAll.mock.calls.at(-1)[0].include.find((i) => i.as === 'variants');
+    expect(variantsInclude.attributes).toContain('metadata');
+    const [gown] = res.json.mock.calls.at(-1)[0].data;
+    expect(gown.variants).toEqual([
+      { id: 'v-m', name: 'M', quantityOnHand: 20, labelName: 'Gown M' },
+      { id: 'v-l', name: 'L', quantityOnHand: 3, labelName: null },
+    ]);
+  });
 });

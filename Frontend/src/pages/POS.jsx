@@ -1721,6 +1721,9 @@ const POS = () => {
         onCustomer={() => setCustomerDialogOpen(true)} isOnline={isOnline} canCheckoutOffline={canSellOffline}
         scanningEnabled={scanningEnabled} onScan={() => setScanModeOpen(true)}
         scanSignal={hardwareScanSignal}
+        /* Scans the background listener didn't catch (slow Bluetooth keys, no Enter) are looked up
+           the same way as the full till: every barcode a product or size has. */
+        onCode={handleHardwareScan} onSearch={searchProducts}
       /> : <>
       {/* Header */}
       <div

@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import ScanSearchButton from '@/components/ScanSearchButton';
 
 const StoreListings = () => {
   const navigate = useNavigate();
@@ -236,12 +237,13 @@ const StoreListings = () => {
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   ref={productSearchInputRef}
-                  className="h-11 rounded-xl pl-9"
+                  className={`h-11 rounded-xl pl-9 ${productSearch ? 'pr-20' : 'pr-11'}`}
                   placeholder="Search products by name or SKU..."
                   value={productSearch}
                   onChange={(event) => setProductSearch(event.target.value)}
                   onKeyDown={handleProductPickerKeyDown}
                 />
+                <ScanSearchButton onCode={setProductSearch} className={`absolute top-1/2 -translate-y-1/2 ${productSearch ? 'right-10' : 'right-1'}`} />
                 {productSearch ? (
                   <Button
                     type="button"

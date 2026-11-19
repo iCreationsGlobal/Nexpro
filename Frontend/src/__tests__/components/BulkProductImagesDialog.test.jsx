@@ -4,6 +4,7 @@ import BulkProductImagesDialog from '../../components/BulkProductImagesDialog';
 import productService from '../../services/productService';
 
 vi.mock('../../utils/fileUtils', () => ({ resolveImageUrl: (value) => value || '' }));
+vi.mock('../../hooks/usePOSConfig', () => ({ useScanningEnabled: () => ({ scanningEnabled: true }) }));
 vi.mock('../../utils/compressProductImage', () => ({
   PRODUCT_IMAGE_ACCEPT: 'image/*',
   PRODUCT_IMAGE_MAX_INPUT_BYTES: 40 * 1024 * 1024,

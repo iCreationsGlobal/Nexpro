@@ -4,6 +4,7 @@ import SimpleProductsList, { getSimpleStockLabel } from '../../components/simple
 import SimpleProductForm, { barcodeFromScan } from '../../components/simple/SimpleProductForm';
 
 vi.mock('../../utils/fileUtils', () => ({ resolveImageUrl: (value) => value || '' }));
+vi.mock('../../hooks/usePOSConfig', () => ({ useScanningEnabled: () => ({ scanningEnabled: true }) }));
 
 describe('getSimpleStockLabel', () => {
   it('labels stock levels', () => {

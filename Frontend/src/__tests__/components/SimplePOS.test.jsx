@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import SimplePOS from '../../components/pos/SimplePOS';
 vi.mock('../../utils/fileUtils', () => ({ resolveImageUrl: value => value || '' }));
@@ -49,5 +49,39 @@ describe('Simple POS', () => {
     expect(screen.getByLabelText('Find a product')).toHaveValue('6034000181142');
     rerender(<SimplePOS {...p} scanSignal={1} />);
     expect(screen.getByLabelText('Find a product')).toHaveValue('');
+  });
+
+  it('finds a product by any of its barcodes, and adds it when the scanner presses Enter', () => {
+    const p = props(); p.products = [...products, { id: 4, name: 'Gown', sellingPrice: 120, quantityOnHand: 3, barcode: '111', barcodes: [{ barcode: '2012345678903' }] }];
+    render(<SimplePOS {...p} onCode={vi.fn()} />);
+    const box = screen.getByLabelText('Find a product');
+    fireEvent.change(box, { target: { value: '2012345678903' } });
+    expect(screen.getByRole('button', { name: 'Add Gown to cart' })).toBeInTheDocument();
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(p.onAdd).toHaveBeenCalledWith(p.products[2]);
+    expect(box).toHaveValue('');
+  });
+  it('looks a code no loaded product has up the way the full till does', async () => {
+    const p = props(); const onCode = vi.fn(); const onSearch = vi.fn().mockResolvedValue([{ id: 9, name: 'Dress', sellingPrice: 80, quantityOnHand: 5 }]);
+    render(<SimplePOS {...p} onCode={onCode} onSearch={onSearch} />);
+    const box = screen.getByLabelText('Find a product');
+    // A size's barcode: nothing loaded has it, so the server is asked and its product shown.
+    fireEvent.change(box, { target: { value: '6034000181142' } });
+    expect(screen.getByText('Looking it up…')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Add Dress to cart' })).toBeInTheDocument();
+    expect(onSearch).toHaveBeenCalledWith('6034000181142');
+    // Enter (the scanner's) looks the code up exactly, sizes included.
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(onCode).toHaveBeenCalledWith('6034000181142');
+    expect(p.onAdd).not.toHaveBeenCalled();
+  });
+  it('adds the one product a typed name finds on Enter, and never looks names up as barcodes', () => {
+    const p = props(); const onCode = vi.fn();
+    render(<SimplePOS {...p} onCode={onCode} />);
+    const box = screen.getByLabelText('Find a product');
+    fireEvent.change(box, { target: { value: 'water' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(p.onAdd).toHaveBeenCalledWith(products[0]);
+    expect(onCode).not.toHaveBeenCalled();
   });
 });

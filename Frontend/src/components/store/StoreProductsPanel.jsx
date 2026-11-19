@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import ScanSearchButton from '@/components/ScanSearchButton';
 
 /**
  * Manage Online Store listings from Edit store → Products.
@@ -193,12 +194,13 @@ const StoreProductsPanel = ({ homeSections = [] }) => {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={productSearchInputRef}
-            className="h-11 rounded-xl pl-9"
+            className={`h-11 rounded-xl pl-9 ${productSearch ? 'pr-20' : 'pr-11'}`}
             placeholder="Search products by name or SKU..."
             value={productSearch}
             onChange={(event) => setProductSearch(event.target.value)}
             onKeyDown={handleProductPickerKeyDown}
           />
+          <ScanSearchButton onCode={setProductSearch} className={`absolute top-1/2 -translate-y-1/2 ${productSearch ? 'right-10' : 'right-1'}`} />
           {productSearch ? (
             <Button
               type="button"
