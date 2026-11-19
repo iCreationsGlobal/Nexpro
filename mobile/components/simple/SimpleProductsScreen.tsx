@@ -80,7 +80,7 @@ export function SimpleProductsScreen() {
     >
       <SimpleTitle>Products</SimpleTitle>
       <SimpleBigButton label="Add product" icon="plus" onPress={() => { setEditing(null); setFormOpen(true); }} />
-      <SimpleSearch value={search} onChange={setSearch} placeholder="Search products" />
+      <SimpleSearch value={search} onChange={setSearch} placeholder="Search products" scan />
       <View style={styles.sortRow}>
         {PRODUCT_SORTS.map((option) => {
           const selected = sort === option.value;

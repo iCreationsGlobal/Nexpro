@@ -29,14 +29,14 @@ import { CURRENCY, isRentalBusinessType, resolveBusinessType } from '@/constants
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { ScreenShell } from '@/components/ScreenShell';
 import { FormInput, FormLabel } from '@/components/FormField';
-import { BarcodeScanner } from '@/components/BarcodeScanner';
+import { SellScanner } from '@/components/SellScanner';
+import { SearchScanButton } from '@/components/SearchScanButton';
 import { CartQuantitySheet } from '@/components/CartQuantitySheet';
 import { ProductVariantPickerSheet } from '@/components/ProductVariantPickerSheet';
-import { parseProductQRPayload, isProductQRCode } from '@/utils/productQR';
 import { parseApiEntity, parseApiListResponse } from '@/utils/parseApiListResponse';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useScanningEnabled } from '@/hooks/useScanningEnabled';
-import { useScanToSell } from '@/hooks/useScanToSell';
+import { useSellScanSession } from '@/hooks/useSellScanSession';
 import { resolveImageUrl } from '@/utils/fileUtils';
 import { refreshAfterJobChange, QUERY_STALE } from '@/utils/queryInvalidation';
 import {
@@ -54,7 +54,6 @@ import {
   productRequiresVariantSelection,
   type ProductVariantStockInput,
 } from '@/utils/productStock';
-import { findLoadedBarcodeProduct } from '@/utils/posBarcodeLookup';
 import { deriveBarcodeSearchCandidates } from '@/utils/barcodeSearchCandidates';
 import { Image } from 'expo-image';
 
@@ -100,11 +99,9 @@ export default function ScanScreen() {
   const { activeTenant, activeTenantId, hasFeature } = useAuth();
   const { activeShopId, activeStudioLocationId, scopeReady } = useWorkspaceScope();
   const { items: cartItems, getItemCount, getTotal, addItem, updateQuantity } = useCart();
-  const { colors, bg, cardBg, borderColor, textColor, mutedColor, inputBg } = useScreenColors();
+  const { colors, bg, cardBg, borderColor, textColor, mutedColor, inputBg, onTint } = useScreenColors();
   const { scanningEnabled } = useScanningEnabled();
-  const { scanToSell } = useScanToSell();
   const cartItemCount = getItemCount();
-  const pendingScanAddRef = useRef(false);
   const selectedCartItemByProductId = useMemo(() => {
     const map = new Map<string, string>();
     cartItems.forEach((item) => {
@@ -136,8 +133,8 @@ export default function ScanScreen() {
     !!activeTenantId && isStudio && hasFeature('crm') && scopeReady;
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [scannerVisible, setScannerVisible] = useState(false);
-  const [scannedProduct, setScannedProduct] = useState<any>(null);
+  // Opens the keep-scanning camera; set once the scan session exists (below the queries).
+  const openSellScanRef = useRef<() => void>(() => {});
   const [quantityEditItem, setQuantityEditItem] = useState<(typeof cartItems)[number] | null>(null);
   const [variantPickerProduct, setVariantPickerProduct] = useState<ScanProduct | null>(null);
   const [jobForm, setJobForm] = useState({
@@ -164,9 +161,9 @@ export default function ScanScreen() {
       OPEN_SCAN_CAMERA_EVENT,
       (payload?: { force?: boolean }) => {
         // A forced open (double-tap the Sell tab) bypasses the workspace scanning toggle —
-        // it's an explicit manual request to scan, not the auto-add "scan to sell" flow.
+        // it's an explicit manual request to scan.
         if (!isStudio && (scanningEnabled || payload?.force)) {
-          setScannerVisible(true);
+          openSellScanRef.current();
         }
       }
     );
@@ -175,7 +172,7 @@ export default function ScanScreen() {
 
   useEffect(() => {
     if (params.forceCamera !== '1' || isStudio) return;
-    setScannerVisible(true);
+    openSellScanRef.current();
   }, [params.forceCamera, isStudio]);
 
   // Debounce search query for unified search (name or barcode)
@@ -196,7 +193,7 @@ export default function ScanScreen() {
         limit: 1000,
         isActive: true,
       }),
-    enabled: productQueriesEnabled && !debouncedSearch && !scannedProduct,
+    enabled: productQueriesEnabled && !debouncedSearch,
     staleTime: QUERY_STALE.LIST,
     gcTime: 60 * 60 * 1000, // 1 hour
   });
@@ -212,8 +209,7 @@ export default function ScanScreen() {
     enabled:
       productQueriesEnabled &&
       !!debouncedSearch &&
-      debouncedSearch.length >= 2 &&
-      !scannedProduct,
+      debouncedSearch.length >= 2,
     staleTime: QUERY_STALE.LIST,
     gcTime: 60 * 60 * 1000, // 1 hour
   });
@@ -225,7 +221,6 @@ export default function ScanScreen() {
       productQueriesEnabled &&
       !!debouncedSearch &&
       debouncedSearch.length >= 2 &&
-      !scannedProduct &&
       isLikelyBarcode &&
       barcodeSearchCandidates.length > 0,
     staleTime: 0,
@@ -382,13 +377,11 @@ export default function ScanScreen() {
           return;
         }
         setSearchQuery('');
-        setScannedProduct(null);
         return;
       }
 
       if (productRequiresVariantSelection(selectedProduct)) {
         setVariantPickerProduct(selectedProduct);
-        setScannerVisible(false);
         return;
       }
 
@@ -415,60 +408,8 @@ export default function ScanScreen() {
         return;
       }
       setSearchQuery('');
-      setScannedProduct(null);
     },
     [addItem]
-  );
-
-  const handleScan = useCallback(
-    (scannedData: string) => {
-      const candidates = deriveBarcodeSearchCandidates(scannedData);
-      console.info('[Scan] Barcode candidates', { raw: scannedData, candidates });
-
-      if (isProductQRCode(scannedData)) {
-        const result = parseProductQRPayload(scannedData);
-        if (result.success && result.data) {
-          if (scanToSell) {
-            handleProductSelect(result.data as ScanProduct);
-            setScannerVisible(false);
-            return;
-          }
-          setScannedProduct(result.data);
-          setSearchQuery(result.data.barcode || '');
-        } else {
-          setSearchQuery(scannedData);
-          setScannedProduct(null);
-          if (scanToSell) {
-            pendingScanAddRef.current = true;
-          }
-        }
-      } else {
-        const loadedProduct = productQueriesEnabled
-          ? findLoadedBarcodeProduct([
-              ...parseApiListResponse<ScanProduct>(defaultProductsResponse),
-              ...parseApiListResponse<ScanProduct>(productsResponse),
-            ], scannedData)
-          : null;
-        if (loadedProduct) {
-          pendingScanAddRef.current = false;
-          console.info('[Scan] Matched loaded catalog', { productId: loadedProduct.id });
-          if (scanToSell) {
-            handleProductSelect(loadedProduct);
-          } else {
-            setScannedProduct(loadedProduct);
-            setSearchQuery(loadedProduct.barcode || scannedData);
-          }
-          setScannerVisible(false);
-          return;
-        }
-        setSearchQuery(scannedData);
-        setScannedProduct(null);
-        if (scanToSell) {
-          pendingScanAddRef.current = true;
-        }
-      }
-    },
-    [scanToSell, handleProductSelect, productQueriesEnabled, defaultProductsResponse, productsResponse]
   );
 
   const handleSelectVariantForCart = useCallback(
@@ -496,7 +437,6 @@ export default function ScanScreen() {
         return;
       }
       setSearchQuery('');
-      setScannedProduct(null);
     },
     [addItem, variantPickerProduct]
   );
@@ -566,50 +506,19 @@ export default function ScanScreen() {
   const productsToShow = debouncedSearch ? products : defaultProducts;
   const isLoadingProductsList = debouncedSearch ? loadingProducts : loadingDefaultProducts;
 
-  useEffect(() => {
-    if (!scanToSell || !pendingScanAddRef.current) return;
-
-    if (debouncedSearch && !isLikelyBarcode) {
-      pendingScanAddRef.current = false;
-      Alert.alert('Product not found', 'No product matches this barcode.');
-      setScannerVisible(false);
-      return;
-    }
-
-    if (loadingBarcode) return;
-
-    if (foundBarcodeProduct && barcodeProduct) {
-      pendingScanAddRef.current = false;
-      handleProductSelect(barcodeProduct);
-      setScannerVisible(false);
-      return;
-    }
-
-    const barcodeLookupAttempted =
-      productQueriesEnabled &&
-      !!debouncedSearch &&
-      debouncedSearch.length >= 2 &&
-      !scannedProduct &&
-      isLikelyBarcode &&
-      barcodeSearchCandidates.length > 0;
-
-    if (barcodeLookupAttempted && !loadingBarcode && !foundBarcodeProduct) {
-      pendingScanAddRef.current = false;
-      Alert.alert('Product not found', 'No product matches this barcode.');
-      setScannerVisible(false);
-    }
-  }, [
-    scanToSell,
-    loadingBarcode,
-    foundBarcodeProduct,
-    barcodeProduct,
-    debouncedSearch,
-    isLikelyBarcode,
-    barcodeSearchCandidates.length,
-    productQueriesEnabled,
-    scannedProduct,
-    handleProductSelect,
-  ]);
+  // Keep-scanning camera: catalogue already loaded here is matched first, then the server.
+  const loadedScanProducts = useMemo(
+    () =>
+      productQueriesEnabled
+        ? [
+            ...parseApiListResponse<ScanProduct>(defaultProductsResponse),
+            ...parseApiListResponse<ScanProduct>(productsResponse),
+          ]
+        : [],
+    [productQueriesEnabled, defaultProductsResponse, productsResponse]
+  );
+  const sellScan = useSellScanSession({ loadedProducts: loadedScanProducts });
+  openSellScanRef.current = sellScan.open;
 
   if (isRental) {
     if (!hasFeature('rentals')) {
@@ -957,10 +866,7 @@ export default function ScanScreen() {
               placeholder="Search product, barcode or SKU…"
               placeholderTextColor={mutedColor}
               value={searchQuery}
-              onChangeText={(text) => {
-                setSearchQuery(text);
-                setScannedProduct(null);
-              }}
+              onChangeText={setSearchQuery}
               onSubmitEditing={() => {
                 // Search is handled automatically via debounced query
               }}
@@ -968,13 +874,13 @@ export default function ScanScreen() {
               autoCapitalize="none"
               autoCorrect={false}
             />
+            {scanningEnabled && (
+              <SearchScanButton onCode={setSearchQuery} color={mutedColor} size={20} style={styles.searchScanBtn} />
+            )}
             {searchQuery.length > 0 && (
               <IconButton
                 icon="times"
-                onPress={() => {
-                  setSearchQuery('');
-                  setScannedProduct(null);
-                }}
+                onPress={() => setSearchQuery('')}
                 variant="ghost"
                 iconSize={16}
                 color={mutedColor}
@@ -982,19 +888,24 @@ export default function ScanScreen() {
                 accessibilityLabel="Clear search"
               />
             )}
-            {scanningEnabled && (
-              <IconButton
-                icon="camera"
-                onPress={() => setScannerVisible(true)}
-                variant="ghost"
-                color={textColor}
-                iconSize={24}
-                style={styles.scanBtn}
-                accessibilityLabel="Scan barcode"
-              />
-            )}
           </View>
         </View>
+
+        {scanningEnabled && (
+          <Pressable
+            onPress={sellScan.open}
+            style={({ pressed }) => [
+              styles.scanItemsBtn,
+              { backgroundColor: colors.tint },
+              pressed && { opacity: 0.85 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Scan items to sell"
+          >
+            <AppIcon name="scan-barcode" size={24} color={onTint} />
+            <Text style={[styles.scanItemsText, { color: onTint }]}>Scan items</Text>
+          </Pressable>
+        )}
 
         {/* Loading state */}
         {(isLoadingProductsList || loadingBarcode) && (
@@ -1053,7 +964,6 @@ export default function ScanScreen() {
         {/* Product list - default list or search results */}
         {!isLoadingProductsList &&
           !foundBarcodeProduct &&
-          !scannedProduct &&
           productsToShow.length > 0 && (
             <View style={styles.productListContainer}>
               <View style={styles.productSectionHeader}>
@@ -1215,7 +1125,6 @@ export default function ScanScreen() {
           !loadingBarcode &&
           debouncedSearch &&
           productsToShow.length === 0 &&
-          !scannedProduct &&
           !foundBarcodeProduct && (
             <ListEmptyState
               imageKey="SEARCH_NO_RESULTS"
@@ -1232,7 +1141,6 @@ export default function ScanScreen() {
           !loadingBarcode &&
           !debouncedSearch &&
           productsToShow.length === 0 &&
-          !scannedProduct &&
           !foundBarcodeProduct && (
             <ListEmptyState
               imageKey="PRODUCTS"
@@ -1250,54 +1158,9 @@ export default function ScanScreen() {
             </ListEmptyState>
           )}
 
-        {/* Show scanned product from QR code */}
-        {!loadingProducts && !loadingBarcode && scannedProduct && (
-          <View style={styles.productResult}>
-            {scannedProduct.imageUrl && (
-              <Image
-                source={{ uri: resolveImageUrl(scannedProduct.imageUrl) }}
-                style={styles.productResultImage}
-                contentFit="cover"
-                transition={200}
-              />
-            )}
-            <Text style={[styles.productName, { color: textColor }]}>
-              {scannedProduct.name ?? 'Product'}
-            </Text>
-            <Text style={[styles.productPrice, { color: colors.tint }]}>
-              {CURRENCY.SYMBOL}{' '}
-              {Number(scannedProduct.sellingPrice ?? scannedProduct.costPrice ?? 0).toFixed(
-                CURRENCY.DECIMAL_PLACES
-              )}
-            </Text>
-            {scannedProduct.barcode && (
-              <Text style={[styles.productBarcode, { color: mutedColor }]}>
-                Barcode: {scannedProduct.barcode}
-              </Text>
-            )}
-            <Pressable
-              style={[
-                styles.addBtn,
-                {
-                  backgroundColor: isProductOutOfStock(scannedProduct) ? mutedColor : colors.tint,
-                },
-              ]}
-              disabled={isProductOutOfStock(scannedProduct)}
-              onPress={() => handleProductSelect(scannedProduct)}
-            >
-              <Text style={styles.addBtnText}>
-                {isProductOutOfStock(scannedProduct) ? 'Out of stock' : 'Add to cart'}
-              </Text>
-            </Pressable>
-          </View>
-        )}
       </ScreenShell>
 
-      <BarcodeScanner
-        visible={scannerVisible}
-        onClose={() => setScannerVisible(false)}
-        onScan={handleScan}
-      />
+      <SellScanner session={sellScan} onContinue={() => router.push('/(tabs)/cart')} />
 
       <CartQuantitySheet
         visible={!!quantityEditItem}
@@ -1423,7 +1286,18 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, fontSize: 16, paddingVertical: 8 },
   clearBtn: { marginRight: 2 },
-  scanBtn: { marginLeft: 4 },
+  searchScanBtn: { marginLeft: 4 },
+  scanItemsBtn: {
+    marginTop: 12,
+    minHeight: 52,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  scanItemsText: { fontSize: 17, fontWeight: '700' },
   loading: { padding: 24, alignItems: 'center' },
   loadingText: { marginTop: 12, fontSize: 14 },
   productListContainer: { marginTop: 20 },

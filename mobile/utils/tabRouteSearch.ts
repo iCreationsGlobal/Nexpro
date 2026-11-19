@@ -15,7 +15,7 @@ export const HEADER_SEARCH_HIDDEN_ROUTES = new Set([
 /** Default search config per tab route when a screen has not registered yet. */
 export const TAB_ROUTE_SEARCH_DEFAULTS: Record<string, PageSearchConfig> = {
   customers: { scope: 'customers', placeholder: SEARCH_PLACEHOLDERS.CUSTOMERS },
-  products: { scope: 'products', placeholder: SEARCH_PLACEHOLDERS.PRODUCTS },
+  products: { scope: 'products', placeholder: SEARCH_PLACEHOLDERS.PRODUCTS, scan: true },
   sales: { scope: 'sales', placeholder: SEARCH_PLACEHOLDERS.SALES },
   expenses: { scope: 'expenses', placeholder: SEARCH_PLACEHOLDERS.EXPENSES },
   invoices: { scope: 'invoices', placeholder: SEARCH_PLACEHOLDERS.INVOICES },

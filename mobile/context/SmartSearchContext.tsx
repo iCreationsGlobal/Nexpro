@@ -19,6 +19,8 @@ export type PageSearchConfig = {
   title?: string;
   /** Optional subtitle under the page title (e.g. "Not published yet"). */
   subtitle?: string;
+  /** Show a camera icon in the search box that scans one barcode into it (product searches). */
+  scan?: boolean;
 };
 
 type SmartSearchContextValue = {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -95,7 +95,7 @@ export function ProductVariantPickerSheet({
       setVariants(next);
       return next;
     } catch {
-      setError('Could not load variants');
+      setError('Could not load sizes and colours');
       setVariants([]);
       return [];
     } finally {
@@ -118,10 +118,7 @@ export function ProductVariantPickerSheet({
     };
   }, [visible, product?.id, loadVariants]);
 
-  const title = useMemo(
-    () => (product?.name ? `Select variant` : 'Select Variant'),
-    [product?.name]
-  );
+  const title = 'Choose size or colour';
 
   return (
     <FormSheetModal
@@ -134,13 +131,13 @@ export function ProductVariantPickerSheet({
       mutedColor={mutedColor}
     >
       <Text style={[styles.hint, { color: mutedColor }]}>
-        Choose a variant for {product?.name || 'this product'}.
+        Which one of {product?.name || 'this product'}?
       </Text>
 
       {loading ? (
         <View style={styles.loading}>
           <ActivityIndicator color={tintColor} />
-          <Text style={[styles.hint, { color: mutedColor, marginTop: 8 }]}>Loading variants…</Text>
+          <Text style={[styles.hint, { color: mutedColor, marginTop: 8 }]}>Loading sizes and colours…</Text>
         </View>
       ) : null}
 
@@ -148,7 +145,7 @@ export function ProductVariantPickerSheet({
 
       {!loading && variants.length === 0 ? (
         <Text style={[styles.hint, { color: mutedColor }]}>
-          No variants available for this product yet.
+          No sizes or colours for this product yet.
         </Text>
       ) : null}
 
@@ -174,7 +171,7 @@ export function ProductVariantPickerSheet({
                 ]}
                 accessibilityRole="button"
                 accessibilityState={{ disabled: outOfStock }}
-                accessibilityLabel={`Select variant ${getVariantLabel(variant)}`}
+                accessibilityLabel={`Choose ${getVariantLabel(variant)}`}
               >
                 <View style={styles.variantMain}>
                   <Text style={[styles.variantName, { color: textColor }]} numberOfLines={2}>

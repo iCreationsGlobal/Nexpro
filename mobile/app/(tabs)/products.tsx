@@ -100,7 +100,7 @@ function ProductsScreen() {
     !!activeTenantId && isRetailLike && hasFeature('products') && !inStoreSetup && !shopStillLoading;
 
   const { searchValue, setSearchValue } = useSmartSearch();
-  useRegisterPageSearch({ scope: 'products', placeholder: SEARCH_PLACEHOLDERS.PRODUCTS });
+  useRegisterPageSearch({ scope: 'products', placeholder: SEARCH_PLACEHOLDERS.PRODUCTS, scan: true });
   const [addModalVisible, setAddModalVisible] = useState(params.add === '1');
   const [formData, setFormData] = useState({
     name: '',

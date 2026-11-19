@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { AppBrandLogo } from '@/components/AppBrandLogo';
 import { AppIcon } from '@/components/AppIcon';
+import { SearchScanButton } from '@/components/SearchScanButton';
 import { useAuth } from '@/context/AuthContext';
 import { useSmartSearch } from '@/context/SmartSearchContext';
 import { resolveHeaderSearchConfig } from '@/utils/tabRouteSearch';
@@ -154,11 +155,20 @@ export function Header() {
             value={searchValue}
             onChangeText={setSearchValue}
             returnKeyType="search"
-            clearButtonMode="while-editing"
+            // With the camera icon, our own clear button sits after it on both platforms.
+            clearButtonMode={searchConfig.scan ? 'never' : 'while-editing'}
             accessibilityLabel={searchConfig.placeholder}
           />
-          {searchValue.length > 0 && Platform.OS === 'android' ? (
-            <Pressable onPress={handleClearSearch} hitSlop={8} accessibilityLabel="Clear search">
+          {searchConfig.scan ? (
+            <SearchScanButton onCode={setSearchValue} color={mutedColor} size={18} />
+          ) : null}
+          {searchValue.length > 0 && (Platform.OS === 'android' || searchConfig.scan) ? (
+            <Pressable
+              onPress={handleClearSearch}
+              hitSlop={8}
+              style={searchConfig.scan ? styles.clearAfterScan : undefined}
+              accessibilityLabel="Clear search"
+            >
               <AppIcon name="times-circle" size={16} color={mutedColor} />
             </Pressable>
           ) : null}
@@ -210,6 +220,9 @@ const styles = StyleSheet.create({
   },
   searchIcon: {
     marginRight: 8,
+  },
+  clearAfterScan: {
+    marginLeft: 4,
   },
   searchInput: {
     flex: 1,

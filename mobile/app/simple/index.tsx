@@ -13,9 +13,14 @@ import {
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
-import { Boxes, Calculator, ImageOff, Minus, Plus, ShoppingCart } from 'lucide-react-native';
+import { Boxes, Calculator, ImageOff, Minus, Plus, ScanBarcode, ShoppingCart } from 'lucide-react-native';
 import { SimpleHeader } from '@/components/simple/SimpleHeader';
 import { NumberPadModal } from '@/components/simple/NumberPad';
+import { SellScanner } from '@/components/SellScanner';
+import { CartLineDetailSheet } from '@/components/CartLineDetailSheet';
+import { useSellScanSession } from '@/hooks/useSellScanSession';
+import { useScanningEnabled } from '@/hooks/useScanningEnabled';
+import type { SellScanProduct } from '@/utils/sellScan';
 import { useWorkspaceScope } from '@/hooks/useWorkspaceScope';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCart } from '@/context/CartContext';
@@ -48,6 +53,8 @@ export default function SimpleSell() {
   const { items, addItem, addCustomAmountItem, updateQuantity, getTotal } = useCart();
   const [quickSaleVisible, setQuickSaleVisible] = useState(false);
   const [quickSaleBusy, setQuickSaleBusy] = useState(false);
+  const [detailItemId, setDetailItemId] = useState<string | null>(null);
+  const closeDetail = useCallback(() => setDetailItemId(null), []);
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['simple', 'products', activeTenantId, activeShopId, activeStudioLocationId],
@@ -56,10 +63,17 @@ export default function SimpleSell() {
     staleTime: 30_000,
   });
 
-  const products: Product[] = useMemo(() => {
+  // Every loaded product (sizes and colours included) can be matched by a scan.
+  const loadedProducts: SellScanProduct[] = useMemo(() => {
     const list = data?.data ?? data ?? [];
-    return Array.isArray(list) ? list.filter((p: Product) => !p.hasVariants) : [];
+    return Array.isArray(list) ? list : [];
   }, [data]);
+  const products: Product[] = useMemo(
+    () => (loadedProducts as Product[]).filter((p) => !p.hasVariants),
+    [loadedProducts]
+  );
+  const sellScan = useSellScanSession({ loadedProducts });
+  const { scanningEnabled } = useScanningEnabled();
 
   const handleTap = useCallback(
     (product: Product) => {
@@ -154,6 +168,18 @@ export default function SimpleSell() {
         </Pressable>
       </SimpleHeader>
 
+      {scanningEnabled ? (
+        <Pressable
+          onPress={sellScan.open}
+          style={({ pressed }) => [styles.scanBtn, pressed && styles.tilePressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Scan items to sell"
+        >
+          <ScanBarcode size={32} color="#fff" />
+          <Text style={styles.scanLabel}>Scan</Text>
+        </Pressable>
+      ) : null}
+
       <FlatList
         data={products}
         keyExtractor={(item) => item.id}
@@ -185,13 +211,20 @@ export default function SimpleSell() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cartRow}>
             {items.map((item) => (
               <View key={item.id} style={styles.cartItem}>
-                {resolveDisplayImageUrl(item.imageUrl) ? (
-                  <Image source={{ uri: resolveDisplayImageUrl(item.imageUrl)! }} style={styles.cartItemImage} />
-                ) : (
-                  <View style={[styles.cartItemImage, styles.cartItemImagePlaceholder]}>
-                    <ImageOff size={18} color="#9ca3af" />
-                  </View>
-                )}
+                <Pressable
+                  onPress={() => setDetailItemId(item.id)}
+                  style={({ pressed }) => [styles.cartItemTap, pressed && styles.tilePressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show details for ${item.name}`}
+                >
+                  {resolveDisplayImageUrl(item.imageUrl) ? (
+                    <Image source={{ uri: resolveDisplayImageUrl(item.imageUrl)! }} style={styles.cartItemImage} />
+                  ) : (
+                    <View style={[styles.cartItemImage, styles.cartItemImagePlaceholder]}>
+                      <ImageOff size={18} color="#9ca3af" />
+                    </View>
+                  )}
+                </Pressable>
                 <View style={styles.qtyRow}>
                   <Pressable
                     style={({ pressed }) => [styles.qtyBtn, styles.qtyDecrease, pressed && styles.tilePressed]}
@@ -231,6 +264,17 @@ export default function SimpleSell() {
         onConfirm={handleQuickSaleConfirm}
         onCancel={() => setQuickSaleVisible(false)}
       />
+
+      <SellScanner
+        session={sellScan}
+        tintColor="#166534"
+        onTintColor="#fff"
+        onContinue={({ cartHasItems }) => {
+          if (cartHasItems) router.push('/simple/charge');
+        }}
+      />
+
+      <CartLineDetailSheet itemId={detailItemId} onClose={closeDetail} />
     </SafeAreaView>
   );
 }
@@ -273,6 +317,24 @@ const styles = StyleSheet.create({
   },
   cartRow: { paddingHorizontal: 8, paddingTop: 8 },
   cartItem: { alignItems: 'center', marginHorizontal: 8, minWidth: 176 },
+  cartItemTap: { borderRadius: 12, padding: 2 },
+  scanBtn: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 4,
+    minHeight: 64,
+    borderRadius: 20,
+    backgroundColor: '#166534',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  scanLabel: {
+    color: '#fff',
+    fontSize: 24,
+    fontFamily: FontFamily.bold,
+  },
   cartItemImage: { width: 48, height: 48, borderRadius: 10 },
   cartItemImagePlaceholder: {
     backgroundColor: '#f3f4f6',

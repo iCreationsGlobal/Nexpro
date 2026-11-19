@@ -10,6 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
+import { SearchScanButton } from '@/components/SearchScanButton';
 import { useScreenColors } from '@/hooks/useScreenColors';
 import { FontFamily } from '@/constants/typography';
 import type { SimplePeriodKey } from '@/utils/simplePeriods';
@@ -92,8 +93,10 @@ export function SimpleSummary({ caption, value, loading }: { caption: string; va
   );
 }
 
-export function SimpleSearch({ value, onChange, placeholder }: {
+export function SimpleSearch({ value, onChange, placeholder, scan = false }: {
   value: string; onChange: (text: string) => void; placeholder: string;
+  /** Camera icon inside the box: one scan fills the box with the barcode. */
+  scan?: boolean;
 }) {
   const { cardBg, borderColor, textColor, mutedColor } = useScreenColors();
   return (
@@ -109,6 +112,7 @@ export function SimpleSearch({ value, onChange, placeholder }: {
         returnKeyType="search"
         accessibilityLabel={placeholder}
       />
+      {scan ? <SearchScanButton onCode={onChange} color={textColor} size={24} style={styles.searchScan} /> : null}
     </View>
   );
 }
@@ -239,6 +243,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 10,
   },
+  searchScan: { minWidth: 44, minHeight: 44 },
   searchInput: { flex: 1, fontSize: 16, fontFamily: FontFamily.regular, height: '100%' },
   list: { borderWidth: 1, borderRadius: 20, overflow: 'hidden' },
   row: {
