@@ -16,7 +16,7 @@
   "crons": [
     {
       "path": "/api/internal/partner-commissions/reconcile",
-      "schedule": "*/2 * * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }
