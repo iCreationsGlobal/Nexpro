@@ -16,7 +16,7 @@
 # Options:
 #   --local                 Run on this machine (no SSH)
 #   --remote                Force SSH to CONTABO_HOST
-#   --branch=NAME           Git branch to pull (default: main)
+#   --branch=NAME           Git branch to pull (default: abs-v2, ABS's live branch since 2026-11-21)
 #   --skip-migrate          Skip Backend npm install + migrate (and the backup)
 #   --skip-backup           Skip the database backup taken before migrating
 #   --skip-restart          Pull only; do not restart the API
@@ -48,7 +48,7 @@ CONTABO_SSH_OPTS="${CONTABO_SSH_OPTS:-}"
 CONTABO_SSH_PASSWORD="${CONTABO_SSH_PASSWORD:-}"
 REPO_ROOT="${NEXPRO_REPO_ROOT:-}"
 API_URL="${API_URL:-https://api.africanbusinesssuite.com}"
-GIT_BRANCH="main"
+GIT_BRANCH="abs-v2"
 
 FORCE_LOCAL=false
 FORCE_REMOTE=false
