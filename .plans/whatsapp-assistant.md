@@ -2,7 +2,7 @@
 
 # Business owners on WhatsApp: Lynk AI behind ABS's number
 
-**Status:** planned 2026-11-21; step 1 started.
+**Status:** step 1 under way: Lynk's side **LIVE in e75b10a** (2026-11-21); ABS's side on `abs-v2` (ABS's live branch since 2026-11-21), waiting for its Lynk key, settings and deploy.
 
 ## The idea
 
