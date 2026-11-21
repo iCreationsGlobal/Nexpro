@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { authService } from '@/services/auth';
+import { authService, type AppleAuthCredential, type AppleAuthOptions } from '@/services/auth';
 import { setSessionExpiredHandler } from '@/services/api';
 import { logger } from '@/utils/logger';
 import { shouldSuppressAppGuidance } from '@/utils/appGuidanceEligibility';
@@ -118,6 +118,8 @@ type AuthContextType = {
   tenantSignup: (payload: TenantSignupPayload) => Promise<void>;
   refreshAuth: () => Promise<void>;
   googleAuth: (idToken: string, options?: GoogleAuthOptions) => Promise<void>;
+  /** Sign in with Apple; creates the account the first time. */
+  appleAuth: (credential: AppleAuthCredential, options?: AppleAuthOptions) => Promise<{ isNewAccount: boolean }>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -391,30 +393,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [setActiveTenantId, hydrateFeatureFlagsAfterAuth]
   );
 
-  const googleAuth = useCallback(
-    async (idToken: string, options?: GoogleAuthOptions) => {
+  /** Google/Apple: the session is saved by authService; load it into state like a password login. */
+  const applyProviderAuth = useCallback(
+    async (request: () => Promise<any>) => {
       setSessionSyncing(true);
-      const res = await authService.googleAuth(idToken, options ?? {});
-      const data = res?.data ?? res;
-      const u = data?.user ?? null;
-      const m = normalizeMemberships(data?.memberships ?? data?.tenantMemberships ?? []) as Membership[];
-      setUser(sanitizeAuthUserForMobile(u));
-      setMemberships(m);
-      const tid =
-        data?.defaultTenantId ??
-        membershipTenantId(m.find((x) => x.isDefault)) ??
-        membershipTenantId(m[0]) ??
-        null;
-      if (tid) await setActiveTenantId(tid);
-      sessionExpiredHandledRef.current = false;
-      await AsyncStorage.removeItem(AUTH_SESSION_MESSAGE_KEY);
       try {
+        const res = await request();
+        const data = res?.data ?? res;
+        const u = data?.user ?? null;
+        const m = normalizeMemberships(data?.memberships ?? data?.tenantMemberships ?? []) as Membership[];
+        setUser(sanitizeAuthUserForMobile(u));
+        setMemberships(m);
+        const tid =
+          data?.defaultTenantId ??
+          membershipTenantId(m.find((x) => x.isDefault)) ??
+          membershipTenantId(m[0]) ??
+          null;
+        if (tid) await setActiveTenantId(tid);
+        sessionExpiredHandledRef.current = false;
+        await AsyncStorage.removeItem(AUTH_SESSION_MESSAGE_KEY);
         await hydrateFeatureFlagsAfterAuth();
+        return { isNewAccount: data?.isNewAccount === true };
       } finally {
         setSessionSyncing(false);
       }
     },
     [setActiveTenantId, hydrateFeatureFlagsAfterAuth]
+  );
+
+  const googleAuth = useCallback(
+    async (idToken: string, options?: GoogleAuthOptions) => {
+      await applyProviderAuth(() => authService.googleAuth(idToken, options ?? {}));
+    },
+    [applyProviderAuth]
+  );
+
+  const appleAuth = useCallback(
+    (credential: AppleAuthCredential, options?: AppleAuthOptions) =>
+      applyProviderAuth(() => authService.appleAuth(credential, options ?? {})),
+    [applyProviderAuth]
   );
 
   const featureFlagsHydrateForTenantRef = useRef<string | null>(null);
@@ -560,6 +577,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tenantSignup,
     refreshAuth,
     googleAuth,
+    appleAuth,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

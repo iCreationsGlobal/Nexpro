@@ -12,12 +12,16 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppBrandLogo } from '@/components/AppBrandLogo';
 import { router, Link } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
+import { AppleSignInButton, useAppleSignInAvailable } from '@/components/AppleSignInButton';
+import type { AppleAuthCredential } from '@/services/auth';
+import { SIGNUP_MUTATION_KEY } from '@/constants/signupFlow';
+import { TERMS_VERSION } from '@/constants/legal';
 import { getErrorMessage } from '@/utils/errorMessages';
 import { logger } from '@/utils/logger';
 import { resetLocalSessionForOnboardingTest } from '@/utils/devSessionReset';
@@ -58,8 +62,15 @@ export default function LoginScreen() {
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const queryClient = useQueryClient();
-  const { login, googleAuth } = useAuth();
+  const { login, googleAuth, appleAuth } = useAuth();
   const { googleClientId, googleIosClientId, googleAndroidClientId } = usePublicConfig();
+  const appleAvailable = useAppleSignInAvailable();
+  // Same key as Sign Up, so a first-time Apple sign-in can show the welcome screen.
+  const appleMutation = useMutation({
+    mutationKey: SIGNUP_MUTATION_KEY,
+    mutationFn: (credential: AppleAuthCredential) => appleAuth(credential, { termsVersion: TERMS_VERSION }),
+    retry: false,
+  });
 
   logger.info('Login', 'Render', { checkingIntro });
 
@@ -95,6 +106,14 @@ export default function LoginScreen() {
     await googleAuth(idToken, { signUp: false });
     logger.info('Login', 'Google sign-in success, navigating to index');
     router.replace('/');
+  };
+
+  /** The first Apple sign-in creates the account (the Terms show under the button). */
+  const handleAppleSuccess = async (credential: AppleAuthCredential) => {
+    setError('');
+    const { isNewAccount } = await appleMutation.mutateAsync(credential);
+    logger.info('Login', 'Apple sign-in success', { isNewAccount });
+    router.replace(isNewAccount ? '/signup-welcome' : '/');
   };
 
   const handleLogin = async () => {
@@ -262,22 +281,30 @@ export default function LoginScreen() {
           )}
         </Pressable>
 
-        {googleClientId ? (
+        {appleAvailable || googleClientId ? (
           <>
             <View style={styles.orRow}>
               <View style={styles.orLine} />
               <Text style={styles.orText}>or</Text>
               <View style={styles.orLine} />
             </View>
-            <GoogleSignInButton
-              webClientId={googleClientId}
-              iosClientId={googleIosClientId || undefined}
-              androidClientId={googleAndroidClientId || undefined}
+            <AppleSignInButton
               mode="signin"
-              onSuccess={handleGoogleSuccess}
+              onSuccess={handleAppleSuccess}
               onError={setError}
               disabled={loading}
             />
+            {googleClientId ? (
+              <GoogleSignInButton
+                webClientId={googleClientId}
+                iosClientId={googleIosClientId || undefined}
+                androidClientId={googleAndroidClientId || undefined}
+                mode="signin"
+                onSuccess={handleGoogleSuccess}
+                onError={setError}
+                disabled={loading || appleMutation.isPending}
+              />
+            ) : null}
           </>
         ) : null}
 

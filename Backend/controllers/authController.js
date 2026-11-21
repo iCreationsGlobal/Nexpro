@@ -3,6 +3,11 @@ const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const { OAuth2Client } = require('google-auth-library');
 const {
+  AppleTokenError,
+  resolveAppleDisplayName,
+  verifyAppleIdentityToken,
+} = require('../utils/appleIdentityToken');
+const {
   User,
   InviteToken,
   UserTenant,
@@ -48,7 +53,7 @@ const { getUserShopIds } = require('../utils/shopUtils');
 const { getUserStudioLocationIds } = require('../utils/studioLocationUtils');
 const { startHotPathTimer } = require('../utils/performanceLogger');
 
-/** User defaultScope omits emailVerifiedAt/googleId; auth responses need both for verification UI. */
+/** User defaultScope omits emailVerifiedAt/googleId/appleId; auth responses need them for verification UI. */
 const findUserForAuthResponse = (userId, options = {}) =>
   User.unscoped().findByPk(userId, {
     ...options,
@@ -61,13 +66,20 @@ const findUserForAuthResponse = (userId, options = {}) =>
 const { attachSafeProfilePicture } = require('../utils/profilePictureResponse');
 const { isBootstrapPlatformSuperAdminEmail } = require('../utils/platformAdminBootstrap');
 
+/** Google and Apple accounts have a random password, so they confirm payment changes with an email code. */
+const getAuthProvider = (userJson = {}) => {
+  if (userJson.googleId) return 'google';
+  if (userJson.appleId) return 'apple';
+  return 'password';
+};
+
 const withAuthResponseFields = (userJson = {}) => {
-  const isGoogleUser = Boolean(userJson.googleId);
+  const authProvider = getAuthProvider(userJson);
   const safeUser = attachSafeProfilePicture({ ...userJson }) || {};
   return {
     ...safeUser,
-    authProvider: isGoogleUser ? 'google' : 'password',
-    paymentVerificationMethod: isGoogleUser ? 'otp' : 'password',
+    authProvider,
+    paymentVerificationMethod: authProvider === 'password' ? 'password' : 'otp',
   };
 };
 
@@ -770,6 +782,304 @@ exports.login = async (req, res, next) => {
   }
 };
 
+const OAUTH_PROVIDERS = {
+  google: { idField: 'googleId', label: 'Google', source: 'google_oauth', notFoundCode: 'GOOGLE_USER_NOT_FOUND' },
+  apple: { idField: 'appleId', label: 'Apple', source: 'apple_oauth', notFoundCode: 'APPLE_USER_NOT_FOUND' },
+};
+
+/**
+ * Sign in, or create the account with its own business on the trial, for someone Google or Apple
+ * has already verified. Shared by POST /api/auth/google and POST /api/auth/apple so both give a
+ * new business exactly the same setup.
+ *
+ * @param {object} identity
+ * @param {'google'|'apple'} identity.provider
+ * @param {string} identity.providerId - The provider's user ID (`sub`)
+ * @param {string} identity.email - Lowercased; Apple's can be a Hide My Email relay address
+ * @param {boolean} identity.matchByEmail - Link an existing ABS account that has the same email
+ * @param {string} identity.name
+ * @param {string|null} [identity.picture]
+ * @param {object} options - signUp, businessType, companyName, acceptedTerms, termsVersion, requestedAgentCode
+ */
+const completeProviderSignIn = async (req, res, identity, options) => {
+  const provider = OAUTH_PROVIDERS[identity.provider];
+  const { providerId, email, name, picture = null, matchByEmail } = identity;
+  const {
+    signUp = false,
+    businessType = 'shop',
+    companyName,
+    acceptedTerms,
+    termsVersion,
+    requestedAgentCode = null,
+  } = options;
+  const logTag = `[${provider.label} Auth]`;
+
+  const salesAgentService = require('../services/salesAgentService');
+  if (signUp && salesAgentService.normalizeAgentCode(requestedAgentCode)) {
+    const codeCheck = await salesAgentService.validateAgentCode(requestedAgentCode);
+    if (!codeCheck.valid) {
+      return res.status(400).json({
+        success: false,
+        message: codeCheck.error || 'Invalid sales agent code',
+        error: codeCheck.error || 'Invalid sales agent code',
+        errorCode: codeCheck.errorCode || 'AGENT_CODE_NOT_FOUND',
+      });
+    }
+  }
+
+  // Unscoped so the provider ID, profile picture and verification date are the stored values.
+  let user = await User.unscoped().findOne({ where: { [provider.idField]: providerId } });
+  if (!user && matchByEmail && email) {
+    user = await User.unscoped().findOne({ where: { email } });
+  }
+
+  if (user) {
+    if (!user.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: 'Account is inactive',
+      });
+    }
+    const updatePayload = { lastLogin: new Date() };
+    if (!user[provider.idField]) updatePayload[provider.idField] = providerId;
+    if (picture && !user.profilePicture) updatePayload.profilePicture = picture;
+    if (!user.emailVerifiedAt) updatePayload.emailVerifiedAt = new Date();
+    await user.update(updatePayload);
+
+    const token = generateToken(user.id);
+    const memberships = await UserTenant.findAll({
+      where: { userId: user.id, status: 'active' },
+      include: [{ model: Tenant, as: 'tenant' }],
+      order: [
+        ['isDefault', 'DESC'],
+        ['createdAt', 'ASC'],
+      ],
+    });
+
+    const updatedUser = await findUserForAuthResponse(user.id);
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: withAuthResponseFields(updatedUser.toJSON ? updatedUser.toJSON() : updatedUser),
+        token,
+        memberships: normalizeMembershipsForResponse(memberships),
+        defaultTenantId: memberships[0]?.tenantId || null,
+        isNewAccount: false,
+      },
+    });
+  }
+
+  if (!signUp) {
+    return res.status(404).json({
+      success: false,
+      code: provider.notFoundCode,
+      message: `No account found with this ${provider.label} account. Sign up to create one.`,
+      email,
+      name,
+    });
+  }
+
+  if (!isTermsAccepted(acceptedTerms)) {
+    return res.status(400).json({
+      success: false,
+      message: TERMS_ACCEPTANCE_REQUIRED_MESSAGE,
+    });
+  }
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: `${provider.label} did not share an email address, so the account could not be created. Please try again or sign up with your email.`,
+    });
+  }
+
+  const existingByEmail = await User.findOne({ where: { email } });
+  if (existingByEmail) {
+    return res.status(400).json({
+      success: false,
+      message: `An account with this email already exists. Sign in with password or link ${provider.label} in settings.`,
+    });
+  }
+
+  let newUser;
+  let tenant;
+  let finalBusinessType;
+  let metadata = {};
+  const transaction = await sequelize.transaction();
+  try {
+    const trimmedCompanyName = (companyName || 'My Business').trim();
+    const slug = await generateUniqueSlug(trimmedCompanyName, transaction);
+    const planAssignment = await resolveSignupPlanAssignment({ req });
+    const trialEndDate = new Date(planAssignment.trialEndsAt);
+    finalBusinessType = resolveBusinessType(businessType);
+    metadata = {
+      signupSource: provider.source,
+      termsAcceptance: buildTermsAcceptanceMetadata(req, {
+        source: `${provider.source}_signup`,
+        termsVersion,
+      }),
+      ...planAssignment.metadataExtras,
+    };
+    if (['printing_press', 'mechanic', 'barber', 'salon'].includes(businessType)) {
+      metadata.studioType = businessType;
+    }
+    if (finalBusinessType === 'shop' && !metadata.shopType) {
+      metadata.shopType = DEFAULT_SHOP_TYPE;
+    }
+
+    tenant = await Tenant.create(
+      {
+        name: trimmedCompanyName,
+        slug,
+        plan: planAssignment.planId,
+        businessType: finalBusinessType,
+        status: 'active',
+        metadata,
+        trialEndsAt: trialEndDate,
+      },
+      { transaction }
+    );
+
+    if (salesAgentService.normalizeAgentCode(requestedAgentCode)) {
+      const attribution = await salesAgentService.applyAgentCodeToTenant({
+        tenant,
+        rawCode: requestedAgentCode,
+        transaction,
+        requireCode: true,
+      });
+      if (attribution.trialEndsAt) {
+        trialEndDate.setTime(attribution.trialEndsAt.getTime());
+      }
+    }
+
+    const randomPassword = crypto.randomBytes(32).toString('hex');
+    newUser = await User.create(
+      {
+        name,
+        email,
+        password: randomPassword,
+        role: 'admin',
+        [provider.idField]: providerId,
+        profilePicture: picture,
+        emailVerifiedAt: new Date(),
+      },
+      { transaction }
+    );
+
+    await UserTenant.create(
+      {
+        tenantId: tenant.id,
+        userId: newUser.id,
+        role: 'owner',
+        status: 'active',
+        isDefault: true,
+        invitedBy: null,
+        invitedAt: new Date(),
+        joinedAt: new Date(),
+        metadata: {
+          termsAcceptance: metadata.termsAcceptance,
+        },
+      },
+      { transaction }
+    );
+
+    await Setting.bulkCreate(
+      [
+        {
+          tenantId: tenant.id,
+          key: 'organization',
+          value: {
+            name: trimmedCompanyName,
+            legalName: trimmedCompanyName,
+            email,
+            phone: '',
+            website: '',
+            logoUrl: '',
+            address: { line1: '', city: '', state: '', country: '', postalCode: '' },
+            tax: { vatNumber: '', tin: '' },
+            invoiceFooter: 'Thank you for doing business with us.',
+          },
+          description: 'Organization profile',
+        },
+        {
+          tenantId: tenant.id,
+          key: 'subscription',
+          value: buildSignupSubscriptionSettingValue(planAssignment, {
+            trialEndsAt: trialEndDate,
+            ...(tenant.referredByAgentId
+              ? { salesAgentFreeMonths: salesAgentService.AGENT_FREE_MONTHS }
+              : {}),
+          }),
+          description: 'Subscription and billing information',
+        },
+        {
+          tenantId: tenant.id,
+          key: 'payroll',
+          value: {
+            payeRate: 0.1,
+            ssnitRate: 0.135,
+            currency: 'GHS',
+            payCycle: 'monthly',
+          },
+          description: 'Default payroll configuration',
+        },
+      ],
+      { transaction }
+    );
+
+    await transaction.commit();
+  } catch (txErr) {
+    await transaction.rollback();
+    throw txErr;
+  }
+
+  user = await findUserForAuthResponse(newUser.id);
+  const shopType = metadata?.shopType || null;
+  const studioType = metadata?.studioType || null;
+  seedDefaultCategories(tenant.id, finalBusinessType, shopType, studioType, null, true)
+    .then(() => console.log(`${logTag} Seeded default categories for tenant ${tenant.id}`))
+    .catch((err) => console.error(`${logTag} seedDefaultCategories error:`, err.message));
+  seedDefaultChartOfAccounts(tenant.id, true)
+    .then(({ created }) => { if (created) console.log(`${logTag} Seeded accounting accounts for tenant ${tenant.id}`); })
+    .catch((err) => console.error(`${logTag} seedDefaultChartOfAccounts error:`, err.message));
+  seedDefaultEquipmentCategories(tenant.id, true)
+    .then((created) => { if (created) console.log(`${logTag} Seeded equipment categories for tenant ${tenant.id}`); })
+    .catch((err) => console.error(`${logTag} seedDefaultEquipmentCategories error:`, err.message));
+
+  const token = generateToken(user.id);
+  const memberships = await UserTenant.findAll({
+    where: { userId: user.id, status: 'active' },
+    include: [{ model: Tenant, as: 'tenant' }],
+    order: [
+      ['isDefault', 'DESC'],
+      ['createdAt', 'ASC'],
+    ],
+  });
+
+  setImmediate(() => {
+    notifyAccountCreated({
+      userName: user?.name,
+      userEmail: user?.email,
+      source: `${provider.source}_signup`,
+      tenantName: tenant?.name,
+      tenantId: tenant?.id,
+    }).catch((err) => {
+      console.error(`[Auth] Platform admin notify failed (${identity.provider} signup):`, err?.message);
+    });
+  });
+
+  return res.status(201).json({
+    success: true,
+    data: {
+      user: withAuthResponseFields(user.toJSON ? user.toJSON() : user),
+      token,
+      memberships: normalizeMembershipsForResponse(memberships),
+      defaultTenantId: memberships[0]?.tenantId || null,
+      isNewAccount: true,
+    },
+  });
+};
+
 /**
  * Verify Google ID token and either log in existing user or create account (sign-up).
  * @route   POST /api/auth/google
@@ -813,20 +1123,6 @@ exports.googleAuth = async (req, res, next) => {
       });
     }
 
-    const salesAgentService = require('../services/salesAgentService');
-    const requestedAgentCode = agentCode || referralCode || null;
-    if (signUp && salesAgentService.normalizeAgentCode(requestedAgentCode)) {
-      const codeCheck = await salesAgentService.validateAgentCode(requestedAgentCode);
-      if (!codeCheck.valid) {
-        return res.status(400).json({
-          success: false,
-          message: codeCheck.error || 'Invalid sales agent code',
-          error: codeCheck.error || 'Invalid sales agent code',
-          errorCode: codeCheck.errorCode || 'AGENT_CODE_NOT_FOUND',
-        });
-      }
-    }
-
     const client = new OAuth2Client(googleAudiences[0]);
     let payload;
     try {
@@ -839,11 +1135,7 @@ exports.googleAuth = async (req, res, next) => {
       });
     }
 
-    const googleId = payload.sub;
     const email = (payload.email || '').trim().toLowerCase();
-    const name = (payload.name || payload.email || 'User').trim();
-    const picture = payload.picture || null;
-
     if (!email) {
       return res.status(400).json({
         success: false,
@@ -851,251 +1143,97 @@ exports.googleAuth = async (req, res, next) => {
       });
     }
 
-    let user = await User.findOne({
-      where: {
-        [Op.or]: [
-          { googleId },
-          { email },
-        ],
-      },
-    });
-
-    if (user) {
-      if (!user.isActive) {
-        return res.status(401).json({
-          success: false,
-          message: 'Account is inactive',
-        });
-      }
-      const updatePayload = { lastLogin: new Date() };
-      if (!user.googleId) updatePayload.googleId = googleId;
-      if (picture && !user.profilePicture) updatePayload.profilePicture = picture;
-      if (!user.emailVerifiedAt) updatePayload.emailVerifiedAt = new Date();
-      await user.update(updatePayload);
-
-      const token = generateToken(user.id);
-      const memberships = await UserTenant.findAll({
-        where: { userId: user.id, status: 'active' },
-        include: [{ model: Tenant, as: 'tenant' }],
-        order: [
-          ['isDefault', 'DESC'],
-          ['createdAt', 'ASC'],
-        ],
-      });
-
-      const updatedUser = await findUserForAuthResponse(user.id);
-      return res.status(200).json({
-        success: true,
-        data: {
-          user: withAuthResponseFields(updatedUser.toJSON ? updatedUser.toJSON() : updatedUser),
-          token,
-          memberships: normalizeMembershipsForResponse(memberships),
-          defaultTenantId: memberships[0]?.tenantId || null,
-        },
-      });
-    }
-
-    if (!signUp) {
-      return res.status(404).json({
-        success: false,
-        code: 'GOOGLE_USER_NOT_FOUND',
-        message: 'No account found with this Google account. Sign up to create one.',
+    return await completeProviderSignIn(
+      req,
+      res,
+      {
+        provider: 'google',
+        providerId: payload.sub,
         email,
-        name,
-      });
-    }
-
-    if (!isTermsAccepted(acceptedTerms)) {
-      return res.status(400).json({
-        success: false,
-        message: TERMS_ACCEPTANCE_REQUIRED_MESSAGE,
-      });
-    }
-
-    const existingByEmail = await User.findOne({ where: { email } });
-    if (existingByEmail) {
-      return res.status(400).json({
-        success: false,
-        message: 'An account with this email already exists. Sign in with password or link Google in settings.',
-      });
-    }
-
-    let newUser;
-    let tenant;
-    let finalBusinessType;
-    let metadata = {};
-    const transaction = await sequelize.transaction();
-    try {
-      const trimmedCompanyName = (companyName || 'My Business').trim();
-      const slug = await generateUniqueSlug(trimmedCompanyName, transaction);
-      const planAssignment = await resolveSignupPlanAssignment({ req });
-      const trialEndDate = new Date(planAssignment.trialEndsAt);
-      finalBusinessType = resolveBusinessType(businessType);
-      metadata = {
-        signupSource: 'google_oauth',
-        termsAcceptance: buildTermsAcceptanceMetadata(req, {
-          source: 'google_oauth_signup',
-          termsVersion,
-        }),
-        ...planAssignment.metadataExtras,
-      };
-      if (['printing_press', 'mechanic', 'barber', 'salon'].includes(businessType)) {
-        metadata.studioType = businessType;
-      }
-      if (finalBusinessType === 'shop' && !metadata.shopType) {
-        metadata.shopType = DEFAULT_SHOP_TYPE;
-      }
-
-      tenant = await Tenant.create(
-        {
-          name: trimmedCompanyName,
-          slug,
-          plan: planAssignment.planId,
-          businessType: finalBusinessType,
-          status: 'active',
-          metadata,
-          trialEndsAt: trialEndDate,
-        },
-        { transaction }
-      );
-
-      if (salesAgentService.normalizeAgentCode(requestedAgentCode)) {
-        const attribution = await salesAgentService.applyAgentCodeToTenant({
-          tenant,
-          rawCode: requestedAgentCode,
-          transaction,
-          requireCode: true,
-        });
-        if (attribution.trialEndsAt) {
-          trialEndDate.setTime(attribution.trialEndsAt.getTime());
-        }
-      }
-
-      const randomPassword = crypto.randomBytes(32).toString('hex');
-      newUser = await User.create(
-        {
-          name,
-          email,
-          password: randomPassword,
-          role: 'admin',
-          googleId,
-          profilePicture: picture,
-          emailVerifiedAt: new Date(),
-        },
-        { transaction }
-      );
-
-      await UserTenant.create(
-        {
-          tenantId: tenant.id,
-          userId: newUser.id,
-          role: 'owner',
-          status: 'active',
-          isDefault: true,
-          invitedBy: null,
-          invitedAt: new Date(),
-          joinedAt: new Date(),
-          metadata: {
-            termsAcceptance: metadata.termsAcceptance,
-          },
-        },
-        { transaction }
-      );
-
-      await Setting.bulkCreate(
-        [
-          {
-            tenantId: tenant.id,
-            key: 'organization',
-            value: {
-              name: trimmedCompanyName,
-              legalName: trimmedCompanyName,
-              email,
-              phone: '',
-              website: '',
-              logoUrl: '',
-              address: { line1: '', city: '', state: '', country: '', postalCode: '' },
-              tax: { vatNumber: '', tin: '' },
-              invoiceFooter: 'Thank you for doing business with us.',
-            },
-            description: 'Organization profile',
-          },
-          {
-            tenantId: tenant.id,
-            key: 'subscription',
-            value: buildSignupSubscriptionSettingValue(planAssignment, {
-              trialEndsAt: trialEndDate,
-              ...(tenant.referredByAgentId
-                ? { salesAgentFreeMonths: salesAgentService.AGENT_FREE_MONTHS }
-                : {}),
-            }),
-            description: 'Subscription and billing information',
-          },
-          {
-            tenantId: tenant.id,
-            key: 'payroll',
-            value: {
-              payeRate: 0.1,
-              ssnitRate: 0.135,
-              currency: 'GHS',
-              payCycle: 'monthly',
-            },
-            description: 'Default payroll configuration',
-          },
-        ],
-        { transaction }
-      );
-
-      await transaction.commit();
-    } catch (txErr) {
-      await transaction.rollback();
-      throw txErr;
-    }
-
-    user = await findUserForAuthResponse(newUser.id);
-    const shopType = metadata?.shopType || null;
-    const studioType = metadata?.studioType || null;
-    seedDefaultCategories(tenant.id, finalBusinessType, shopType, studioType, null, true)
-      .then(() => console.log(`[Google Auth] Seeded default categories for tenant ${tenant.id}`))
-      .catch((err) => console.error('[Google Auth] seedDefaultCategories error:', err.message));
-    seedDefaultChartOfAccounts(tenant.id, true)
-      .then(({ created }) => { if (created) console.log(`[Google Auth] Seeded accounting accounts for tenant ${tenant.id}`); })
-      .catch((err) => console.error('[Google Auth] seedDefaultChartOfAccounts error:', err.message));
-    seedDefaultEquipmentCategories(tenant.id, true)
-      .then((created) => { if (created) console.log(`[Google Auth] Seeded equipment categories for tenant ${tenant.id}`); })
-      .catch((err) => console.error('[Google Auth] seedDefaultEquipmentCategories error:', err.message));
-
-    const token = generateToken(user.id);
-    const memberships = await UserTenant.findAll({
-      where: { userId: user.id, status: 'active' },
-      include: [{ model: Tenant, as: 'tenant' }],
-      order: [
-        ['isDefault', 'DESC'],
-        ['createdAt', 'ASC'],
-      ],
-    });
-
-    setImmediate(() => {
-      notifyAccountCreated({
-        userName: user?.name,
-        userEmail: user?.email,
-        source: 'google_oauth_signup',
-        tenantName: tenant?.name,
-        tenantId: tenant?.id,
-      }).catch((err) => {
-        console.error('[Auth] Platform admin notify failed (google signup):', err?.message);
-      });
-    });
-
-    res.status(201).json({
-      success: true,
-      data: {
-        user: withAuthResponseFields(user.toJSON ? user.toJSON() : user),
-        token,
-        memberships: normalizeMembershipsForResponse(memberships),
-        defaultTenantId: memberships[0]?.tenantId || null,
+        matchByEmail: true,
+        name: (payload.name || payload.email || 'User').trim(),
+        picture: payload.picture || null,
       },
-    });
+      {
+        signUp,
+        businessType,
+        companyName,
+        acceptedTerms,
+        termsVersion,
+        requestedAgentCode: agentCode || referralCode || null,
+      }
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Sign in with Apple (iOS app): check Apple's identity token, then sign in or create the account
+ * the same way as Google. Hide My Email works: the relay address becomes the account email.
+ * @route   POST /api/auth/apple
+ * @access  Public
+ * @body    { string } identityToken - From Apple on the device
+ * @body    { string } nonce - The raw nonce; Apple's token carries its SHA-256
+ * @body    { object } [fullName] - { givenName, familyName }; Apple only shares it on the first sign-in
+ * @body    { boolean } [signUp] - If true and no account exists, create one (the app sends true from
+ *                                 both Login and Sign Up, where the Terms show under the button)
+ */
+exports.appleAuth = async (req, res, next) => {
+  try {
+    const {
+      identityToken,
+      nonce,
+      fullName,
+      signUp = false,
+      businessType = 'shop',
+      companyName,
+      acceptedTerms,
+      termsVersion,
+      agentCode,
+      code: referralCode,
+    } = req.body || {};
+    if (!identityToken || typeof identityToken !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Apple identity token is required',
+      });
+    }
+
+    let apple;
+    try {
+      apple = await verifyAppleIdentityToken(identityToken, { rawNonce: nonce });
+    } catch (verifyErr) {
+      if (verifyErr instanceof AppleTokenError) {
+        return res.status(401).json({ success: false, message: verifyErr.message });
+      }
+      console.error('[Apple Auth] Could not check the Apple token:', verifyErr?.message);
+      return res.status(503).json({
+        success: false,
+        message: 'Apple sign-in is unavailable right now. Please try again.',
+      });
+    }
+
+    return await completeProviderSignIn(
+      req,
+      res,
+      {
+        provider: 'apple',
+        providerId: apple.sub,
+        email: apple.email,
+        matchByEmail: Boolean(apple.email && apple.emailVerified),
+        name: resolveAppleDisplayName(fullName, apple.email),
+        picture: null,
+      },
+      {
+        signUp: signUp === true || signUp === 'true',
+        businessType,
+        companyName,
+        acceptedTerms,
+        termsVersion,
+        requestedAgentCode: agentCode || referralCode || null,
+      }
+    );
   } catch (error) {
     next(error);
   }

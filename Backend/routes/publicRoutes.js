@@ -334,5 +334,21 @@ router.get('/sabito-marketer/cashouts/:id', requireMarketer, getMyCashout);
 // or the shared marketplace domain.
 router.get('/storefront/resolve-domain', resolveStoreByDomain);
 
+// Where Paystack sends the phone's browser after a card sale taken in the ABS app. A plain page,
+// so the in-app browser never lands on a web page with ABS plans or checkout (App Store 3.1.1).
+router.get('/payment-complete', (req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  res
+    .type('html')
+    .send(
+      '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+        '<title>Payment finished</title>' +
+        '<body style="font-family:-apple-system,system-ui,sans-serif;margin:0;padding:48px 24px;text-align:center;color:#111827">' +
+        '<h1 style="font-size:22px">Payment finished</h1>' +
+        '<p style="font-size:16px;line-height:1.5">Tap Done to go back to ABS. The sale shows when the payment is confirmed.</p>' +
+        '</body>'
+    );
+});
+
 module.exports = router;
 

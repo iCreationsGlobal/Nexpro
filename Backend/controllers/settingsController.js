@@ -52,6 +52,9 @@ const PAYMENT_OTP_TTL_MS = 10 * 60 * 1000;
 const PAYMENT_OTP_VERIFIED_TTL_MS = 15 * 60 * 1000;
 const findPaymentVerificationUser = (userId) => User.unscoped().findByPk(userId);
 
+/** Google and Apple accounts were given a random password, so they confirm with an email code instead. */
+const usesProviderSignIn = (user) => Boolean(user?.googleId || user?.appleId);
+
 const setStoredPaymentOtp = async ({ tenantId, userId, otp, expiresAt }) => {
   const payload = {
     otp: String(otp || ''),
@@ -123,8 +126,8 @@ async function verifyStoredPaymentOtp(req) {
   if (!user) {
     return { ok: false, status: 404, message: 'User not found' };
   }
-  const isGoogleUser = Boolean(user.googleId);
-  if (!isGoogleUser) {
+  const isProviderUser = usesProviderSignIn(user);
+  if (!isProviderUser) {
     if (!password || typeof password !== 'string') {
       return { ok: false, status: 400, message: 'Password is required to update payment settings' };
     }
@@ -138,8 +141,8 @@ async function verifyStoredPaymentOtp(req) {
   const receivedOtp =
     otp && typeof otp === 'string' ? String(otp).replace(/\D/g, '').slice(0, 6) : '';
 
-  // Google users: verify-otp already confirmed identity; save may omit OTP within verified TTL.
-  if (isGoogleUser && receivedOtp.length !== 6 && isPaymentOtpRecentlyVerified(stored)) {
+  // Google/Apple users: verify-otp already confirmed identity; save may omit OTP within verified TTL.
+  if (isProviderUser && receivedOtp.length !== 6 && isPaymentOtpRecentlyVerified(stored)) {
     return { ok: true, user };
   }
 
@@ -2764,7 +2767,7 @@ exports.getPaymentCollectionSettings = async (req, res, next) => {
   }
 };
 
-// @desc    Verify account password only. Google accounts must use email OTP instead.
+// @desc    Verify account password only. Google and Apple accounts must use email OTP instead.
 // @route   POST /api/settings/payment-collection/verify-password
 // @access  Private (admin, manager)
 exports.verifyPaymentCollectionPassword = async (req, res, next) => {
@@ -2774,12 +2777,12 @@ exports.verifyPaymentCollectionPassword = async (req, res, next) => {
       console.log('[Payment OTP] verify-password: rejected (user not found)', req.user?.id);
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    const isGoogleUser = Boolean(user.googleId);
-    if (isGoogleUser) {
-      console.log('[Payment OTP] verify-password: rejected for Google user userId=', req.user?.id);
+    const isProviderUser = usesProviderSignIn(user);
+    if (isProviderUser) {
+      console.log('[Payment OTP] verify-password: rejected for Google/Apple user userId=', req.user?.id);
       return res.status(400).json({
         success: false,
-        message: 'Use the email verification code for your Google account',
+        message: `Use the email verification code for your ${user.appleId && !user.googleId ? 'Apple' : 'Google'} account`,
         data: { passwordRequired: false, otpRequired: true, authMethod: 'otp' },
       });
     }
@@ -2819,8 +2822,8 @@ exports.sendPaymentCollectionOtp = async (req, res, next) => {
       console.log('[Payment OTP] send-otp: rejected (missing account email) userId=', req.user?.id);
       return res.status(400).json({ success: false, message: 'Your account email is required to send a verification code' });
     }
-    const isGoogleUser = Boolean(user.googleId);
-    if (!isGoogleUser) {
+    const isProviderUser = usesProviderSignIn(user);
+    if (!isProviderUser) {
       const { password } = sanitizePayload(req.body);
       if (!password || typeof password !== 'string') {
         console.log('[Payment OTP] send-otp: rejected (missing password)');
@@ -2832,7 +2835,7 @@ exports.sendPaymentCollectionOtp = async (req, res, next) => {
         return res.status(401).json({ success: false, message: 'Invalid password' });
       }
     } else {
-      console.log('[Payment OTP] send-otp: password skipped for Google user userId=', req.user?.id);
+      console.log('[Payment OTP] send-otp: password skipped for Google/Apple user userId=', req.user?.id);
     }
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     const expiresAt = Date.now() + PAYMENT_OTP_TTL_MS;
@@ -2888,8 +2891,8 @@ exports.verifyPaymentCollectionOtp = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    const isGoogleUser = Boolean(user.googleId);
-    if (!isGoogleUser) {
+    const isProviderUser = usesProviderSignIn(user);
+    if (!isProviderUser) {
       if (!password || typeof password !== 'string') {
         console.log('[Payment OTP] verify-otp: rejected (missing password)');
         return res.status(400).json({ success: false, message: 'Password is required' });
@@ -2900,7 +2903,7 @@ exports.verifyPaymentCollectionOtp = async (req, res, next) => {
         return res.status(401).json({ success: false, message: 'Invalid password' });
       }
     } else {
-      console.log('[Payment OTP] verify-otp: password skipped for Google user userId=', req.user?.id);
+      console.log('[Payment OTP] verify-otp: password skipped for Google/Apple user userId=', req.user?.id);
     }
     const stored = await getStoredPaymentOtp({ tenantId: req.tenantId, userId: req.user.id });
     if (!stored || typeof stored.otp !== 'string') {
@@ -2937,8 +2940,8 @@ exports.updatePaymentCollectionSettings = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    const isGoogleUser = Boolean(user.googleId);
-    if (!isGoogleUser) {
+    const isProviderUser = usesProviderSignIn(user);
+    if (!isProviderUser) {
       if (!password || typeof password !== 'string') {
         console.log('[Payment Collection] PUT: rejected (missing password)');
         return res.status(400).json({ success: false, message: 'Password is required to update payment settings' });
@@ -2954,7 +2957,7 @@ exports.updatePaymentCollectionSettings = async (req, res, next) => {
         console.log('[Payment Collection] PUT: rejected (Google OTP gate)', gate.message);
         return res.status(gate.status).json({ success: false, message: gate.message });
       }
-      console.log('[Payment Collection] PUT: OTP verified for Google user userId=', req.user?.id);
+      console.log('[Payment Collection] PUT: OTP verified for Google/Apple user userId=', req.user?.id);
     }
 
     const { findTenantWithOptionalColumns } = require('../utils/tenantUtils');

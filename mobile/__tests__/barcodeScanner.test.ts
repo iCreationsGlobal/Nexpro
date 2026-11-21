@@ -8,11 +8,22 @@ jest.mock('react-native', () => ({
   Modal: 'Modal',
   ActivityIndicator: 'ActivityIndicator',
   StyleSheet: { create: (styles: unknown) => styles },
+  AppState: { addEventListener: () => ({ remove: () => {} }) },
   useColorScheme: () => 'light',
 }));
+// Stable functions, as expo-camera's own hook returns.
+const mockCameraPermission = { granted: true };
+const mockRequestPermission = jest.fn(() => Promise.resolve({ granted: true }));
+const mockGetPermission = jest.fn(() => Promise.resolve({ granted: true }));
 jest.mock('expo-camera', () => ({
   CameraView: 'CameraView',
-  useCameraPermissions: () => [{ granted: true }, jest.fn()],
+  useCameraPermissions: () => [mockCameraPermission, mockRequestPermission, mockGetPermission],
+}));
+// App Review's permission screens (covered by their own tests); camera access is granted here.
+jest.mock('@/utils/cameraPermission', () => ({
+  getCameraAccess: (permission: { granted?: boolean } | null) => (permission?.granted ? 'granted' : 'ask'),
+  cameraBlockedMessage: () => '',
+  openAppSettings: jest.fn(),
 }));
 jest.mock('expo-haptics', () => ({
   notificationAsync: jest.fn(() => Promise.resolve()),

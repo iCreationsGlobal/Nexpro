@@ -17,6 +17,34 @@ const AUTH_STORAGE_KEYS = {
   activeTenant: STORAGE_KEYS.ACTIVE_TENANT_ID,
 };
 
+export type AppleAuthCredential = {
+  identityToken: string;
+  /** Raw nonce; the request to Apple used its SHA-256. */
+  nonce: string;
+  /** Apple only shares the name on the first sign-in. */
+  fullName?: { givenName?: string | null; familyName?: string | null } | null;
+};
+
+export type AppleAuthOptions = { companyName?: string; termsVersion?: string };
+
+/** Google/Apple sign-in responses: save the session and say whether the account was just created. */
+async function persistProviderAuthResponse(response: any) {
+  const data = response?.data?.data ?? response?.data ?? response ?? {};
+  const memberships = data.memberships ?? data.tenantMemberships ?? [];
+  const defaultTenantId =
+    data.defaultTenantId ??
+    memberships.find((m: { isDefault?: boolean }) => m.isDefault)?.tenantId ??
+    memberships[0]?.tenantId ??
+    null;
+  await persistAuthPayload({
+    user: data.user,
+    token: data.token,
+    memberships,
+    defaultTenantId,
+  });
+  return { ...response, data: { ...data, memberships, defaultTenantId, isNewAccount: data.isNewAccount === true } };
+}
+
 async function persistAuthPayload(payload: {
   user?: object;
   token?: string;
@@ -235,20 +263,28 @@ export const authService = {
       ...(acceptedTerms !== undefined && { acceptedTerms }),
       ...(termsVersion && { termsVersion }),
     });
-    const data = response?.data?.data ?? response?.data ?? response ?? {};
-    const memberships = data.memberships ?? data.tenantMemberships ?? [];
-    const defaultTenantId =
-      data.defaultTenantId ??
-      memberships.find((m: { isDefault?: boolean }) => m.isDefault)?.tenantId ??
-      memberships[0]?.tenantId ??
-      null;
-    await persistAuthPayload({
-      user: data.user,
-      token: data.token,
-      memberships,
-      defaultTenantId,
+    return persistProviderAuthResponse(response);
+  },
+
+  /**
+   * Sign in with Apple. Creates the ABS account the first time (the Terms show under the
+   * button), so `signUp` and `acceptedTerms` are always sent. `nonce` is the raw value; Apple's
+   * token carries its SHA-256.
+   */
+  appleAuth: async (credential: AppleAuthCredential, options: AppleAuthOptions = {}) => {
+    const { companyName = 'My Business', termsVersion } = options;
+    logger.info('Auth', 'Apple auth');
+    const response = await api.post('/auth/apple', {
+      identityToken: credential.identityToken,
+      nonce: credential.nonce,
+      ...(credential.fullName && { fullName: credential.fullName }),
+      signUp: true,
+      acceptedTerms: true,
+      client: 'mobile',
+      companyName,
+      ...(termsVersion && { termsVersion }),
     });
-    return { ...response, data: { ...data, memberships, defaultTenantId } };
+    return persistProviderAuthResponse(response);
   },
 
   persistAuthPayload,

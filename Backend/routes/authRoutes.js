@@ -5,6 +5,7 @@ const {
   getMe,
   getPublicConfig,
   googleAuth,
+  appleAuth,
   updateDetails,
   updatePassword,
   setInitialPassword,
@@ -28,6 +29,7 @@ router.post('/register', registrationLimiter, register);
 router.post('/check-email', registrationLimiter, checkEmailAvailability);
 router.post('/login', authLimiter, login);
 router.post('/google', authLimiter, googleAuth);
+router.post('/apple', authLimiter, appleAuth);
 router.post('/sso/sabito', authLimiter, sabitoSSO);
 console.log('[AUTH ROUTES] ✅ POST /api/auth/sso/sabito route registered');
 // Endpoint for Sabito to verify ABS tokens (for reverse SSO)

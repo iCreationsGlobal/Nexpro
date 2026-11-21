@@ -12,6 +12,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
+import { ensureCameraPermission } from '@/utils/cameraPermission';
 
 import { AppIcon } from '@/components/AppIcon';
 import {
@@ -276,13 +277,14 @@ export default function RentalDetailScreen() {
 
   const pickDamagePhoto = useCallback(async (source: 'camera' | 'library') => {
     try {
-      const permission =
-        source === 'camera'
-          ? await ImagePicker.requestCameraPermissionsAsync()
-          : await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (permission.status !== 'granted') {
-        Alert.alert('Permission needed', 'Allow camera or photo access to attach damage photos.');
-        return;
+      if (source === 'camera') {
+        if (!(await ensureCameraPermission('attach damage photos'))) return;
+      } else {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (permission.status !== 'granted') {
+          Alert.alert('Permission needed', 'Allow photo access to attach damage photos.');
+          return;
+        }
       }
       const result =
         source === 'camera'

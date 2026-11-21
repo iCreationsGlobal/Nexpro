@@ -1,3 +1,9 @@
+// The one camera explanation iOS shows. expo-camera and expo-image-picker each write
+// NSCameraUsageDescription, so all three places use this text (build 22 shipped the image-picker
+// one, which never mentioned barcode scanning).
+const CAMERA_PURPOSE =
+  'ABS uses your camera to scan product barcodes and to take photos of products, your business logo, your profile picture and rental damage.';
+
 export default {
   expo: {
     name: 'ABS',
@@ -17,8 +23,10 @@ export default {
       bundleIdentifier: 'com.absghana.app',
       buildNumber: '1',
       supportsTablet: true,
+      // Sign in with Apple capability (App Store 4.8: an equivalent to Google sign-in)
+      usesAppleSignIn: true,
       infoPlist: {
-        NSCameraUsageDescription: 'ABS (African Business Suite) uses the camera to scan products and attach business images when you choose to use those features.',
+        NSCameraUsageDescription: CAMERA_PURPOSE,
         NSPhotoLibraryUsageDescription: 'ABS (African Business Suite) uses your photo library to upload logos, profile photos, receipts, and other business images you choose.',
         NSContactsUsageDescription: 'ABS uses your contacts so you can import customers or leads into your business.',
         NSMicrophoneUsageDescription: 'ABS uses the microphone when you talk to Lynk AI, for example to tell it what products you sell.',
@@ -72,10 +80,11 @@ export default {
       ],
       'expo-status-bar',
       'expo-web-browser',
+      'expo-apple-authentication',
       // Scan beep only: no recording, no background playback
       ['expo-audio', { recordAudioAndroid: false, enableBackgroundPlayback: false }],
       // Photos and barcode scanning only: no video, so no microphone
-      ['expo-camera', { recordAudioAndroid: false }],
+      ['expo-camera', { cameraPermission: CAMERA_PURPOSE, recordAudioAndroid: false }],
       [
         'expo-notifications',
         {
@@ -90,8 +99,7 @@ export default {
         {
           photosPermission:
             'Allow ABS to access your photos so you can set a profile picture and upload business images.',
-          cameraPermission:
-            'Allow ABS to use the camera so you can take a profile picture and attach business images.',
+          cameraPermission: CAMERA_PURPOSE,
         },
       ],
       [

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { ensureCameraPermission } from '@/utils/cameraPermission';
 
 import { FeatureAccessDenied } from '@/components/FeatureAccessDenied';
 import { AppIcon } from '@/components/AppIcon';
@@ -177,11 +178,7 @@ export default function StoreSetupProductsScreen() {
   const pickImage = useCallback(async (fromCamera: boolean) => {
     try {
       if (fromCamera) {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission needed', 'Allow camera access to take a product photo.');
-          return;
-        }
+        if (!(await ensureCameraPermission('take a product photo'))) return;
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
