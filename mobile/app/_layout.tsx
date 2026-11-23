@@ -385,6 +385,7 @@ function RootLayoutNav() {
           <Stack.Screen name="account" options={{ ...innerScreenOptions, title: 'Account', headerShown: false }} />
           <Stack.Screen name="profile" options={{ ...innerScreenOptions, title: 'Profile', headerShown: false }} />
           <Stack.Screen name="settings" options={{ ...innerScreenOptions, title: 'Settings', headerShown: false }} />
+          <Stack.Screen name="billing" options={{ ...innerScreenOptions, title: 'Billing', headerShown: false }} />
           <Stack.Screen name="terms" options={{ ...innerScreenOptions, title: 'Terms and Conditions', headerShown: false }} />
           <Stack.Screen name="privacy-policy" options={{ ...innerScreenOptions, title: 'Privacy Policy', headerShown: false }} />
           <Stack.Screen name="data-deletion" options={{ ...innerScreenOptions, title: 'Data Deletion', headerShown: false }} />

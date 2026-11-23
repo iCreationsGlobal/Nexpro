@@ -130,7 +130,7 @@ export default function StoreHeroCarousel({
     : new Set([activeIndex]);
 
   return (
-    <section className="relative w-full overflow-hidden rounded-2xl border-b border-slate-200" aria-label={`${storeName} hero`}>
+    <section className="relative w-full overflow-hidden rounded-2xl border-b border-border" aria-label={`${storeName} hero`}>
       <div className="relative aspect-[16/6] w-full bg-slate-100 sm:aspect-[21/7]">
         {items.map((slide, i) => {
           const isActive = i === activeIndex;
@@ -162,7 +162,7 @@ export default function StoreHeroCarousel({
               type="button"
               variant="outline"
               size="icon"
-              className="absolute left-3 top-1/2 z-[2] h-10 w-10 -translate-y-1/2 rounded-full border-slate-200 bg-white/90"
+              className="absolute left-3 top-1/2 z-[2] h-10 w-10 -translate-y-1/2 rounded-full border-slate-200 bg-white/90 text-slate-800"
               onClick={() => go(-1)}
               aria-label="Previous hero slide"
             >
@@ -172,7 +172,7 @@ export default function StoreHeroCarousel({
               type="button"
               variant="outline"
               size="icon"
-              className="absolute right-3 top-1/2 z-[2] h-10 w-10 -translate-y-1/2 rounded-full border-slate-200 bg-white/90"
+              className="absolute right-3 top-1/2 z-[2] h-10 w-10 -translate-y-1/2 rounded-full border-slate-200 bg-white/90 text-slate-800"
               onClick={() => go(1)}
               aria-label="Next hero slide"
             >

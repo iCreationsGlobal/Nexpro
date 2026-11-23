@@ -32,9 +32,9 @@ import { buildProductsSearchPath, buildServicesSearchPath } from '../utils/marke
 import {
   buildStoreCatalogPath,
   buildStoreProductPath,
-  filterStoreListings,
   resolveSingleStoreHomePath,
 } from '../online-store/storePaths';
+import { getStoreCatalogPage } from '../online-store/storeCatalog';
 import {
   ActionLink,
   getStoreServiceUrl,
@@ -200,7 +200,7 @@ const StoreScopedHeader = ({
     `flex min-h-11 items-center rounded-2xl border px-4 py-2.5 text-sm font-bold transition-colors ${
       activePage === key
         ? 'border-transparent text-white'
-        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+        : 'border-border bg-card text-foreground/80 hover:border-foreground/20'
     }`
   );
 
@@ -235,7 +235,7 @@ const StoreScopedHeader = ({
           ) : null}
         </div>
 
-        <form onSubmit={handleSubmit} className="flex min-w-0 flex-1 overflow-hidden rounded-full border border-slate-200 bg-slate-50/80 p-1">
+        <form onSubmit={handleSubmit} className="flex min-w-0 flex-1 overflow-hidden rounded-full border border-border bg-muted/50 p-1">
           <Input
             value={searchText}
             onChange={(event) => setSearchText(event.target.value)}
@@ -301,8 +301,8 @@ const StoreScopedHeader = ({
       </div>
 
       {showPageNav && mobileMenuOpen ? (
-        <div className="fixed inset-0 z-[60] overflow-y-auto bg-white lg:hidden" id="store-scoped-mobile-menu">
-          <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-4 sm:px-4">
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-background text-foreground lg:hidden" id="store-scoped-mobile-menu">
+          <div className="sticky top-0 z-10 border-b border-border bg-background px-3 py-4 sm:px-4">
             <div className="flex items-center justify-between gap-3">
               <Link
                 to={homeTo}
@@ -372,7 +372,7 @@ const ProductSection = ({ storeName, title, description, products, emptyText, se
         ))}
       </div>
     ) : (
-      <div className="rounded-2xl border border-border bg-background p-8 text-center text-muted-foreground">
+      <div className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground">
         {emptyText}
       </div>
     )}
@@ -420,7 +420,7 @@ const ServiceSection = ({
         ))}
       </div>
     ) : (
-      <div className="rounded-2xl border border-border bg-background p-8 text-center text-muted-foreground">
+      <div className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground">
         {emptyText}
       </div>
     )}
@@ -495,7 +495,7 @@ const PublicStoreHome = ({
   const { storeSlug: routeSlug } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isAuthenticated, openShopperAuthModal } = useStorefrontAuth();
   const { mode, isSingleStoreMode, isMarketplaceMode, pathPrefix, isCustomDomain, storeSlug: modeSlug } = useStorefrontMode();
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
@@ -735,14 +735,41 @@ const PublicStoreHome = ({
     { key: 'reviews', label: 'Reviews', to: storeBasePath === '/' ? '/reviews' : `${storeBasePath}/reviews` },
   ];
   const storeCatalogRaw = isServiceStore ? allServices : allProducts;
-  const storeCatalog = (isSingleStoreMode || catalogSearch || catalogCategory)
-    ? filterStoreListings(storeCatalogRaw, { search: catalogSearch, category: catalogCategory })
-    : storeCatalogRaw;
+  const catalogPage = getStoreCatalogPage(storeCatalogRaw, {
+    search: catalogSearch,
+    category: catalogCategory,
+    page: searchParams.get('page'),
+  });
+  const changeCatalogPage = (page) => {
+    const params = new URLSearchParams(searchParams);
+    if (page === 1) params.delete('page');
+    else params.set('page', String(page));
+    setSearchParams(params);
+    document.getElementById('store-catalog')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
+  const catalogPagination = catalogPage.total > 0 ? (
+    <nav aria-label="Catalog pagination" className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5">
+      <p role="status" className="text-sm text-muted-foreground">
+        Showing {formatInteger(catalogPage.start)}–{formatInteger(catalogPage.end)} of {formatInteger(catalogPage.total)} {isServiceStore ? 'services' : 'products'}
+      </p>
+      {catalogPage.totalPages > 1 ? (
+        <div className="flex items-center gap-3">
+          <Button variant="outline" disabled={catalogPage.page === 1} onClick={() => changeCatalogPage(catalogPage.page - 1)}>
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">Page {catalogPage.page} of {catalogPage.totalPages}</span>
+          <Button variant="outline" disabled={catalogPage.page === catalogPage.totalPages} onClick={() => changeCatalogPage(catalogPage.page + 1)}>
+            Next
+          </Button>
+        </div>
+      ) : null}
+    </nav>
+  ) : null;
   const navLinkClass = (key) => (
     `whitespace-nowrap border-b-2 px-1 py-2 transition-colors ${
       activePage === key
         ? 'border-[color:var(--store-accent,#166534)] text-[color:var(--store-accent,#166534)]'
-        : 'border-transparent text-slate-700 hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:text-[color:var(--store-accent,#166534)]'
+        : 'border-transparent text-foreground/80 hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:text-[color:var(--store-accent,#166534)]'
     }`
   );
   const categoryLinkFor = (category) => (
@@ -860,14 +887,14 @@ const PublicStoreHome = ({
     <Card
       className="sf-reveal border"
       style={{
-        borderColor: 'color-mix(in srgb, var(--store-accent, #166534) 28%, #e5e7eb)',
+        borderColor: 'color-mix(in srgb, var(--store-accent, #166534) 28%, hsl(var(--border)))',
         backgroundColor: 'var(--store-accent-soft, #f0fdf4)',
       }}
     >
       <CardContent className="p-5">
         <Truck className="h-6 w-6 text-[color:var(--store-accent,#166534)]" />
-        <h2 className="mt-3 text-lg font-semibold text-slate-950">Delivery Options</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
+        <h2 className="mt-3 text-lg font-semibold text-foreground">Delivery Options</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {store.freeDeliveryThreshold
             ? `Free delivery from ${formatAmount(store.freeDeliveryThreshold, currency)}.`
             : (isOwnedShop
@@ -895,7 +922,7 @@ const PublicStoreHome = ({
         ].map((item) => {
           const Icon = item.icon;
           return (
-            <div key={item.title} className="sf-reveal rounded-2xl border border-border bg-background p-4">
+            <div key={item.title} className="sf-reveal rounded-2xl border border-border bg-card p-4">
               <Icon className="h-6 w-6 text-[color:var(--store-accent,#166534)]" />
               <p className="mt-3 font-semibold">{item.title}</p>
               <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
@@ -908,26 +935,26 @@ const PublicStoreHome = ({
 
   const ownedTrustStrip = ownedTrustItems.length > 0 ? (
     <section
-      className="border-t bg-white"
+      className="border-t bg-background"
       aria-label="Store assurances"
-      style={{ borderColor: `color-mix(in srgb, ${accent} 18%, #e5e7eb)` }}
+      style={{ borderColor: `color-mix(in srgb, ${accent} 18%, hsl(var(--border)))` }}
     >
       <div className="flex w-full flex-wrap items-center justify-center gap-2.5 px-3 py-5 sm:gap-3 sm:px-4">
         {ownedTrustItems.map((item) => {
           const Icon = item.icon;
           const chipStyle = {
-            borderColor: `color-mix(in srgb, ${accent} 28%, #e5e7eb)`,
+            borderColor: `color-mix(in srgb, ${accent} 28%, hsl(var(--border)))`,
             backgroundColor: 'var(--store-accent-soft, #f8fafc)',
           };
           const content = (
             <>
               <span
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-white"
-                style={{ borderColor: `color-mix(in srgb, ${accent} 22%, #e5e7eb)` }}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-background"
+                style={{ borderColor: `color-mix(in srgb, ${accent} 22%, hsl(var(--border)))` }}
               >
                 <Icon className="h-4 w-4" style={{ color: accent }} aria-hidden />
               </span>
-              <span className="whitespace-nowrap text-sm font-semibold tracking-tight text-slate-800">
+              <span className="whitespace-nowrap text-sm font-semibold tracking-tight text-foreground">
                 {item.label}
               </span>
             </>
@@ -993,7 +1020,7 @@ const PublicStoreHome = ({
           </div>
         </div>
         <div className="space-y-4">
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className="rounded-2xl border border-border bg-card p-5">
             <p className="text-sm font-semibold">At a glance</p>
             <div className="mt-3 space-y-2 text-sm text-muted-foreground">
               {isServiceStore ? (
@@ -1024,7 +1051,7 @@ const PublicStoreHome = ({
         <Link
           key={category.id || category.name}
           to={categoryLinkFor(category)}
-          className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm transition-colors hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:bg-[var(--store-accent-soft,#f0fdf4)]"
+          className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm transition-colors hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:bg-[var(--store-accent-soft,#f0fdf4)]"
         >
           <span className="truncate max-w-[10rem]">{category.name}</span>
           <Badge variant="outline" className="shrink-0">{formatInteger(category.count || 0)}</Badge>
@@ -1226,7 +1253,7 @@ const PublicStoreHome = ({
 
   const reviewsSection = (
     <section id="reviews" className="w-full px-3 py-10 sm:px-4 sm:py-12">
-      <div className="sf-reveal grid gap-5 rounded-2xl border border-slate-200 bg-white p-5 sm:rounded-3xl md:p-8">
+      <div className="sf-reveal grid gap-5 rounded-2xl border border-border bg-card p-5 sm:rounded-3xl md:p-8">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-[color:var(--store-accent,#166534)]">Customer Reviews</p>
@@ -1254,7 +1281,7 @@ const PublicStoreHome = ({
   );
 
   const catalogSection = isServiceStore ? (
-    <section className="w-full px-3 py-8 sm:px-4 sm:py-10">
+    <section id="store-catalog" className="w-full scroll-mt-24 px-3 py-8 sm:px-4 sm:py-10">
       <ServiceSection
         storeName={store.displayName}
         storeSlug={storeSlug}
@@ -1268,14 +1295,15 @@ const PublicStoreHome = ({
                 ? 'Browse every published service from this store.'
                 : 'Browse every published product from this store.'))
         }
-        services={storeCatalog}
+        services={catalogPage.items}
         emptyText={catalogSearch || catalogCategory ? 'No services match this search.' : (isOwnedShop ? 'No services yet.' : 'This store has not published services yet.')}
         serviceBasePathname={location.pathname}
         isCustomDomain={isCustomDomain}
       />
+      {catalogPagination}
     </section>
   ) : (
-    <section className="w-full px-3 py-8 sm:px-4 sm:py-10">
+    <section id="store-catalog" className="w-full scroll-mt-24 px-3 py-8 sm:px-4 sm:py-10">
       <ProductSection
         storeName={store.displayName}
         title={catalogSearch || catalogCategory ? 'Matching products' : 'All Products'}
@@ -1286,17 +1314,18 @@ const PublicStoreHome = ({
               ? 'Browse all our products.'
               : 'Browse every published product from this store.')
         }
-        products={storeCatalog}
+        products={catalogPage.items}
         emptyText={catalogSearch || catalogCategory ? 'No products match this search.' : (isOwnedShop ? 'No products yet.' : 'This store has not published products yet.')}
         theme={theme}
         accent={accent}
       />
+      {catalogPagination}
     </section>
   );
 
   const categoriesPage = (
     <section className="w-full px-3 py-8 sm:px-4 sm:py-10">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:rounded-3xl md:p-8">
+      <div className="rounded-2xl border border-border bg-card p-5 sm:rounded-3xl md:p-8">
         <p className="text-sm font-semibold uppercase tracking-wide text-[color:var(--store-accent,#166534)]">{store.displayName}</p>
         <h2 className="mt-1 text-2xl font-semibold">Categories</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -1311,15 +1340,15 @@ const PublicStoreHome = ({
               <Link
                 key={category.id || category.name}
                 to={categoryLinkFor(category)}
-                className="sf-reveal sf-card flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition-colors hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:bg-[var(--store-accent-soft,#f0fdf4)]"
+                className="sf-reveal sf-card flex items-center justify-between gap-3 rounded-2xl border border-border bg-muted/50 p-4 transition-colors hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] hover:bg-[var(--store-accent-soft,#f0fdf4)]"
               >
                 <span className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--store-accent,#166534)_20%,white)] bg-white text-[color:var(--store-accent,#166534)]">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--store-accent,#166534)_20%,white)] bg-background text-[color:var(--store-accent,#166534)]">
                     {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" /> : (
                       isServiceStore ? <Scissors className="h-5 w-5" /> : <Package className="h-5 w-5" />
                     )}
                   </span>
-                  <span className="truncate font-semibold text-slate-950">{category.name}</span>
+                  <span className="truncate font-semibold text-foreground">{category.name}</span>
                 </span>
                 <Badge variant="outline" className="shrink-0">{formatInteger(category.count || 0)}</Badge>
               </Link>
@@ -1466,7 +1495,7 @@ const PublicStoreHome = ({
   ) : null;
 
   const compactSummarySection = (
-    <section className="border-b border-border bg-white">
+    <section className="border-b border-border bg-card">
       <div className="flex w-full flex-col gap-4 px-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-4">
         <div className="flex min-w-0 items-center gap-4">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white sm:h-16 sm:w-16">
@@ -1514,7 +1543,7 @@ const PublicStoreHome = ({
       secondaryColor={brandColors.secondary}
       tertiaryColor={brandColors.tertiary}
     >
-    <div className="min-h-screen">
+    <div className={`min-h-screen ${theme.dark ? 'sf-dark' : ''}`}>
       <StoreScopedHeader
         store={store}
         onSearch={handleSearch}

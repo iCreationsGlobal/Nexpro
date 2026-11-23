@@ -49,7 +49,7 @@ export default function StoreTestimonialsSection({ testimonials, accent = '#1665
             return (
               <figure
                 key={item.id || `${item.authorName}-${item.quote?.slice(0, 24)}`}
-                className="flex h-full flex-col rounded-2xl border border-border bg-background p-5"
+                className="flex h-full flex-col rounded-2xl border border-border bg-card p-5"
               >
                 <blockquote className="flex-1 text-base leading-7 text-foreground">
                   “{item.quote}”

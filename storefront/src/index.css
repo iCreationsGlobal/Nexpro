@@ -27,6 +27,26 @@
     --radius: 0.5rem;
   }
 
+  /* Dark store templates (Bold): remap the shared tokens so cards, borders, inputs and
+     muted text follow the dark page instead of staying white. Only the store home page
+     opts in; product / cart / checkout draw their own light surfaces. */
+  .sf-dark {
+    --background: 229 84% 5%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 47.4% 11.2%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 47.4% 11.2%;
+    --popover-foreground: 210 40% 98%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+  }
+
   * {
     @apply border-border;
   }

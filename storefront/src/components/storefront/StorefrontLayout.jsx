@@ -389,7 +389,7 @@ export const StorefrontMobileMenu = ({ activePath = '/', onClose }) => {
 
 export const ActionLink = ({ to, icon: Icon, label, badge, disabled = false, onClick }) => {
   const content = (
-    <span className="group flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:text-[color:var(--store-accent,#166534)]">
+    <span className="group flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-foreground/80 transition-colors hover:text-[color:var(--store-accent,#166534)]">
       <span className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white">
         <Icon className="h-4.5 w-4.5" />
         {badge ? (
@@ -1244,7 +1244,7 @@ export const ProductCard = ({ product }) => {
     )
   ), [product, storeForActions]);
 
-  const outlineClassName = 'h-10 min-w-0 rounded-full border-[color:color-mix(in_srgb,var(--store-accent,#166534)_28%,white)] px-2 text-xs font-bold text-[color:var(--store-accent,#166534)] hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_45%,white)] hover:bg-[var(--store-accent-soft,#16653422)] hover:text-[color:var(--store-accent,#166534)] sm:px-3 sm:text-sm';
+  const outlineClassName = 'h-10 min-w-0 rounded-full border-[color:color-mix(in_srgb,var(--store-accent,#166534)_28%,white)] bg-white px-2 text-xs font-bold text-[color:var(--store-accent,#166534)] hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_45%,white)] hover:bg-[var(--store-accent-soft,#16653422)] hover:text-[color:var(--store-accent,#166534)] sm:px-3 sm:text-sm';
   // hover:bg-* (not opacity) so twMerge drops Button's hover:bg-primary/90 (Sabito green)
   const primaryClassName = 'h-10 min-w-0 rounded-full bg-[var(--store-accent,#166534)] px-2 text-xs font-bold text-white hover:bg-[color-mix(in_srgb,var(--store-accent,#166534)_85%,black)] sm:px-3 sm:text-sm';
 

@@ -20,7 +20,7 @@ type Props = {
 export function BillingLockedScreen({ billing, onRecheck, rechecking }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { memberships, activeTenant } = useAuth();
+  const { memberships, activeTenant, isManager } = useAuth();
   const signOut = useSignOut();
   const { bg, cardBg, borderColor, textColor, mutedColor } = useScreenColors();
   const { title, description } = getBillingLockCopy(billing);
@@ -53,6 +53,15 @@ export function BillingLockedScreen({ billing, onRecheck, rechecking }: Props) {
           textColor={textColor}
           borderColor={borderColor}
         />
+        {isManager ? (
+          <ActionButton
+            icon="credit-card"
+            label="View billing"
+            onPress={() => router.push('/billing' as never)}
+            textColor={textColor}
+            borderColor={borderColor}
+          />
+        ) : null}
         {canSwitchWorkspace ? (
           <ActionButton
             icon="users"

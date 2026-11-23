@@ -46,6 +46,7 @@ export default function SettingsScreen() {
     activeTenant,
     hasFeature,
     interfaceMode,
+    isManager,
   } = useAuth();
   const [switchingInterfaceMode, setSwitchingInterfaceMode] = useState(false);
   const [savingShowAdvanced, setSavingShowAdvanced] = useState(false);
@@ -255,6 +256,25 @@ export default function SettingsScreen() {
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
           {accountLinks.map((item, index) => renderLinkRow(item, index, accountLinks.length))}
         </View>
+
+        {isManager ? (
+          <>
+            <Text style={[styles.sectionTitle, { color: textColor }]}>Billing</Text>
+            <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
+              {renderLinkRow(
+                {
+                  id: 'billing',
+                  label: 'Plan and payments',
+                  subtitle: 'Your ABS plan, when it ends, and payment history',
+                  icon: 'credit-card',
+                  route: '/billing',
+                },
+                0,
+                1
+              )}
+            </View>
+          </>
+        ) : null}
 
         <Text style={[styles.sectionTitle, { color: textColor }]}>Workspace</Text>
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>

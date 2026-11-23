@@ -4507,6 +4507,8 @@ exports.getMarketplaceStoreHome = async (req, res, next) => {
 
     const listingWhere = buildStoreListingWhere([store]);
     const serviceListingWhere = buildStoreServiceListingWhere(store);
+    // This response also supplies All Products/Services, search and category totals.
+    // Load the complete catalog; only the home merchandising sections are capped.
     const listings = listingWhere
       ? await OnlineProductListing.findAll({
         where: listingWhere,
@@ -4529,7 +4531,6 @@ exports.getMarketplaceStoreHome = async (req, res, next) => {
         ],
         include: publicListingIncludes,
         order: [['sortOrder', 'ASC'], ['publishedAt', 'DESC']],
-        limit: 80,
       })
       : [];
     const serviceListings = serviceListingWhere
@@ -4557,7 +4558,6 @@ exports.getMarketplaceStoreHome = async (req, res, next) => {
           'publishedAt',
         ],
         order: [['sortOrder', 'ASC'], ['publishedAt', 'DESC']],
-        limit: 80,
       })
       : [];
 

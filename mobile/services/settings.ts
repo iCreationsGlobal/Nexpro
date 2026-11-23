@@ -1,5 +1,6 @@
 import { api } from './api';
 import type { BillingStatus } from '../utils/billingLock';
+import type { BillingDetails, SeatUsage, SubscriptionPayment } from '../utils/billingSummary';
 import { parseJsonStrippingOversizedInlineDataUrls, sanitizeInlineImageField } from '../utils/stripOversizedInlineDataUrls';
 
 export type ProfilePayload = {
@@ -192,5 +193,24 @@ export const settingsService = {
   getSubscriptionStatus: async (): Promise<BillingStatus | null> => {
     const res = await api.get('/subscription/status');
     return res?.data?.data ?? res?.data ?? null;
+  },
+
+  /** ABS subscription payments for the workspace (owners, admins, managers; works while locked). */
+  getSubscriptionPayments: async (
+    limit = 20
+  ): Promise<{ payments: SubscriptionPayment[]; activePayment: SubscriptionPayment | null; billing: BillingDetails | null }> => {
+    const res = await api.get('/subscription/payments', { params: { limit } });
+    const data = res?.data?.data ?? res?.data ?? {};
+    return {
+      payments: Array.isArray(data?.payments) ? data.payments : [],
+      activePayment: data?.activePayment ?? null,
+      billing: data?.billing ?? null,
+    };
+  },
+
+  /** Seats used vs the plan's limit. Blocked by the backend while the workspace is locked. */
+  getSeatUsage: async (): Promise<SeatUsage | null> => {
+    const res = await api.get('/invites/seat-usage');
+    return res?.data?.data ?? null;
   },
 };

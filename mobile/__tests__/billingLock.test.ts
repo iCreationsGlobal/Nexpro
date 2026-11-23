@@ -20,6 +20,7 @@ describe('billingLock', () => {
     expect(isBillingExemptPath('/settings')).toBe(true);
     expect(isBillingExemptPath('/profile')).toBe(true);
     expect(isBillingExemptPath('/privacy-policy')).toBe(true);
+    expect(isBillingExemptPath('/billing')).toBe(true);
     expect(isBillingExemptPath('/')).toBe(false);
     expect(isBillingExemptPath('/sales')).toBe(false);
     expect(isBillingExemptPath('/settingsx')).toBe(false);

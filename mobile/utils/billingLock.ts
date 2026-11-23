@@ -19,8 +19,8 @@ export function isBillingLocked(status: BillingStatus | null | undefined): boole
   return status.billingStatus === 'locked' || status.billingStatus === 'suspended';
 }
 
-/** Screens that stay reachable while locked: switch workspace, sign out, legal pages. */
-const EXEMPT_PATHS = ['/settings', '/profile', '/account', '/terms', '/privacy-policy', '/data-deletion'];
+/** Screens that stay reachable while locked: switch workspace, billing details, sign out, legal pages. */
+const EXEMPT_PATHS = ['/settings', '/billing', '/profile', '/account', '/terms', '/privacy-policy', '/data-deletion'];
 
 export function isBillingExemptPath(pathname = ''): boolean {
   return EXEMPT_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));

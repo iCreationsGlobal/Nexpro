@@ -30,7 +30,7 @@ type LinkItem = {
 
 export default function AccountScreen() {
   const router = useRouter();
-  const { user, logout, isDriver } = useAuth();
+  const { user, logout, isDriver, isManager } = useAuth();
   const signOut = useSignOut();
   const { cardBg, borderColor, textColor, mutedColor, colors, danger } = useScreenColors();
 
@@ -74,6 +74,9 @@ export default function AccountScreen() {
           icon: 'cog',
           route: '/settings',
         },
+        ...(isManager
+          ? [{ id: 'billing', label: 'Billing', icon: 'credit-card' as AppIconName, route: '/billing' }]
+          : []),
         {
           id: 'privacy',
           label: 'Privacy Policy',

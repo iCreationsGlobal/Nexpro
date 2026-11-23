@@ -249,6 +249,7 @@ export const getTemplateTheme = (templateId) => {
       productCardClass: 'rounded-2xl border border-slate-200 bg-white',
       heroOverlay: false,
       dense: false,
+      dark: false,
     },
     minimal: {
       id,
@@ -262,6 +263,7 @@ export const getTemplateTheme = (templateId) => {
       productCardClass: 'rounded-none border-0 border-b border-stone-200 bg-transparent',
       heroOverlay: false,
       dense: false,
+      dark: false,
     },
     bold: {
       id,
@@ -275,6 +277,7 @@ export const getTemplateTheme = (templateId) => {
       productCardClass: 'rounded-2xl border border-white/10 bg-slate-900',
       heroOverlay: true,
       dense: false,
+      dark: true,
     },
     marketplace: {
       id,
@@ -288,6 +291,7 @@ export const getTemplateTheme = (templateId) => {
       productCardClass: 'rounded-xl border border-slate-200 bg-white',
       heroOverlay: false,
       dense: true,
+      dark: false,
     },
     catalog: {
       id,
@@ -301,6 +305,7 @@ export const getTemplateTheme = (templateId) => {
       productCardClass: 'rounded-3xl border border-violet-100 bg-white',
       heroOverlay: false,
       dense: false,
+      dark: false,
     },
   };
   return themes[id] || themes.classic;
