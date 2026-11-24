@@ -228,6 +228,9 @@ const migrate = async () => {
     // Add email_verified_at to users if it doesn't exist
     await addEmailVerifiedAtToUsers.up();
 
+    // Sign-in lockout: without these columns wrong passwords are never counted and no account locks
+    await require('./add-account-lockout-fields').up();
+
     // Add partially_paid to sales status enum
     const queryInterface = sequelize.getQueryInterface();
     await addPartiallyPaidToSalesStatus.up(queryInterface);

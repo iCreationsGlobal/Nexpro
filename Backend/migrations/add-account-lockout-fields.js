@@ -5,39 +5,33 @@
  */
 
 const { sequelize } = require('../config/database');
-const { QueryTypes } = require('sequelize');
 
 async function up() {
   console.log('[Migration] Adding account lockout fields to users table...');
   
   try {
-    // Check if columns already exist
-    const [results] = await sequelize.query(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'users' 
-      AND column_name IN ('failed_login_attempts', 'lockout_until')
-    `, { type: QueryTypes.SELECT });
-    
-    if (results && results.length > 0) {
-      console.log('[Migration] Columns already exist, skipping...');
+    const columns = await sequelize.getQueryInterface().describeTable('users');
+    if (columns.failed_login_attempts && columns.lockout_until) {
+      console.log('[Migration] Account lockout columns already exist, skipping...');
       return;
     }
-    
-    // Add failed_login_attempts column
-    await sequelize.query(`
-      ALTER TABLE users 
-      ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0
-    `);
-    console.log('[Migration] Added failed_login_attempts column');
-    
-    // Add lockout_until column
-    await sequelize.query(`
-      ALTER TABLE users 
-      ADD COLUMN IF NOT EXISTS lockout_until TIMESTAMP WITH TIME ZONE DEFAULT NULL
-    `);
-    console.log('[Migration] Added lockout_until column');
-    
+
+    if (!columns.failed_login_attempts) {
+      await sequelize.query(`
+        ALTER TABLE users 
+        ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0
+      `);
+      console.log('[Migration] Added failed_login_attempts column');
+    }
+
+    if (!columns.lockout_until) {
+      await sequelize.query(`
+        ALTER TABLE users 
+        ADD COLUMN IF NOT EXISTS lockout_until TIMESTAMP WITH TIME ZONE DEFAULT NULL
+      `);
+      console.log('[Migration] Added lockout_until column');
+    }
+
     console.log('[Migration] Account lockout fields added successfully');
   } catch (error) {
     console.error('[Migration] Error adding account lockout fields:', error);
