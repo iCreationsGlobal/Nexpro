@@ -1,3 +1,5 @@
+import { searchStoreListings } from './storeSearch.js';
+
 /**
  * Path helpers for single-merchant Online Store surfaces.
  * Keeps shoppers inside the store (never marketplace /products or /stores directory).
@@ -117,30 +119,15 @@ export const buildStoreProductPath = (storeSlug, productSlug, {
  * Filter listings by search + category query params (client-side for single-store catalog).
  * @param {object[]} items
  * @param {{ search?: string, category?: string }} filters
- * @returns {object[]}
+ * @returns {object[]} With a search, best match first.
  */
 export const filterStoreListings = (items, { search = '', category = '' } = {}) => {
   const list = Array.isArray(items) ? items : [];
-  const needle = String(search || '').trim().toLowerCase();
   const cat = String(category || '').trim().toLowerCase();
-  return list.filter((item) => {
-    if (cat && cat !== 'all') {
-      const itemCat = String(
-        item?.category?.name || item?.categoryName || item?.category || '',
-      ).trim().toLowerCase();
-      if (itemCat !== cat) return false;
-    }
-    if (!needle) return true;
-    const haystack = [
-      item?.title,
-      item?.name,
-      item?.shortDescription,
-      item?.description,
-      item?.sku,
-      item?.category?.name,
-      item?.categoryName,
-      item?.category,
-    ].filter(Boolean).join(' ').toLowerCase();
-    return haystack.includes(needle);
-  });
+  const inCategory = cat && cat !== 'all'
+    ? list.filter((item) => (
+      String(item?.category?.name || item?.categoryName || item?.category || '').trim().toLowerCase() === cat
+    ))
+    : list;
+  return searchStoreListings(inCategory, search);
 };
