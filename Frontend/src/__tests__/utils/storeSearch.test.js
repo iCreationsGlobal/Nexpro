@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { searchStoreListings } from '../../../../storefront/src/online-store/storeSearch';
@@ -116,5 +118,28 @@ describe('store search', () => {
     const page = getStoreCatalogPage(many, { search: 'stand' });
     expect(page.items[0].title).toBe('Phone Stand');
     expect(page.total).toBe(61);
+  });
+});
+
+describe('the two copies of the search', () => {
+  const core = (file) => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../../../..', file), 'utf8');
+    return source.slice(source.indexOf('// === Search core'), source.indexOf('// === End of search core'));
+  };
+
+  it('are the same on the online store and on the server', () => {
+    expect(core('storefront/src/online-store/storeSearch.js').length).toBeGreaterThan(1000);
+    expect(core('Backend/utils/listingSearch.js')).toBe(core('storefront/src/online-store/storeSearch.js'));
+  });
+});
+
+describe('very long searches', () => {
+  it('are cut short instead of slowing the page', () => {
+    const items = Array.from({ length: 3000 }, (_, i) => item(`Item ${i}`, 'Home Appliances', 'word '.repeat(80)));
+    const started = performance.now();
+    searchStoreListings(items, 'zzzz '.repeat(20000));
+    searchStoreListings(items, 'a'.repeat(200000));
+    searchStoreListings([item('x'.repeat(50000), '', 'y'.repeat(50000))], 'laptop');
+    expect(performance.now() - started).toBeLessThan(4000);
   });
 });

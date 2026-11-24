@@ -32,6 +32,8 @@ const {
   isStudioTenant,
 } = require('./studioStoreController');
 const { invalidateSaleListCache, invalidatePublicStorefrontCache } = require('../middleware/cache');
+const { createListingSearch } = require('../utils/listingSearch');
+const { findMarketplaceStorePage } = require('../services/marketplaceStoreSearch');
 const { validateStorageLimit } = require('../utils/storageLimitHelper');
 const {
   DEFAULT_TEMPLATE_ID,
@@ -504,6 +506,25 @@ const storeMatchesListing = (store, listing) => {
   const listingPlain = typeof listing.get === 'function' ? listing.get({ plain: true }) : listing;
   if (storePlain.tenantId !== listingPlain.tenantId) return false;
   return storePlain.shopId ? storePlain.shopId === listingPlain.shopId : true;
+};
+
+/** Rank marketplace products for a search. A seller's name finds its products, below better matches. */
+const searchMarketplaceListings = (listings, stores, search) => {
+  const storesByTenant = new Map();
+  stores.forEach((store) => {
+    storesByTenant.set(store.tenantId, [...(storesByTenant.get(store.tenantId) || []), store]);
+  });
+  const sellerOf = (listing) => (storesByTenant.get(listing.tenantId) || [])
+    .filter((store) => !store.shopId || store.shopId === listing.shopId)
+    .map((store) => `${store.displayName || ''} ${store.slug || ''}`)
+    .join(' ');
+
+  return createListingSearch((listing) => ({
+    name: [...new Set([listing.title, listing.product?.name].filter(Boolean))].join(' '),
+    category: listing.product?.category?.name,
+    seller: sellerOf(listing),
+    description: listing.shortDescription,
+  }))(listings, search);
 };
 
 const buildStoreListingWhere = (stores) => {
@@ -3811,19 +3832,8 @@ exports.getMarketplaceStores = async (req, res, next) => {
     const shopTypes = parseShopTypeFilter(req.query.shopType);
     const where = marketplaceListedStoreWhere();
 
-    if (search) {
-      where[Op.or] = [
-        { displayName: { [Op.iLike]: `%${search}%` } },
-        { description: { [Op.iLike]: `%${search}%` } },
-        { slug: { [Op.iLike]: `%${search}%` } },
-      ];
-    }
-
-    const { count, rows } = await OnlineStoreSettings.findAndCountAll({
+    const { count, rows } = await findMarketplaceStorePage({ search, limit, offset }, {
       where,
-      limit,
-      offset,
-      distinct: true,
       attributes: [
         'id',
         'tenantId',
@@ -3927,28 +3937,6 @@ exports.getMarketplaceProducts = async (req, res, next) => {
       });
     }
 
-    if (search) {
-      const searchPattern = `%${search}%`;
-      const matchingStores = stores.filter((store) => {
-        const plain = typeof store.get === 'function' ? store.get({ plain: true }) : store;
-        return [plain.displayName, plain.slug, plain.description]
-          .some((value) => String(value || '').toLowerCase().includes(search.toLowerCase()));
-      });
-      const searchConditions = [
-        { title: { [Op.iLike]: searchPattern } },
-        { shortDescription: { [Op.iLike]: searchPattern } },
-        { '$product.name$': { [Op.iLike]: searchPattern } },
-        ...matchingStores.map((store) => ({
-          tenantId: store.tenantId,
-          ...(store.shopId ? { shopId: store.shopId } : {}),
-        })),
-      ];
-      where[Op.and] = [
-        ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
-        { [Op.or]: searchConditions },
-      ];
-    }
-
     const productInclude = publicListingIncludes.map((include) => {
       if (include.as !== 'product' || !category) return include;
       return {
@@ -3988,8 +3976,11 @@ exports.getMarketplaceProducts = async (req, res, next) => {
       getAvailableListingsWithVariants(rows),
       attachStoreReviewSummaries(stores),
     ]);
-    const count = availableListingResult.listings.length;
-    const pageRows = availableListingResult.listings.slice(offset, offset + limit);
+    const listings = search
+      ? searchMarketplaceListings(availableListingResult.listings, stores, search)
+      : availableListingResult.listings;
+    const count = listings.length;
+    const pageRows = listings.slice(offset, offset + limit);
     const products = pageRows.map((listing) => (
       toMarketplaceProduct(listing, storesWithReviews, availableListingResult.variantsByProductId)
     ));

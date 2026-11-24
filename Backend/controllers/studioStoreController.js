@@ -28,7 +28,9 @@ const {
   getServiceReviewEligibility,
   listPublicServiceReviews,
 } = require('../services/storefrontReviewService');
+const { createListingSearch } = require('../utils/listingSearch');
 const { startHotPathTimer } = require('../utils/performanceLogger');
+const { findMarketplaceStorePage } = require('../services/marketplaceStoreSearch');
 
 const LISTING_STATUSES = new Set(['draft', 'published', 'hidden']);
 const CTA_TYPES = new Set(['request_quote', 'book_service', 'fixed_price']);
@@ -233,6 +235,13 @@ const studioMatchesListing = (store, listing) => {
   }
   return !listingPlain.studioLocationId || listingPlain.studioLocationId === null;
 };
+
+/** Rank marketplace services for a search. */
+const searchMarketplaceServices = createListingSearch((listing) => ({
+  name: listing.title,
+  category: listing.category,
+  description: listing.shortDescription,
+}));
 
 const buildStudioListingWhere = (stores) => {
   if (!stores.length) return null;
@@ -586,19 +595,8 @@ exports.getMarketplaceStudios = async (req, res, next) => {
     const search = String(req.query.search || '').trim();
     const where = marketplaceListedStoreWhere();
 
-    if (search) {
-      where[Op.or] = [
-        { displayName: { [Op.iLike]: `%${search}%` } },
-        { description: { [Op.iLike]: `%${search}%` } },
-        { slug: { [Op.iLike]: `%${search}%` } },
-      ];
-    }
-
-    const { count, rows } = await OnlineStoreSettings.findAndCountAll({
+    const { count, rows } = await findMarketplaceStorePage({ search, limit, offset }, {
       where,
-      limit,
-      offset,
-      distinct: true,
       attributes: [
         'id', 'tenantId', 'studioLocationId', 'slug', 'displayName', 'description',
         'logoUrl', 'bannerImageUrl', 'primaryColor', 'currency', 'pickupEnabled', 'deliveryEnabled', 'metadata',
@@ -655,19 +653,6 @@ exports.getMarketplaceServices = async (req, res, next) => {
     }
 
     if (category) where.category = { [Op.iLike]: category };
-    if (search) {
-      const searchPattern = `%${search}%`;
-      where[Op.and] = [
-        ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
-        {
-          [Op.or]: [
-            { title: { [Op.iLike]: searchPattern } },
-            { shortDescription: { [Op.iLike]: searchPattern } },
-            { category: { [Op.iLike]: searchPattern } },
-          ],
-        },
-      ];
-    }
 
     const rows = await OnlineServiceListing.findAll({
       where,
@@ -679,8 +664,9 @@ exports.getMarketplaceServices = async (req, res, next) => {
       order: [['sortOrder', 'ASC'], ['publishedAt', 'DESC']],
     });
 
-    const count = rows.length;
-    const pageRows = rows.slice(offset, offset + limit);
+    const listings = search ? searchMarketplaceServices(rows, search) : rows;
+    const count = listings.length;
+    const pageRows = listings.slice(offset, offset + limit);
     const studiosWithReviews = await attachStoreReviewSummaries(stores);
     const services = pageRows.map((listing) => toMarketplaceService(listing, studiosWithReviews));
     const data = await attachServiceReviewSummaries(services);

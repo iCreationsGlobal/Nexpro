@@ -6,9 +6,12 @@
  * part of a word there is how "stand" used to find every "Standard" and "Standby".
  */
 
+// === Search core: keep identical in storefront/src/online-store/storeSearch.js and Backend/utils/listingSearch.js
 const SCORE = {
-  nameWord: 100, sku: 90, nameStart: 60, categoryWord: 40, categoryStart: 30, nameInside: 20, descriptionWord: 10, phrase: 50,
+  nameWord: 100, sku: 90, nameStart: 60, categoryWord: 40, categoryStart: 30, seller: 25, nameInside: 20, descriptionWord: 10, phrase: 50,
 };
+const MAX_QUERY_LENGTH = 100;
+const MAX_TERMS = 8;
 const MIN_START_LENGTH = 3;
 const MIN_INSIDE_LENGTH = 4;
 /** Different names shoppers and sellers use for the same thing. */
@@ -32,17 +35,14 @@ const singular = (word) => {
 };
 
 /** Words of a text, plus "Wi-Fi" as "wifi". */
-const indexWords = (value) => {
-  const joined = (normalize(value).match(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)+/gu) || []).map((word) => word.replace(/-/g, ''));
-  return [...splitWords(value), ...joined];
-};
+const indexWords = (value) => normalize(value).split(/[^\p{L}\p{N}-]+/u).flatMap((chunk) => {
+  const parts = chunk.split('-').filter(Boolean);
+  return parts.length > 1 ? [...parts, parts.join('')] : parts;
+});
 
-const buildIndex = (item) => {
-  const name = item?.title || item?.name || '';
-  const category = item?.category?.name || item?.categoryName || (typeof item?.category === 'string' ? item.category : '');
+const buildIndex = ({ name, category, seller, description, sku }) => {
   const nameWords = indexWords(name);
   const categoryWords = indexWords(category);
-  const description = `${item?.shortDescription || ''} ${item?.description || ''}`.replace(/<[^>]*>/g, ' ');
   return {
     nameWords,
     nameSet: new Set(nameWords.map(singular)),
@@ -50,16 +50,10 @@ const buildIndex = (item) => {
     nameJoined: splitWords(name).join(''),
     categoryWords,
     categorySet: new Set(categoryWords.map(singular)),
-    descriptionSet: new Set(indexWords(description).map(singular)),
-    sku: splitWords(item?.sku).join(''),
+    sellerSet: new Set(indexWords(seller).map(singular)),
+    descriptionSet: new Set(indexWords(String(description ?? '').replace(/<[^>]*>/g, ' ')).map(singular)),
+    sku: splitWords(sku).join(''),
   };
-};
-
-// Listings are re-filtered on every render; index each one once.
-const indexCache = new WeakMap();
-const getIndex = (item) => {
-  if (!indexCache.has(item)) indexCache.set(item, buildIndex(item));
-  return indexCache.get(item);
 };
 
 const scoreWord = (word, index, minStartLength) => {
@@ -71,6 +65,7 @@ const scoreWord = (word, index, minStartLength) => {
   if (canStart && index.nameWords.some((nameWord) => nameWord.startsWith(word))) return SCORE.nameStart;
   if (index.categorySet.has(base)) return SCORE.categoryWord;
   if (canStart && index.categoryWords.some((categoryWord) => categoryWord.startsWith(word))) return SCORE.categoryStart;
+  if (index.sellerSet.has(base)) return SCORE.seller;
   // Joined, so "flashdrive" finds "Flash Drive".
   if (canBeInside && index.nameJoined.includes(word)) return SCORE.nameInside;
   if (index.descriptionSet.has(base)) return SCORE.descriptionWord;
@@ -84,9 +79,9 @@ const scoreTerm = (ways, index, minStartLength) => Math.max(...ways.map(
 
 /** "wi-fi" can be "wifi" or "wi" and "fi"; "ac" can be "air conditioner". */
 const parseTerms = (query) => {
-  const typed = String(query ?? '').trim().split(/\s+/).map(splitWords).filter((words) => words.length);
+  const typed = String(query ?? '').slice(0, MAX_QUERY_LENGTH).split(/\s+/).map(splitWords).filter((words) => words.length);
   const meaningful = typed.filter((words) => !FILLER_WORDS.has(words.join('')));
-  const chunks = meaningful.length ? meaningful : typed;
+  const chunks = (meaningful.length ? meaningful : typed).slice(0, MAX_TERMS);
   const terms = [];
   for (let i = 0; i < chunks.length; i += 1) {
     const isNext = (words) => words.every((word, n) => chunks[i + n]?.length === 1 && singular(chunks[i + n][0]) === word);
@@ -103,29 +98,45 @@ const parseTerms = (query) => {
 };
 
 /**
- * @param {object[]} items
- * @param {string} query
- * @returns {object[]} Matching items, best first; equally good ones keep the catalog order.
+ * @param {(item: object) => { name?: string, category?: string, seller?: string, description?: string, sku?: string }} readFields
+ * @returns {(items: object[], query: string) => object[]} Matching items, best first; equally good ones keep their order.
  */
-export const searchStoreListings = (items, query) => {
-  const list = Array.isArray(items) ? items : [];
-  const { terms, phrase } = parseTerms(query);
-  if (!terms.length) return String(query ?? '').trim() ? [] : list;
+const createListingSearch = (readFields) => {
+  const indexes = new WeakMap();
+  const getIndex = (item) => {
+    if (!indexes.has(item)) indexes.set(item, buildIndex(readFields(item)));
+    return indexes.get(item);
+  };
 
-  const search = (minStartLength) => list
-    .filter((item) => item && typeof item === 'object')
-    .map((item, position) => {
-      const index = getIndex(item);
-      const scores = terms.map((term) => scoreTerm(term, index, minStartLength));
-      if (!scores.every(Boolean)) return null;
-      const bonus = terms.length > 1 && index.namePhrase.includes(phrase) ? SCORE.phrase : 0;
-      return { item, position, score: scores.reduce((sum, score) => sum + score, bonus) };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.score - a.score || a.position - b.position)
-    .map(({ item }) => item);
+  return (items, query) => {
+    const list = Array.isArray(items) ? items : [];
+    const { terms, phrase } = parseTerms(query);
+    if (!terms.length) return String(query ?? '').trim() ? [] : list;
 
-  // One or two letters ("hp", "tv") mean that word. Only when nothing has it, treat them as a beginning.
-  const matches = search(MIN_START_LENGTH);
-  return matches.length ? matches : search(1);
+    const search = (minStartLength) => list
+      .filter((item) => item && typeof item === 'object')
+      .map((item, position) => {
+        const index = getIndex(item);
+        const scores = terms.map((term) => scoreTerm(term, index, minStartLength));
+        if (!scores.every(Boolean)) return null;
+        const bonus = terms.length > 1 && index.namePhrase.includes(phrase) ? SCORE.phrase : 0;
+        return { item, position, score: scores.reduce((sum, score) => sum + score, bonus) };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score || a.position - b.position)
+      .map(({ item }) => item);
+
+    // One or two letters ("hp", "tv") mean that word. Only when nothing has it, treat them as a beginning.
+    const matches = search(MIN_START_LENGTH);
+    return matches.length ? matches : search(1);
+  };
 };
+// === End of search core
+
+/** Online Store listings: products, or services (whose category is plain text). */
+export const searchStoreListings = createListingSearch((item) => ({
+  name: item.title || item.name,
+  category: item.category?.name || item.categoryName || (typeof item.category === 'string' ? item.category : ''),
+  description: `${item.shortDescription || ''} ${item.description || ''}`,
+  sku: item.sku,
+}));
