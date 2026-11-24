@@ -7,9 +7,9 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { ProductCard, ServiceCard } from '../../../../storefront/src/components/storefront/StorefrontLayout';
 import { sanitizeProductGrid, useCompactCards } from '../../../../storefront/src/online-store/productGrid';
 
-const mocks = vi.hoisted(() => ({ wishlist: { isWishlisted: () => false, pendingListingIds: [], toggleWishlist: vi.fn(), count: 0 } }));
+const mocks = vi.hoisted(() => ({ addItem: vi.fn(() => ({ ok: true })), toasts: { showSuccess: vi.fn(), showError: vi.fn() }, wishlist: { isWishlisted: () => false, pendingListingIds: [], toggleWishlist: vi.fn(), count: 0 } }));
 vi.mock('../../../../storefront/src/context/WishlistContext', () => ({ useWishlist: () => mocks.wishlist }));
-vi.mock('../../../../storefront/src/context/CartContext', () => ({ useCart: () => ({ addItem: vi.fn(), cartSummary: { itemCount: 0 } }) }));
+vi.mock('../../../../storefront/src/context/CartContext', () => ({ useCart: () => ({ addItem: mocks.addItem, cartSummary: { itemCount: 0 } }) }));
 vi.mock('../../../../storefront/src/context/StorefrontAuthContext', () => ({ useStorefrontAuth: () => ({}) }));
 vi.mock('../../../../storefront/src/context/StorefrontModeContext', () => ({
   useStorefrontMode: () => ({ isSingleStoreMode: true, isMarketplaceMode: false, isCustomDomain: false, storeSlug: 'demo' }),
@@ -17,6 +17,8 @@ vi.mock('../../../../storefront/src/context/StorefrontModeContext', () => ({
   isOnlineStoreShopPath: () => true,
   isStorefrontCommercePath: () => false,
 }));
+
+vi.mock('../../../../storefront/src/utils/toast', () => mocks.toasts);
 
 const store = { slug: 'demo', displayName: 'Demo', currency: 'GHS', productCardActions: ['add_to_cart', 'buy_now'], whatsappNumber: '233200000000' };
 const product = { id: 'p1', slug: 'blue-shirt', title: 'Blue shirt', publicPrice: 120, available: true, category: { name: 'Shirts' }, images: ['https://example.com/a.jpg'], store };
@@ -33,12 +35,12 @@ afterEach(cleanup);
 beforeEach(() => vi.clearAllMocks());
 
 describe('compact product card', () => {
-  it('shows only the image, name and price', () => {
+  it('shows only the image, name, price, heart and plus', () => {
     const { container } = show(<ProductCard product={product} compact />);
     expect(screen.getByText('Blue shirt')).toBeInTheDocument();
     expect(screen.getByText(/120\.00/)).toBeInTheDocument();
     ['Available', 'For sale', 'No reviews yet', 'New', 'Shirts', 'Add', 'Buy now'].forEach((text) => expect(screen.queryByText(text)).not.toBeInTheDocument());
-    expect(within(container).getAllByRole('button')).toHaveLength(1);
+    expect(within(container).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Save Blue shirt to wishlist', 'Add Blue shirt to cart']);
   });
 
   it('opens the product when tapped anywhere', async () => {
@@ -54,6 +56,36 @@ describe('compact product card', () => {
     await userEvent.click(heart);
     expect(mocks.wishlist.toggleWishlist).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/shop\/demo$/);
+  });
+
+  it('adds one to the cart without opening the product', async () => {
+    show(<ProductCard product={product} compact />);
+    const plus = screen.getByRole('button', { name: 'Add Blue shirt to cart' });
+    expect(plus.closest('a')).toBeNull();
+    await userEvent.click(plus);
+    expect(mocks.addItem).toHaveBeenCalledTimes(1);
+    expect(mocks.addItem).toHaveBeenCalledWith(expect.objectContaining({ product: expect.objectContaining({ id: 'p1' }), quantity: 1 }));
+    expect(mocks.toasts.showSuccess).toHaveBeenCalledWith('Added to cart.');
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/shop\/demo$/);
+  });
+
+  it.each([
+    ['Buy now only', ['buy_now']], ['View and Add', ['view', 'add_to_cart']], ['nothing chosen', undefined],
+  ])('offers the plus when the owner sells online: %s', (_name, productCardActions) => {
+    show(<ProductCard product={{ ...product, store: { ...store, productCardActions } }} compact />);
+    expect(screen.getByRole('button', { name: /to cart/ })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['it is out of stock', { available: false }],
+    ['it is a sample', { isSample: true }],
+    ['it has no price', { publicPrice: 0 }],
+    ['it is only for rent', { listingMode: 'rent', rentalRatePerDay: 40 }],
+    ['the price is hidden', { store: { ...store, productCardActions: ['add_to_cart', 'contact_for_price'] } }],
+    ['the owner only takes WhatsApp orders', { store: { ...store, productCardActions: ['view', 'whatsapp'] } }],
+  ])('has no plus when %s', (_name, change) => {
+    show(<ProductCard product={{ ...product, ...change }} compact />);
+    expect(screen.queryByRole('button', { name: /to cart/ })).not.toBeInTheDocument();
   });
 
   it('shows a discount and says when it is out of stock', () => {

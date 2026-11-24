@@ -5,7 +5,9 @@
 - Phones: 1 or 2 per row, default 2 for every store. Two per row uses the compact card; one keeps the large card.
 - Tablets: 3 per row, always. Card style follows phones.
 - Computers: the template's own number until the owner picks 3, 4, 5 or 6 (5 and 6 start at 1280px). Large cards unless the owner picks compact.
-- Compact card: image, name (2 lines), price, discount, wishlist heart; "Out of stock" or "Sample" only when true. No buttons: tapping opens the product.
+- Compact card: image, name (2 lines), price, discount, wishlist heart; "Out of stock" or "Sample" only when true. A plus at the bottom right adds one to the cart (added later the same day); tapping anywhere else opens the product.
+- The plus shows only where the product page sells online: in stock, priced, not a sample, not rent-only, and the owner's buttons include Add to cart or Buy now.
+- The featured promo card was removed from online stores (it was automatic, with no owner setting).
 - Service stores too. The marketplace is unchanged.
 
 **How it works**

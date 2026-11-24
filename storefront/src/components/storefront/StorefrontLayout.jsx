@@ -16,6 +16,7 @@ import {
   MessageCircle,
   Package,
   Phone,
+  Plus,
   Search,
   SlidersHorizontal,
   ShoppingBag,
@@ -1159,7 +1160,7 @@ const WishlistButton = ({ title, saved, disabled, onClick, className }) => (
 );
 
 /**
- * @param {{ product: object, compact?: boolean }} props - `compact`: image, name and price; the rest is on the product page.
+ * @param {{ product: object, compact?: boolean }} props - `compact`: image, name, price and a plus to add to cart; the rest is on the product page.
  */
 export const ProductCard = ({ product, compact = false }) => {
   const location = useLocation();
@@ -1353,6 +1354,9 @@ export const ProductCard = ({ product, compact = false }) => {
   if (compact) {
     const priceText = softenPrice ? 'Contact for price' : 'Price on request';
     const hasPrice = !softenPrice && priceDisplay.amount != null;
+    // Only where the product page sells online too: an owner's buttons may be WhatsApp only.
+    const canAddToCart = availability.available && !isSample && hasPrice
+      && (cardActions.includes('add_to_cart') || cardActions.includes('buy_now'));
     return (
       <div className="sf-reveal sf-card relative h-full overflow-hidden rounded-xl border border-slate-200 bg-white hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)]">
         <Link to={productUrl} className="flex h-full flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--store-accent,#166534)]">
@@ -1368,8 +1372,8 @@ export const ProductCard = ({ product, compact = false }) => {
             <span className="line-clamp-2 min-h-[2.25rem] text-[13px] font-semibold leading-[1.125rem] text-slate-950 [overflow-wrap:anywhere]">
               {product.title}
             </span>
-            <span className="mt-auto block pt-1.5 leading-5">
-              <span className={`font-extrabold [overflow-wrap:anywhere] ${hasPrice ? 'text-[15px] text-[color:var(--store-accent,#166534)]' : 'text-[13px] text-slate-700'}`}>
+            <span className={`mt-auto block pt-1.5 leading-5 ${canAddToCart ? 'flex min-h-[2.375rem] flex-col justify-center pr-9' : ''}`}>
+              <span className={`font-extrabold [overflow-wrap:anywhere] ${hasPrice ? 'text-sm text-[color:var(--store-accent,#166534)] sm:text-[15px]' : 'text-[13px] text-slate-700'}`}>
                 {hasPrice ? formatAmount(priceDisplay.amount, currency) : priceText}
               </span>
               {hasPrice && priceDisplay.suffix ? (
@@ -1393,6 +1397,17 @@ export const ProductCard = ({ product, compact = false }) => {
           onClick={handleWishlistClick}
           className="right-1.5 top-1.5"
         />
+        {canAddToCart ? (
+          // 32px to see, 44px to tap.
+          <button
+            type="button"
+            onClick={handleAddToCart}
+            aria-label={`Add ${product.title} to cart`}
+            className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--store-accent,#166534)] text-white transition-transform before:absolute before:-inset-1.5 before:content-[''] hover:bg-[color-mix(in_srgb,var(--store-accent,#166534)_85%,black)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--store-accent,#166534)] focus-visible:ring-offset-2 active:scale-90 sm:bottom-2.5 sm:right-2.5"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -1764,7 +1779,7 @@ export const ServiceCard = ({ service, serviceUrl: serviceUrlOverride, compact =
           <span className="line-clamp-2 min-h-[2.25rem] text-[13px] font-semibold leading-[1.125rem] text-slate-950 [overflow-wrap:anywhere]">
             {service.title}
           </span>
-          <span className="mt-auto pt-1.5 text-[15px] font-extrabold leading-5 text-[color:var(--store-accent,#166534)] [overflow-wrap:anywhere]">
+          <span className="mt-auto pt-1.5 text-sm font-extrabold leading-5 text-[color:var(--store-accent,#166534)] [overflow-wrap:anywhere] sm:text-[15px]">
             {formatServicePrice(service)}
           </span>
         </span>
