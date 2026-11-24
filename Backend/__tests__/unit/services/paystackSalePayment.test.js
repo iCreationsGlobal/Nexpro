@@ -1,7 +1,11 @@
+jest.mock('../../../config/database', () => ({
+  sequelize: { transaction: jest.fn(async fn => fn({ LOCK: { UPDATE: 'UPDATE' } })) },
+}));
+
 jest.mock('../../../models', () => {
   const findByPk = jest.fn();
   return {
-    Sale: { findOne: jest.fn(), sequelize: { transaction: jest.fn(async fn => fn({ LOCK: { UPDATE: 'UPDATE' } })) } },
+    Sale: { findOne: jest.fn() },
     Payment: { findOne: jest.fn().mockResolvedValue(null) },
     Tenant: {
       findByPk,
