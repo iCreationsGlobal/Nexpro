@@ -12,6 +12,7 @@ import {
   AbsOnlineStoreHostApp,
   CheckoutRoute,
   CustomDomainStoreApp,
+  OnlineStoreChrome,
   RequireShopperAuth,
   singleStoreCommerceRouteElements,
   storePageRouteElements,
@@ -65,36 +66,38 @@ function MarketplaceHostApp() {
   return (
     <GoogleSignInHost>
       <ConnectionHealthBanner />
-      <Suspense fallback={<RouteFallback />}>
-        <Routes>
-          <Route path="/" element={<MarketplaceHome />} />
-          <Route path="/stores" element={<MarketplaceStoresPage />} />
-          <Route path="/studios" element={<MarketplaceStudiosPage />} />
-          <Route path="/services" element={<MarketplaceServicesPage />} />
-          <Route path="/foods" element={<MarketplaceProductsPage mode="foods" />} />
-          <Route path="/studios/:studioSlug" element={<PublicStudioHome />} />
-          <Route path="/studios/:studioSlug/services/:serviceSlug" element={<PublicStudioService />} />
-          {storePageRouteElements('stores')}
-          <Route path="/products" element={<MarketplaceProductsPage mode="products" />} />
-          {/* Bare /shop: Sabito products alias */}
-          <Route path="/shop" element={<Navigate to="/products" replace />} />
-          {storePageRouteElements('shop')}
-          <Route path="/deals" element={<MarketplaceProductsPage mode="deals" />} />
-          <Route path="/new-arrivals" element={<MarketplaceProductsPage mode="arrivals" />} />
-          <Route path="/about-contact" element={<AboutPage />} />
-          <Route path="/about" element={<Navigate to="/about-contact" replace />} />
-          <Route path="/contact" element={<Navigate to="/about-contact" replace />} />
-          {singleStoreCommerceRouteElements}
-          <Route path="/marketplace" element={<Navigate to="/" replace />} />
-          <Route path="/store" element={<Navigate to="/" replace />} />
-          <Route path="/store/:storeSlug" element={<NavigateToStore />} />
-          <Route path="/store/:storeSlug/products/:productSlug" element={<NavigateToProduct />} />
-          <Route path="/template" element={<Navigate to="/" replace />} />
-          <Route path="/template/*" element={<NavigateTemplateToShop />} />
-          {templatesGalleryRouteElements}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+      <OnlineStoreChrome>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<MarketplaceHome />} />
+            <Route path="/stores" element={<MarketplaceStoresPage />} />
+            <Route path="/studios" element={<MarketplaceStudiosPage />} />
+            <Route path="/services" element={<MarketplaceServicesPage />} />
+            <Route path="/foods" element={<MarketplaceProductsPage mode="foods" />} />
+            <Route path="/studios/:studioSlug" element={<PublicStudioHome />} />
+            <Route path="/studios/:studioSlug/services/:serviceSlug" element={<PublicStudioService />} />
+            {storePageRouteElements('stores')}
+            <Route path="/products" element={<MarketplaceProductsPage mode="products" />} />
+            {/* Bare /shop: Sabito products alias */}
+            <Route path="/shop" element={<Navigate to="/products" replace />} />
+            {storePageRouteElements('shop')}
+            <Route path="/deals" element={<MarketplaceProductsPage mode="deals" />} />
+            <Route path="/new-arrivals" element={<MarketplaceProductsPage mode="arrivals" />} />
+            <Route path="/about-contact" element={<AboutPage />} />
+            <Route path="/about" element={<Navigate to="/about-contact" replace />} />
+            <Route path="/contact" element={<Navigate to="/about-contact" replace />} />
+            {singleStoreCommerceRouteElements}
+            <Route path="/marketplace" element={<Navigate to="/" replace />} />
+            <Route path="/store" element={<Navigate to="/" replace />} />
+            <Route path="/store/:storeSlug" element={<NavigateToStore />} />
+            <Route path="/store/:storeSlug/products/:productSlug" element={<NavigateToProduct />} />
+            <Route path="/template" element={<Navigate to="/" replace />} />
+            <Route path="/template/*" element={<NavigateTemplateToShop />} />
+            {templatesGalleryRouteElements}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </OnlineStoreChrome>
       <ShopperAuthModal />
     </GoogleSignInHost>
   );

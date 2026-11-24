@@ -9,6 +9,8 @@ import RouteFallback from '../components/storefront/RouteFallback';
 import ShopperAuthModal from '../components/storefront/ShopperAuthModal';
 import { useStorefrontAuth } from '../context/StorefrontAuthContext';
 import { useStorefrontMode } from '../context/StorefrontModeContext';
+import { OnlineStoreChromeProvider } from './OnlineStoreChromeContext';
+import StoreTabBar from './StoreTabBar';
 
 const CartPage = lazy(() => import('../pages/CartPage'));
 const CheckoutPage = lazy(() => import('../pages/CheckoutPage'));
@@ -128,6 +130,14 @@ export const templatesGalleryRouteElements = [
   <Route key="templates-preview-tenant" path="/templates/:templateId/preview-tenant" element={withRouteSuspense(<TemplatePreview />)} />,
 ];
 
+/** Online Store pages plus the phone bottom bar, which shows itself only inside a shop. */
+export const OnlineStoreChrome = ({ children }) => (
+  <OnlineStoreChromeProvider>
+    {children}
+    <StoreTabBar />
+  </OnlineStoreChromeProvider>
+);
+
 /**
  * Template gallery host only — never mounts marketplace discovery routes.
  */
@@ -177,36 +187,38 @@ export function AbsOnlineStoreHostApp() {
   return (
     <GoogleSignInHost>
       <ConnectionHealthBanner />
-      <Suspense fallback={<RouteFallback />}>
-        <Routes>
-          <Route path="/" element={<OnlineStoreHostLanding />} />
-          <Route path="/shop" element={<OnlineStoreHostLanding />} />
-          {storePageRouteElements('shop')}
-          <Route path="/template" element={<Navigate to="/" replace />} />
-          <Route path="/template/*" element={<NavigateTemplateToShop />} />
-          {templatesGalleryRouteElements}
-          {singleStoreCommerceRouteElements}
-          {/* Marketplace discovery aliases — keep shoppers off Sabito chrome on this host */}
-          <Route path="/marketplace" element={<Navigate to="/" replace />} />
-          <Route path="/stores" element={<Navigate to="/" replace />} />
-          <Route path="/stores/*" element={<Navigate to="/" replace />} />
-          <Route path="/products" element={<Navigate to="/" replace />} />
-          <Route path="/products/*" element={<Navigate to="/" replace />} />
-          <Route path="/services" element={<Navigate to="/" replace />} />
-          <Route path="/services/*" element={<Navigate to="/" replace />} />
-          <Route path="/studios" element={<Navigate to="/" replace />} />
-          <Route path="/studios/*" element={<Navigate to="/" replace />} />
-          <Route path="/deals" element={<Navigate to="/" replace />} />
-          <Route path="/new-arrivals" element={<Navigate to="/" replace />} />
-          <Route path="/foods" element={<Navigate to="/" replace />} />
-          <Route path="/about-contact" element={<Navigate to="/" replace />} />
-          <Route path="/about" element={<Navigate to="/" replace />} />
-          <Route path="/contact" element={<Navigate to="/" replace />} />
-          <Route path="/store" element={<Navigate to="/" replace />} />
-          <Route path="/store/*" element={<Navigate to="/" replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+      <OnlineStoreChrome>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<OnlineStoreHostLanding />} />
+            <Route path="/shop" element={<OnlineStoreHostLanding />} />
+            {storePageRouteElements('shop')}
+            <Route path="/template" element={<Navigate to="/" replace />} />
+            <Route path="/template/*" element={<NavigateTemplateToShop />} />
+            {templatesGalleryRouteElements}
+            {singleStoreCommerceRouteElements}
+            {/* Marketplace discovery aliases — keep shoppers off Sabito chrome on this host */}
+            <Route path="/marketplace" element={<Navigate to="/" replace />} />
+            <Route path="/stores" element={<Navigate to="/" replace />} />
+            <Route path="/stores/*" element={<Navigate to="/" replace />} />
+            <Route path="/products" element={<Navigate to="/" replace />} />
+            <Route path="/products/*" element={<Navigate to="/" replace />} />
+            <Route path="/services" element={<Navigate to="/" replace />} />
+            <Route path="/services/*" element={<Navigate to="/" replace />} />
+            <Route path="/studios" element={<Navigate to="/" replace />} />
+            <Route path="/studios/*" element={<Navigate to="/" replace />} />
+            <Route path="/deals" element={<Navigate to="/" replace />} />
+            <Route path="/new-arrivals" element={<Navigate to="/" replace />} />
+            <Route path="/foods" element={<Navigate to="/" replace />} />
+            <Route path="/about-contact" element={<Navigate to="/" replace />} />
+            <Route path="/about" element={<Navigate to="/" replace />} />
+            <Route path="/contact" element={<Navigate to="/" replace />} />
+            <Route path="/store" element={<Navigate to="/" replace />} />
+            <Route path="/store/*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </OnlineStoreChrome>
       <ShopperAuthModal />
     </GoogleSignInHost>
   );
@@ -229,32 +241,34 @@ export function CustomDomainStoreApp({ slug, launched, displayName }) {
   return (
     <GoogleSignInHost>
       <ConnectionHealthBanner />
-      <Suspense fallback={<RouteFallback />}>
-        <Routes>
-          <Route path="/" element={withRouteSuspense(<PublicStoreHome />)} />
-          <Route path="/home" element={<Navigate to="/" replace />} />
-          <Route path="/products" element={withRouteSuspense(<PublicStoreHome />)} />
-          <Route path="/services" element={withRouteSuspense(<PublicStoreHome />)} />
-          <Route path="/categories" element={withRouteSuspense(<PublicStoreHome />)} />
-          <Route path="/about" element={withRouteSuspense(<PublicStoreHome />)} />
-          <Route path="/about-contact" element={<Navigate to="/about" replace />} />
-          <Route path="/contact" element={<Navigate to="/about" replace />} />
-          <Route path="/reviews" element={withRouteSuspense(<PublicStoreHome />)} />
-          <Route path="/products/:productSlug" element={withRouteSuspense(<PublicStoreProduct />)} />
-          <Route path="/services/:serviceSlug" element={withRouteSuspense(<PublicStudioService />)} />
-          {/* Legacy bookmarks / shared-host links → clean owned-domain paths */}
-          <Route path="/stores" element={<Navigate to="/" replace />} />
-          <Route path="/stores/:storeSlug" element={<RedirectPrefixedStoreToRoot />} />
-          <Route path="/stores/:storeSlug/*" element={<RedirectPrefixedStoreToRoot />} />
-          <Route path="/shop" element={<Navigate to="/" replace />} />
-          <Route path="/shop/:storeSlug" element={<RedirectPrefixedStoreToRoot />} />
-          <Route path="/shop/:storeSlug/*" element={<RedirectPrefixedStoreToRoot />} />
-          <Route path="/template" element={<Navigate to="/" replace />} />
-          <Route path="/template/*" element={<Navigate to="/" replace />} />
-          {singleStoreCommerceRouteElements}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+      <OnlineStoreChrome>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={withRouteSuspense(<PublicStoreHome />)} />
+            <Route path="/home" element={<Navigate to="/" replace />} />
+            <Route path="/products" element={withRouteSuspense(<PublicStoreHome />)} />
+            <Route path="/services" element={withRouteSuspense(<PublicStoreHome />)} />
+            <Route path="/categories" element={withRouteSuspense(<PublicStoreHome />)} />
+            <Route path="/about" element={withRouteSuspense(<PublicStoreHome />)} />
+            <Route path="/about-contact" element={<Navigate to="/about" replace />} />
+            <Route path="/contact" element={<Navigate to="/about" replace />} />
+            <Route path="/reviews" element={withRouteSuspense(<PublicStoreHome />)} />
+            <Route path="/products/:productSlug" element={withRouteSuspense(<PublicStoreProduct />)} />
+            <Route path="/services/:serviceSlug" element={withRouteSuspense(<PublicStudioService />)} />
+            {/* Legacy bookmarks / shared-host links → clean owned-domain paths */}
+            <Route path="/stores" element={<Navigate to="/" replace />} />
+            <Route path="/stores/:storeSlug" element={<RedirectPrefixedStoreToRoot />} />
+            <Route path="/stores/:storeSlug/*" element={<RedirectPrefixedStoreToRoot />} />
+            <Route path="/shop" element={<Navigate to="/" replace />} />
+            <Route path="/shop/:storeSlug" element={<RedirectPrefixedStoreToRoot />} />
+            <Route path="/shop/:storeSlug/*" element={<RedirectPrefixedStoreToRoot />} />
+            <Route path="/template" element={<Navigate to="/" replace />} />
+            <Route path="/template/*" element={<Navigate to="/" replace />} />
+            {singleStoreCommerceRouteElements}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </OnlineStoreChrome>
       <ShopperAuthModal />
     </GoogleSignInHost>
   );

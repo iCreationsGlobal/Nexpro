@@ -7,7 +7,6 @@ import {
   CreditCard,
   Loader2,
   Mail,
-  Menu,
   MessageCircle,
   Package,
   Phone,
@@ -20,7 +19,6 @@ import {
   Store,
   Truck,
   User,
-  X,
 } from 'lucide-react';
 
 import storeService from '../services/storeService';
@@ -35,6 +33,8 @@ import {
   resolveSingleStoreHomePath,
 } from '../online-store/storePaths';
 import { getStoreCatalogPage } from '../online-store/storeCatalog';
+import StoreMobileHeader from '../online-store/StoreMobileHeader';
+import { getStorePages } from '../online-store/storeNavigation';
 import {
   ActionLink,
   getStoreServiceUrl,
@@ -53,6 +53,7 @@ import {
 } from '../components/storefront/VerifiedReviewSection';
 import { resolveStoreBannerImageUrl } from '../utils/fileUtils';
 import {
+  buildStoreContactHref,
   buildStoreWhatsAppHref,
   normalizePhone,
   whatsappContactMessage,
@@ -76,14 +77,6 @@ const STORE_SUBTITLE = {
 };
 
 const cleanContactValue = (value) => String(value || '').trim();
-
-const buildContactHref = (store) => {
-  const whatsappHref = buildStoreWhatsAppHref(store, whatsappContactMessage(store?.displayName));
-  if (whatsappHref) return whatsappHref;
-  const email = cleanContactValue(store?.contactEmail);
-  if (email) return `mailto:${email}`;
-  return '';
-};
 
 const buildPublicContactDetails = (store) => {
   const phone = cleanContactValue(store?.contactPhone);
@@ -142,9 +135,9 @@ const StoreScopedHeader = ({
   homeTo: homeToProp,
   navItems = null,
   activePage = 'home',
+  className = '',
 }) => {
   const [searchText, setSearchText] = useState('');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { cartSummary } = useCart();
   const { isAuthenticated, openShopperAuthModal } = useStorefrontAuth();
   const cartCount = cartSummary.itemCount ? String(cartSummary.itemCount) : null;
@@ -167,23 +160,6 @@ const StoreScopedHeader = ({
     });
   }, [openShopperAuthModal, previewMode]);
 
-  const toggleMobileMenu = useCallback(() => {
-    setMobileMenuOpen((current) => !current);
-  }, []);
-
-  const closeMobileMenu = useCallback(() => {
-    setMobileMenuOpen(false);
-  }, []);
-
-  useEffect(() => {
-    if (!mobileMenuOpen) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [mobileMenuOpen]);
-
   const homeTo = previewMode
     ? '#'
     : (homeToProp || (store?.slug ? `/stores/${encodeURIComponent(store.slug)}` : '/'));
@@ -196,16 +172,8 @@ const StoreScopedHeader = ({
     }`
   );
 
-  const mobileNavLinkClass = (key) => (
-    `flex min-h-11 items-center rounded-2xl border px-4 py-2.5 text-sm font-bold transition-colors ${
-      activePage === key
-        ? 'border-transparent text-white'
-        : 'border-border bg-card text-foreground/80 hover:border-foreground/20'
-    }`
-  );
-
   return (
-    <header className={`sticky top-0 z-50 ${theme.headerClass}`}>
+    <header className={`sticky top-0 z-50 ${theme.headerClass} ${className}`}>
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:gap-4">
         <div className="flex min-w-0 items-center justify-between gap-3 lg:contents">
           <Link to={homeTo} className="flex min-w-0 items-center gap-3" onClick={previewMode ? (e) => e.preventDefault() : undefined}>
@@ -221,18 +189,6 @@ const StoreScopedHeader = ({
               ) : null}
             </span>
           </Link>
-          {showPageNav ? (
-            <button
-              type="button"
-              onClick={toggleMobileMenu}
-              className="inline-flex h-11 min-h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800 transition-colors hover:bg-slate-50 lg:hidden"
-              aria-label={mobileMenuOpen ? 'Close store menu' : 'Open store menu'}
-              aria-controls="store-scoped-mobile-menu"
-              aria-expanded={mobileMenuOpen}
-            >
-              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
-          ) : null}
         </div>
 
         <form onSubmit={handleSubmit} className="flex min-w-0 flex-1 overflow-hidden rounded-full border border-border bg-muted/50 p-1">
@@ -299,57 +255,6 @@ const StoreScopedHeader = ({
           )}
         </div>
       </div>
-
-      {showPageNav && mobileMenuOpen ? (
-        <div className="fixed inset-0 z-[60] overflow-y-auto bg-background text-foreground lg:hidden" id="store-scoped-mobile-menu">
-          <div className="sticky top-0 z-10 border-b border-border bg-background px-3 py-4 sm:px-4">
-            <div className="flex items-center justify-between gap-3">
-              <Link
-                to={homeTo}
-                className="flex min-w-0 items-center gap-3"
-                onClick={(event) => {
-                  if (previewMode) event.preventDefault();
-                  closeMobileMenu();
-                }}
-              >
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                  <StoreLogo store={store} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-lg font-black">{store.displayName}</span>
-                  <span className="block text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: accent }}>
-                    Menu
-                  </span>
-                </span>
-              </Link>
-              <button
-                type="button"
-                onClick={closeMobileMenu}
-                className="inline-flex h-11 min-h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800 transition-colors hover:bg-slate-50"
-                aria-label="Close store menu"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-          <nav className="grid gap-2 px-3 py-4 sm:px-4" aria-label="Store pages">
-            {navItems.map((item) => (
-              <Link
-                key={item.key}
-                to={previewMode ? '#' : item.to}
-                className={mobileNavLinkClass(item.key)}
-                style={activePage === item.key ? { backgroundColor: accent, borderColor: accent } : undefined}
-                onClick={(event) => {
-                  if (previewMode) event.preventDefault();
-                  closeMobileMenu();
-                }}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      ) : null}
     </header>
   );
 };
@@ -586,7 +491,7 @@ const PublicStoreHome = ({
     () => (isSingleStoreMode || !isMarketplaceMode) && Array.isArray(store?.heroSlides) ? store.heroSlides : [],
     [isMarketplaceMode, isSingleStoreMode, store?.heroSlides]
   );
-  const contactHref = useMemo(() => buildContactHref(store), [store]);
+  const contactHref = useMemo(() => buildStoreContactHref(store), [store]);
   const publicContactDetails = useMemo(() => buildPublicContactDetails(store), [store]);
   const hasPublicContactDetails = Boolean(
     publicContactDetails.phone || publicContactDetails.whatsapp || publicContactDetails.email
@@ -724,16 +629,11 @@ const PublicStoreHome = ({
     );
   }
 
-  const catalogPath = isServiceStore
-    ? (storeBasePath === '/' ? '/services' : `${storeBasePath}/services`)
-    : (storeBasePath === '/' ? '/products' : `${storeBasePath}/products`);
-  const navItems = [
-    { key: 'home', label: isOwnedShop ? 'Home' : 'Store Home', to: storeBasePath },
-    { key: 'catalog', label: isServiceStore ? 'All Services' : 'All Products', to: catalogPath },
-    { key: 'categories', label: 'Categories', to: storeBasePath === '/' ? '/categories' : `${storeBasePath}/categories` },
-    { key: 'about', label: 'About Us', to: storeBasePath === '/' ? '/about' : `${storeBasePath}/about` },
-    { key: 'reviews', label: 'Reviews', to: storeBasePath === '/' ? '/reviews' : `${storeBasePath}/reviews` },
-  ];
+  const navItems = getStorePages({
+    homePath: storeBasePath,
+    serviceStore: isServiceStore,
+    homeLabel: isOwnedShop ? 'Home' : 'Store Home',
+  });
   const storeCatalogRaw = isServiceStore ? allServices : allProducts;
   const catalogPage = getStoreCatalogPage(storeCatalogRaw, {
     search: catalogSearch,
@@ -1544,7 +1444,9 @@ const PublicStoreHome = ({
       tertiaryColor={brandColors.tertiary}
     >
     <div className={`min-h-screen ${theme.dark ? 'sf-dark' : ''}`}>
+      {isOwnedShop && !previewMode ? <StoreMobileHeader store={store} /> : null}
       <StoreScopedHeader
+        className={isOwnedShop && !previewMode ? 'hidden lg:block' : ''}
         store={store}
         onSearch={handleSearch}
         theme={theme}

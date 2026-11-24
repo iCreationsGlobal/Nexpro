@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatAmount } from '../utils/formatNumber';
 import { resolveImageUrl } from '../utils/fileUtils';
+import { StoreHeaderRow } from '../online-store/StoreMobileHeader';
+import { getStoreTabs, StoreTabBarView } from '../online-store/StoreTabBar';
 import { buildStoreProductPath } from '../online-store/storePaths';
 import StoreHeroCarousel from '../components/storefront/StoreHeroCarousel';
 import { StoreScopedFooter } from '../components/storefront/StorefrontLayout';
@@ -75,7 +77,7 @@ export default function StoreTemplateShell({
                 <p className="truncate font-semibold text-slate-950">{store?.displayName || 'Demo store'}</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" asChild>
+                <Button variant="outline" className="text-slate-950" asChild>
                   <Link to={galleryBackTo}>Back to gallery</Link>
                 </Button>
                 {useTemplateCtaHref ? (
@@ -88,9 +90,43 @@ export default function StoreTemplateShell({
           </div>
         ) : null}
 
-        <header className={`sticky top-0 z-50 ${theme.headerClass}`}>
-          <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:gap-4">
-            <div className="flex min-w-0 items-center justify-between gap-3 lg:contents">
+        <header className={`sticky top-0 z-50 lg:hidden ${theme.headerClass} ${theme.dark ? 'sf-dark text-white' : ''}`}>
+          <StoreHeaderRow store={store}>
+            <span className="flex h-11 w-11 items-center justify-center"><Search className="h-6 w-6" /></span>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((open) => !open)}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+              aria-label={mobileMenuOpen ? 'Close store menu' : 'Open store menu'}
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+          </StoreHeaderRow>
+          {mobileMenuOpen ? (
+            <div className="border-t border-border px-3 py-3 sm:px-4">
+              <nav className="grid gap-2" aria-label="Store pages">
+                {PREVIEW_NAV_ITEMS.map((item) => (
+                  <span
+                    key={item.key}
+                    className="flex min-h-11 items-center rounded-2xl border border-border px-4 py-2.5 text-sm font-bold"
+                    style={
+                      item.key === 'home'
+                        ? { backgroundColor: accent, borderColor: accent, color: '#fff' }
+                        : undefined
+                    }
+                  >
+                    {item.label}
+                  </span>
+                ))}
+              </nav>
+            </div>
+          ) : null}
+        </header>
+
+        <header className={`sticky top-0 z-50 hidden lg:block ${theme.headerClass}`}>
+          <div className="mx-auto flex w-full max-w-[1440px] items-center gap-4 px-4 py-3">
+            <div className="contents">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white">
                   {logoUrl ? (
@@ -103,15 +139,6 @@ export default function StoreTemplateShell({
                   <span className="block truncate text-lg font-black sm:text-xl">{store?.displayName}</span>
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen((open) => !open)}
-                className="inline-flex h-11 min-h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800 transition-colors hover:bg-slate-50 lg:hidden"
-                aria-label={mobileMenuOpen ? 'Close store menu' : 'Open store menu'}
-                aria-expanded={mobileMenuOpen}
-              >
-                {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              </button>
             </div>
 
             <div className="flex min-w-0 flex-1 overflow-hidden rounded-full border border-slate-200 bg-white/80 p-1">
@@ -160,26 +187,6 @@ export default function StoreTemplateShell({
               </Button>
             </div>
           </div>
-
-          {mobileMenuOpen ? (
-            <div className="border-t border-slate-200 px-3 py-3 lg:hidden sm:px-4">
-              <nav className="grid gap-2" aria-label="Store pages">
-                {PREVIEW_NAV_ITEMS.map((item) => (
-                  <span
-                    key={item.key}
-                    className="flex min-h-11 items-center rounded-2xl border px-4 py-2.5 text-sm font-bold"
-                    style={
-                      item.key === 'home'
-                        ? { backgroundColor: accent, borderColor: accent, color: '#fff' }
-                        : undefined
-                    }
-                  >
-                    {item.label}
-                  </span>
-                ))}
-              </nav>
-            </div>
-          ) : null}
         </header>
 
         <main>
@@ -290,6 +297,8 @@ export default function StoreTemplateShell({
           subtitle=""
           accentColor={accent}
         />
+        <div className="h-14 lg:hidden" aria-hidden="true" />
+        <StoreTabBarView store={store} tabs={getStoreTabs()} activeKey="home" interactive={false} />
       </div>
     </TemplateThemeProvider>
   );

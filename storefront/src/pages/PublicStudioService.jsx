@@ -7,6 +7,8 @@ import storeService from '../services/storeService';
 import { dashboardLink } from '../config';
 import { useStorefrontAuth } from '../context/StorefrontAuthContext';
 import { useStorefrontMode } from '../context/StorefrontModeContext';
+import OnlineStorePageShell from '../online-store/OnlineStorePageShell';
+import { resolveSingleStoreHomePath } from '../online-store/storePaths';
 import {
   Breadcrumbs,
   BuyerLayoutFrame,
@@ -73,14 +75,15 @@ const buildContactHref = (studio, service) => {
 
 const PublicStudioService = () => {
   const { studioSlug: studioSlugParam, storeSlug, serviceSlug } = useParams();
-  const { storeSlug: modeSlug, isCustomDomain, isSingleStoreMode } = useStorefrontMode();
+  const { storeSlug: modeSlug, pathPrefix, isCustomDomain, isSingleStoreMode } = useStorefrontMode();
   const studioSlug = studioSlugParam || storeSlug || modeSlug;
-  const studioHomePath = isCustomDomain
-    ? '/'
+  const studioHomePath = isSingleStoreMode
+    ? resolveSingleStoreHomePath({ storeSlug: studioSlug, pathPrefix, isCustomDomain })
     : (storeSlug
       ? `/stores/${encodeURIComponent(storeSlug)}`
       : `/studios/${encodeURIComponent(studioSlug || '')}`);
   const showOwnedChrome = Boolean(isCustomDomain || isSingleStoreMode || storeSlug);
+  const backLabel = isSingleStoreMode ? 'Back to shop' : 'Back to studio';
   const [searchParams, setSearchParams] = useSearchParams();
   const { customer, isAuthenticated, isLoading: authLoading, openShopperAuthModal } = useStorefrontAuth();
   const [requestForm, setRequestForm] = useState(emptyRequestForm);
@@ -259,7 +262,7 @@ const PublicStudioService = () => {
     return (
       <div className="min-h-screen bg-[#f4f7f2] p-8 text-center">
         <h1 className="text-2xl font-semibold">Service not found</h1>
-        <Button className="mt-4" asChild><Link to={studioHomePath}>Back to studio</Link></Button>
+        <Button className="mt-4" asChild><Link to={studioHomePath}>{backLabel}</Link></Button>
       </div>
     );
   }
@@ -269,10 +272,24 @@ const PublicStudioService = () => {
     : 'Request quote';
   const contactHref = buildContactHref(studio, service);
 
+  const Shell = isSingleStoreMode ? OnlineStorePageShell : BuyerLayoutFrame;
+  const shellProps = isSingleStoreMode ? {
+    footer: (
+      // No color of its own: it follows the shop theme the shell sets.
+      <StoreScopedFooter
+        store={{ ...studio, primaryColor: null }}
+        isServiceStore
+        singleStoreMode
+        contactHref={contactHref}
+        storeBasePath={studioHomePath}
+      />
+    ),
+  } : {};
+
   return (
-    <BuyerLayoutFrame>
+    <Shell {...shellProps}>
       {!showOwnedChrome ? <StorefrontHeader activePath="/services" /> : null}
-      <div className="mx-auto max-w-6xl px-4 py-6">
+      <div className={`mx-auto max-w-6xl ${isSingleStoreMode ? '' : 'px-4 py-6'}`}>
         <Breadcrumbs items={showOwnedChrome
           ? [
             { label: studio.displayName, to: studioHomePath },
@@ -287,7 +304,7 @@ const PublicStudioService = () => {
         <Button variant="outline" className="mb-6" asChild>
           <Link to={studioHomePath}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to studio
+            {backLabel}
           </Link>
         </Button>
 
@@ -447,12 +464,12 @@ const PublicStudioService = () => {
           </div>
         </div>
       </div>
-      {showOwnedChrome ? (
+      {isSingleStoreMode ? null : (showOwnedChrome ? (
         <StoreScopedFooter store={studio} isServiceStore contactHref={contactHref} />
       ) : (
         <StorefrontFooter />
-      )}
-    </BuyerLayoutFrame>
+      ))}
+    </Shell>
   );
 };
 

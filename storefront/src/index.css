@@ -61,7 +61,43 @@
 
   #root {
     min-height: 100dvh;
+    /* viewport-fit=cover draws under the notch when a phone is sideways; keep pages clear of it. */
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
   }
+}
+
+/* Online Store bottom bar. html.sf-tab-bar is set while a page has one. */
+:root {
+  --sf-tab-bar: 0px;
+}
+
+@media (max-width: 1023.98px) {
+  html.sf-tab-bar {
+    --sf-tab-bar: calc(3.5rem + 1px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Content wider than the screen would widen the page and carry the bar off it. */
+  html.sf-tab-bar #root {
+    overflow-x: clip;
+  }
+
+  html.sf-tab-bar .Toastify__toast-container--bottom-right {
+    bottom: calc(0.5rem + var(--sf-tab-bar));
+  }
+}
+
+.store-tab-bar {
+  padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+
+.store-tab-bar-space {
+  height: var(--sf-tab-bar);
+}
+
+/* Dialogs on the page own the whole screen. */
+body:has([aria-modal='true']) .store-tab-bar {
+  display: none;
 }
 
 .Toastify__toast {
@@ -113,8 +149,9 @@
 .sf-stagger > :nth-child(5) { --sf-delay: 240ms; }
 .sf-stagger > :nth-child(n + 6) { --sf-delay: 300ms; }
 
+/* backwards, not both: a pinned end state would trap dialogs inside the page area. */
 .sf-page-enter {
-  animation: sf-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: sf-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 /* Product cards lift with a soft shadow tinted by the store's brand color. */

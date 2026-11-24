@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Heart,
   Loader2,
-  Menu,
   MessageCircle,
   Package,
   Search,
@@ -15,7 +14,6 @@ import {
   ShoppingCart,
   Store,
   User,
-  X,
 } from 'lucide-react';
 
 import storeService from '../services/storeService';
@@ -28,6 +26,8 @@ import {
   buildStoreCatalogPath,
   resolveSingleStoreHomePath,
 } from '../online-store/storePaths';
+import StoreMobileHeader from '../online-store/StoreMobileHeader';
+import { getStorePages } from '../online-store/storeNavigation';
 import { showSuccess } from '../utils/toast';
 import {
   ActionLink,
@@ -106,7 +106,6 @@ const StoreScopedHeader = ({
   activePage = '',
 }) => {
   const [searchText, setSearchText] = useState('');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { cartSummary } = useCart();
   const { isAuthenticated, openShopperAuthModal } = useStorefrontAuth();
   const cartCount = cartSummary.itemCount ? String(cartSummary.itemCount) : null;
@@ -127,27 +126,10 @@ const StoreScopedHeader = ({
     });
   }, [openShopperAuthModal]);
 
-  const toggleMobileMenu = useCallback(() => {
-    setMobileMenuOpen((current) => !current);
-  }, []);
-
-  const closeMobileMenu = useCallback(() => {
-    setMobileMenuOpen(false);
-  }, []);
-
-  useEffect(() => {
-    if (!mobileMenuOpen) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [mobileMenuOpen]);
-
   const storeHome = homeTo || `/stores/${encodeURIComponent(store.slug)}`;
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
+    <header className={`sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur ${showPageNav ? 'hidden lg:block' : ''}`}>
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:gap-4">
         <div className="flex min-w-0 items-center justify-between gap-3 lg:contents">
           <Link to={storeHome} className="flex min-w-0 items-center gap-3">
@@ -161,18 +143,6 @@ const StoreScopedHeader = ({
               ) : null}
             </span>
           </Link>
-          {showPageNav ? (
-            <button
-              type="button"
-              onClick={toggleMobileMenu}
-              className="inline-flex h-11 min-h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800 transition-colors hover:bg-slate-50 lg:hidden"
-              aria-label={mobileMenuOpen ? 'Close store menu' : 'Open store menu'}
-              aria-controls="store-product-mobile-menu"
-              aria-expanded={mobileMenuOpen}
-            >
-              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
-          ) : null}
         </div>
 
         <form onSubmit={handleSubmit} className="flex min-w-0 flex-1 overflow-hidden rounded-full border border-slate-200 bg-slate-50 p-1">
@@ -225,48 +195,6 @@ const StoreScopedHeader = ({
           ) : null}
         </div>
       </div>
-
-      {showPageNav && mobileMenuOpen ? (
-        <div className="fixed inset-0 z-[60] overflow-y-auto bg-white lg:hidden" id="store-product-mobile-menu">
-          <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-4 sm:px-4">
-            <div className="flex items-center justify-between gap-3">
-              <Link to={storeHome} className="flex min-w-0 items-center gap-3" onClick={closeMobileMenu}>
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                  <StoreLogo store={store} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-lg font-black text-slate-950">{store.displayName}</span>
-                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--store-accent,#166534)]">Menu</span>
-                </span>
-              </Link>
-              <button
-                type="button"
-                onClick={closeMobileMenu}
-                className="inline-flex h-11 min-h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800 transition-colors hover:bg-slate-50"
-                aria-label="Close store menu"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-          <nav className="grid gap-2 px-3 py-4 sm:px-4" aria-label="Store pages">
-            {navItems.map((item) => (
-              <Link
-                key={item.key}
-                to={item.to}
-                onClick={closeMobileMenu}
-                className={`flex min-h-11 items-center rounded-2xl border px-4 py-2.5 text-sm font-bold transition-colors ${
-                  activePage === item.key
-                    ? 'border-[color:var(--store-accent,#166534)] bg-[var(--store-accent,#166534)] text-white'
-                    : 'border-slate-200 bg-white text-slate-700 hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_30%,white)] hover:bg-[var(--store-accent-soft,#f0fdf4)] hover:text-[color:var(--store-accent,#166534)]'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      ) : null}
     </header>
   );
 };
@@ -758,16 +686,9 @@ const PublicStoreProduct = () => {
   }
 
   const isServiceStore = store.storeMode === 'studio';
-  const catalogPath = isServiceStore
-    ? (storeBasePath === '/' ? '/services' : `${storeBasePath}/services`)
-    : (storeBasePath === '/' ? '/products' : `${storeBasePath}/products`);
-  const ownedNavItems = isOwnedShop ? [
-    { key: 'home', label: 'Home', to: storeBasePath },
-    { key: 'catalog', label: isServiceStore ? 'All Services' : 'All Products', to: catalogPath },
-    { key: 'categories', label: 'Categories', to: storeBasePath === '/' ? '/categories' : `${storeBasePath}/categories` },
-    { key: 'about', label: 'About Us', to: storeBasePath === '/' ? '/about' : `${storeBasePath}/about` },
-    { key: 'reviews', label: 'Reviews', to: storeBasePath === '/' ? '/reviews' : `${storeBasePath}/reviews` },
-  ] : null;
+  const ownedNavItems = isOwnedShop
+    ? getStorePages({ homePath: storeBasePath, serviceStore: isServiceStore })
+    : null;
   const brandColors = resolveStoreBrandColors(store?.templateId, store || {});
   const theme = getTemplateTheme(store?.templateId);
   const accent = brandColors.primary || theme.accent;
@@ -780,6 +701,7 @@ const PublicStoreProduct = () => {
       tertiaryColor={brandColors.tertiary}
     >
     <div className="min-h-screen bg-[#f4f7f2] text-slate-900">
+      {isOwnedShop ? <StoreMobileHeader store={store} /> : null}
       <StoreScopedHeader
         store={store}
         product={product}
@@ -794,7 +716,7 @@ const PublicStoreProduct = () => {
         <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-slate-500">
           <Link to={storeBasePath} className="hover:text-[color:var(--store-accent,#166534)]">{store.displayName}</Link>
           <ChevronRight className="h-3.5 w-3.5" />
-          <span className="font-semibold text-slate-800">{product.title}</span>
+          <span className="min-w-0 font-semibold text-slate-800 [overflow-wrap:anywhere]">{product.title}</span>
         </div>
 
         <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:rounded-[2rem]">
@@ -909,7 +831,7 @@ const PublicStoreProduct = () => {
                     </Badge>
                   ))}
                 </div>
-                <h2 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl md:text-4xl">{product.title}</h2>
+                <h2 className="text-2xl font-black tracking-tight text-slate-950 [overflow-wrap:anywhere] sm:text-3xl md:text-4xl">{product.title}</h2>
                 <div className="mt-3">
                   <ReviewSummaryLine summary={reviewSummary} />
                 </div>

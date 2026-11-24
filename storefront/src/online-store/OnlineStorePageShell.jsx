@@ -14,7 +14,9 @@ import {
 import storeService from '../services/storeService';
 import TemplateThemeProvider, { resolveStoreBrandColors } from '../templates/TemplateThemeProvider';
 import { brandAccent } from './brandAccent';
-import { resolveSingleStoreHomePath } from './storePaths';
+import StoreMobileHeader from './StoreMobileHeader';
+import { hasStoreTabBar } from './storeNavigation';
+import { isOnlineStoreShopPrefix, resolveSingleStoreHomePath } from './storePaths';
 import { showSuccess } from '../utils/toast';
 import { Button } from '@/components/ui/button';
 
@@ -69,9 +71,10 @@ const readCachedStoreBrand = (storeSlug, cartStore) => {
  *   title?: string,
  *   description?: string,
  *   showSignOut?: boolean,
+ *   footer?: import('react').ReactNode,
  * }} props
  */
-export default function OnlineStorePageShell({ children, title, description, showSignOut = false }) {
+export default function OnlineStorePageShell({ children, title, description, showSignOut = false, footer = null }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { cartSummary } = useCart();
@@ -83,7 +86,9 @@ export default function OnlineStorePageShell({ children, title, description, sho
     isCustomDomain,
   } = useStorefrontMode();
 
-  const storeSlug = cartSummary?.store?.slug || modeSlug || readOnlineStoreSession()?.slug || null;
+  // On a shop's own page the shop is in the URL; the cart may still hold another shop's items.
+  const storeSlug = (isOnlineStoreShopPrefix(location.pathname) ? modeSlug : null)
+    || cartSummary?.store?.slug || modeSlug || readOnlineStoreSession()?.slug || null;
   const resolvedPathPrefix = pathPrefix === 'stores' ? 'stores' : 'shop';
 
   // Keep commerce routes in Online Store mode when cart knows the shop but session drifted.
@@ -149,6 +154,14 @@ export default function OnlineStorePageShell({ children, title, description, sho
     || cartSummary?.store?.displayName
     || 'Shop';
 
+  const mobileStore = useMemo(
+    () => ({ ...brandSource, slug: storeSlug, displayName: storeName }),
+    [brandSource, storeName, storeSlug],
+  );
+  // Pages without the bottom bar keep Cart and Sign in up here on phones too.
+  const showMobileHeader = isSingleStoreMode && Boolean(storeSlug)
+    && hasStoreTabBar(location.pathname, { isCustomDomain });
+
   /** Full /login under this shell (store footer) — not the Sabito auth modal. */
   const handleSignIn = () => {
     const returnTo = `${window.location.pathname}${window.location.search || ''}`;
@@ -169,7 +182,8 @@ export default function OnlineStorePageShell({ children, title, description, sho
 
   const content = (
     <div className="min-h-screen bg-white text-slate-950">
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white">
+      {showMobileHeader ? <StoreMobileHeader store={mobileStore} /> : null}
+      <header className={`sticky top-0 z-50 border-b border-slate-200 bg-white ${showMobileHeader ? 'hidden lg:block' : ''}`}>
         <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3 px-3 py-3 sm:px-4">
           <Link to={homePath} className="flex min-w-0 items-center gap-3">
             <span
@@ -232,14 +246,16 @@ export default function OnlineStorePageShell({ children, title, description, sho
         {children}
       </main>
 
-      <footer className="border-t border-slate-200 bg-slate-50">
-        <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-2 px-3 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-4">
-          <p>&copy; {new Date().getFullYear()} {storeName}</p>
-          <Link to={homePath} className={brandAccent.link}>
-            Back to shop
-          </Link>
-        </div>
-      </footer>
+      {footer || (
+        <footer className="border-t border-slate-200 bg-slate-50">
+          <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-2 px-3 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+            <p>&copy; {new Date().getFullYear()} {storeName}</p>
+            <Link to={homePath} className={brandAccent.link}>
+              Back to shop
+            </Link>
+          </div>
+        </footer>
+      )}
     </div>
   );
 

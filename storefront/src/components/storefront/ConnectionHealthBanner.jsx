@@ -85,7 +85,7 @@ export default function ConnectionHealthBanner() {
       role={config.role}
       aria-live={config.role === 'alert' ? 'assertive' : 'polite'}
       className={cn(
-        'fixed bottom-4 left-3 right-3 z-[70] mx-auto max-w-md rounded-2xl border px-4 py-3 text-sm sm:left-auto sm:right-4 sm:mx-0 sm:w-[24rem]',
+        'fixed bottom-[calc(1rem+var(--sf-tab-bar,0px))] left-3 right-3 z-[70] mx-auto max-w-md rounded-2xl border px-4 py-3 text-sm sm:left-auto sm:right-4 sm:mx-0 sm:w-[24rem]',
         config.className
       )}
     >

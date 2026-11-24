@@ -912,7 +912,7 @@ export const StoreScopedFooter = ({
       style={brandStyle}
     >
       <div className="mx-auto grid w-full max-w-[1440px] gap-8 px-4 py-12 md:grid-cols-2 lg:grid-cols-[1.35fr_repeat(4,1fr)]">
-        <div>
+        <div className="min-w-0">
           <Link to={storeBasePath} className="flex min-w-0 items-center gap-3">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white">
               <StoreLogo store={store} fit="cover" className="scale-110" />

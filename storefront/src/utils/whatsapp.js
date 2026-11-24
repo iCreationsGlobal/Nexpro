@@ -52,6 +52,18 @@ export const whatsappContactMessage = (storeName) => (
 );
 
 /**
+ * General "Contact us" link: WhatsApp, else email, else ''.
+ * @param {{ whatsappNumber?: string|null, contactPhone?: string|null, contactEmail?: string|null, displayName?: string|null }|null|undefined} store
+ * @returns {string}
+ */
+export const buildStoreContactHref = (store) => {
+  const whatsappHref = buildStoreWhatsAppHref(store, whatsappContactMessage(store?.displayName));
+  if (whatsappHref) return whatsappHref;
+  const email = String(store?.contactEmail || '').trim();
+  return email ? `mailto:${email}` : '';
+};
+
+/**
  * Prefill: product interest (matches product page patterns).
  * @param {{ title?: string }|null|undefined} product
  * @param {string} [storeName]
