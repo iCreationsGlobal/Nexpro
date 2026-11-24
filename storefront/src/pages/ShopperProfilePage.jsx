@@ -225,16 +225,18 @@ const ShopperProfilePage = () => {
             </div>
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-full border-slate-200 text-slate-700 hover:bg-slate-50"
-              onClick={handleLogout}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign out
-            </Button>
-            <div className="flex flex-col gap-3 sm:flex-row">
+            {isSingleStoreMode ? null : (
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full border-slate-200 text-slate-700 hover:bg-slate-50"
+                onClick={handleLogout}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
+              </Button>
+            )}
+            <div className="flex flex-col gap-3 sm:ml-auto sm:flex-row">
               <Button asChild type="button" variant="outline" className="rounded-full border-[color:color-mix(in_srgb,var(--store-accent,#166534)_28%,white)] text-[color:color-mix(in_srgb,var(--store-accent,#166534)_85%,black)] hover:bg-[var(--store-accent-soft,#16653422)]">
                 <Link to={shopBrowsePath}>{isSingleStoreMode ? 'Back to shop' : 'Continue shopping'}</Link>
               </Button>

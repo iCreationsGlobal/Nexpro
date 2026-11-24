@@ -65,13 +65,17 @@ export const CheckoutRoute = () => {
 
 export const RequireShopperAuth = ({ children }) => {
   const location = useLocation();
-  const { isAuthenticated, isLoading } = useStorefrontAuth();
+  const { isAuthenticated, isLoading, signOutRedirect } = useStorefrontAuth();
 
   if (isLoading) {
     return <ComingSoonPage type="auth-loading" />;
   }
 
   if (!isAuthenticated) {
+    // They just signed out on this page. The key changes on every navigation, so later visits still ask.
+    if (signOutRedirect && signOutRedirect.locationKey === location.key) {
+      return <Navigate to={signOutRedirect.to} replace />;
+    }
     const returnTo = `${location.pathname}${location.search || ''}`;
     return <Navigate to={`/login?returnTo=${encodeURIComponent(returnTo)}`} replace state={{ returnTo }} />;
   }

@@ -1587,6 +1587,7 @@ export const PageShell = ({
   headerProps = {},
   buyerTitle,
   buyerDescription,
+  showSignOut = false,
   children,
 }) => {
   const { isSingleStoreMode, isTemplatesMode } = useStorefrontMode();
@@ -1596,7 +1597,7 @@ export const PageShell = ({
 
   if (isSingleStoreMode || isTemplatesMode) {
     return (
-      <OnlineStorePageShell title={buyerTitle} description={buyerDescription}>
+      <OnlineStorePageShell title={buyerTitle} description={buyerDescription} showSignOut={showSignOut}>
         {children}
       </OnlineStorePageShell>
     );

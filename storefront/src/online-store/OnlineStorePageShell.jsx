@@ -1,7 +1,7 @@
-import { useEffect, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingCart, Store, User } from 'lucide-react';
+import { LogOut, ShoppingCart, Store, User } from 'lucide-react';
 
 import { useCart } from '../context/CartContext';
 import { useStorefrontAuth } from '../context/StorefrontAuthContext';
@@ -15,6 +15,7 @@ import storeService from '../services/storeService';
 import TemplateThemeProvider, { resolveStoreBrandColors } from '../templates/TemplateThemeProvider';
 import { brandAccent } from './brandAccent';
 import { resolveSingleStoreHomePath } from './storePaths';
+import { showSuccess } from '../utils/toast';
 import { Button } from '@/components/ui/button';
 
 const unwrapData = (response) => response?.data?.data || response?.data || response;
@@ -67,12 +68,14 @@ const readCachedStoreBrand = (storeSlug, cartStore) => {
  *   children: import('react').ReactNode,
  *   title?: string,
  *   description?: string,
+ *   showSignOut?: boolean,
  * }} props
  */
-export default function OnlineStorePageShell({ children, title, description }) {
+export default function OnlineStorePageShell({ children, title, description, showSignOut = false }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { cartSummary } = useCart();
-  const { isAuthenticated } = useStorefrontAuth();
+  const { isAuthenticated, logout } = useStorefrontAuth();
   const {
     isSingleStoreMode,
     storeSlug: modeSlug,
@@ -155,6 +158,15 @@ export default function OnlineStorePageShell({ children, title, description }) {
     navigate(query ? `/login?${query}` : '/login');
   };
 
+  // Back to the shop, cart kept. With no known shop, `/` on the shared host is not a shop, so use /login.
+  const handleSignOut = useCallback(() => {
+    logout({
+      redirectTo: isCustomDomain || storeSlug ? homePath : '/login',
+      locationKey: location.key,
+    });
+    showSuccess("You're signed out.");
+  }, [homePath, isCustomDomain, location.key, logout, storeSlug]);
+
   const content = (
     <div className="min-h-screen bg-white text-slate-950">
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white">
@@ -200,7 +212,20 @@ export default function OnlineStorePageShell({ children, title, description }) {
       <main className="sf-page-enter mx-auto w-full max-w-[1440px] px-3 py-6 sm:px-4 sm:py-8">
         {(title || description) ? (
           <div className="mb-6">
-            {title ? <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1> : null}
+            <div className="flex items-start justify-between gap-3">
+              {title ? <h1 className="min-w-0 text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1> : null}
+              {showSignOut && isAuthenticated ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="ml-auto shrink-0 rounded-full border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                  onClick={handleSignOut}
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out
+                </Button>
+              ) : null}
+            </div>
             {description ? <p className="mt-2 text-sm text-slate-600">{description}</p> : null}
           </div>
         ) : null}

@@ -35,6 +35,7 @@ export const StorefrontAuthProvider = ({ children }) => {
   ));
   const [googleConfigLoaded, setGoogleConfigLoaded] = useState(() => Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID));
   const [isLoading, setIsLoading] = useState(() => Boolean(authService.getToken()));
+  const [signOutRedirect, setSignOutRedirect] = useState(null);
   const [authModal, setAuthModal] = useState({
     isOpen: false,
     mode: 'login',
@@ -161,9 +162,15 @@ export const StorefrontAuthProvider = ({ children }) => {
     return data;
   }, [queryClient]);
 
-  const logout = useCallback(() => {
+  /**
+   * On an account page, pass where to go and the current location key: the page's guard then sends
+   * the shopper there. Navigating from the page instead loses to the guard, which asks them to sign in.
+   * @param {{ redirectTo?: string, locationKey?: string }} [opts]
+   */
+  const logout = useCallback(({ redirectTo, locationKey } = {}) => {
     authService.logout();
     setCustomer(null);
+    setSignOutRedirect(redirectTo ? { to: redirectTo, locationKey } : null);
     queryClient.removeQueries({ queryKey: ['shopper'] });
   }, [queryClient]);
 
@@ -227,6 +234,7 @@ export const StorefrontAuthProvider = ({ children }) => {
     removeAvatar,
     resendVerification,
     sendLoginOtp,
+    signOutRedirect,
     uploadAvatar,
     updateProfile,
     verifyLoginOtp,
@@ -246,6 +254,7 @@ export const StorefrontAuthProvider = ({ children }) => {
     removeAvatar,
     resendVerification,
     sendLoginOtp,
+    signOutRedirect,
     uploadAvatar,
     updateProfile,
     verifyEmail,
