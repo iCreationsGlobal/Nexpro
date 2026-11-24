@@ -384,7 +384,7 @@ const promoBannerStyle = {
  * Featured promo: shows the promoted product's photo and name.
  * Falls back to the promo text only when no product is attached.
  */
-const PromoBanner = ({ promo, storeSlug, pathname, isCustomDomain, ctaLabel = 'Shop offer', smallOnPhones = false }) => {
+const PromoBanner = ({ promo, storeSlug, pathname, isCustomDomain, ctaLabel = 'Shop offer' }) => {
   const product = promo.product || null;
   const productUrl = product ? getProductUrl(storeSlug, product, pathname, isCustomDomain) : null;
   const discount = getDiscountPercent(product);
@@ -394,7 +394,7 @@ const PromoBanner = ({ promo, storeSlug, pathname, isCustomDomain, ctaLabel = 'S
 
   return (
     <section className="sf-reveal overflow-hidden rounded-2xl border p-4 text-white sm:rounded-3xl sm:p-6 md:p-8" style={promoBannerStyle}>
-      <div className={`grid items-center md:gap-8 ${smallOnPhones && product ? 'grid-cols-[104px_minmax(0,1fr)] gap-3 sm:gap-5' : 'gap-5'} ${product ? 'sm:grid-cols-[160px_minmax(0,1fr)] md:grid-cols-[220px_minmax(0,1fr)_auto]' : 'md:grid-cols-[minmax(0,1fr)_auto]'}`}>
+      <div className={`grid items-center gap-5 md:gap-8 ${product ? 'sm:grid-cols-[160px_minmax(0,1fr)] md:grid-cols-[220px_minmax(0,1fr)_auto]' : 'md:grid-cols-[minmax(0,1fr)_auto]'}`}>
         {product ? (
           <Link
             to={productUrl}
@@ -409,10 +409,10 @@ const PromoBanner = ({ promo, storeSlug, pathname, isCustomDomain, ctaLabel = 'S
         ) : null}
 
         <div className="min-w-0">
-          <p className={`font-semibold uppercase tracking-wide text-white/80 ${smallOnPhones ? 'text-xs sm:text-sm' : 'text-sm'}`}>Featured Promo</p>
-          <h2 className={`font-semibold sm:text-3xl ${smallOnPhones ? 'mt-1 text-lg sm:mt-2' : 'mt-2 text-2xl'}`}>{promo.title || 'Featured offer'}</h2>
+          <p className="text-sm font-semibold uppercase tracking-wide text-white/80">Featured Promo</p>
+          <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">{promo.title || 'Featured offer'}</h2>
           {product ? (
-            <Link to={productUrl} className={`font-bold text-white hover:underline sm:text-2xl ${smallOnPhones ? 'mt-1 line-clamp-2 text-sm sm:mt-3 sm:line-clamp-none' : 'mt-3 block text-xl'}`}>
+            <Link to={productUrl} className="mt-3 block text-xl font-bold text-white hover:underline sm:text-2xl">
               {product.title}
             </Link>
           ) : null}
@@ -423,7 +423,7 @@ const PromoBanner = ({ promo, storeSlug, pathname, isCustomDomain, ctaLabel = 'S
 
         {product ? (
           <Button
-            className={`w-full bg-white text-[color:var(--store-accent,#166534)] hover:bg-white/90 sm:col-span-2 md:col-span-1 md:w-auto ${smallOnPhones ? 'col-span-2' : ''}`}
+            className="w-full bg-white text-[color:var(--store-accent,#166534)] hover:bg-white/90 sm:col-span-2 md:col-span-1 md:w-auto"
             asChild
           >
             <Link to={productUrl}>{ctaLabel}</Link>
@@ -1083,17 +1083,6 @@ const PublicStoreHome = ({
   const ownedHomeContent = (
     <>
       <section className="w-full space-y-6 py-4 lg:space-y-10 lg:px-4 lg:py-10">
-        {promo ? (
-          <PromoBanner
-            promo={promo}
-            storeSlug={storeSlug}
-            pathname={location.pathname}
-            isCustomDomain={isCustomDomain}
-            ctaLabel="Shop offer"
-            smallOnPhones
-          />
-        ) : null}
-
         {ownedProductBlocks}
 
         {ownedCategoryStrip}
