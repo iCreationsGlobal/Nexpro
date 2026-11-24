@@ -113,6 +113,11 @@ const rentalRoutes = require('./routes/rentalRoutes');
 
 const app = express();
 
+// nginx (Vercel on the demo) passes requests on from this machine and adds the visitor's address. Without this every
+// visitor looks like nginx and shares one count in each limit (middleware/rateLimiter.js). Only this machine is
+// believed, and only the address it added: one a visitor sends is ignored.
+app.set('trust proxy', 'loopback');
+
 // Middleware
 app.use(helmet());
 app.use(cors(config.cors));

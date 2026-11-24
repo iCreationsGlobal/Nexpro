@@ -145,6 +145,7 @@ Suggested flow: feature → PR to `staging` (demo UAT) → PR/merge `staging` �
    - `proxy_http_version 1.1`
    - `Upgrade` / `Connection` for `/socket.io/`
    - `client_max_body_size` large enough for uploads
+   - `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` and `proxy_set_header X-Forwarded-Proto $scheme;`. The API's limits (sign-ins, checkouts, requests a minute) are counted per visitor from this header; without it they are shared by everyone, and a visitor could send a made-up address.
 7. SPA: `try_files` for Frontend + storefront.
 8. Marketing: `proxy_pass http://127.0.0.1:3001` (not the `dist` folder).
 9. New unit `nexpro-marketing.service`: `WorkingDirectory=~/nexpro/marketing-site`, `ExecStart=/usr/bin/npm start` (or `node .next/standalone/...` after standalone output).
