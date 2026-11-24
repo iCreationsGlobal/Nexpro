@@ -1140,7 +1140,28 @@ export const StoreCard = ({ store: storeItem }) => {
   );
 };
 
-export const ProductCard = ({ product }) => {
+/** Wishlist heart on a product card. Never inside the card's link. */
+const WishlistButton = ({ title, saved, disabled, onClick, className }) => (
+  <button
+    type="button"
+    className={`absolute flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${className} ${
+      saved
+        ? 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'
+        : 'border-white/80 bg-white/90 text-slate-600 hover:bg-[var(--store-accent-soft,#16653422)] hover:text-[color:var(--store-accent,#166534)]'
+    }`}
+    onClick={onClick}
+    disabled={disabled}
+    aria-label={saved ? `Remove ${title} from wishlist` : `Save ${title} to wishlist`}
+    aria-pressed={saved}
+  >
+    <Heart className={`h-4 w-4 ${saved ? 'fill-current' : ''}`} />
+  </button>
+);
+
+/**
+ * @param {{ product: object, compact?: boolean }} props - `compact`: image, name and price; the rest is on the product page.
+ */
+export const ProductCard = ({ product, compact = false }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const params = useParams();
@@ -1329,6 +1350,53 @@ export const ProductCard = ({ product }) => {
     return null;
   };
 
+  if (compact) {
+    const priceText = softenPrice ? 'Contact for price' : 'Price on request';
+    const hasPrice = !softenPrice && priceDisplay.amount != null;
+    return (
+      <div className="sf-reveal sf-card relative h-full overflow-hidden rounded-xl border border-slate-200 bg-white hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)]">
+        <Link to={productUrl} className="flex h-full flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--store-accent,#166534)]">
+          <span className="relative block aspect-square overflow-hidden bg-slate-50">
+            <ProductImage product={product} />
+            {!availability.available || isSample ? (
+              <span className="absolute inset-x-0 bottom-0 bg-slate-950/75 px-2 py-1 text-center text-[11px] font-semibold text-white">
+                {isSample ? 'Sample' : availability.label}
+              </span>
+            ) : null}
+          </span>
+          <span className="flex flex-1 flex-col p-2 sm:p-2.5">
+            <span className="line-clamp-2 min-h-[2.25rem] text-[13px] font-semibold leading-[1.125rem] text-slate-950 [overflow-wrap:anywhere]">
+              {product.title}
+            </span>
+            <span className="mt-auto block pt-1.5 leading-5">
+              <span className={`font-extrabold [overflow-wrap:anywhere] ${hasPrice ? 'text-[15px] text-[color:var(--store-accent,#166534)]' : 'text-[13px] text-slate-700'}`}>
+                {hasPrice ? formatAmount(priceDisplay.amount, currency) : priceText}
+              </span>
+              {hasPrice && priceDisplay.suffix ? (
+                <span className="text-xs font-bold text-slate-500">{priceDisplay.suffix}</span>
+              ) : null}
+              {hasPrice && priceDisplay.secondaryAmount > 0 ? (
+                <span className="block text-[11px] leading-4 text-slate-600">
+                  or {formatAmount(priceDisplay.secondaryAmount, currency)}{priceDisplay.secondarySuffix} to rent
+                </span>
+              ) : null}
+            </span>
+          </span>
+        </Link>
+        {discount > 0 ? (
+          <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-bold text-white">-{discount}%</span>
+        ) : null}
+        <WishlistButton
+          title={product.title}
+          saved={saved}
+          disabled={wishlistPending}
+          onClick={handleWishlistClick}
+          className="right-1.5 top-1.5"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="sf-reveal sf-card group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] sm:rounded-3xl">
       <div className="relative aspect-square overflow-hidden border-b border-slate-100 bg-slate-50">
@@ -1343,20 +1411,13 @@ export const ProductCard = ({ product }) => {
             Sample
           </Badge>
         ) : null}
-        <button
-          type="button"
-          className={`absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
-            saved
-              ? 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'
-              : 'border-white/80 bg-white/90 text-slate-600 hover:bg-[var(--store-accent-soft,#16653422)] hover:text-[color:var(--store-accent,#166534)]'
-          }`}
-          onClick={handleWishlistClick}
+        <WishlistButton
+          title={product.title}
+          saved={saved}
           disabled={wishlistPending}
-          aria-label={saved ? `Remove ${product.title} from wishlist` : `Save ${product.title} to wishlist`}
-          aria-pressed={saved}
-        >
-          <Heart className={`h-4 w-4 ${saved ? 'fill-current' : ''}`} />
-        </button>
+          onClick={handleWishlistClick}
+          className="right-3 top-3"
+        />
       </div>
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-center justify-between gap-2">
@@ -1678,10 +1739,38 @@ export const StudioCard = ({ studio: studioItem }) => {
   );
 };
 
-export const ServiceCard = ({ service, serviceUrl: serviceUrlOverride }) => {
+/**
+ * @param {{ service: object, serviceUrl?: string, compact?: boolean }} props - `compact`: image, name and price.
+ */
+export const ServiceCard = ({ service, serviceUrl: serviceUrlOverride, compact = false }) => {
   const review = getReviewMeta(service, 'New');
   const serviceUrl = serviceUrlOverride || getServiceUrl(service);
   const image = service?.images?.[0];
+
+  if (compact) {
+    return (
+      <Link
+        to={serviceUrl}
+        className="sf-card flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)]"
+      >
+        <span className="block aspect-square overflow-hidden bg-slate-50">
+          {image ? (
+            <img src={resolveImageUrl(image)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+          ) : (
+            <span className="flex h-full items-center justify-center text-xs text-slate-400">Service preview</span>
+          )}
+        </span>
+        <span className="flex flex-1 flex-col p-2 sm:p-2.5">
+          <span className="line-clamp-2 min-h-[2.25rem] text-[13px] font-semibold leading-[1.125rem] text-slate-950 [overflow-wrap:anywhere]">
+            {service.title}
+          </span>
+          <span className="mt-auto pt-1.5 text-[15px] font-extrabold leading-5 text-[color:var(--store-accent,#166534)] [overflow-wrap:anywhere]">
+            {formatServicePrice(service)}
+          </span>
+        </span>
+      </Link>
+    );
+  }
 
   return (
     <Link

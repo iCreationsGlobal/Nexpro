@@ -33,6 +33,7 @@ import {
   resolveSingleStoreHomePath,
 } from '../online-store/storePaths';
 import { getStoreCatalogPage } from '../online-store/storeCatalog';
+import { getProductGridClass, sanitizeProductGrid, useCompactCards } from '../online-store/productGrid';
 import StoreMobileHeader from '../online-store/StoreMobileHeader';
 import { getStorePages } from '../online-store/storeNavigation';
 import {
@@ -259,78 +260,119 @@ const StoreScopedHeader = ({
   );
 };
 
-const ProductSection = ({ storeName, title, description, products, emptyText, sectionId = 'products', theme, accent }) => (
-  <section id={sectionId} className="space-y-5">
-    <div className="sf-reveal flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        {storeName ? (
-          <p className="text-sm font-semibold uppercase tracking-wide" style={{ color: accent }}>{storeName}</p>
-        ) : null}
-        <h2 className={`${storeName ? 'mt-1' : ''} font-semibold ${theme?.dense ? 'text-xl' : 'text-2xl'}`}>{title}</h2>
-        {description ? <p className="mt-1 text-sm opacity-70">{description}</p> : null}
-      </div>
+/**
+ * Section heading. On Online Stores (`owned`), phones get one line, so the items start higher up.
+ * `note` (e.g. what was searched) also shows on phones; `description` does not.
+ */
+const SectionHeading = ({ storeName, title, description, note, count, owned, accent, accentFallback = '', descriptionClass, titleClass }) => (
+  <div className="sf-reveal flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      {storeName ? (
+        <p
+          className={`text-sm font-semibold uppercase tracking-wide ${accent ? '' : accentFallback} ${owned ? 'hidden lg:block' : ''}`}
+          style={accent ? { color: accent } : undefined}
+        >
+          {storeName}
+        </p>
+      ) : null}
+      <h2 className={`${storeName ? (owned ? 'lg:mt-1' : 'mt-1') : ''} font-semibold ${owned ? `text-lg ${titleClass === 'text-xl' ? 'lg:text-xl' : 'lg:text-2xl'}` : titleClass}`}>
+        {title}
+        {owned && count > 0 ? <span className="ml-1.5 text-sm font-medium opacity-60 lg:hidden">{formatInteger(count)}</span> : null}
+      </h2>
+      {note || description ? (
+        <p className={`mt-1 text-sm ${descriptionClass} ${owned && !note ? 'hidden lg:block' : ''}`}>{note || description}</p>
+      ) : null}
     </div>
-    {products.length ? (
-      <div className={`sf-stagger ${theme?.gridClass || 'grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]'}`}>
-        {products.map((product) => (
-          <ProductCard key={product.id} product={product} />
-        ))}
-      </div>
-    ) : (
-      <div className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground">
-        {emptyText}
-      </div>
-    )}
-  </section>
+  </div>
 );
+
+const SectionEmpty = ({ children }) => (
+  <div className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground">
+    {children}
+  </div>
+);
+
+/** `grid` is the owner's layout on Online Stores; null (marketplace) keeps the template grid and large cards. */
+const ProductSection = ({ storeName, title, description, note, count, products, emptyText, sectionId = 'products', theme, accent, grid = null }) => {
+  const compact = useCompactCards(grid);
+  const marketplaceGridClass = theme?.gridClass || 'grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]';
+
+  return (
+    <section id={sectionId} className={grid ? 'space-y-3 lg:space-y-5' : 'space-y-5'}>
+      <SectionHeading
+        storeName={storeName}
+        title={title}
+        description={description}
+        note={note}
+        count={count}
+        owned={Boolean(grid)}
+        accent={accent}
+        descriptionClass="opacity-70"
+        titleClass={theme?.dense ? 'text-xl' : 'text-2xl'}
+      />
+      {products.length ? (
+        <div className={`sf-stagger ${grid ? getProductGridClass(grid, theme) : marketplaceGridClass}`}>
+          {products.map((product) => (
+            <ProductCard key={product.id} product={product} compact={compact} />
+          ))}
+        </div>
+      ) : <SectionEmpty>{emptyText}</SectionEmpty>}
+    </section>
+  );
+};
+
+/** Computers fit as many services as they can unless the owner chose a number. */
+const SERVICE_COMPUTER_GRID = { computerColumns: 'lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]', computerGap: 'lg:gap-4' };
 
 const ServiceSection = ({
   storeName,
   storeSlug,
   title,
   description,
+  note,
+  count,
   services,
   emptyText,
   sectionId = 'services',
   serviceBasePathname = '',
   isCustomDomain = false,
   accent,
-}) => (
-  <section id={sectionId} className="space-y-5">
-    <div className="sf-reveal flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        {storeName ? (
-          <p
-            className={`text-sm font-semibold uppercase tracking-wide ${accent ? '' : 'text-green-800'}`}
-            style={accent ? { color: accent } : undefined}
-          >
-            {storeName}
-          </p>
-        ) : null}
-        <h2 className={`${storeName ? 'mt-1' : ''} text-2xl font-semibold`}>{title}</h2>
-        {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
-      </div>
-    </div>
-    {services.length ? (
-      <div className="sf-stagger grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
-        {services.map((service) => (
-          <ServiceCard
-            key={service.id}
-            service={service}
-            serviceUrl={getStoreServiceUrl(storeSlug, service, {
-              pathname: serviceBasePathname,
-              isCustomDomain,
-            })}
-          />
-        ))}
-      </div>
-    ) : (
-      <div className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground">
-        {emptyText}
-      </div>
-    )}
-  </section>
-);
+  grid = null,
+}) => {
+  const compact = useCompactCards(grid);
+
+  return (
+    <section id={sectionId} className={grid ? 'space-y-3 lg:space-y-5' : 'space-y-5'}>
+      <SectionHeading
+        storeName={storeName}
+        title={title}
+        description={description}
+        note={note}
+        count={count}
+        owned={Boolean(grid)}
+        accent={accent}
+        accentFallback="text-green-800"
+        descriptionClass="text-muted-foreground"
+        titleClass="text-2xl"
+      />
+      {services.length ? (
+        <div className={`sf-stagger ${grid ? getProductGridClass(grid, SERVICE_COMPUTER_GRID) : 'grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]'}`}>
+          {services.map((service) => (
+            <ServiceCard
+              key={service.id}
+              service={service}
+              compact={compact}
+              serviceUrl={getStoreServiceUrl(storeSlug, service, {
+                pathname: serviceBasePathname,
+                isCustomDomain,
+              })}
+            />
+          ))}
+        </div>
+      ) : <SectionEmpty>{emptyText}</SectionEmpty>}
+    </section>
+  );
+};
 
 // Brand-colored promo banner, darkened slightly so white text stays readable on light brands.
 const promoBannerStyle = {
@@ -342,7 +384,7 @@ const promoBannerStyle = {
  * Featured promo: shows the promoted product's photo and name.
  * Falls back to the promo text only when no product is attached.
  */
-const PromoBanner = ({ promo, storeSlug, pathname, isCustomDomain, ctaLabel = 'Shop offer' }) => {
+const PromoBanner = ({ promo, storeSlug, pathname, isCustomDomain, ctaLabel = 'Shop offer', smallOnPhones = false }) => {
   const product = promo.product || null;
   const productUrl = product ? getProductUrl(storeSlug, product, pathname, isCustomDomain) : null;
   const discount = getDiscountPercent(product);
@@ -352,7 +394,7 @@ const PromoBanner = ({ promo, storeSlug, pathname, isCustomDomain, ctaLabel = 'S
 
   return (
     <section className="sf-reveal overflow-hidden rounded-2xl border p-4 text-white sm:rounded-3xl sm:p-6 md:p-8" style={promoBannerStyle}>
-      <div className={`grid items-center gap-5 md:gap-8 ${product ? 'sm:grid-cols-[160px_minmax(0,1fr)] md:grid-cols-[220px_minmax(0,1fr)_auto]' : 'md:grid-cols-[minmax(0,1fr)_auto]'}`}>
+      <div className={`grid items-center md:gap-8 ${smallOnPhones && product ? 'grid-cols-[104px_minmax(0,1fr)] gap-3 sm:gap-5' : 'gap-5'} ${product ? 'sm:grid-cols-[160px_minmax(0,1fr)] md:grid-cols-[220px_minmax(0,1fr)_auto]' : 'md:grid-cols-[minmax(0,1fr)_auto]'}`}>
         {product ? (
           <Link
             to={productUrl}
@@ -367,10 +409,10 @@ const PromoBanner = ({ promo, storeSlug, pathname, isCustomDomain, ctaLabel = 'S
         ) : null}
 
         <div className="min-w-0">
-          <p className="text-sm font-semibold uppercase tracking-wide text-white/80">Featured Promo</p>
-          <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">{promo.title || 'Featured offer'}</h2>
+          <p className={`font-semibold uppercase tracking-wide text-white/80 ${smallOnPhones ? 'text-xs sm:text-sm' : 'text-sm'}`}>Featured Promo</p>
+          <h2 className={`font-semibold sm:text-3xl ${smallOnPhones ? 'mt-1 text-lg sm:mt-2' : 'mt-2 text-2xl'}`}>{promo.title || 'Featured offer'}</h2>
           {product ? (
-            <Link to={productUrl} className="mt-3 block text-xl font-bold text-white hover:underline sm:text-2xl">
+            <Link to={productUrl} className={`font-bold text-white hover:underline sm:text-2xl ${smallOnPhones ? 'mt-1 line-clamp-2 text-sm sm:mt-3 sm:line-clamp-none' : 'mt-3 block text-xl'}`}>
               {product.title}
             </Link>
           ) : null}
@@ -381,7 +423,7 @@ const PromoBanner = ({ promo, storeSlug, pathname, isCustomDomain, ctaLabel = 'S
 
         {product ? (
           <Button
-            className="w-full bg-white text-[color:var(--store-accent,#166534)] hover:bg-white/90 sm:col-span-2 md:col-span-1 md:w-auto"
+            className={`w-full bg-white text-[color:var(--store-accent,#166534)] hover:bg-white/90 sm:col-span-2 md:col-span-1 md:w-auto ${smallOnPhones ? 'col-span-2' : ''}`}
             asChild
           >
             <Link to={productUrl}>{ctaLabel}</Link>
@@ -462,6 +504,10 @@ const PublicStoreHome = ({
   const accent = brandColors.primary || theme.accent;
   const secondary = brandColors.secondary || theme.secondary || accent;
   const isServiceStore = store?.storeMode === 'studio';
+  const grid = useMemo(
+    () => (isOwnedShop ? sanitizeProductGrid(store?.productGrid) : null),
+    [isOwnedShop, store?.productGrid],
+  );
   const productCategories = useMemo(() => (Array.isArray(data.categories) ? data.categories : []), [data.categories]);
   const serviceCategories = useMemo(() => (Array.isArray(data.serviceCategories) ? data.serviceCategories : []), [data.serviceCategories]);
   const categories = isServiceStore ? serviceCategories : productCategories;
@@ -979,6 +1025,7 @@ const PublicStoreHome = ({
         serviceBasePathname={location.pathname}
         isCustomDomain={isCustomDomain}
         accent={accent}
+        grid={grid}
       />
       {secondaryServices.length > 0 ? (
         <ServiceSection
@@ -990,6 +1037,7 @@ const PublicStoreHome = ({
           serviceBasePathname={location.pathname}
           isCustomDomain={isCustomDomain}
           accent={accent}
+          grid={grid}
         />
       ) : null}
     </>
@@ -1005,6 +1053,7 @@ const PublicStoreHome = ({
           sectionId={`section-${section.slug || section.id}`}
           theme={theme}
           accent={accent}
+          grid={grid}
         />
       ))}
     </>
@@ -1016,6 +1065,7 @@ const PublicStoreHome = ({
         emptyText="No featured products yet."
         theme={theme}
         accent={accent}
+        grid={grid}
       />
       {secondaryProducts.length > 0 ? (
         <ProductSection
@@ -1024,6 +1074,7 @@ const PublicStoreHome = ({
           emptyText="No additional products are available right now."
           theme={theme}
           accent={accent}
+          grid={grid}
         />
       ) : null}
     </>
@@ -1031,7 +1082,7 @@ const PublicStoreHome = ({
 
   const ownedHomeContent = (
     <>
-      <section className="w-full space-y-10 px-3 py-8 sm:px-4 sm:py-10">
+      <section className="w-full space-y-6 py-4 lg:space-y-10 lg:px-4 lg:py-10">
         {promo ? (
           <PromoBanner
             promo={promo}
@@ -1039,6 +1090,7 @@ const PublicStoreHome = ({
             pathname={location.pathname}
             isCustomDomain={isCustomDomain}
             ctaLabel="Shop offer"
+            smallOnPhones
           />
         ) : null}
 
@@ -1180,21 +1232,18 @@ const PublicStoreHome = ({
     </section>
   );
 
+  const catalogNote = catalogSearch ? `Results for “${catalogSearch}”.` : '';
+  const catalogSectionClass = `w-full scroll-mt-24 ${isOwnedShop ? 'py-4 lg:px-4 lg:py-10' : 'px-3 py-8 sm:px-4 sm:py-10'}`;
   const catalogSection = isServiceStore ? (
-    <section id="store-catalog" className="w-full scroll-mt-24 px-3 py-8 sm:px-4 sm:py-10">
+    <section id="store-catalog" className={catalogSectionClass}>
       <ServiceSection
         storeName={store.displayName}
         storeSlug={storeSlug}
         title={catalogSearch || catalogCategory ? 'Matching services' : 'All Services'}
-        description={
-          catalogSearch
-            ? `Results for “${catalogSearch}”.`
-            : (isOwnedShop
-              ? (isServiceStore ? 'Browse all our services.' : 'Browse all our products.')
-              : (isServiceStore
-                ? 'Browse every published service from this store.'
-                : 'Browse every published product from this store.'))
-        }
+        description={isOwnedShop ? 'Browse all our services.' : 'Browse every published service from this store.'}
+        note={catalogNote}
+        count={catalogPage.total}
+        grid={grid}
         services={catalogPage.items}
         emptyText={catalogSearch || catalogCategory ? 'No services match this search.' : (isOwnedShop ? 'No services yet.' : 'This store has not published services yet.')}
         serviceBasePathname={location.pathname}
@@ -1203,17 +1252,14 @@ const PublicStoreHome = ({
       {catalogPagination}
     </section>
   ) : (
-    <section id="store-catalog" className="w-full scroll-mt-24 px-3 py-8 sm:px-4 sm:py-10">
+    <section id="store-catalog" className={catalogSectionClass}>
       <ProductSection
         storeName={store.displayName}
         title={catalogSearch || catalogCategory ? 'Matching products' : 'All Products'}
-        description={
-          catalogSearch
-            ? `Results for “${catalogSearch}”.`
-            : (isOwnedShop
-              ? 'Browse all our products.'
-              : 'Browse every published product from this store.')
-        }
+        description={isOwnedShop ? 'Browse all our products.' : 'Browse every published product from this store.'}
+        note={catalogNote}
+        count={catalogPage.total}
+        grid={grid}
         products={catalogPage.items}
         emptyText={catalogSearch || catalogCategory ? 'No products match this search.' : (isOwnedShop ? 'No products yet.' : 'This store has not published products yet.')}
         theme={theme}
@@ -1394,8 +1440,9 @@ const PublicStoreHome = ({
     </section>
   ) : null;
 
+  // Phones already have the store name in the header and Contact us in the menu.
   const compactSummarySection = (
-    <section className="border-b border-border bg-card">
+    <section className={`border-b border-border bg-card ${isOwnedShop && !previewMode ? 'hidden lg:block' : ''}`}>
       <div className="flex w-full flex-col gap-4 px-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-4">
         <div className="flex min-w-0 items-center gap-4">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white sm:h-16 sm:w-16">
@@ -1491,8 +1538,9 @@ const PublicStoreHome = ({
         <div className={`mx-auto w-full max-w-[1440px] px-3 pb-5 sm:px-4 sm:pb-6 ${
           isOwnedShop && activePage === 'home' && heroSlides.length > 0
             ? ''
-            : 'pt-5 sm:pt-6'
+            : (isOwnedShop && !previewMode ? 'lg:pt-6' : 'pt-5 sm:pt-6')
         }`}>
+        {isOwnedShop && !previewMode && activePage !== 'home' ? <h1 className="sr-only lg:hidden">{store.displayName}</h1> : null}
         {activePage === 'home'
           ? (isOwnedShop ? ownedHeroSection : fullHeroSection)
           : compactSummarySection}

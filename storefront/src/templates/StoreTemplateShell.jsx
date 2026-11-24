@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatAmount } from '../utils/formatNumber';
 import { resolveImageUrl } from '../utils/fileUtils';
+import { getProductGridClass, sanitizeProductGrid } from '../online-store/productGrid';
 import { StoreHeaderRow } from '../online-store/StoreMobileHeader';
 import { getStoreTabs, StoreTabBarView } from '../online-store/StoreTabBar';
 import { buildStoreProductPath } from '../online-store/storePaths';
@@ -240,29 +241,29 @@ export default function StoreTemplateShell({
               ) : null}
             </div>
 
-            <div className={theme.gridClass}>
+            <div className={getProductGridClass(sanitizeProductGrid(store?.productGrid), theme)}>
               {listingProducts.map((product) => {
                 const price = Number.parseFloat(product?.publicPrice || 0);
                 const compareAt = Number.parseFloat(product?.compareAtPrice || 0);
                 const image = Array.isArray(product?.images) ? product.images[0] : null;
                 const card = (
                   <div className={`overflow-hidden ${theme.productCardClass}`}>
-                    <div className={`overflow-hidden bg-slate-100 ${theme.dense ? 'aspect-[4/5]' : 'aspect-square'}`}>
+                    <div className={`aspect-square overflow-hidden bg-slate-100 ${theme.dense ? 'lg:aspect-[4/5]' : ''}`}>
                       {image ? (
                         <img src={image} alt="" className="h-full w-full object-cover" />
                       ) : (
                         <div className="flex h-full items-center justify-center text-sm opacity-50">No image</div>
                       )}
                     </div>
-                    <div className={theme.dense ? 'space-y-1 p-2.5' : 'space-y-2 p-4'}>
-                      <p className={`font-semibold leading-snug ${theme.dense ? 'line-clamp-2 text-sm' : 'line-clamp-2'}`}>
+                    <div className={`space-y-1 p-2 ${theme.dense ? 'lg:p-2.5' : 'lg:space-y-2 lg:p-4'}`}>
+                      <p className={`line-clamp-2 text-[13px] font-semibold leading-snug lg:leading-snug ${theme.dense ? 'lg:text-sm' : 'lg:text-base'}`}>
                         {product.title}
                       </p>
                       {!theme.dense && product.shortDescription ? (
-                        <p className="line-clamp-2 text-xs opacity-60">{product.shortDescription}</p>
+                        <p className="line-clamp-2 text-xs opacity-60 max-lg:hidden">{product.shortDescription}</p>
                       ) : null}
                       <div className="flex flex-wrap items-baseline gap-2">
-                        <span className={`font-bold ${theme.dense ? 'text-sm' : 'text-base'}`} style={{ color: accent }}>
+                        <span className={`font-bold ${theme.dense ? 'text-sm' : 'text-[15px] lg:text-base'}`} style={{ color: accent }}>
                           {formatAmount(price, currency)}
                         </span>
                         {compareAt > price ? (

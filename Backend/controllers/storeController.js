@@ -33,6 +33,7 @@ const {
 } = require('./studioStoreController');
 const { invalidateSaleListCache, invalidatePublicStorefrontCache } = require('../middleware/cache');
 const { createListingSearch } = require('../utils/listingSearch');
+const { sanitizeProductGrid } = require('../utils/productGrid');
 const { findMarketplaceStorePage } = require('../services/marketplaceStoreSearch');
 const { validateStorageLimit } = require('../utils/storageLimitHelper');
 const {
@@ -1118,6 +1119,8 @@ const toPublicStoreHomeProfile = (store, {
     freeDeliveryThreshold: metadata.freeDeliveryThreshold || null,
     /** Ordered product card CTAs (1–2). Last = primary filled button. */
     productCardActions: sanitizeProductCardActions(metadata.productCardActions),
+    /** Products per row and card style, chosen by the owner. */
+    productGrid: sanitizeProductGrid(metadata.productGrid),
     /** Merchant-curated quotes — not Verified reviews. */
     testimonials: toPublicTestimonials(metadata),
     /** Server-gated ABS footer promo (trial/starter only). Clients must not invent this. */
@@ -2361,6 +2364,7 @@ const serializeStoreSettings = async (settings, req) => {
       productSections: sanitizeProductSections(payload.metadata.productSections),
       heroAnimation: sanitizeHeroAnimation(payload.metadata.heroAnimation),
       productCardActions: sanitizeProductCardActions(payload.metadata.productCardActions),
+      productGrid: sanitizeProductGrid(payload.metadata.productGrid),
     };
   } else {
     payload.metadata = {
@@ -2368,6 +2372,7 @@ const serializeStoreSettings = async (settings, req) => {
       productSections: sanitizeProductSections(null),
       heroAnimation: sanitizeHeroAnimation(null),
       productCardActions: sanitizeProductCardActions(null),
+      productGrid: sanitizeProductGrid(null),
     };
   }
 
@@ -2652,6 +2657,11 @@ exports.upsertSettings = async (req, res, next) => {
           Object.prototype.hasOwnProperty.call(incomingMetadata, 'productCardActions')
             ? incomingMetadata.productCardActions
             : existingMetadata.productCardActions
+        ),
+        productGrid: sanitizeProductGrid(
+          Object.prototype.hasOwnProperty.call(incomingMetadata, 'productGrid')
+            ? incomingMetadata.productGrid
+            : existingMetadata.productGrid
         ),
       },
     };

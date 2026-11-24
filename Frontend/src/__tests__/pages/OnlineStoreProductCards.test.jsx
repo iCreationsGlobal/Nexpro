@@ -1,0 +1,129 @@
+import React from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+
+import { ProductCard, ServiceCard } from '../../../../storefront/src/components/storefront/StorefrontLayout';
+import { sanitizeProductGrid, useCompactCards } from '../../../../storefront/src/online-store/productGrid';
+
+const mocks = vi.hoisted(() => ({ wishlist: { isWishlisted: () => false, pendingListingIds: [], toggleWishlist: vi.fn(), count: 0 } }));
+vi.mock('../../../../storefront/src/context/WishlistContext', () => ({ useWishlist: () => mocks.wishlist }));
+vi.mock('../../../../storefront/src/context/CartContext', () => ({ useCart: () => ({ addItem: vi.fn(), cartSummary: { itemCount: 0 } }) }));
+vi.mock('../../../../storefront/src/context/StorefrontAuthContext', () => ({ useStorefrontAuth: () => ({}) }));
+vi.mock('../../../../storefront/src/context/StorefrontModeContext', () => ({
+  useStorefrontMode: () => ({ isSingleStoreMode: true, isMarketplaceMode: false, isCustomDomain: false, storeSlug: 'demo' }),
+  readOnlineStoreSession: () => null,
+  isOnlineStoreShopPath: () => true,
+  isStorefrontCommercePath: () => false,
+}));
+
+const store = { slug: 'demo', displayName: 'Demo', currency: 'GHS', productCardActions: ['add_to_cart', 'buy_now'], whatsappNumber: '233200000000' };
+const product = { id: 'p1', slug: 'blue-shirt', title: 'Blue shirt', publicPrice: 120, available: true, category: { name: 'Shirts' }, images: ['https://example.com/a.jpg'], store };
+
+const Where = () => <output data-testid="location">{useLocation().pathname}</output>;
+const show = (element) => render(
+  <MemoryRouter initialEntries={['/shop/demo']}>
+    <Where />
+    <Routes><Route path="/shop/:storeSlug" element={element} /><Route path="*" element={null} /></Routes>
+  </MemoryRouter>,
+);
+
+afterEach(cleanup);
+beforeEach(() => vi.clearAllMocks());
+
+describe('compact product card', () => {
+  it('shows only the image, name and price', () => {
+    const { container } = show(<ProductCard product={product} compact />);
+    expect(screen.getByText('Blue shirt')).toBeInTheDocument();
+    expect(screen.getByText(/120\.00/)).toBeInTheDocument();
+    ['Available', 'For sale', 'No reviews yet', 'New', 'Shirts', 'Add', 'Buy now'].forEach((text) => expect(screen.queryByText(text)).not.toBeInTheDocument());
+    expect(within(container).getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('opens the product when tapped anywhere', async () => {
+    show(<ProductCard product={product} compact />);
+    await userEvent.click(screen.getByText(/120\.00/));
+    expect(screen.getByTestId('location')).toHaveTextContent('/shop/demo/products/blue-shirt');
+  });
+
+  it('saves to the wishlist without opening the product', async () => {
+    show(<ProductCard product={product} compact />);
+    const heart = screen.getByRole('button', { name: 'Save Blue shirt to wishlist' });
+    expect(heart.closest('a')).toBeNull();
+    await userEvent.click(heart);
+    expect(mocks.wishlist.toggleWishlist).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/shop\/demo$/);
+  });
+
+  it('shows a discount and says when it is out of stock', () => {
+    show(<ProductCard product={{ ...product, compareAtPrice: 150, available: false }} compact />);
+    expect(screen.getByText('-20%')).toBeInTheDocument();
+    expect(screen.getByText('Out of stock')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['a hidden price', { store: { ...store, productCardActions: ['contact_for_price'] } }, 'Contact for price'],
+    ['no price', { publicPrice: 0 }, 'Price on request'],
+    ['a sample', { isSample: true }, 'Sample'],
+  ])('handles %s', (_name, change, text) => {
+    show(<ProductCard product={{ ...product, ...change }} compact />);
+    expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
+  it('shows the daily price of a rental, and both prices when it is also for sale', () => {
+    show(<ProductCard product={{ ...product, listingMode: 'rent', rentalRatePerDay: 40 }} compact />);
+    expect(screen.getByText(/40\.00/)).toBeInTheDocument();
+    expect(screen.getByText('/day')).toBeInTheDocument();
+    cleanup();
+    show(<ProductCard product={{ ...product, listingMode: 'both', rentalRatePerDay: 40 }} compact />);
+    expect(screen.getByText(/120\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/or .*40\.00\/day to rent/)).toBeInTheDocument();
+  });
+});
+
+describe('large product card', () => {
+  it('is unchanged: labels, category and the buttons the owner chose', () => {
+    show(<ProductCard product={product} />);
+    ['Available', 'For sale', 'No reviews yet', 'New', 'Shirts', 'Add', 'Buy now'].forEach((text) => expect(screen.getByText(text)).toBeInTheDocument());
+  });
+});
+
+describe('compact service card', () => {
+  const service = { id: 's1', slug: 'braids', title: 'Braids', category: 'Hair', startingPrice: 50, priceType: 'fixed', ctaType: 'book_service', studio: { displayName: 'Glow', currency: 'GHS' } };
+  it('shows only the image, name and price', () => {
+    show(<ServiceCard service={service} serviceUrl="/shop/demo/services/braids" compact />);
+    expect(screen.getByText('Braids')).toBeInTheDocument();
+    expect(screen.getByText(/50\.00/)).toBeInTheDocument();
+    ['Hair', 'New', 'Glow', 'Book service'].forEach((text) => expect(screen.queryByText(text)).not.toBeInTheDocument());
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/shop/demo/services/braids');
+  });
+
+  it('keeps the large card as it was', () => {
+    show(<ServiceCard service={service} serviceUrl="/x" />);
+    ['Hair', 'Glow', 'Book service'].forEach((text) => expect(screen.getByText(text)).toBeInTheDocument());
+  });
+});
+
+describe('which card is used', () => {
+  const atWidth = (isComputer) => window.matchMedia.mockImplementation(() => ({ matches: isComputer, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  const Probe = ({ grid }) => <p>{useCompactCards(grid) ? 'compact' : 'large'}</p>;
+
+  it.each([
+    ['phone', false, {}, 'compact'],
+    ['phone, one per row', false, { phone: 1 }, 'large'],
+    ['phone, whatever computers use', false, { computerCards: 'large' }, 'compact'],
+    ['computer', true, {}, 'large'],
+    ['computer, owner chose compact', true, { computerCards: 'compact' }, 'compact'],
+  ])('%s', (_name, isComputer, value, expected) => {
+    atWidth(isComputer);
+    render(<Probe grid={sanitizeProductGrid(value)} />);
+    expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it.each([[true], [false]])('always large outside online stores (computer: %s)', (isComputer) => {
+    atWidth(isComputer);
+    render(<Probe grid={null} />);
+    expect(screen.getByText('large')).toBeInTheDocument();
+  });
+});

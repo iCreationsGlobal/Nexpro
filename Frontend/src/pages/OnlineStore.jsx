@@ -41,6 +41,7 @@ const OnlineStore = () => {
   const [testimonialsOpen, setTestimonialsOpen] = useState(false);
   const [productSectionsOpen, setProductSectionsOpen] = useState(false);
   const [productCardActionsOpen, setProductCardActionsOpen] = useState(false);
+  const [productGridOpen, setProductGridOpen] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
   const appliedDeepLinkRef = useRef(null);
 
@@ -51,6 +52,7 @@ const OnlineStore = () => {
   const testimonialsDeepLink = stepParam === 'testimonials';
   const productSectionsDeepLink = stepParam === 'product-sections';
   const productButtonsDeepLink = stepParam === 'product-buttons';
+  const productLayoutDeepLink = stepParam === 'product-layout';
   const productsDeepLink = stepParam === 'products';
   const heroDeepLink = stepParam === 'hero';
   const editDeepLink = stepParam === 'edit';
@@ -73,7 +75,7 @@ const OnlineStore = () => {
   const { data: settingsResponse, isLoading: settingsLoading } = useQuery({
     queryKey: ['store', 'settings'],
     queryFn: () => storeService.getSettings(),
-    enabled: hasDeepLink || hasStoreSettings || testimonialsDeepLink || productSectionsDeepLink || productButtonsDeepLink || productsDeepLink || heroDeepLink || editDeepLink,
+    enabled: hasDeepLink || hasStoreSettings || testimonialsDeepLink || productSectionsDeepLink || productButtonsDeepLink || productLayoutDeepLink || productsDeepLink || heroDeepLink || editDeepLink,
   });
 
   const { data: organizationResponse } = useQuery({
@@ -144,6 +146,11 @@ const OnlineStore = () => {
       clearStepQuery();
       return;
     }
+    if (productLayoutDeepLink) {
+      setProductGridOpen(true);
+      clearStepQuery();
+      return;
+    }
     if (productsDeepLink) {
       setProductsOpen(true);
       clearStepQuery();
@@ -158,7 +165,7 @@ const OnlineStore = () => {
       setEditOpen(true);
       clearStepQuery();
     }
-  }, [clearStepQuery, editDeepLink, hasStoreSettings, heroDeepLink, productButtonsDeepLink, productSectionsDeepLink, productsDeepLink, testimonialsDeepLink]);
+  }, [clearStepQuery, editDeepLink, hasStoreSettings, heroDeepLink, productButtonsDeepLink, productLayoutDeepLink, productSectionsDeepLink, productsDeepLink, testimonialsDeepLink]);
 
   const saveTestimonialsMutation = useMutation({
     mutationFn: async (testimonials) => {
@@ -293,6 +300,52 @@ const OnlineStore = () => {
     },
     onError: (error) => showError(error, 'Could not save product buttons'),
   });
+
+  const saveProductGridMutation = useMutation({
+    mutationFn: async (productGrid) => {
+      let currentSettings = settings;
+      if (!currentSettings) {
+        const fetched = await storeService.getSettings();
+        currentSettings = fetched?.data ?? fetched;
+      }
+      if (!currentSettings) {
+        throw new Error('Store settings unavailable');
+      }
+      return storeService.updateSettings({
+        displayName: currentSettings.displayName,
+        slug: currentSettings.slug,
+        description: currentSettings.description,
+        logoUrl: currentSettings.logoUrl,
+        bannerImageUrl: currentSettings.bannerImageUrl,
+        primaryColor: currentSettings.primaryColor,
+        secondaryColor: currentSettings.secondaryColor || null,
+        tertiaryColor: currentSettings.tertiaryColor || null,
+        contactPhone: currentSettings.contactPhone,
+        whatsappNumber: currentSettings.whatsappNumber,
+        contactEmail: currentSettings.contactEmail,
+        pickupEnabled: currentSettings.pickupEnabled,
+        deliveryEnabled: currentSettings.deliveryEnabled,
+        deliveryFee: currentSettings.deliveryFee,
+        currency: resolveStoreCurrencyCode(currentSettings.currency),
+        enabled: currentSettings.enabled,
+        templateId: currentSettings.templateId,
+        metadata: {
+          ...(currentSettings.metadata || {}),
+          productGrid,
+        },
+      });
+    },
+    onSuccess: async () => {
+      showSuccess('Product layout saved');
+      await queryClient.invalidateQueries({ queryKey: ['store', 'settings'] });
+    },
+    onError: (error) => showError(error, 'Could not save the product layout'),
+  });
+
+  const handleSaveProductGrid = useCallback(
+    (productGrid) => saveProductGridMutation.mutateAsync(productGrid),
+    [saveProductGridMutation],
+  );
 
   const handleSaveProductCardActions = useCallback(
     (productCardActions) => saveProductCardActionsMutation.mutateAsync(productCardActions),
@@ -567,6 +620,12 @@ const OnlineStore = () => {
         productCardActionsSaving={saveProductCardActionsMutation.isPending}
         productCardActionsOpen={productCardActionsOpen}
         onProductCardActionsOpenChange={setProductCardActionsOpen}
+        productGrid={settings?.metadata?.productGrid || null}
+        templateId={currentTemplateId}
+        onSaveProductGrid={handleSaveProductGrid}
+        productGridSaving={saveProductGridMutation.isPending}
+        productGridOpen={productGridOpen}
+        onProductGridOpenChange={setProductGridOpen}
         whatsappNumber={settings?.whatsappNumber || galleryPreviewBranding.whatsappNumber}
         contactPhone={settings?.contactPhone || galleryPreviewBranding.contactPhone}
         productsOpen={productsOpen}

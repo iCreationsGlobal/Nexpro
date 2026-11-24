@@ -6,6 +6,7 @@ import {
   ExternalLink,
   GalleryHorizontal,
   Globe,
+  Grid2x2,
   LayoutTemplate,
   Loader2,
   Package,
@@ -40,6 +41,7 @@ import ConnectDomainDialog, {
 import OnlineStoreHelpBanner from './OnlineStoreHelpBanner';
 import StoreHeroSetupPanel from './StoreHeroSetupPanel';
 import StoreProductCardActionsPanel from './StoreProductCardActionsPanel';
+import StoreProductLayoutPanel from './StoreProductLayoutPanel';
 import StoreProductSectionsPanel from './StoreProductSectionsPanel';
 import StoreProductsPanel from './StoreProductsPanel';
 import StoreTestimonialsPanel from './StoreTestimonialsPanel';
@@ -189,6 +191,12 @@ const EditActionRow = ({ icon: Icon, title, description, onClick, to }) => {
  *   onSaveProductCardActions?: (actions: string[]) => void | Promise<void>,
  *   productCardActionsSaving?: boolean,
  *   productCardActionsOpen?: boolean,
+ *   productGrid?: object | null,
+ *   templateId?: string | null,
+ *   onSaveProductGrid?: (grid: object) => void | Promise<void>,
+ *   productGridSaving?: boolean,
+ *   productGridOpen?: boolean,
+ *   onProductGridOpenChange?: (open: boolean) => void,
  *   onProductCardActionsOpenChange?: (open: boolean) => void,
  *   whatsappNumber?: string | null,
  *   contactPhone?: string | null,
@@ -237,6 +245,12 @@ const OnlineStoreDashboard = ({
   productCardActionsSaving = false,
   productCardActionsOpen: productCardActionsOpenProp,
   onProductCardActionsOpenChange,
+  productGrid = null,
+  templateId = null,
+  onSaveProductGrid,
+  productGridSaving = false,
+  productGridOpen = false,
+  onProductGridOpenChange,
   whatsappNumber = null,
   contactPhone = null,
   productsOpen: productsOpenProp,
@@ -326,6 +340,10 @@ const OnlineStoreDashboard = ({
   const handleOpenProductCardActions = useCallback(() => {
     openFromEdit(() => setProductCardActionsOpen(true));
   }, [openFromEdit, setProductCardActionsOpen]);
+
+  const handleOpenProductGrid = useCallback(() => {
+    openFromEdit(() => onProductGridOpenChange?.(true));
+  }, [onProductGridOpenChange, openFromEdit]);
 
   const handleOpenProducts = useCallback(() => {
     openFromEdit(() => setProductsOpen(true));
@@ -513,6 +531,14 @@ const OnlineStoreDashboard = ({
                   onClick={handleOpenProductCardActions}
                 />
               ) : null}
+              {typeof onSaveProductGrid === 'function' ? (
+                <EditActionRow
+                  icon={Grid2x2}
+                  title="Product layout"
+                  description="Items per row on phones and computers"
+                  onClick={handleOpenProductGrid}
+                />
+              ) : null}
               {typeof onSaveTestimonials === 'function' ? (
                 <EditActionRow
                   icon={Quote}
@@ -667,7 +693,7 @@ const OnlineStoreDashboard = ({
                 Product buttons
               </DialogTitle>
               <DialogDescription>
-                Choose up to two actions for product cards. Last is primary.
+                Choose up to two actions for large product cards. Last is primary. Compact cards have no buttons.
               </DialogDescription>
             </DialogHeader>
             <DialogBody>
@@ -680,6 +706,37 @@ const OnlineStoreDashboard = ({
                 onSave={async (next) => {
                   await onSaveProductCardActions(next);
                   setProductCardActionsOpen(false);
+                }}
+              />
+            </DialogBody>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {typeof onSaveProductGrid === 'function' ? (
+        <Dialog open={productGridOpen} onOpenChange={onProductGridOpenChange}>
+          <DialogContent
+            className="sm:max-w-xl"
+            style={{ '--modal-w': 'min(92vw, 36rem)', '--modal-min-h': 'auto', '--modal-max-h': '90vh' }}
+          >
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Grid2x2 className="h-4 w-4 text-emerald-700" aria-hidden />
+                Product layout
+              </DialogTitle>
+              <DialogDescription>
+                How many items shoppers see per row.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogBody>
+              <StoreProductLayoutPanel
+                value={productGrid}
+                templateId={templateId}
+                saving={productGridSaving}
+                accentColor={primaryColor}
+                onSave={async (next) => {
+                  await onSaveProductGrid(next);
+                  onProductGridOpenChange?.(false);
                 }}
               />
             </DialogBody>
