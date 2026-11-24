@@ -104,6 +104,7 @@ const CheckoutPage = () => {
   const [fulfillmentMethod, setFulfillmentMethod] = useState('pickup');
   const [notes, setNotes] = useState('');
   const [paymentPhase, setPaymentPhase] = useState('idle');
+  const [unavailableMessage, setUnavailableMessage] = useState('');
   const [addressErrors, setAddressErrors] = useState({});
   const defaultAddressAppliedRef = useRef(false);
   const addressFieldRefs = useRef({});
@@ -315,6 +316,7 @@ const CheckoutPage = () => {
     }
 
     setPaymentPhase('initializing');
+    setUnavailableMessage('');
     try {
       if (shouldSaveInlineAddress) {
         try {
@@ -383,6 +385,11 @@ const CheckoutPage = () => {
       window.location.assign(authorizationUrl);
     } catch (error) {
       setPaymentPhase('idle');
+      const failure = error?.response?.data;
+      if (failure?.errorCode === 'STOREFRONT_ITEMS_UNAVAILABLE') {
+        setUnavailableMessage(failure.message);
+        return;
+      }
       showError(error, 'Could not start Paystack checkout.');
     }
   }, [
@@ -658,6 +665,12 @@ const CheckoutPage = () => {
                 Ask on WhatsApp
               </a>
             </Button>
+          ) : null}
+          {unavailableMessage ? (
+            <div role="alert" className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900">
+              {unavailableMessage}
+              <Link to="/cart" className="mt-1 block underline">Update your cart</Link>
+            </div>
           ) : null}
           <Button
             type="submit"

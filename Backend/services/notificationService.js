@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { Notification } = require('../models');
 const {
   getPreferencesForUsers,
@@ -881,6 +882,94 @@ const notifyOnlineStoreOrderReceived = async ({ sale, shopper = null, store = nu
   return notifyUsers({ tenantId, userIds: recipients, payload });
 };
 
+const UNAVAILABLE_ITEM_SOURCE = 'online_store_unavailable';
+const UNAVAILABLE_ALERT_WINDOW_MS = 60 * 60 * 1000;
+const MAX_UNAVAILABLE_ALERTS_PER_WINDOW = 20;
+
+/** Text a shopper typed, made safe to show in an alert: one short line, no links. */
+const cleanShopperText = (value, max) => String(value || '')
+  // eslint-disable-next-line no-control-regex
+  .replace(/https?:\/\/\S*|www\.\S*|[<>\u0000-\u001f]/gi, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .slice(0, max);
+
+/**
+ * Tell a store that a shopper tried to buy what it does not have. At most once an hour per shopper and item.
+ * @param {{ store: object, items: Array<{ listingId: string, title: string, requested: number, left: number }>, shopper?: object, phone?: string }} params
+ * @returns {Promise<boolean>} whether the store has been told, now or earlier in the hour
+ */
+const notifyOnlineStoreItemsUnavailable = async ({ store, items, shopper = null, phone = '' }) => {
+  const tenantId = store?.tenantId;
+  if (!tenantId || !items?.length) return false;
+
+  const { UserTenant } = require('../models');
+  const { Op } = require('sequelize');
+  const { sequelize } = require('../config/database');
+  const members = await UserTenant.findAll({
+    where: { tenantId, role: { [Op.in]: ONLINE_STORE_ORDER_NOTIFY_ROLES }, status: 'active' },
+    attributes: ['userId'],
+  });
+  const userIds = [...new Set(members.map(({ userId }) => userId).filter(Boolean))];
+  if (userIds.length === 0) return false;
+
+  const shopperPhone = cleanShopperText(phone, 25);
+  const shopperKey = String(
+    shopper?.id || shopper?.email || shopperPhone.replace(/\D/g, '') || 'unknown'
+  ).toLowerCase();
+  const recent = await Notification.findAll({
+    where: {
+      tenantId,
+      createdAt: { [Op.gte]: new Date(Date.now() - UNAVAILABLE_ALERT_WINDOW_MS) },
+      [Op.and]: [
+        sequelize.where(sequelize.literal(`"Notification"."metadata"->>'source'`), UNAVAILABLE_ITEM_SOURCE),
+      ],
+    },
+    attributes: ['metadata'],
+  });
+  // Everyone gets a copy of each alert; count alerts, not copies.
+  const alerts = new Map(recent.map(({ metadata }) => [metadata?.alertId, metadata]));
+  const alreadyTold = new Set([...alerts.values()]
+    .filter((metadata) => metadata?.shopperKey === shopperKey)
+    .flatMap((metadata) => metadata.listingIds || []));
+  const newItems = items.filter(({ listingId }) => !alreadyTold.has(listingId));
+  if (newItems.length === 0) return true;
+  if (alerts.size >= MAX_UNAVAILABLE_ALERTS_PER_WINDOW) return false;
+
+  const who = cleanShopperText(shopper?.name || shopper?.fullName, 60) || 'A shopper';
+  const describe = ({ title, requested }) => (requested > 1 ? `${requested} × ${title}` : title);
+  const [first] = newItems;
+  let problem;
+  if (newItems.length > 1) {
+    const names = newItems.map((item) => `${describe(item)}${item.left > 0 ? ` (${item.left} left)` : ''}`).join(', ');
+    problem = `${names}, but they're not available`;
+  } else {
+    problem = `${describe(first)}, but ${first.left > 0 ? `only ${first.left} ${first.left === 1 ? 'is' : 'are'} left` : "it's not available"}`;
+  }
+
+  const created = await notifyUsers({
+    tenantId,
+    userIds,
+    payload: {
+      title: 'Someone wants an item you don\'t have',
+      message: `${who} is trying to buy ${problem}.${shopperPhone ? ` Phone: ${shopperPhone}` : ''}`,
+      type: 'order',
+      priority: 'high',
+      channels: ['in_app', 'push'],
+      metadata: {
+        source: UNAVAILABLE_ITEM_SOURCE,
+        alertId: crypto.randomUUID(),
+        shopperKey,
+        listingIds: newItems.map(({ listingId }) => listingId),
+        storeSlug: store.slug || null,
+      },
+      icon: 'shopping-bag',
+      link: '/products',
+    },
+  });
+  return created.length > 0;
+};
+
 /**
  * Notify relevant users when an order (restaurant sale) status changes.
  * Notifies all admins, managers, and staff in the tenant who may use the Orders/Kitchen page.
@@ -978,6 +1067,7 @@ module.exports = {
   notifyInvoicePaid,
   notifyNewOrder,
   notifyOnlineStoreOrderReceived,
+  notifyOnlineStoreItemsUnavailable,
   notifyOrderStatusChanged
 };
 

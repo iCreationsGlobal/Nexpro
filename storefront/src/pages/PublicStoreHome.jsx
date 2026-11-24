@@ -456,10 +456,14 @@ const PublicStoreHome = ({
   const isPreviewRequest = searchParams.get('preview') === '1';
 
   const storeQuery = useQuery({
-    queryKey: ['marketplace-store-home', storeSlug, isPreviewRequest ? 'preview' : 'live'],
+    queryKey: ['marketplace-store-home', storeSlug, isPreviewRequest ? 'preview' : 'live', isOwnedShop ? 'sold-out' : 'available'],
     queryFn: () => storeService.getMarketplaceStoreHome(
       storeSlug,
-      isPreviewRequest ? { preview: '1' } : {}
+      {
+        ...(isPreviewRequest ? { preview: '1' } : {}),
+        // Online Stores list everything; stock is checked at payment.
+        ...(isOwnedShop ? { soldOut: '1' } : {}),
+      }
     ),
     enabled: Boolean(storeSlug) && !previewMode,
     retry: false,

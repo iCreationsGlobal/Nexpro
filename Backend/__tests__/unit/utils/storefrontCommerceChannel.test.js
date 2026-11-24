@@ -2,6 +2,7 @@ const {
   COMMERCE_CHANNELS,
   PAYSTACK_ORDER_TYPES,
   normalizeCommerceChannel,
+  isExplicitOnlineStoreRequest,
   resolveCommerceChannelFromRequest,
   usesTradeAssurance,
   paystackOrderTypeForChannel,
@@ -32,6 +33,22 @@ describe('storefrontCommerceChannel', () => {
     };
     expect(resolveCommerceChannelFromRequest(req, { commerceChannel: 'sabito_marketplace' }))
       .toBe(COMMERCE_CHANNELS.SABITO_MARKETPLACE);
+  });
+
+  it('only treats a request as an Online Store checkout when it says so', () => {
+    const none = { headers: { host: 'api.example' } };
+    expect(isExplicitOnlineStoreRequest(none, { commerceChannel: 'online_store' })).toBe(true);
+    expect(isExplicitOnlineStoreRequest({ headers: { 'x-storefront-channel': 'online_store' } })).toBe(true);
+    // The Sabito apps name no channel and fall back to the Online Store everywhere else.
+    expect(resolveCommerceChannelFromRequest(none, {})).toBe(COMMERCE_CHANNELS.ONLINE_STORE);
+    expect(isExplicitOnlineStoreRequest(none, {})).toBe(false);
+    expect(isExplicitOnlineStoreRequest(undefined)).toBe(false);
+    expect(isExplicitOnlineStoreRequest(none, { commerceChannel: 'sabito_marketplace' })).toBe(false);
+    expect(isExplicitOnlineStoreRequest(none, { channel: 'something_else' })).toBe(false);
+    expect(isExplicitOnlineStoreRequest(
+      { headers: { 'x-storefront-channel': 'online_store' } },
+      { commerceChannel: 'sabito_marketplace' },
+    )).toBe(false);
   });
 
   it('uses trade assurance only for Sabito marketplace', () => {

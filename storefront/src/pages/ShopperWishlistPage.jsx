@@ -95,7 +95,7 @@ const ShopperWishlistPage = () => {
                 item={item}
                 isPending={pendingListingIds.includes(item.listingId)}
                 sellerFallback={isSingleStoreMode ? 'Seller' : 'Sabito seller'}
-                showAvailable={!isSingleStoreMode}
+                checksStock={!isSingleStoreMode}
                 productUrlPrefix={isSingleStoreMode ? (pathPrefix || 'shop') : undefined}
                 onAddToCart={handleAddToCart}
                 onRemove={removeWishlistItem}
@@ -112,7 +112,7 @@ const WishlistItem = ({
   item,
   isPending,
   sellerFallback = 'Seller',
-  showAvailable = true,
+  checksStock = true,
   productUrlPrefix,
   onAddToCart,
   onRemove,
@@ -120,7 +120,8 @@ const WishlistItem = ({
   const product = item.product || {};
   const availability = product.availability || {};
   const store = product.store || {};
-  const available = product.available === true;
+  // Online Stores check stock at payment; only a listing that was taken down cannot be added.
+  const available = checksStock ? product.available === true : availability.status !== 'unavailable';
   const imageUrl = resolveImageUrl(product.images?.[0]);
   const productUrl = getProductUrl(product, productUrlPrefix ? { prefix: productUrlPrefix } : {});
 
@@ -142,7 +143,7 @@ const WishlistItem = ({
           {product.title}
         </Link>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {showAvailable || !available ? (
+          {checksStock || !available ? (
             <Badge
               variant={available ? 'outline' : 'default'}
               className={available

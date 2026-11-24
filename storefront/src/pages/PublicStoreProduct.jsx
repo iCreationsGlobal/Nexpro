@@ -35,6 +35,7 @@ import {
   StoreLogo,
   StoreScopedFooter,
   getDiscountPercent,
+  ONLINE_STORE_AVAILABILITY,
 } from '../components/storefront/StorefrontLayout';
 import {
   ReviewList,
@@ -282,8 +283,9 @@ const PublicStoreProduct = () => {
   });
 
   const productsQuery = useQuery({
-    queryKey: ['public-store-products', storeSlug],
-    queryFn: () => storeService.getPublicStoreProducts(storeSlug),
+    queryKey: ['public-store-products', storeSlug, isOwnedShop ? 'sold-out' : 'available'],
+    // Online Stores list everything; stock is checked at payment.
+    queryFn: () => storeService.getPublicStoreProducts(storeSlug, isOwnedShop ? { soldOut: '1' } : {}),
     enabled: Boolean(storeSlug),
     retry: false,
   });
@@ -307,7 +309,7 @@ const PublicStoreProduct = () => {
     () => products.find((item) => item.slug === productSlug || item.id === productSlug),
     [productSlug, products],
   );
-  const availability = useMemo(() => getAvailability(product), [product]);
+  const availability = useMemo(() => (isOwnedShop ? ONLINE_STORE_AVAILABILITY : getAvailability(product)), [isOwnedShop, product]);
   const discount = getDiscountPercent(product);
   const saved = isWishlisted(product?.listingId || product?.id);
   const wishlistPending = pendingListingIds.includes(product?.listingId || product?.id);
@@ -499,8 +501,6 @@ const PublicStoreProduct = () => {
     () => (isOwnedShop ? getOnlineStoreCommerceBadges(product) : getListingCommerceBadges(product)),
     [isOwnedShop, product],
   );
-  // Everything on an Online Store is for sale: only say when something is not available.
-  const showAvailability = !isOwnedShop || !availability.available;
   const priceDisplay = useMemo(() => getProductPriceDisplay(product), [product]);
   const rentOnly = isRentOnlyListing(product);
   const showRentalBooking = isRentableListing(product) && !product?.isSample;
@@ -721,11 +721,13 @@ const PublicStoreProduct = () => {
       />
 
       <main className="mx-auto w-full max-w-[1440px] px-3 py-6 sm:px-4 sm:py-8">
-        <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-          <Link to={storeBasePath} className="hover:text-[color:var(--store-accent,#166534)]">{store.displayName}</Link>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span className="min-w-0 font-semibold text-slate-800 [overflow-wrap:anywhere]">{product.title}</span>
-        </div>
+        {!isOwnedShop ? (
+          <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            <Link to={storeBasePath} className="hover:text-[color:var(--store-accent,#166534)]">{store.displayName}</Link>
+            <ChevronRight className="h-3.5 w-3.5" />
+            <span className="min-w-0 font-semibold text-slate-800 [overflow-wrap:anywhere]">{product.title}</span>
+          </div>
+        ) : null}
 
         {!isOwnedShop ? (
           <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:rounded-[2rem]">
@@ -813,9 +815,9 @@ const PublicStoreProduct = () => {
 
             <div className="flex flex-col justify-center space-y-5">
               <div>
-                {showAvailability || product.isSample || commerceBadges.length ? (
+                {!isOwnedShop || product.isSample || commerceBadges.length ? (
                   <div className="mb-3 flex flex-wrap gap-2">
-                    {showAvailability ? (
+                    {!isOwnedShop ? (
                       <Badge
                         className={availability.available
                           ? 'border-0 bg-[var(--store-accent,#166534)] text-white hover:bg-[var(--store-accent,#166534)]'
@@ -1031,7 +1033,7 @@ const PublicStoreProduct = () => {
                 </div>
               ) : null}
 
-              {showAvailability ? (
+              {!isOwnedShop ? (
                 <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   {availability.message}
                 </p>

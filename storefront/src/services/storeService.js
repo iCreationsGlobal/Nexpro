@@ -16,7 +16,12 @@ const storeService = {
 
   getPublicStore: async (slug) => api.get(`/public/store/${encodeURIComponent(slug || '')}`),
 
-  getPublicStoreProducts: async (slug) => api.get(`/public/store/${encodeURIComponent(slug || '')}/products`),
+  /** `soldOut: '1'` lists sold-out items too (Online Stores; stock is checked at payment). */
+  getPublicStoreProducts: async (slug, params = {}) => {
+    const query = buildPublicQuery(params);
+    const path = `/public/store/${encodeURIComponent(slug || '')}/products`;
+    return api.get(query ? `${path}?${query}` : path);
+  },
 
   getRentalAvailability: async (storeSlug, params = {}) => {
     const query = buildPublicQuery(params);

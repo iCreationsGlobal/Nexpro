@@ -12,6 +12,12 @@ const { authenticateAbsShopper } = require('../services/shopperAbsAccountService
 const { findUserWithLockout } = require('../utils/userLockout');
 const { emailOtpCode, passwordReset: passwordResetEmailTemplate } = require('../services/emailTemplates');
 const { notifyOnlineStoreOrderReceived } = require('../services/notificationService');
+const {
+  buildItemsUnavailableError,
+  isShortOfStock,
+  tellStore,
+  unavailableItemsMessage,
+} = require('../services/storefrontUnavailableItems');
 const { baseUploadDir, ensureDirExists } = require('../middleware/upload');
 const {
   Customer,
@@ -47,6 +53,7 @@ const {
 } = require('../services/storefrontReviewService');
 const {
   COMMERCE_CHANNELS,
+  isExplicitOnlineStoreRequest,
   resolveCommerceChannelFromRequest,
   usesTradeAssurance,
   paystackOrderTypeForChannel,
@@ -2184,7 +2191,17 @@ exports.toggleStorefrontWishlistItem = async (req, res, next) => {
   }
 };
 
-const buildStorefrontCheckoutDraft = async ({ body, transaction = null, validateDeliveryAddress = true }) => {
+/**
+ * Online Stores do not check stock while shoppers browse or fill in checkout (`checkStock: false`), only when
+ * they pay; then everything short is collected so the store can be told. The marketplace stops at the first.
+ */
+const buildStorefrontCheckoutDraft = async ({
+  body,
+  transaction = null,
+  validateDeliveryAddress = true,
+  isOnlineStoreCheckout = false,
+  checkStock = true,
+}) => {
   const storeSlug = compact(body?.storeSlug, 80).toLowerCase();
   const requestedItems = Array.isArray(body?.items) ? body.items : [];
   if (!storeSlug || requestedItems.length === 0) {
@@ -2227,6 +2244,7 @@ const buildStorefrontCheckoutDraft = async ({ body, transaction = null, validate
   const listingById = new Map(listings.map((listing) => [listing.id, listing]));
 
   const saleItems = [];
+  const unavailableItems = [];
   for (const requested of normalizedItems) {
     const listingId = requested.listingId;
     const quantity = requested.quantity;
@@ -2245,10 +2263,24 @@ const buildStorefrontCheckoutDraft = async ({ body, transaction = null, validate
 
     const availability = getListingAvailability(listing);
     const allowOversell = listing.inventoryPolicy === 'continue';
-    if ((!availability.available || availability.quantityOnHand < quantity) && !allowOversell) {
-      const err = new Error(availability.message || `${listing.title} does not have enough stock for checkout.`);
-      err.statusCode = 409;
-      throw err;
+    const isShort = isOnlineStoreCheckout
+      ? isShortOfStock(availability, quantity)
+      : (!availability.available || availability.quantityOnHand < quantity);
+    if (isShort && !allowOversell) {
+      const isStockProblem = !availability.message;
+      if (!isStockProblem || !isOnlineStoreCheckout) {
+        const err = new Error(availability.message || `${listing.title} does not have enough stock for checkout.`);
+        err.statusCode = 409;
+        throw err;
+      }
+      if (checkStock) {
+        unavailableItems.push({
+          listingId,
+          title: listing.title,
+          requested: quantity,
+          left: Math.max(0, availability.quantityOnHand || 0),
+        });
+      }
     }
 
     const unitPrice = money(listing.publicPrice);
@@ -2267,6 +2299,8 @@ const buildStorefrontCheckoutDraft = async ({ body, transaction = null, validate
       availability,
     });
   }
+
+  if (unavailableItems.length) throw buildItemsUnavailableError(store, unavailableItems);
 
   const fulfillmentMethod = compact(body?.fulfillmentMethod || 'pickup', 30);
   const deliveryRequired = fulfillmentMethod === 'delivery';
@@ -2321,9 +2355,10 @@ const createPendingStorefrontSaleFromCheckout = async ({
   body,
   transaction,
   commerceChannel,
+  isOnlineStoreCheckout = false,
   guestAccessTokenHash = null,
 }) => {
-  const draft = await buildStorefrontCheckoutDraft({ body, transaction });
+  const draft = await buildStorefrontCheckoutDraft({ body, transaction, isOnlineStoreCheckout });
   const {
     store,
     saleItems,
@@ -2488,9 +2523,9 @@ exports.createStorefrontOrder = async (req, res, next) => {
 
 exports.initializeStorefrontOrderPaystack = async (req, res, next) => {
   const transaction = await sequelize.transaction();
+  let shopper = req.storefrontCustomer || null;
   try {
     const commerceChannel = resolveCommerceChannelFromRequest(req, req.body || {});
-    let shopper = req.storefrontCustomer || null;
     let guestAccessToken = null;
     if (!shopper) {
       // Marketplace (Trade Assurance) orders need an account for delivery confirmation and disputes.
@@ -2505,6 +2540,7 @@ exports.initializeStorefrontOrderPaystack = async (req, res, next) => {
       body: req.body,
       transaction,
       commerceChannel,
+      isOnlineStoreCheckout: isExplicitOnlineStoreRequest(req, req.body || {}),
       guestAccessTokenHash: guestAccessToken ? hashGuestAccessToken(guestAccessToken) : null,
     });
     const { sale, store, subtotal, deliveryFee, total } = checkout;
@@ -2636,6 +2672,21 @@ exports.initializeStorefrontOrderPaystack = async (req, res, next) => {
   } catch (error) {
     if (transaction && !transaction.finished) {
       await transaction.rollback();
+    }
+    if (error.unavailable) {
+      const { store, items } = error.unavailable;
+      const storeWasTold = await tellStore({
+        store,
+        items,
+        shopper,
+        phone: shopper?.phone || compact(req.body?.deliveryAddress?.phone, 40),
+      });
+      return res.status(error.statusCode).json({
+        success: false,
+        message: unavailableItemsMessage(items, storeWasTold),
+        errorCode: error.errorCode,
+        data: { items },
+      });
     }
     if (error.statusCode) {
       return res.status(error.statusCode).json({
@@ -3663,6 +3714,8 @@ exports.previewStorefrontCheckout = async (req, res, next) => {
     const draft = await buildStorefrontCheckoutDraft({
       body: req.body,
       validateDeliveryAddress: false,
+      isOnlineStoreCheckout: isExplicitOnlineStoreRequest(req, req.body || {}),
+      checkStock: false,
     });
 
     return res.status(200).json({

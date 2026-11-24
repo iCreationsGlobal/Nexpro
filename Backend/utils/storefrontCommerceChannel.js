@@ -69,6 +69,19 @@ function resolveCommerceChannelFromRequest(req, body = {}) {
 }
 
 /**
+ * Whether the request itself says it is an Online Store checkout. The Sabito apps do not name a channel and
+ * fall back to the Online Store above, so behavior meant only for Online Stores must use this instead.
+ * @param {import('express').Request} req
+ * @param {object} [body]
+ * @returns {boolean}
+ */
+function isExplicitOnlineStoreRequest(req, body = {}) {
+  const named = body.commerceChannel || body.channel || body.storefrontChannel
+    || req?.headers?.['x-storefront-channel'] || req?.headers?.['x-commerce-channel'];
+  return String(named || '').trim().toLowerCase() === COMMERCE_CHANNELS.ONLINE_STORE;
+}
+
+/**
  * @param {'online_store'|'sabito_marketplace'} channel
  * @returns {boolean}
  */
@@ -128,6 +141,7 @@ module.exports = {
   COMMERCE_CHANNELS,
   PAYSTACK_ORDER_TYPES,
   normalizeCommerceChannel,
+  isExplicitOnlineStoreRequest,
   resolveCommerceChannelFromRequest,
   usesTradeAssurance,
   paystackOrderTypeForChannel,

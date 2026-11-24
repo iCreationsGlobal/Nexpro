@@ -71,10 +71,10 @@ const mockListings = (rows) => {
   });
 };
 
-const run = async (handler = getMarketplaceStoreHome) => {
+const run = async (handler = getMarketplaceStoreHome, query = {}) => {
   const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
   const next = jest.fn();
-  await handler({ params: { slug: 'test-store' }, query: {} }, res, next);
+  await handler({ params: { slug: 'test-store' }, query }, res, next);
   expect(next).not.toHaveBeenCalled();
   expect(res.status).toHaveBeenCalledWith(200);
   return res.json.mock.calls[0][0].data;
@@ -168,6 +168,22 @@ describe('public store complete catalog', () => {
 
     expect(home.products.slice(80).map((product) => product.id)).toEqual(['listing-81', 'listing-83']);
     expect(home.store.stats.productCount).toBe(82);
+  });
+
+  it.each([['store home', undefined], ['product list', getPublicStoreProducts]])('lists sold-out items only when the online store asks (%s)', async (_name, handler) => {
+    const rows = Array.from({ length: 4 }, (_, i) => makeListing(i + 1));
+    rows[1].product.quantityOnHand = 0;
+    rows[2].productVariantId = 'missing-variant';
+    rows[3].product.isActive = false;
+    mockListings(rows);
+    const ids = async (query) => {
+      const data = await run(handler, query);
+      return (data.products || data).map((product) => product.id);
+    };
+
+    expect(await ids({})).toEqual(['listing-1']);
+    expect(await ids({ soldOut: '0' })).toEqual(['listing-1']);
+    expect(await ids({ soldOut: '1' })).toEqual(['listing-1', 'listing-2']);
   });
 
   it('returns complete service catalogs with accurate category counts too', async () => {

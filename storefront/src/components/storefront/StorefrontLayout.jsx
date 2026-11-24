@@ -154,6 +154,9 @@ export const getAvailabilityLabel = (product) => {
   return 'Check availability';
 };
 
+/** Online Stores do not check stock while shoppers browse; checkout does, and tells the store. */
+export const ONLINE_STORE_AVAILABILITY = { available: true, label: 'Available', message: 'In stock' };
+
 export const getProductAvailability = (product) => {
   const status = product?.availability?.status;
   const available = product?.available ?? status === 'in_stock';
@@ -1197,7 +1200,7 @@ export const ProductCard = ({ product, compact = false }) => {
     isCustomDomain,
   });
   const review = getReviewMeta(product, 'New');
-  const availability = getProductAvailability(product);
+  const availability = isOwnedShop ? ONLINE_STORE_AVAILABILITY : getProductAvailability(product);
   const listingId = product?.listingId || product?.id;
   const saved = isWishlisted(listingId);
   const wishlistPending = pendingListingIds.includes(listingId);
@@ -1219,7 +1222,6 @@ export const ProductCard = ({ product, compact = false }) => {
     [isOwnedShop, product],
   );
   // Online Stores leave out what is true of everything: available, for sale, not reviewed yet.
-  const showAvailability = !isOwnedShop || !availability.available;
   const showReviewDetail = !isOwnedShop || review.hasRealReviews;
   const priceDisplay = useMemo(() => getProductPriceDisplay(product), [product]);
   const rentOnly = isRentOnlyListing(product);
@@ -1362,16 +1364,16 @@ export const ProductCard = ({ product, compact = false }) => {
     const priceText = softenPrice ? 'Contact for price' : 'Price on request';
     const hasPrice = !softenPrice && priceDisplay.amount != null;
     // Only where the product page sells online too: an owner's buttons may be WhatsApp only.
-    const canAddToCart = availability.available && !isSample && hasPrice
+    const canAddToCart = !isSample && hasPrice
       && (cardActions.includes('add_to_cart') || cardActions.includes('buy_now'));
     return (
       <div className="sf-reveal sf-card relative h-full overflow-hidden rounded-xl border border-slate-200 bg-white hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)]">
         <Link to={productUrl} className="flex h-full flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--store-accent,#166534)]">
           <span className="relative block aspect-square overflow-hidden bg-slate-50">
             <ProductImage product={product} />
-            {!availability.available || isSample ? (
+            {isSample ? (
               <span className="absolute inset-x-0 bottom-0 bg-slate-950/75 px-2 py-1 text-center text-[11px] font-semibold text-white">
-                {isSample ? 'Sample' : availability.label}
+                Sample
               </span>
             ) : null}
           </span>
@@ -1466,9 +1468,9 @@ export const ProductCard = ({ product, compact = false }) => {
         {!isOwnedShop ? (
           <p className="mt-1 truncate text-xs text-slate-500">{product?.store?.displayName || `${APP_NAME} seller`}</p>
         ) : null}
-        {showAvailability || showReviewDetail || commerceBadges.length ? (
+        {!isOwnedShop || showReviewDetail || commerceBadges.length ? (
           <div className="mt-3 flex flex-wrap gap-2">
-            {showAvailability ? (
+            {!isOwnedShop ? (
               <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[11px] text-slate-600">
                 {availability.label}
               </Badge>

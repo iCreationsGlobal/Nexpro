@@ -227,6 +227,8 @@ const buildListingAvailability = (listing, variantsByProductId = new Map()) => {
     ...plain,
     quantityOnHand,
     available,
+    /** Only stock is missing: the product and its variant still exist. */
+    soldOut: Boolean(product) && !selectedVariantMissing && !available,
     availability: {
       status: available ? 'in_stock' : 'out_of_stock',
       label: available ? 'Available' : 'Out of stock',
@@ -567,15 +569,19 @@ const getVariantMapForListings = async (listings) => {
   }, new Map());
 };
 
-const getAvailableListingsWithVariants = async (listings) => {
+const getAvailableListingsWithVariants = async (listings, { includeSoldOut = false } = {}) => {
   const variantsByProductId = await getVariantMapForListings(listings);
   return {
     variantsByProductId,
-    listings: listings.filter((listing) => (
-      buildListingAvailability(listing, variantsByProductId).available
-    )),
+    listings: listings.filter((listing) => {
+      const { available, soldOut } = buildListingAvailability(listing, variantsByProductId);
+      return available || (includeSoldOut && soldOut);
+    }),
   };
 };
+
+/** Online Stores list sold-out items too (stock is checked at payment); the marketplace does not ask for them. */
+const wantsSoldOut = (req) => String(req.query?.soldOut || '') === '1';
 
 const getStoreListingCounts = async (stores) => {
   const where = buildStoreListingWhere(stores);
@@ -4563,7 +4569,7 @@ exports.getMarketplaceStoreHome = async (req, res, next) => {
       : [];
 
     const [availableListingResult, reviewSummary, salesCounts] = await Promise.all([
-      getAvailableListingsWithVariants(listings),
+      getAvailableListingsWithVariants(listings, { includeSoldOut: wantsSoldOut(req) }),
       getPublicStoreReviewSummary(store),
       getStoreSalesCounts(
         store,
@@ -4788,7 +4794,7 @@ exports.getPublicStoreProducts = async (req, res, next) => {
     });
     const productIds = [...new Set(listings.map((listing) => listing.productId).filter(Boolean))];
     const [availableListingResult, salesCounts] = await Promise.all([
-      getAvailableListingsWithVariants(listings),
+      getAvailableListingsWithVariants(listings, { includeSoldOut: wantsSoldOut(req) }),
       getStoreSalesCounts(store, productIds),
     ]);
     const { variantsByProductId, listings: availableListings } = availableListingResult;

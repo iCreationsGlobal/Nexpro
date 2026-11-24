@@ -81,7 +81,6 @@ describe('compact product card', () => {
   });
 
   it.each([
-    ['it is out of stock', { available: false }],
     ['it is a sample', { isSample: true }],
     ['it has no price', { publicPrice: 0 }],
     ['it is only for rent', { listingMode: 'rent', rentalRatePerDay: 40 }],
@@ -92,10 +91,16 @@ describe('compact product card', () => {
     expect(screen.queryByRole('button', { name: /to cart/ })).not.toBeInTheDocument();
   });
 
-  it('shows a discount and says when it is out of stock', () => {
-    show(<ProductCard product={{ ...product, compareAtPrice: 150, available: false }} compact />);
+  it('shows a discount', () => {
+    show(<ProductCard product={{ ...product, compareAtPrice: 150 }} compact />);
     expect(screen.getByText('-20%')).toBeInTheDocument();
-    expect(screen.getByText('Out of stock')).toBeInTheDocument();
+  });
+
+  it('looks and sells the same when stock has run out: that is checked at payment', async () => {
+    show(<ProductCard product={{ ...product, available: false, availability: { status: 'out_of_stock', label: 'Out of stock' } }} compact />);
+    expect(screen.queryByText('Out of stock')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Add Blue shirt to cart' }));
+    expect(mocks.addItem).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -128,10 +133,22 @@ describe('large product card', () => {
   });
 
   it('still says what a shopper needs to know', () => {
-    show(<ProductCard product={{ ...product, available: false, listingMode: 'both', rentalRatePerDay: 4, rating: 4.5, reviewsCount: 12 }} />);
+    show(<ProductCard product={{ ...product, listingMode: 'both', rentalRatePerDay: 4, rating: 4.5, reviewsCount: 12 }} />);
     ['For rent', '12 reviews'].forEach((text) => expect(screen.getByText(text)).toBeInTheDocument());
-    expect(screen.getAllByText('Out of stock').length).toBeGreaterThan(0);
     expect(screen.queryByText('For sale')).not.toBeInTheDocument();
+  });
+
+  it('can be added to the cart on an online store when stock has run out', () => {
+    show(<ProductCard product={{ ...product, available: false }} />);
+    expect(screen.queryByText('Out of stock')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled();
+  });
+
+  it('still says it is out of stock on the marketplace', () => {
+    mocks.mode = { isSingleStoreMode: false, isMarketplaceMode: true };
+    show(<ProductCard product={{ ...product, available: false }} />);
+    expect(screen.getAllByText('Out of stock')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Out of stock' })).toBeDisabled();
   });
 
   it('is unchanged on the marketplace', () => {
