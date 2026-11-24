@@ -44,7 +44,7 @@ export const CheckoutRoute = () => {
     // Online Store allows guest checkout; only the Sabito marketplace requires an account.
     if (isLoading || isAuthenticated || isSingleStoreMode) return;
     openShopperAuthModal({
-      mode: 'signup',
+      mode: 'login',
       intent: {
         action: 'checkout',
         returnTo,

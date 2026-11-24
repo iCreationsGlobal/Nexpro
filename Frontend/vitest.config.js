@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import storefrontPackage from '../storefront/package.json'
 
 export default defineConfig({
   plugins: [react()],
@@ -24,6 +25,8 @@ export default defineConfig({
     },
   },
   resolve: {
+    // Storefront pages are tested here; resolve their packages from Frontend (CI does not install storefront).
+    dedupe: Object.keys(storefrontPackage.dependencies),
     alias: {
       '@': path.resolve(__dirname, './src'),
     },

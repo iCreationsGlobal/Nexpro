@@ -6,6 +6,7 @@ import { useStorefrontAuth } from '../context/StorefrontAuthContext';
 import { useStorefrontMode } from '../context/StorefrontModeContext';
 import { dashboardLink } from '../config';
 import { showError, showSuccess } from '../utils/toast';
+import { buildShopperAuthPath, getShopperAuthMode, isExistingShopperAccountError } from '../utils/shopperAuthFlow';
 import { Breadcrumbs, PageShell } from '../components/storefront/StorefrontLayout';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -31,18 +32,19 @@ const StorefrontAuthPage = () => {
   const navigate = useNavigate();
   const { login, register, resendVerification, sendLoginOtp, verifyEmail, verifyLoginOtp } = useStorefrontAuth();
   const { isSingleStoreMode } = useStorefrontMode();
-  const [mode, setMode] = useState(
-    searchParams.get('mode') === 'verify' || location.pathname === '/verify-email'
-      ? 'verify'
-      : searchParams.get('mode') === 'signup' || location.pathname === '/signup' ? 'signup' : 'login'
-  );
+  const [sessionNotice, setSessionNotice] = useState('');
+  const mode = getShopperAuthMode(location.pathname, searchParams.get('mode'));
+  const setMode = useCallback((nextMode) => {
+    setSessionNotice('');
+    navigate(buildShopperAuthPath(nextMode, location.search), { replace: true, state: location.state });
+  }, [location.search, location.state, navigate]);
   const [form, setForm] = useState({ name: '', email: searchParams.get('email') || '', phone: '', password: '', otp: '' });
   const [loginMethod, setLoginMethod] = useState('password');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [isSendingLoginOtp, setIsSendingLoginOtp] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
-  const [sessionNotice, setSessionNotice] = useState('');
+  const [absLinkToken, setAbsLinkToken] = useState('');
   const fieldRefs = useRef({});
   const returnTo = useMemo(() => {
     const requested = searchParams.get('returnTo') || location.state?.returnTo || '';
@@ -53,6 +55,13 @@ const StorefrontAuthPage = () => {
   const isSignup = mode === 'signup';
   const isVerification = mode === 'verify';
   const isOtpLogin = !isSignup && !isVerification && loginMethod === 'otp';
+
+  useEffect(() => {
+    setFieldErrors({});
+    setForm((current) => ({ ...current, password: '', otp: '' }));
+    setLoginMethod('password');
+    setAbsLinkToken('');
+  }, [mode]);
 
   useEffect(() => {
     let storedMessage = '';
@@ -73,6 +82,10 @@ const StorefrontAuthPage = () => {
 
   const updateField = useCallback((field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
+    if (field === 'email') {
+      setAbsLinkToken('');
+      setSessionNotice('');
+    }
     setFieldErrors((current) => {
       if (!current[field]) return current;
       return { ...current, [field]: undefined, form: undefined };
@@ -138,7 +151,7 @@ const StorefrontAuthPage = () => {
           showSuccess(`Account created. You can continue to ${targetLabel}.`);
         }
       } else if (isOtpLogin) {
-        await verifyLoginOtp({ email: form.email, otp: form.otp });
+        await verifyLoginOtp({ email: form.email, otp: form.otp, ...(absLinkToken ? { absLinkToken } : {}) });
         showSuccess(`Signed in. You can continue to ${targetLabel}.`);
       } else {
         await login({ email: form.email, password: form.password });
@@ -147,6 +160,24 @@ const StorefrontAuthPage = () => {
       navigate(returnTo, { replace: true });
     } catch (error) {
       const errorData = error?.response?.data;
+      if (isSignup && isExistingShopperAccountError(error)) {
+        setMode('login');
+        setSessionNotice('You already have an account. Sign in with your shopper or ABS password to continue.');
+        return;
+      }
+      if (errorData?.errorCode === 'STOREFRONT_ABS_LINK_REQUIRED') {
+        setAbsLinkToken(errorData.data.absLinkToken);
+        setLoginMethod('otp');
+        setForm((current) => ({ ...current, password: '', otp: '' }));
+        setSessionNotice(errorData.message);
+        return;
+      }
+      if (errorData?.errorCode === 'STOREFRONT_ABS_LINK_EXPIRED') {
+        setAbsLinkToken('');
+        setSessionNotice('');
+        setLoginMethod('password');
+        setForm((current) => ({ ...current, password: '', otp: '' }));
+      }
       if (errorData?.errorCode === 'EMAIL_VERIFICATION_REQUIRED') {
         const pendingEmail = errorData?.data?.email || form.email;
         updateField('email', pendingEmail);
@@ -162,7 +193,7 @@ const StorefrontAuthPage = () => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [form.email, form.name, form.otp, form.password, form.phone, isOtpLogin, isSignup, isVerification, login, navigate, register, returnTo, targetLabel, validateAuthForm, verifyEmail, verifyLoginOtp]);
+  }, [absLinkToken, form.email, form.name, form.otp, form.password, form.phone, isOtpLogin, isSignup, isVerification, login, navigate, register, returnTo, setMode, targetLabel, validateAuthForm, verifyEmail, verifyLoginOtp]);
 
   const handleResend = useCallback(async () => {
     setIsResending(true);
@@ -248,6 +279,12 @@ const StorefrontAuthPage = () => {
             <h2 className="mt-2 text-2xl font-black text-slate-950">
               {isVerification ? 'Enter the 6-digit code' : isSignup ? 'Create your shopper account' : isOtpLogin ? 'Login with a one-time code' : 'Login to your shopper account'}
             </h2>
+            {!isSignup && !isVerification && !isOtpLogin ? (
+              <p className="mt-2 text-sm text-slate-600">
+                Use your shopper account or your existing ABS email and password.{' '}
+                <a className="font-semibold underline" href={dashboardLink('/forgot-password')}>Forgot your ABS password?</a>
+              </p>
+            ) : null}
           </div>
 
           {isVerification ? (
@@ -268,7 +305,7 @@ const StorefrontAuthPage = () => {
             </Alert>
           ) : null}
 
-          {isOtpLogin ? (
+          {isOtpLogin && !absLinkToken ? (
             <Alert className="border-[color:color-mix(in_srgb,var(--store-accent,#166534)_28%,white)] bg-[var(--store-accent-soft,#f0fdf4)]">
               <ShieldCheck className="h-4 w-4" />
               <AlertDescription>
@@ -375,6 +412,10 @@ const StorefrontAuthPage = () => {
                 onClick={() => {
                   setLoginMethod(isOtpLogin ? 'password' : 'otp');
                   updateField('otp', '');
+                  if (absLinkToken) {
+                    setAbsLinkToken('');
+                    setSessionNotice('');
+                  }
                 }}
               >
                 {isOtpLogin ? 'Use password instead' : 'Email me a sign-in code'}
@@ -390,7 +431,7 @@ const StorefrontAuthPage = () => {
                     onClick={handleSendLoginOtp}
                   >
                     {isSendingLoginOtp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Send code
+                    {absLinkToken ? 'Send a new code' : 'Send code'}
                   </Button>
                   {!form.email ? (
                     <p id="send-code-helper" className="basis-full text-xs text-slate-500">

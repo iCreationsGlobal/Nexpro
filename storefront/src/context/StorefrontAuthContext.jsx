@@ -37,7 +37,7 @@ export const StorefrontAuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(() => Boolean(authService.getToken()));
   const [authModal, setAuthModal] = useState({
     isOpen: false,
-    mode: 'signup',
+    mode: 'login',
     intent: null,
   });
 
@@ -199,7 +199,7 @@ export const StorefrontAuthProvider = ({ children }) => {
 
     setAuthModal({
       isOpen: true,
-      mode: options.mode || 'signup',
+      mode: options.mode || 'login',
       intent,
     });
   }, []);

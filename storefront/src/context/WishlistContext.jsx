@@ -161,7 +161,7 @@ export const WishlistProvider = ({ children }) => {
 
   const requireWishlistAuth = useCallback((product) => {
     openShopperAuthModal({
-      mode: 'signup',
+      mode: 'login',
       intent: {
         action: 'wishlist',
         productId: product?.listingId || product?.id || null,

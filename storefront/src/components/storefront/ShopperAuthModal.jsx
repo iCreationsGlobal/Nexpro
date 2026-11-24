@@ -9,6 +9,7 @@ import { resolveSingleStoreHomePath } from '../../online-store/storePaths';
 import GoogleSignInButton from './GoogleSignInButton';
 import { useGoogleSignIn } from './GoogleSignInHost';
 import { showError, showSuccess } from '../../utils/toast';
+import { isExistingShopperAccountError } from '../../utils/shopperAuthFlow';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,10 +63,14 @@ const ShopperAuthModal = () => {
     login,
     register,
     resendVerification,
+    sendLoginOtp,
     verifyEmail,
+    verifyLoginOtp,
   } = useStorefrontAuth();
   const { isSingleStoreMode, storeSlug: modeSlug, pathPrefix, isCustomDomain } = useStorefrontMode();
-  const [mode, setMode] = useState('signup');
+  const [mode, setMode] = useState('login');
+  const [absLinkToken, setAbsLinkToken] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
   const [form, setForm] = useState(initialForm);
   const [signupStep, setSignupStep] = useState('details');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -79,7 +84,8 @@ const ShopperAuthModal = () => {
 
   const isOpen = Boolean(authModal?.isOpen);
   const isSignup = mode === 'signup';
-  const isVerification = mode === 'verify';
+  const isAbsLink = mode === 'abs-link';
+  const isVerification = mode === 'verify' || isAbsLink;
   const isSignupDetailsStep = isSignup && signupStep === 'details';
   const isSignupSecurityStep = isSignup && signupStep === 'security';
   const returnTo = useMemo(() => {
@@ -91,7 +97,9 @@ const ShopperAuthModal = () => {
 
   useEffect(() => {
     if (!isOpen) return;
-    setMode(authModal?.mode === 'login' ? 'login' : 'signup');
+    setMode(authModal?.mode === 'signup' ? 'signup' : authModal?.mode === 'verify' ? 'verify' : 'login');
+    setAbsLinkToken('');
+    setAuthNotice('');
     setSignupStep('details');
     setForm((current) => ({
       ...initialForm,
@@ -132,6 +140,18 @@ const ShopperAuthModal = () => {
 
   const updateField = useCallback((field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
+    if (field === 'email') {
+      setAbsLinkToken('');
+      setAuthNotice('');
+    }
+  }, []);
+
+  const switchMode = useCallback((nextMode) => {
+    setSignupStep('details');
+    setAbsLinkToken('');
+    setAuthNotice('');
+    setForm((current) => ({ ...current, password: '', confirmPassword: '', otp: '' }));
+    setMode(nextMode);
   }, []);
 
   const completeAuthentication = useCallback((message) => {
@@ -156,8 +176,12 @@ const ShopperAuthModal = () => {
     setIsSubmitting(true);
     try {
       if (isVerification) {
-        await verifyEmail({ email: form.email, otp: form.otp });
-        completeAuthentication(`Email verified. You can continue to ${targetLabel}.`);
+        if (isAbsLink) {
+          await verifyLoginOtp({ email: form.email, otp: form.otp, absLinkToken });
+        } else {
+          await verifyEmail({ email: form.email, otp: form.otp });
+        }
+        completeAuthentication(`Verified. You can continue to ${targetLabel}.`);
         return;
       }
 
@@ -190,6 +214,23 @@ const ShopperAuthModal = () => {
       completeAuthentication(`Signed in. You can continue to ${targetLabel}.`);
     } catch (error) {
       const errorData = error?.response?.data;
+      if (isSignup && isExistingShopperAccountError(error)) {
+        switchMode('login');
+        setAuthNotice('You already have an account. Sign in with your shopper or ABS password to continue.');
+        return;
+      }
+      if (errorData?.errorCode === 'STOREFRONT_ABS_LINK_REQUIRED') {
+        setAbsLinkToken(errorData.data.absLinkToken);
+        setMode('abs-link');
+        setForm((current) => ({ ...current, password: '', otp: '' }));
+        setAuthNotice(errorData.message);
+        return;
+      }
+      if (errorData?.errorCode === 'STOREFRONT_ABS_LINK_EXPIRED') {
+        switchMode('login');
+        setAuthNotice(errorData.message);
+        return;
+      }
       if (errorData?.errorCode === 'EMAIL_VERIFICATION_REQUIRED') {
         const pendingEmail = errorData?.data?.email || form.email;
         updateField('email', pendingEmail);
@@ -200,6 +241,7 @@ const ShopperAuthModal = () => {
       setIsSubmitting(false);
     }
   }, [
+    absLinkToken,
     completeAuthentication,
     form.confirmPassword,
     form.email,
@@ -208,27 +250,31 @@ const ShopperAuthModal = () => {
     form.password,
     form.phone,
     isSignup,
+    isAbsLink,
     isSignupDetailsStep,
     isSignupSecurityStep,
     isVerification,
     login,
     register,
+    switchMode,
     targetLabel,
     updateField,
     verifyEmail,
+    verifyLoginOtp,
   ]);
 
   const handleResend = useCallback(async () => {
     setIsResending(true);
     try {
-      await resendVerification({ email: form.email });
+      if (isAbsLink) await sendLoginOtp({ email: form.email });
+      else await resendVerification({ email: form.email });
       showSuccess('A new verification code has been sent.');
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
       setIsResending(false);
     }
-  }, [form.email, resendVerification]);
+  }, [form.email, isAbsLink, resendVerification, sendLoginOtp]);
 
   const handleGoogleSuccess = useCallback(async (credentialResponse) => {
     const idToken = credentialResponse?.credential;
@@ -288,7 +334,7 @@ const ShopperAuthModal = () => {
               {isSingleStoreMode ? 'Shop' : 'Home'}
             </Link>
             <span>/</span>
-            <span>Create shopper account</span>
+            <span>{isSignup ? 'Create shopper account' : 'Shopper sign-in'}</span>
           </div>
 
           <span className="mt-8 flex h-14 w-14 items-center justify-center rounded-2xl border border-green-200 bg-white text-green-800">
@@ -296,7 +342,7 @@ const ShopperAuthModal = () => {
           </span>
           <p className="mt-6 text-sm font-bold uppercase tracking-[0.18em] text-green-700">No Guest Checkout</p>
           <h1 id="shopper-auth-title" className="mt-3 text-2xl font-black text-green-950 sm:text-3xl md:text-4xl">
-            Create an account to buy
+            {isSignup ? 'Create an account to buy' : 'Sign in to continue'}
           </h1>
           <p className="mt-4 text-sm leading-6 text-green-950/70">
             {isSingleStoreMode
@@ -316,14 +362,26 @@ const ShopperAuthModal = () => {
         <form onSubmit={handleSubmit} className="min-w-0 space-y-4 p-4 pt-16 sm:p-5 sm:pt-16 md:p-8 md:pt-8">
           <div>
             <p className="text-sm font-bold uppercase tracking-[0.18em] text-green-700">
-              {isVerification ? 'Email activation' : isSignup ? 'New customer' : 'Existing customer'}
+              {isAbsLink ? 'Confirm ABS sign-in' : isVerification ? 'Email activation' : isSignup ? 'New customer' : 'Existing customer'}
             </p>
             <h2 className="mt-2 text-2xl font-black text-slate-950">
               {isVerification ? 'Enter the 6-digit code' : isSignupSecurityStep ? 'Secure your shopper account' : isSignup ? 'Create your shopper account' : 'Sign in to your shopper account'}
             </h2>
+            {!isSignup && !isVerification ? (
+              <p className="mt-2 text-sm text-slate-600">
+                Use your shopper account or your existing ABS email and password.{' '}
+                <a className="font-semibold underline" href={dashboardLink('/forgot-password')}>Forgot your ABS password?</a>
+              </p>
+            ) : null}
           </div>
 
-          {isVerification ? (
+          {authNotice ? (
+            <Alert className="border-green-200 bg-green-50">
+              <AlertDescription>{authNotice}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {isVerification && !isAbsLink ? (
             <Alert className="border-green-200 bg-green-50">
               <MailCheck className="h-4 w-4" />
               <AlertDescription>
@@ -491,10 +549,7 @@ const ShopperAuthModal = () => {
               <button
                 type="button"
                 className="font-semibold text-green-800 hover:underline"
-                onClick={() => {
-                  setSignupStep('details');
-                  setMode('login');
-                }}
+                onClick={() => switchMode('login')}
               >
                 Back to sign in
               </button>
@@ -539,10 +594,7 @@ const ShopperAuthModal = () => {
                   <button
                     type="button"
                     className="font-semibold text-green-800 hover:underline"
-                    onClick={() => {
-                      setSignupStep('details');
-                      setMode('login');
-                    }}
+                    onClick={() => switchMode('login')}
                   >
                     Sign in
                   </button>
@@ -553,10 +605,7 @@ const ShopperAuthModal = () => {
                   <button
                     type="button"
                     className="font-semibold text-green-800 hover:underline"
-                    onClick={() => {
-                      setSignupStep('details');
-                      setMode('signup');
-                    }}
+                    onClick={() => switchMode('signup')}
                   >
                     Sign up
                   </button>

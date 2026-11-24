@@ -469,24 +469,6 @@ const PublicStoreProduct = () => {
     });
   }, [coverImage, galleryImages, hasMultipleImages]);
 
-  const handlePurchaseIntent = useCallback(() => {
-    if (product?.isSample) {
-      showError('Sample products cannot be purchased.');
-      return;
-    }
-    addItem({ product, store, storeSlug, quantity: 1 });
-    openShopperAuthModal({
-      mode: 'signup',
-      intent: {
-        action: 'checkout',
-        productId: product?.id,
-        productSlug: product?.slug || productSlug,
-        returnTo: `${storeBasePath}/products/${encodeURIComponent(productSlug)}`,
-        storeSlug,
-      },
-    });
-  }, [addItem, openShopperAuthModal, product, productSlug, store, storeBasePath, storeSlug]);
-
   const handleAddToCart = useCallback(() => {
     if (product?.isSample) {
       showError('Sample products cannot be purchased.');
@@ -1163,7 +1145,7 @@ const PublicStoreProduct = () => {
                         type="button"
                         variant={variant}
                         className={className}
-                        onClick={isAuthenticated ? handleCheckoutClick : handlePurchaseIntent}
+                        onClick={handleCheckoutClick}
                         disabled={!availability.available}
                       >
                         <ShoppingBag className="mr-2 h-4 w-4" />

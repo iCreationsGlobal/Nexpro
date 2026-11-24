@@ -8,6 +8,8 @@ const { Op, UniqueConstraintError } = require('sequelize');
 const { sequelize } = require('../config/database');
 const config = require('../config/config');
 const emailService = require('../services/emailService');
+const { authenticateAbsShopper } = require('../services/shopperAbsAccountService');
+const { findUserWithLockout } = require('../utils/userLockout');
 const { emailOtpCode, passwordReset: passwordResetEmailTemplate } = require('../services/emailTemplates');
 const { notifyOnlineStoreOrderReceived } = require('../services/notificationService');
 const { baseUploadDir, ensureDirExists } = require('../middleware/upload');
@@ -22,6 +24,7 @@ const {
   SaleActivity,
   SaleItem,
   StorefrontCustomer,
+  User,
   StorefrontWishlistItem,
   MarketplaceDispute,
   Tenant,
@@ -1234,6 +1237,39 @@ const findOrCreateTenantCustomer = async ({ shopper, store, deliveryAddress, tra
   }, { transaction });
 };
 
+/** Concurrent first sign-ins must share one profile. Never copy the ABS password. */
+const findOrCreateAbsShopper = async (absUser, email, metadata = {}) => {
+  const [customer] = await StorefrontCustomer.findOrCreate({
+    where: { email },
+    defaults: {
+      name: compact(absUser.name || email, 160),
+      email,
+      password: crypto.randomBytes(32).toString('hex'),
+      isActive: true,
+      emailVerifiedAt: null,
+      metadata: { source: 'abs_signin', ...metadata },
+    },
+  });
+  return customer;
+};
+
+/**
+ * The shopper for an emailed code or reset link. ABS users are told they already have an account,
+ * so give them a profile to recover; it is not linked to ABS and the email itself is the proof.
+ */
+const findShopperForEmailRecovery = async (email) => {
+  const customer = await StorefrontCustomer.findOne({ where: { email } });
+  if (customer) return customer;
+  const absUser = await User.findOne({ where: { email, isActive: true }, attributes: ['id', 'name', 'email'] });
+  return absUser ? findOrCreateAbsShopper(absUser, email) : null;
+};
+
+const shopperAccountExistsResponse = (res) => res.status(409).json({
+  success: false,
+  errorCode: 'STOREFRONT_ACCOUNT_EXISTS',
+  message: 'An account with this email already exists. Sign in with your shopper or ABS password to continue.',
+});
+
 exports.registerStorefrontCustomer = async (req, res, next) => {
   try {
     const name = compact(req.body?.name, 160);
@@ -1257,7 +1293,7 @@ exports.registerStorefrontCustomer = async (req, res, next) => {
     const existing = await StorefrontCustomer.findOne({ where: { email } });
     if (existing) {
       if (existing.isActive === true) {
-        return res.status(409).json({ success: false, message: 'A shopper account with this email already exists.' });
+        return shopperAccountExistsResponse(res);
       }
       if (!isLegacyPendingVerificationShopper(existing)) {
         return res.status(403).json({
@@ -1285,6 +1321,11 @@ exports.registerStorefrontCustomer = async (req, res, next) => {
       return res.status(200).json(buildRegistrationSuccessPayload(existing, sendResult));
     }
 
+    // Only an ABS account that can sign in; a deactivated one must not block its owner from shopping.
+    if (await User.findOne({ where: { email, isActive: true }, attributes: ['id'] })) {
+      return shopperAccountExistsResponse(res);
+    }
+
     const customer = await StorefrontCustomer.create({
       name,
       email,
@@ -1298,6 +1339,7 @@ exports.registerStorefrontCustomer = async (req, res, next) => {
     const sendResult = await sendStorefrontVerificationOtp(customer, await resolveShopperEmailBrand(req));
     return res.status(201).json(buildRegistrationSuccessPayload(customer, sendResult));
   } catch (error) {
+    if (error instanceof UniqueConstraintError) return shopperAccountExistsResponse(res);
     next(error);
   }
 };
@@ -1310,9 +1352,63 @@ exports.loginStorefrontCustomer = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Email and password are required.' });
     }
 
-    const customer = await StorefrontCustomer.findOne({ where: { email } });
-    if (!customer || !(await customer.comparePassword(password))) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+    let customer = await StorefrontCustomer.findOne({ where: { email } });
+    const shopperPasswordMatches = customer && await customer.comparePassword(password);
+    if (!shopperPasswordMatches) {
+      const absAuth = await authenticateAbsShopper(email, password);
+      if (absAuth.status) {
+        return res.status(absAuth.status).json({ success: false, message: absAuth.message, errorCode: absAuth.errorCode });
+      }
+      const absUser = absAuth.user;
+      if (!absUser) {
+        return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+      }
+
+      if (!customer) {
+        customer = await findOrCreateAbsShopper(absUser, email, {
+          absAccount: { userId: absUser.id, linkedAt: new Date().toISOString() },
+        });
+      }
+
+      if (customer.isActive !== true) {
+        if (!isLegacyPendingVerificationShopper(customer)) {
+          return res.status(401).json({ success: false, message: 'Shopper account is inactive.', errorCode: 'STOREFRONT_ACCOUNT_INACTIVE' });
+        }
+        // Never finished email verification; the sign-in code below completes it.
+        const metadata = getMetadata(customer);
+        metadata.reactivatedFromLegacyPendingAt = new Date().toISOString();
+        await customer.update({ isActive: true, metadata });
+      }
+      if (getMetadata(customer).absAccount?.userId !== absUser.id) {
+        // An email match is not ownership proof of an existing shopper's orders.
+        const brand = await resolveShopperEmailBrand(req);
+        const sent = await sendStorefrontOtp({
+          customer,
+          metadataKey: 'loginOtp',
+          company: brand.company,
+          purpose: 'Use this code to connect your ABS sign-in to your existing shopper account.',
+          source: 'storefront_abs_account_link',
+          categories: ['storefront-login-otp'],
+        });
+        if (!sent?.success) {
+          const metadata = getMetadata(customer);
+          delete metadata.loginOtp;
+          await customer.update({ metadata });
+          return res.status(503).json({ success: false, message: 'Could not send the sign-in code. Please try again.', errorCode: 'STOREFRONT_LOGIN_OTP_SEND_FAILED' });
+        }
+        const absLinkToken = jwt.sign({
+          type: 'storefront_abs_link',
+          absUserId: absUser.id,
+          shopperId: customer.id,
+          email,
+        }, config.jwt.secret, { expiresIn: `${OTP_TTL_MINUTES}m` });
+        return res.status(403).json({
+          success: false,
+          errorCode: 'STOREFRONT_ABS_LINK_REQUIRED',
+          message: 'We sent a sign-in code to your email. Verify it once to use your ABS password with this shopper account.',
+          data: { email, absLinkToken },
+        });
+      }
     }
     if (customer.isActive !== true) {
       if (!isLegacyPendingVerificationShopper(customer)) {
@@ -1459,7 +1555,7 @@ exports.requestStorefrontPasswordReset = async (req, res, next) => {
     }
 
     const message = 'If a shopper account exists with that email, you will receive a password reset link shortly.';
-    const customer = await StorefrontCustomer.findOne({ where: { email } });
+    const customer = await findShopperForEmailRecovery(email);
     if (!customer || customer.isActive !== true) {
       return res.status(200).json({ success: true, message });
     }
@@ -1531,6 +1627,8 @@ exports.resetStorefrontPassword = async (req, res, next) => {
     const metadata = getMetadata(customer);
     delete metadata.passwordReset;
     delete metadata.loginOtp;
+    // Recovering the account disconnects any ABS sign-in; reconnecting needs a new email code.
+    delete metadata.absAccount;
     await customer.update({ password: newPassword, metadata });
 
     return res.status(200).json({
@@ -1549,7 +1647,7 @@ exports.sendStorefrontLoginOtp = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Enter a valid email address.' });
     }
 
-    const customer = await StorefrontCustomer.findOne({ where: { email } });
+    const customer = await findShopperForEmailRecovery(email);
     if (!customer || customer.isActive !== true) {
       return res.status(200).json({
         success: true,
@@ -1596,6 +1694,23 @@ exports.verifyStorefrontLoginOtp = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid or expired sign-in code.' });
     }
 
+    let absUser = null;
+    if (req.body.absLinkToken) {
+      let link;
+      try {
+        link = jwt.verify(req.body.absLinkToken, config.jwt.secret);
+      } catch {
+        return res.status(401).json({ success: false, message: 'Your ABS sign-in request expired. Sign in with your password again.', errorCode: 'STOREFRONT_ABS_LINK_EXPIRED' });
+      }
+      if (link?.type !== 'storefront_abs_link' || link.shopperId !== customer.id || link.email !== email || !link.absUserId) {
+        return res.status(401).json({ success: false, message: 'Invalid ABS sign-in request.', errorCode: 'STOREFRONT_ABS_LINK_EXPIRED' });
+      }
+      absUser = await findUserWithLockout({ id: link.absUserId, email, isActive: true });
+      if (!absUser || absUser.isActive !== true || absUser.isLocked()) {
+        return res.status(401).json({ success: false, message: 'Your ABS account is unavailable. Sign in with your password again.', errorCode: 'STOREFRONT_ABS_LINK_EXPIRED' });
+      }
+    }
+
     const result = await verifyMetadataOtp({
       customer,
       metadataKey: 'loginOtp',
@@ -1607,6 +1722,9 @@ exports.verifyStorefrontLoginOtp = async (req, res, next) => {
     }
 
     const loginUpdates = { lastLoginAt: new Date(), metadata: result.metadata };
+    if (absUser) {
+      loginUpdates.metadata.absAccount = { userId: absUser.id, linkedAt: new Date().toISOString() };
+    }
     if (!customer.emailVerifiedAt) {
       loginUpdates.emailVerifiedAt = new Date();
     }

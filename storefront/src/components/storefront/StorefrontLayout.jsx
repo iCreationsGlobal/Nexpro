@@ -254,7 +254,7 @@ export const StorefrontMobileMenu = ({ activePath = '/', onClose }) => {
 
     closeMenu();
     openShopperAuthModal({
-      mode: 'signup',
+      mode: 'login',
       intent: {
         action: 'wishlist',
         returnTo: '/account/wishlist',
@@ -522,7 +522,7 @@ export const StorefrontHeader = ({
 
   const handleWishlistClick = useCallback(() => {
     openShopperAuthModal({
-      mode: 'signup',
+      mode: 'login',
       intent: {
         action: 'wishlist',
         returnTo: '/account/wishlist',
