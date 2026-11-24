@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Camera, Loader2, LogOut, Trash2, Upload } from 'lucide-react';
 
 import { useStorefrontAuth } from '../context/StorefrontAuthContext';
@@ -15,7 +15,7 @@ const AVATAR_MAX_SIZE_MB = 2;
 const AVATAR_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 const ShopperProfilePage = () => {
-  const navigate = useNavigate();
+  const { key: locationKey } = useLocation();
   const {
     isSingleStoreMode,
     storeSlug: modeSlug,
@@ -104,9 +104,8 @@ const ShopperProfilePage = () => {
   }, []);
 
   const handleLogout = useCallback(() => {
-    logout();
-    navigate('/login', { replace: true });
-  }, [logout, navigate]);
+    logout({ redirectTo: '/login', locationKey });
+  }, [locationKey, logout]);
 
   return (
     <AccountLayout

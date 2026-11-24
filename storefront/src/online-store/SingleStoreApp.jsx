@@ -34,15 +34,23 @@ const withRouteSuspense = (element) => (
   <Suspense fallback={<RouteFallback />}>{element}</Suspense>
 );
 
+/** Where to go if the shopper signed out on this visit to the page; null on any new visit, which has a new key. */
+const useSignOutPath = () => {
+  const location = useLocation();
+  const { signOutRedirect } = useStorefrontAuth();
+  return signOutRedirect?.locationKey === location.key ? signOutRedirect.to : null;
+};
+
 export const CheckoutRoute = () => {
   const location = useLocation();
+  const signOutPath = useSignOutPath();
   const { isAuthenticated, isLoading, openShopperAuthModal } = useStorefrontAuth();
   const { isSingleStoreMode } = useStorefrontMode();
   const returnTo = `${location.pathname}${location.search || ''}`;
 
   useEffect(() => {
     // Online Store allows guest checkout; only the Sabito marketplace requires an account.
-    if (isLoading || isAuthenticated || isSingleStoreMode) return;
+    if (isLoading || isAuthenticated || isSingleStoreMode || signOutPath) return;
     openShopperAuthModal({
       mode: 'login',
       intent: {
@@ -50,13 +58,14 @@ export const CheckoutRoute = () => {
         returnTo,
       },
     });
-  }, [isAuthenticated, isLoading, isSingleStoreMode, openShopperAuthModal, returnTo]);
+  }, [isAuthenticated, isLoading, isSingleStoreMode, openShopperAuthModal, returnTo, signOutPath]);
 
   if (isLoading) {
     return <ComingSoonPage type="auth-loading" />;
   }
 
   if (!isAuthenticated && !isSingleStoreMode) {
+    if (signOutPath) return <Navigate to={signOutPath} replace />;
     return <ComingSoonPage type="checkout-auth-required" />;
   }
 
@@ -65,17 +74,15 @@ export const CheckoutRoute = () => {
 
 export const RequireShopperAuth = ({ children }) => {
   const location = useLocation();
-  const { isAuthenticated, isLoading, signOutRedirect } = useStorefrontAuth();
+  const signOutPath = useSignOutPath();
+  const { isAuthenticated, isLoading } = useStorefrontAuth();
 
   if (isLoading) {
     return <ComingSoonPage type="auth-loading" />;
   }
 
   if (!isAuthenticated) {
-    // They just signed out on this page. The key changes on every navigation, so later visits still ask.
-    if (signOutRedirect && signOutRedirect.locationKey === location.key) {
-      return <Navigate to={signOutRedirect.to} replace />;
-    }
+    if (signOutPath) return <Navigate to={signOutPath} replace />;
     const returnTo = `${location.pathname}${location.search || ''}`;
     return <Navigate to={`/login?returnTo=${encodeURIComponent(returnTo)}`} replace state={{ returnTo }} />;
   }

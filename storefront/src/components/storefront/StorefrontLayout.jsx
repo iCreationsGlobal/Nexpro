@@ -221,10 +221,22 @@ const MobileMenuLink = ({ to, href, icon: Icon, label, active = false, badge, on
   );
 };
 
-export const StorefrontMobileMenu = ({ activePath = '/', onClose }) => {
+/** Pages that need a sign-in redirect themselves once told it was a sign-out; other pages need the navigate. */
+const useMarketplaceSignOut = () => {
   const navigate = useNavigate();
+  const { key: locationKey } = useLocation();
+  const { logout } = useStorefrontAuth();
+
+  return useCallback(() => {
+    logout({ redirectTo: '/login', locationKey });
+    navigate('/login');
+  }, [locationKey, logout, navigate]);
+};
+
+export const StorefrontMobileMenu = ({ activePath = '/', onClose }) => {
+  const signOut = useMarketplaceSignOut();
   const { cartSummary } = useCart();
-  const { customer, isAuthenticated, logout, openShopperAuthModal } = useStorefrontAuth();
+  const { customer, isAuthenticated, openShopperAuthModal } = useStorefrontAuth();
   const { count: wishlistCount } = useWishlist();
   const customerAvatarUrl = useMemo(() => getCustomerAvatarUrl(customer), [customer]);
   const customerInitials = useMemo(() => getCustomerInitials(customer), [customer]);
@@ -264,9 +276,8 @@ export const StorefrontMobileMenu = ({ activePath = '/', onClose }) => {
 
   const handleLogout = useCallback(() => {
     closeMenu();
-    logout();
-    navigate('/login');
-  }, [closeMenu, logout, navigate]);
+    signOut();
+  }, [closeMenu, signOut]);
 
   const accountLinks = isAuthenticated
     ? [
@@ -461,7 +472,8 @@ export const StorefrontHeader = ({
 }) => {
   const navigate = useNavigate();
   const { cartSummary } = useCart();
-  const { customer, isAuthenticated, logout, openShopperAuthModal } = useStorefrontAuth();
+  const { customer, isAuthenticated, openShopperAuthModal } = useStorefrontAuth();
+  const handleLogout = useMarketplaceSignOut();
   const { count: wishlistCount } = useWishlist();
   const [searchParams] = useSearchParams();
   const [searchText, setSearchText] = useState(() => searchParams.get('search') || '');
@@ -529,11 +541,6 @@ export const StorefrontHeader = ({
       },
     });
   }, [openShopperAuthModal]);
-
-  const handleLogout = useCallback(() => {
-    logout();
-    navigate('/login');
-  }, [logout, navigate]);
 
   const toggleMobileMenu = useCallback(() => {
     setMobileMenuOpen((current) => !current);

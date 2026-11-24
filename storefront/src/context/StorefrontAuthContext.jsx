@@ -44,19 +44,23 @@ export const StorefrontAuthProvider = ({ children }) => {
 
   useEffect(() => {
     let mounted = true;
-    if (!authService.getToken()) {
+    const token = authService.getToken();
+    if (!token) {
       setIsLoading(false);
       return undefined;
     }
+    // False once they sign out, or someone else signs in, before the reply arrives.
+    const isSameShopper = () => authService.getToken() === token;
 
     authService.getMe()
       .then((data) => {
-        if (!mounted) return;
+        if (!mounted || !isSameShopper()) return;
         const nextCustomer = data.customer || null;
         setCustomer(nextCustomer);
         queryClient.setQueryData(SHOPPER_QUERY_KEYS.profile, data);
       })
       .catch(() => {
+        if (!isSameShopper()) return;
         authService.logout();
         if (mounted) setCustomer(null);
       })
@@ -163,8 +167,8 @@ export const StorefrontAuthProvider = ({ children }) => {
   }, [queryClient]);
 
   /**
-   * On an account page, pass where to go and the current location key: the page's guard then sends
-   * the shopper there. Navigating from the page instead loses to the guard, which asks them to sign in.
+   * On a page that needs a sign-in, pass where to go and the current location key: the page's guard then
+   * sends the shopper there. Navigating alone loses to the guard, which asks them to sign in.
    * @param {{ redirectTo?: string, locationKey?: string }} [opts]
    */
   const logout = useCallback(({ redirectTo, locationKey } = {}) => {

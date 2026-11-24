@@ -22,8 +22,21 @@ const clearAuth = () => {
   window.localStorage.removeItem(STOREFRONT_AUTH_CUSTOMER_KEY);
 };
 
+const getToken = () => window.localStorage.getItem(STOREFRONT_AUTH_TOKEN_KEY);
+
+/** Keep the returned details only if the same shopper is still signed in: a late reply must not undo a sign-out. */
+const keepCustomer = async (request) => {
+  const token = getToken();
+  const response = await request();
+  const data = response?.data || response;
+  if (data?.customer && getToken() === token) {
+    window.localStorage.setItem(STOREFRONT_AUTH_CUSTOMER_KEY, JSON.stringify(data.customer));
+  }
+  return data;
+};
+
 const authService = {
-  getToken: () => window.localStorage.getItem(STOREFRONT_AUTH_TOKEN_KEY),
+  getToken,
 
   getStoredCustomer: readStoredCustomer,
 
@@ -90,43 +103,17 @@ const authService = {
     return response?.data || response;
   },
 
-  getMe: async () => {
-    const response = await api.get('/public/storefront/auth/me');
-    const data = response?.data || response;
-    if (data?.customer) {
-      window.localStorage.setItem(STOREFRONT_AUTH_CUSTOMER_KEY, JSON.stringify(data.customer));
-    }
-    return data;
-  },
+  getMe: () => keepCustomer(() => api.get('/public/storefront/auth/me')),
 
-  updateProfile: async (payload) => {
-    const response = await api.patch('/public/storefront/auth/profile', payload);
-    const data = response?.data || response;
-    if (data?.customer) {
-      window.localStorage.setItem(STOREFRONT_AUTH_CUSTOMER_KEY, JSON.stringify(data.customer));
-    }
-    return data;
-  },
+  updateProfile: (payload) => keepCustomer(() => api.patch('/public/storefront/auth/profile', payload)),
 
-  uploadAvatar: async (file) => {
+  uploadAvatar: (file) => {
     const formData = new FormData();
     formData.append('avatar', file);
-    const response = await api.post('/public/storefront/auth/profile/avatar', formData);
-    const data = response?.data || response;
-    if (data?.customer) {
-      window.localStorage.setItem(STOREFRONT_AUTH_CUSTOMER_KEY, JSON.stringify(data.customer));
-    }
-    return data;
+    return keepCustomer(() => api.post('/public/storefront/auth/profile/avatar', formData));
   },
 
-  removeAvatar: async () => {
-    const response = await api.delete('/public/storefront/auth/profile/avatar');
-    const data = response?.data || response;
-    if (data?.customer) {
-      window.localStorage.setItem(STOREFRONT_AUTH_CUSTOMER_KEY, JSON.stringify(data.customer));
-    }
-    return data;
-  },
+  removeAvatar: () => keepCustomer(() => api.delete('/public/storefront/auth/profile/avatar')),
 
   logout: () => {
     clearAuth();
