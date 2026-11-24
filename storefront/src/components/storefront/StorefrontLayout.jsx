@@ -46,6 +46,7 @@ import { resolveVisibleProductCardActions } from '../../utils/productCardActions
 import {
   filterProductCardActionsForListing,
   getListingCommerceBadges,
+  getOnlineStoreCommerceBadges,
   getProductPriceDisplay,
   isRentOnlyListing,
 } from '../../utils/productListingDisplay';
@@ -1213,7 +1214,13 @@ export const ProductCard = ({ product, compact = false }) => {
   );
   const softenPrice = cardActions.includes('contact_for_price');
   const isSample = product?.isSample === true;
-  const commerceBadges = useMemo(() => getListingCommerceBadges(product), [product]);
+  const commerceBadges = useMemo(
+    () => (isOwnedShop ? getOnlineStoreCommerceBadges(product) : getListingCommerceBadges(product)),
+    [isOwnedShop, product],
+  );
+  // Online Stores leave out what is true of everything: available, for sale, not reviewed yet.
+  const showAvailability = !isOwnedShop || !availability.available;
+  const showReviewDetail = !isOwnedShop || review.hasRealReviews;
   const priceDisplay = useMemo(() => getProductPriceDisplay(product), [product]);
   const rentOnly = isRentOnlyListing(product);
 
@@ -1459,23 +1466,29 @@ export const ProductCard = ({ product, compact = false }) => {
         {!isOwnedShop ? (
           <p className="mt-1 truncate text-xs text-slate-500">{product?.store?.displayName || `${APP_NAME} seller`}</p>
         ) : null}
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[11px] text-slate-600">
-            {availability.label}
-          </Badge>
-          {commerceBadges.map((badge) => (
-            <Badge
-              key={badge}
-              variant="outline"
-              className="border-[color:color-mix(in_srgb,var(--store-accent,#166534)_25%,#e2e8f0)] bg-[var(--store-accent-soft,#16653422)] text-[11px] text-[color:var(--store-accent,#166534)]"
-            >
-              {badge}
-            </Badge>
-          ))}
-          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[11px] text-slate-600">
-            {review.detail}
-          </Badge>
-        </div>
+        {showAvailability || showReviewDetail || commerceBadges.length ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {showAvailability ? (
+              <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[11px] text-slate-600">
+                {availability.label}
+              </Badge>
+            ) : null}
+            {commerceBadges.map((badge) => (
+              <Badge
+                key={badge}
+                variant="outline"
+                className="border-[color:color-mix(in_srgb,var(--store-accent,#166534)_25%,#e2e8f0)] bg-[var(--store-accent-soft,#16653422)] text-[11px] text-[color:var(--store-accent,#166534)]"
+              >
+                {badge}
+              </Badge>
+            ))}
+            {showReviewDetail ? (
+              <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[11px] text-slate-600">
+                {review.detail}
+              </Badge>
+            ) : null}
+          </div>
+        ) : null}
         <div className="mt-4 flex flex-wrap items-baseline gap-2">
           {softenPrice ? (
             <span className="text-lg font-extrabold text-slate-700">Contact for price</span>

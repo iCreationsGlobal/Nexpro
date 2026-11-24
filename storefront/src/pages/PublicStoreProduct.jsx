@@ -54,6 +54,7 @@ import { resolveVisibleProductCardActions } from '../utils/productCardActions';
 import {
   filterProductCardActionsForListing,
   getListingCommerceBadges,
+  getOnlineStoreCommerceBadges,
   getProductPriceDisplay,
   isRentableListing,
   isRentOnlyListing,
@@ -494,7 +495,12 @@ const PublicStoreProduct = () => {
   );
   const softenPrice = cardActions.includes('contact_for_price')
     || (store?.productCardActions || []).includes('contact_for_price');
-  const commerceBadges = useMemo(() => getListingCommerceBadges(product), [product]);
+  const commerceBadges = useMemo(
+    () => (isOwnedShop ? getOnlineStoreCommerceBadges(product) : getListingCommerceBadges(product)),
+    [isOwnedShop, product],
+  );
+  // Everything on an Online Store is for sale: only say when something is not available.
+  const showAvailability = !isOwnedShop || !availability.available;
   const priceDisplay = useMemo(() => getProductPriceDisplay(product), [product]);
   const rentOnly = isRentOnlyListing(product);
   const showRentalBooking = isRentableListing(product) && !product?.isSample;
@@ -807,30 +813,34 @@ const PublicStoreProduct = () => {
 
             <div className="flex flex-col justify-center space-y-5">
               <div>
-                <div className="mb-3 flex flex-wrap gap-2">
-                  <Badge
-                    className={availability.available
-                      ? 'border-0 bg-[var(--store-accent,#166534)] text-white hover:bg-[var(--store-accent,#166534)]'
-                      : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-50'}
-                    variant={availability.available ? 'default' : 'outline'}
-                  >
-                    {availability.label}
-                  </Badge>
-                  {product.isSample ? (
-                    <Badge className="border-0 bg-slate-800 text-white hover:bg-slate-800">
-                      Sample
-                    </Badge>
-                  ) : null}
-                  {commerceBadges.map((badge) => (
-                    <Badge
-                      key={badge}
-                      variant="outline"
-                      className="border-[color:color-mix(in_srgb,var(--store-accent,#166534)_30%,white)] bg-[var(--store-accent-soft,#f0fdf4)] text-[color:var(--store-accent,#166534)]"
-                    >
-                      {badge}
-                    </Badge>
-                  ))}
-                </div>
+                {showAvailability || product.isSample || commerceBadges.length ? (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {showAvailability ? (
+                      <Badge
+                        className={availability.available
+                          ? 'border-0 bg-[var(--store-accent,#166534)] text-white hover:bg-[var(--store-accent,#166534)]'
+                          : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-50'}
+                        variant={availability.available ? 'default' : 'outline'}
+                      >
+                        {availability.label}
+                      </Badge>
+                    ) : null}
+                    {product.isSample ? (
+                      <Badge className="border-0 bg-slate-800 text-white hover:bg-slate-800">
+                        Sample
+                      </Badge>
+                    ) : null}
+                    {commerceBadges.map((badge) => (
+                      <Badge
+                        key={badge}
+                        variant="outline"
+                        className="border-[color:color-mix(in_srgb,var(--store-accent,#166534)_30%,white)] bg-[var(--store-accent-soft,#f0fdf4)] text-[color:var(--store-accent,#166534)]"
+                      >
+                        {badge}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
                 <TitleTag className="text-2xl font-black tracking-tight text-slate-950 [overflow-wrap:anywhere] sm:text-3xl md:text-4xl">{product.title}</TitleTag>
                 <div className="mt-3">
                   <ReviewSummaryLine summary={reviewSummary} />
@@ -1021,9 +1031,11 @@ const PublicStoreProduct = () => {
                 </div>
               ) : null}
 
-              <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                {availability.message}
-              </p>
+              {showAvailability ? (
+                <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  {availability.message}
+                </p>
+              ) : null}
 
               <div className="grid gap-3 sm:flex sm:flex-row sm:flex-wrap">
                 <Button

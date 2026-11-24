@@ -7,12 +7,13 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { ProductCard, ServiceCard } from '../../../../storefront/src/components/storefront/StorefrontLayout';
 import { sanitizeProductGrid, useCompactCards } from '../../../../storefront/src/online-store/productGrid';
 
-const mocks = vi.hoisted(() => ({ addItem: vi.fn(() => ({ ok: true })), toasts: { showSuccess: vi.fn(), showError: vi.fn() }, wishlist: { isWishlisted: () => false, pendingListingIds: [], toggleWishlist: vi.fn(), count: 0 } }));
+const ONLINE_STORE = vi.hoisted(() => ({ isSingleStoreMode: true, isMarketplaceMode: false, isCustomDomain: false, storeSlug: 'demo' }));
+const mocks = vi.hoisted(() => ({ mode: null, addItem: vi.fn(() => ({ ok: true })), toasts: { showSuccess: vi.fn(), showError: vi.fn() }, wishlist: { isWishlisted: () => false, pendingListingIds: [], toggleWishlist: vi.fn(), count: 0 } }));
 vi.mock('../../../../storefront/src/context/WishlistContext', () => ({ useWishlist: () => mocks.wishlist }));
 vi.mock('../../../../storefront/src/context/CartContext', () => ({ useCart: () => ({ addItem: mocks.addItem, cartSummary: { itemCount: 0 } }) }));
 vi.mock('../../../../storefront/src/context/StorefrontAuthContext', () => ({ useStorefrontAuth: () => ({}) }));
 vi.mock('../../../../storefront/src/context/StorefrontModeContext', () => ({
-  useStorefrontMode: () => ({ isSingleStoreMode: true, isMarketplaceMode: false, isCustomDomain: false, storeSlug: 'demo' }),
+  useStorefrontMode: () => mocks.mode,
   readOnlineStoreSession: () => null,
   isOnlineStoreShopPath: () => true,
   isStorefrontCommercePath: () => false,
@@ -32,7 +33,10 @@ const show = (element) => render(
 );
 
 afterEach(cleanup);
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.mode = ONLINE_STORE;
+});
 
 describe('compact product card', () => {
   it('shows only the image, name, price, heart and plus', () => {
@@ -115,9 +119,25 @@ describe('compact product card', () => {
 });
 
 describe('large product card', () => {
-  it('is unchanged: labels, category and the buttons the owner chose', () => {
+  const labels = ['Available', 'For sale', 'No reviews yet'];
+
+  it('leaves out what is true of everything on an online store, and keeps the buttons', () => {
     show(<ProductCard product={product} />);
-    ['Available', 'For sale', 'No reviews yet', 'New', 'Shirts', 'Add', 'Buy now'].forEach((text) => expect(screen.getByText(text)).toBeInTheDocument());
+    labels.forEach((text) => expect(screen.queryByText(text)).not.toBeInTheDocument());
+    ['Shirts', 'Add', 'Buy now'].forEach((text) => expect(screen.getByText(text)).toBeInTheDocument());
+  });
+
+  it('still says what a shopper needs to know', () => {
+    show(<ProductCard product={{ ...product, available: false, listingMode: 'both', rentalRatePerDay: 4, rating: 4.5, reviewsCount: 12 }} />);
+    ['For rent', '12 reviews'].forEach((text) => expect(screen.getByText(text)).toBeInTheDocument());
+    expect(screen.getAllByText('Out of stock').length).toBeGreaterThan(0);
+    expect(screen.queryByText('For sale')).not.toBeInTheDocument();
+  });
+
+  it('is unchanged on the marketplace', () => {
+    mocks.mode = { isSingleStoreMode: false, isMarketplaceMode: true };
+    show(<ProductCard product={product} />);
+    [...labels, 'New', 'Shirts', 'Add', 'Buy now'].forEach((text) => expect(screen.getByText(text)).toBeInTheDocument());
   });
 });
 

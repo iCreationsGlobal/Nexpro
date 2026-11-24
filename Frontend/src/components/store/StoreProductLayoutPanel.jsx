@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 
 const PHONE_LABELS = { 1: { title: '1 per row', text: 'Large cards' }, 2: { title: '2 per row', text: 'Compact cards' } };
 const CARD_STYLES = [
-  { id: 'large', title: 'Large', text: 'Labels and buttons' },
+  { id: 'large', title: 'Large', text: 'Category and buttons' },
   { id: 'compact', title: 'Compact', text: 'Image, name and price' },
 ];
 

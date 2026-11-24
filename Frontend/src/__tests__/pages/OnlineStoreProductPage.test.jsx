@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import PublicStoreProduct from '../../../../storefront/src/pages/PublicStoreProduct';
 
-const mocks = vi.hoisted(() => ({ mode: {} }));
+const mocks = vi.hoisted(() => ({ mode: {}, product: {} }));
 vi.mock('../../../../storefront/src/context/StorefrontModeContext', () => ({
   useStorefrontMode: () => mocks.mode,
   persistOnlineStoreBrand: vi.fn(),
@@ -20,13 +20,18 @@ vi.mock('../../../../storefront/src/context/WishlistContext', () => ({ useWishli
 vi.mock('../../../../storefront/src/services/storeService', () => ({
   default: {
     getPublicStore: async () => ({ data: { slug: 'demo', displayName: 'Payless', currency: 'GHS', templateId: 'classic', productCardActions: ['add_to_cart'] } }),
-    getPublicStoreProducts: async () => ({ currency: 'GHS', data: [{ id: 'p1', slug: 'mug', title: 'Blue mug', publicPrice: 10, available: true, images: [] }] }),
+    getPublicStoreProducts: async () => ({ currency: 'GHS', data: [{ id: 'p1', slug: 'mug', title: 'Blue mug', publicPrice: 10, available: true, images: [], ...mocks.product }] }),
     getProductReviews: async () => ({ data: { reviews: [] } }),
   },
 }));
 
-const show = async (path, mode) => {
+const ONLINE_STORE = { mode: 'online-store', isSingleStoreMode: true, isMarketplaceMode: false, storeSlug: 'demo', pathPrefix: 'shop' };
+const MARKETPLACE = { mode: 'marketplace', isSingleStoreMode: false, isMarketplaceMode: true, storeSlug: null, pathPrefix: null };
+const LABELS = ['Available', 'For sale', 'In stock'];
+
+const show = async (path, mode, product = {}) => {
   mocks.mode = mode;
+  mocks.product = product;
   render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter initialEntries={[path]}>
@@ -45,7 +50,7 @@ afterEach(cleanup);
 
 describe('product page', () => {
   it('is about the product on an online store: no store card, and the product is the heading', async () => {
-    await show('/shop/demo/products/mug', { mode: 'online-store', isSingleStoreMode: true, isMarketplaceMode: false, storeSlug: 'demo', pathPrefix: 'shop' });
+    await show('/shop/demo/products/mug', ONLINE_STORE);
     expect(mainHeadings()).toEqual(['Blue mug']);
     expect(screen.queryByText('Sold by')).not.toBeInTheDocument();
     expect(screen.queryByText('Published product')).not.toBeInTheDocument();
@@ -53,9 +58,21 @@ describe('product page', () => {
   });
 
   it('still says who sells it on the marketplace', async () => {
-    await show('/stores/demo/products/mug', { mode: 'marketplace', isSingleStoreMode: false, isMarketplaceMode: true, storeSlug: null, pathPrefix: null });
+    await show('/stores/demo/products/mug', MARKETPLACE);
     expect(mainHeadings()).toEqual(['Payless']);
     expect(screen.getByText('Sold by')).toBeInTheDocument();
     expect(screen.getByText('Published product')).toBeInTheDocument();
+    LABELS.forEach((text) => expect(screen.getByText(text)).toBeInTheDocument());
+  });
+
+  it('does not say an online store item is available, for sale or in stock', async () => {
+    await show('/shop/demo/products/mug', ONLINE_STORE);
+    LABELS.forEach((text) => expect(screen.queryByText(text)).not.toBeInTheDocument());
+  });
+
+  it('still says when an item is out of stock or for rent', async () => {
+    await show('/shop/demo/products/mug', ONLINE_STORE, { available: false, listingMode: 'both', rentalRatePerDay: 4 });
+    ['Out of stock', 'Not available right now', 'For rent'].forEach((text) => expect(screen.getByText(text)).toBeInTheDocument());
+    expect(screen.queryByText('For sale')).not.toBeInTheDocument();
   });
 });

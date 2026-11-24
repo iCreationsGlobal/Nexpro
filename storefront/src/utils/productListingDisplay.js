@@ -83,6 +83,15 @@ export const getListingCommerceBadges = (product) => {
 };
 
 /**
+ * Labels worth showing on an Online Store: everything there is for sale, so only renting is said.
+ * @param {object|null|undefined} product
+ * @returns {string[]}
+ */
+export const getOnlineStoreCommerceBadges = (product) => (
+  getListingCommerceBadges(product).filter((badge) => badge !== 'For sale')
+);
+
+/**
  * Filter purchase CTAs for rent-only listings (checkout remains sale-only in P2-01).
  * @param {string[]} actions
  * @param {object|null|undefined} product

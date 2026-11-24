@@ -16,7 +16,7 @@ describe('product layout settings', () => {
     render(<StoreProductLayoutPanel templateId="minimal" onSave={vi.fn()} />);
     expect(chosen('Phones')).toEqual(['2 per rowCompact cards']);
     expect(chosen('Computers')).toEqual(['Template3 per row']);
-    expect(chosen('Cards on computers')).toEqual(['LargeLabels and buttons']);
+    expect(chosen('Cards on computers')).toEqual(['LargeCategory and buttons']);
     expect(preview().getByLabelText('Phone: 2 per row')).toBeInTheDocument();
     expect(preview().getByLabelText('Computer: 3 per row')).toBeInTheDocument();
   });

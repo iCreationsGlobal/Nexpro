@@ -95,6 +95,7 @@ const ShopperWishlistPage = () => {
                 item={item}
                 isPending={pendingListingIds.includes(item.listingId)}
                 sellerFallback={isSingleStoreMode ? 'Seller' : 'Sabito seller'}
+                showAvailable={!isSingleStoreMode}
                 productUrlPrefix={isSingleStoreMode ? (pathPrefix || 'shop') : undefined}
                 onAddToCart={handleAddToCart}
                 onRemove={removeWishlistItem}
@@ -111,6 +112,7 @@ const WishlistItem = ({
   item,
   isPending,
   sellerFallback = 'Seller',
+  showAvailable = true,
   productUrlPrefix,
   onAddToCart,
   onRemove,
@@ -140,14 +142,16 @@ const WishlistItem = ({
           {product.title}
         </Link>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Badge
-            variant={available ? 'outline' : 'default'}
-            className={available
-              ? 'border-[color:color-mix(in_srgb,var(--store-accent,#166534)_18%,#e5e7eb)] bg-[var(--store-accent-soft,#f0fdf4)] text-[color:color-mix(in_srgb,var(--store-accent,#166534)_85%,black)]'
-              : 'border-0 bg-slate-700 text-white hover:bg-slate-700'}
-          >
-            {availability.label || (available ? 'Available' : 'Out of stock')}
-          </Badge>
+          {showAvailable || !available ? (
+            <Badge
+              variant={available ? 'outline' : 'default'}
+              className={available
+                ? 'border-[color:color-mix(in_srgb,var(--store-accent,#166534)_18%,#e5e7eb)] bg-[var(--store-accent-soft,#f0fdf4)] text-[color:color-mix(in_srgb,var(--store-accent,#166534)_85%,black)]'
+                : 'border-0 bg-slate-700 text-white hover:bg-slate-700'}
+            >
+              {availability.label || (available ? 'Available' : 'Out of stock')}
+            </Badge>
+          ) : null}
           {product.category?.name ? (
             <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">
               {product.category.name}
