@@ -62,7 +62,7 @@ describe('each visitor has their own limits', () => {
     expect((await visit('/checkout', '41.66.1.1')).status).toBe(429);
     expect(await visit('/checkout', '41.66.2.2')).toMatchObject({ status: 200, left: 9 });
     await visit('/any', '41.66.1.1');
-    expect((await visit('/any', '41.66.2.2')).left).toBe(99);
+    expect((await visit('/any', '41.66.2.2')).left).toBe(299);
   });
 
   it('making up an address does not get round a limit', async () => {

@@ -30,11 +30,11 @@ const createErrorHandler = (message) => (req, res) => {
 
 /**
  * General API rate limiter
- * 100 requests per minute per IP/tenant
+ * 300 requests per minute per IP/tenant: mobile networks put many phones behind one address
  */
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 100, // 100 requests per minute
+  max: 300, // 300 requests per minute
   standardHeaders: true, // Return rate limit info in headers
   legacyHeaders: false,
   keyGenerator,
