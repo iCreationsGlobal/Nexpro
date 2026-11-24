@@ -692,6 +692,8 @@ const PublicStoreProduct = () => {
   const brandColors = resolveStoreBrandColors(store?.templateId, store || {});
   const theme = getTemplateTheme(store?.templateId);
   const accent = brandColors.primary || theme.accent;
+  // On the marketplace the seller's name is the page heading.
+  const TitleTag = isOwnedShop ? 'h1' : 'h2';
 
   return (
     <TemplateThemeProvider
@@ -719,26 +721,24 @@ const PublicStoreProduct = () => {
           <span className="min-w-0 font-semibold text-slate-800 [overflow-wrap:anywhere]">{product.title}</span>
         </div>
 
-        <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:rounded-[2rem]">
-          <Link to={storeBasePath} className="flex min-w-0 items-center gap-3 text-slate-900">
-            <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-[var(--store-accent-soft,#f0fdf4)]">
-              {resolveImageUrl(store.logoUrl) ? (
-                <img src={resolveImageUrl(store.logoUrl)} alt={store.displayName} className="h-full w-full object-contain" />
-              ) : (
-                <Store className="h-5 w-5 text-[color:var(--store-accent,#166534)]" />
-              )}
-            </div>
-            <div className="min-w-0">
-              {!isOwnedShop ? (
+        {!isOwnedShop ? (
+          <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:rounded-[2rem]">
+            <Link to={storeBasePath} className="flex min-w-0 items-center gap-3 text-slate-900">
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-[var(--store-accent-soft,#f0fdf4)]">
+                {resolveImageUrl(store.logoUrl) ? (
+                  <img src={resolveImageUrl(store.logoUrl)} alt={store.displayName} className="h-full w-full object-contain" />
+                ) : (
+                  <Store className="h-5 w-5 text-[color:var(--store-accent,#166534)]" />
+                )}
+              </div>
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-500">Sold by</p>
-              ) : null}
-              <h1 className="truncate text-xl font-black text-slate-950">{store.displayName}</h1>
-            </div>
-          </Link>
-          {!isOwnedShop ? (
+                <h1 className="truncate text-xl font-black text-slate-950">{store.displayName}</h1>
+              </div>
+            </Link>
             <Badge variant="outline" className="border-[color:color-mix(in_srgb,var(--store-accent,#166534)_30%,white)] bg-[var(--store-accent-soft,#f0fdf4)] text-[color:var(--store-accent,#166534)]">Published product</Badge>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         <div key={product.id} className="sf-page-enter overflow-hidden rounded-2xl border border-slate-200 bg-white sm:rounded-[2rem]">
           <div className="grid gap-6 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:p-8">
@@ -831,7 +831,7 @@ const PublicStoreProduct = () => {
                     </Badge>
                   ))}
                 </div>
-                <h2 className="text-2xl font-black tracking-tight text-slate-950 [overflow-wrap:anywhere] sm:text-3xl md:text-4xl">{product.title}</h2>
+                <TitleTag className="text-2xl font-black tracking-tight text-slate-950 [overflow-wrap:anywhere] sm:text-3xl md:text-4xl">{product.title}</TitleTag>
                 <div className="mt-3">
                   <ReviewSummaryLine summary={reviewSummary} />
                 </div>
