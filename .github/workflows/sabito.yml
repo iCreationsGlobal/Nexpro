@@ -2,7 +2,7 @@ name: Sabito checks
 
 on:
   push:
-    branches: [main, master]
+    branches: [abs-v2, main, master]
   pull_request:
 
 permissions:
