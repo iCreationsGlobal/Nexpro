@@ -307,13 +307,8 @@ const resetUserPassword = async () => {
 
   // Model beforeUpdate hook hashes with bcrypt (BCRYPT_ROUNDS or 10).
   user.password = newPassword;
-  if (Object.prototype.hasOwnProperty.call(user, 'failedLoginAttempts')) {
-    user.failedLoginAttempts = 0;
-  }
-  if (Object.prototype.hasOwnProperty.call(user, 'lockoutUntil')) {
-    user.lockoutUntil = null;
-  }
   await user.save();
+  await user.clearLockout();
 
   console.log('');
   console.log('Password updated successfully.');

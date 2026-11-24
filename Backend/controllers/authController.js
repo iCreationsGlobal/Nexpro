@@ -50,6 +50,7 @@ const {
   isTermsAccepted,
 } = require('../utils/legalTerms');
 const { getUserShopIds } = require('../utils/shopUtils');
+const { findUserWithLockout } = require('../utils/userLockout');
 const { getUserStudioLocationIds } = require('../utils/studioLocationUtils');
 const { startHotPathTimer } = require('../utils/performanceLogger');
 
@@ -674,7 +675,7 @@ exports.login = async (req, res, next) => {
 
     // Check for user (email is case-insensitive)
     const normalizedEmail = (email || '').trim().toLowerCase();
-    const user = await User.findOne({ where: { email: normalizedEmail } });
+    const user = await findUserWithLockout({ email: normalizedEmail });
 
     if (!user) {
       return res.status(404).json({
@@ -1811,6 +1812,8 @@ exports.resetPassword = async (req, res, next) => {
 
     user.password = newPassword;
     await user.save();
+    // The reset link proved who they are, so the new password must work straight away.
+    await user.clearLockout();
     await PasswordResetToken.destroy({ where: { token } });
     invalidateUserCache(user.id);
 

@@ -201,11 +201,14 @@ User.prototype.getLockoutRemainingSeconds = function() {
  * @param {number} lockoutMinutes - Lockout duration in minutes (default: 15)
  */
 User.prototype.incrementFailedAttempts = async function(maxAttempts = 5, lockoutMinutes = 15) {
-  const attempts = (this.failedLoginAttempts || 0) + 1;
+  // Once a lock has run out, start counting again; otherwise one more typo would lock the account.
+  const lockExpired = Boolean(this.lockoutUntil) && !this.isLocked();
+  const attempts = (lockExpired ? 0 : this.failedLoginAttempts || 0) + 1;
   
   const updates = {
     failedLoginAttempts: attempts,
   };
+  if (lockExpired) updates.lockoutUntil = null;
   
   // Lock account if threshold reached
   if (attempts >= maxAttempts) {
@@ -220,6 +223,21 @@ User.prototype.incrementFailedAttempts = async function(maxAttempts = 5, lockout
     if (error?.original?.code === '42703' || /failed_login_attempts|lockout_until/i.test(error?.message || '')) {
       console.warn('[User] Lockout columns missing; skipping failed-attempt persistence');
       return 0;
+    }
+    throw error;
+  }
+};
+
+/**
+ * Unlock the account and forget failed attempts, without recording a login
+ */
+User.prototype.clearLockout = async function() {
+  try {
+    await this.update({ failedLoginAttempts: 0, lockoutUntil: null });
+  } catch (error) {
+    if (error?.original?.code === '42703' || /failed_login_attempts|lockout_until/i.test(error?.message || '')) {
+      console.warn('[User] Lockout columns missing; nothing to clear');
+      return;
     }
     throw error;
   }
