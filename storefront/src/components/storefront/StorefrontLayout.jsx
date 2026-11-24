@@ -1145,6 +1145,9 @@ export const StoreCard = ({ store: storeItem }) => {
   );
 };
 
+/** A shade of the store's color for cards whose item is in the cart. */
+const IN_CART_TINT = 'data-[in-cart]:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_45%,white)] data-[in-cart]:bg-[color:color-mix(in_srgb,var(--store-accent,#166534)_14%,white)]';
+
 /** Wishlist heart on a product card. Never inside the card's link. */
 const WishlistButton = ({ title, saved, disabled, onClick, className }) => (
   <button
@@ -1170,7 +1173,7 @@ export const ProductCard = ({ product, compact = false }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const params = useParams();
-  const { addItem } = useCart();
+  const { addItem, items: cartItems } = useCart();
   const { isWishlisted, pendingListingIds, toggleWishlist } = useWishlist();
   const {
     isSingleStoreMode,
@@ -1203,6 +1206,9 @@ export const ProductCard = ({ product, compact = false }) => {
   const availability = isOwnedShop ? ONLINE_STORE_AVAILABILITY : getProductAvailability(product);
   const listingId = product?.listingId || product?.id;
   const saved = isWishlisted(listingId);
+  // Online Stores tint what is already in the cart. An attribute, not a class: scrollReveal adds its own class to
+  // the card, and React would drop it (hiding the card) if the class list changed.
+  const inCart = isOwnedShop && Boolean(cartItems?.some((item) => item.listingId === listingId));
   const wishlistPending = pendingListingIds.includes(listingId);
   const cardActions = useMemo(
     () => filterProductCardActionsForListing(
@@ -1367,7 +1373,8 @@ export const ProductCard = ({ product, compact = false }) => {
     const canAddToCart = !isSample && hasPrice
       && (cardActions.includes('add_to_cart') || cardActions.includes('buy_now'));
     return (
-      <div className="sf-reveal sf-card relative h-full overflow-hidden rounded-xl border border-slate-200 bg-white hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)]">
+      <div data-in-cart={inCart || undefined} className={`sf-reveal sf-card relative h-full overflow-hidden rounded-xl border border-slate-200 bg-white ${IN_CART_TINT} hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)]`}>
+        {inCart ? <span className="sr-only">In your cart</span> : null}
         <Link to={productUrl} className="flex h-full flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--store-accent,#166534)]">
           <span className="relative block aspect-square overflow-hidden bg-slate-50">
             <ProductImage product={product} />
@@ -1422,7 +1429,8 @@ export const ProductCard = ({ product, compact = false }) => {
   }
 
   return (
-    <div className="sf-reveal sf-card group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] sm:rounded-3xl">
+    <div data-in-cart={inCart || undefined} className={`sf-reveal sf-card group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white ${IN_CART_TINT} hover:border-[color:color-mix(in_srgb,var(--store-accent,#166534)_40%,#e2e8f0)] sm:rounded-3xl`}>
+      {inCart ? <span className="sr-only">In your cart</span> : null}
       <div className="relative aspect-square overflow-hidden border-b border-slate-100 bg-slate-50">
         <Link to={productUrl} className="block h-full w-full">
           <ProductImage product={product} />

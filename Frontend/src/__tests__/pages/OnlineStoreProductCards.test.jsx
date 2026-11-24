@@ -8,9 +8,9 @@ import { ProductCard, ServiceCard } from '../../../../storefront/src/components/
 import { sanitizeProductGrid, useCompactCards } from '../../../../storefront/src/online-store/productGrid';
 
 const ONLINE_STORE = vi.hoisted(() => ({ isSingleStoreMode: true, isMarketplaceMode: false, isCustomDomain: false, storeSlug: 'demo' }));
-const mocks = vi.hoisted(() => ({ mode: null, addItem: vi.fn(() => ({ ok: true })), toasts: { showSuccess: vi.fn(), showError: vi.fn() }, wishlist: { isWishlisted: () => false, pendingListingIds: [], toggleWishlist: vi.fn(), count: 0 } }));
+const mocks = vi.hoisted(() => ({ mode: null, cartItems: [], addItem: vi.fn(() => ({ ok: true })), toasts: { showSuccess: vi.fn(), showError: vi.fn() }, wishlist: { isWishlisted: () => false, pendingListingIds: [], toggleWishlist: vi.fn(), count: 0 } }));
 vi.mock('../../../../storefront/src/context/WishlistContext', () => ({ useWishlist: () => mocks.wishlist }));
-vi.mock('../../../../storefront/src/context/CartContext', () => ({ useCart: () => ({ addItem: mocks.addItem, cartSummary: { itemCount: 0 } }) }));
+vi.mock('../../../../storefront/src/context/CartContext', () => ({ useCart: () => ({ addItem: mocks.addItem, items: mocks.cartItems, cartSummary: { itemCount: 0 } }) }));
 vi.mock('../../../../storefront/src/context/StorefrontAuthContext', () => ({ useStorefrontAuth: () => ({}) }));
 vi.mock('../../../../storefront/src/context/StorefrontModeContext', () => ({
   useStorefrontMode: () => mocks.mode,
@@ -36,6 +36,7 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.mode = ONLINE_STORE;
+  mocks.cartItems = [];
 });
 
 describe('compact product card', () => {
@@ -120,6 +121,55 @@ describe('compact product card', () => {
     show(<ProductCard product={{ ...product, listingMode: 'both', rentalRatePerDay: 40 }} compact />);
     expect(screen.getByText(/120\.00/)).toBeInTheDocument();
     expect(screen.getByText(/or .*40\.00\/day to rent/)).toBeInTheDocument();
+  });
+});
+
+describe('an item already in the cart', () => {
+  const card = () => document.querySelector('.sf-card');
+  const inThisCart = [{ listingId: 'p1', quantity: 2 }];
+
+  it.each([['compact', true], ['large', false]])('is tinted with the store colour (%s card)', (_name, compact) => {
+    const { unmount } = show(<ProductCard product={product} compact={compact} />);
+    expect(card()).not.toHaveAttribute('data-in-cart');
+    expect(card().className).toContain('data-[in-cart]:bg-[color:color-mix(in_srgb,var(--store-accent');
+    expect(screen.queryByText('In your cart')).not.toBeInTheDocument();
+    unmount();
+    mocks.cartItems = inThisCart;
+    show(<ProductCard product={product} compact={compact} />);
+    expect(card()).toHaveAttribute('data-in-cart');
+    expect(screen.getByText('In your cart')).toBeInTheDocument();
+  });
+
+  it.each([['compact', true], ['large', false]])('stays on screen: the fade-in mark on the card survives (%s card)', (_name, compact) => {
+    const page = () => (
+      <MemoryRouter initialEntries={['/shop/demo']}>
+        <Routes><Route path="/shop/:storeSlug" element={<ProductCard product={{ ...product }} compact={compact} />} /></Routes>
+      </MemoryRouter>
+    );
+    const { rerender } = render(page());
+    card().classList.add('is-visible');
+    mocks.cartItems = inThisCart;
+    rerender(page());
+    expect(card()).toHaveAttribute('data-in-cart');
+    expect(card()).toHaveClass('is-visible');
+  });
+
+  it('can still be added again', async () => {
+    mocks.cartItems = inThisCart;
+    show(<ProductCard product={product} compact />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add Blue shirt to cart' }));
+    expect(mocks.addItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not tinted for another item in the cart, or on the marketplace', () => {
+    mocks.cartItems = [{ listingId: 'other', quantity: 1 }];
+    const { unmount } = show(<ProductCard product={product} compact />);
+    expect(card()).not.toHaveAttribute('data-in-cart');
+    unmount();
+    mocks.cartItems = inThisCart;
+    mocks.mode = { isSingleStoreMode: false, isMarketplaceMode: true };
+    show(<ProductCard product={product} />);
+    expect(card()).not.toHaveAttribute('data-in-cart');
   });
 });
 
