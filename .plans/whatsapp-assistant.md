@@ -2,7 +2,9 @@
 
 # Business owners on WhatsApp: Lynk AI behind ABS's number
 
-**Status:** step 1 under way: Lynk's side **LIVE in e75b10a** (2026-11-21); ABS's side on `abs-v2` (ABS's live branch since 2026-11-21), waiting for its Lynk key, settings and deploy.
+**Status (2026-11-24):** step 2 (questions, text and voice) is built in ABS on `abs-v2`, switched off, not live. Lynk needed no change for it. Step 1's Lynk side is **LIVE in e75b10a** (2026-11-21); ABS's live server needs its Lynk key.
+
+**Owner's decisions (2026-11-24, "yes to all"):** start with questions; owners and managers (cashiers, selling only, later); always Confirm before recording money or moving stock; a PIN once a day; the name shown on WhatsApp is "ABS".
 
 ## The idea
 
@@ -42,9 +44,25 @@ Lynk never reads or writes ABS's database; it only asks through the bridge.
 
 Before step 2, on Meta's side (the owner): billing (currency and a card on the WhatsApp account; until then templates fail with 131042), the credentials on ABS's server only, rotate them, record the two-step PIN, then point the webhook at ABS.
 
-## Suggested answers (owner to confirm)
+## As built: questions (ABS)
 
-1. Who: owners and managers for everything; cashiers for selling only.
-2. Confirm before anything that records money or moves stock: always.
-3. A PIN once a day before money figures (a phone number alone is weak proof).
-4. ABS's Terms: a line that Lynk processes the business's data when it uses the AI (open since 2026-10-20; the owner's wording).
+- **Connecting:** Settings → ABS on WhatsApp. They choose a PIN and get a message to send ("Connect ABS 7K4M-9QX2"; 15 minutes, once). Sending it from their WhatsApp proves the phone is theirs. One phone for one person.
+- **The PIN** is typed on ABS's own page (`/wa/<one-time link>`), not in the chat, where it would stay readable. It opens the chat for 24 hours, and what they asked before it is then answered. Five wrong PINs lock it for an hour and tell them in ABS.
+- **The menu is free:** today's sales, against yesterday, stock, best sellers, who owes me (by customer), profit, expenses, change shop or business, lock. It's answered straight from ABS's reports (`lynkAsk.js`), with no AI.
+- **Their own words, typed or spoken,** go to Lynk AI with the pass of a session ABS opens (`lynkChat.js`: `/api/app-ai/<pass>/chat` and `/transcribe`), and cost the business's Lynk credit. The same conversation shows in Lynk AI on the web.
+- **Every message:** Meta's signature, once only, not older than 30 minutes, the person's rights checked again, 15 a minute and 300 a day. A phone that isn't connected gets at most 5 replies an hour, with no business details.
+- **Not kept:** the words of a message (only Meta's message id, to answer once), except one asked while locked, until it's answered.
+- **Files:** `services/absWhatsApp.js` (the number), `whatsappLinks.js` (phones and PINs), `whatsappAssistant.js` (the chat), `lynkChat.js`; `controllers/whatsappAssistantController.js`; migration `create-whatsapp-assistant.js`; web `SettingsAbsWhatsAppSection.jsx` and `WhatsAppUnlock.jsx`.
+- **Closed at the same time:** the WhatsApp webhook took unsigned messages. With `WHATSAPP_APP_SECRET` set it refuses them.
+
+**To switch on**
+1. Meta: card and currency, new keys, two-step PIN; the display name "ABS".
+2. ABS's live server: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN` (one that doesn't expire), `WHATSAPP_APP_SECRET`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `ABS_WHATSAPP_NUMBER`, `ABS_WHATSAPP_ASSISTANT=true`; `LYNK_API_KEY`, `LYNK_IMPORT_SECRET` and `API_PUBLIC_URL` for typed and spoken questions.
+3. Deploy the API (it has a migration) and publish the dashboard.
+4. Meta: point the webhook at `<API>/api/webhooks/whatsapp`, field `messages`.
+
+**Next (actions):** bring only `lynkActions.js`, `LynkAction` and its route from `../Nexpro-lynk-one` into `abs-v2` (its marketing removal stays there); Lynk AI needs the "prepare and confirm" step and `actOnApp` (`../SafeServer-apps`). Restock orders need purchase orders in ABS first.
+
+## Still open (owner)
+
+ABS's Terms: a line that Lynk processes the business's data when it uses the AI (open since 2026-10-20; the owner's wording). The connect screen says it in plain words.

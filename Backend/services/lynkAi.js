@@ -87,14 +87,14 @@ async function businessFor(tenantId) {
  * Opens Lynk AI for one person: the business (its credit is the same as for the product import), who they are, the
  * page they're on, and where Lynk asks ABS its questions. Returns Lynk's session (id, screen_url).
  */
-async function startAiSession({ tenant, user, role, client = 'web', screen = 'full', tab = 'ask', page = null }, opts = {}) {
+async function startAiSession({ tenant, user, role, client = 'web', screen = 'full', tab = 'ask', page = null, abilities = ABILITIES }, opts = {}) {
   const base = publicUrl();
   const kind = client === 'app' ? 'app' : 'web';
   return callLynk('/assistant/sessions', {
     user: { id: String(tenant.id), name: text(tenant.name, 120), email: text(user?.email, 200) },
     member: { id: String(user.id), name: text(user.name, 120), role: role || undefined },
     business: await businessFor(tenant.id),
-    abilities: ABILITIES,
+    abilities,
     pages: PAGES[kind],
     ...(page && typeof page.path === 'string' ? { page } : {}),
     look: { name: 'ABS', color: process.env.LYNK_IMPORT_COLOR || '#166534' },

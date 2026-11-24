@@ -14,6 +14,7 @@ const { getEffectiveRole } = require('../middleware/auth');
 const { applyTenantFilter } = require('../utils/tenantUtils');
 const { applyShopFilter } = require('../utils/shopUtils');
 const { scopedReportWhere } = require('../utils/reportScopeUtils');
+const { parseReportDateRange } = require('../utils/reportDateFilter');
 const { resolveBusinessType } = require('../config/businessTypes');
 
 class AskError extends Error {
@@ -145,7 +146,26 @@ const asking = (ctx, query = {}, params = {}) => Object.assign(Object.create(Obj
 
 const controller = (name) => require(`../controllers/${name}`);
 
-async function summary(ctx, q, links) {
+/** How many items were sold, and to how many customers: ABS's product sales report and its sales. */
+async function soldCounts(ctx, dates) {
+  const { getProductSalesReport } = controller('reportController');
+  const [report, customersCount] = await Promise.all([
+    runHandler(getProductSalesReport, asking(ctx, dates)),
+    Sale.count({
+      distinct: true,
+      col: 'customerId',
+      where: applyShopFilter(ctx, applyTenantFilter(ctx.tenantId, {
+        status: 'completed',
+        deletedAt: null,
+        customerId: { [Op.ne]: null },
+        createdAt: parseReportDateRange(dates.startDate, dates.endDate),
+      })),
+    }),
+  ]);
+  return { items_sold: num(report?.data?.totalQuantitySold), customers: num(customersCount) };
+}
+
+async function summary(ctx, q, links, client) {
   const now = datesOf(q.period);
   const before = datesOf(q.period?.previous);
   if (!now) throw new AskError('A period is needed');
@@ -157,10 +177,13 @@ async function summary(ctx, q, links) {
     const body = await runHandler(getSales, asking(ctx, { ...dates, limit: 1, page: 1 }));
     return num(body?.summary?.completedCount);
   };
-  const [countNow, countBefore] = await Promise.all([salesCount(now), salesCount(before)]);
-  const shape = (m, count) => (m ? {
+  // On WhatsApp the summary also says how many items were sold, and to how many customers.
+  const sold = async (dates) => (dates && client === 'whatsapp' && isRetail(ctx) ? soldCounts(ctx, dates) : {});
+  const [countNow, countBefore, soldNow, soldBefore] = await Promise.all([salesCount(now), salesCount(before), sold(now), sold(before)]);
+  const shape = (m, count, counts) => (m ? {
     sales_total: num(m.totalRevenue),
     ...(count !== null ? { sales_count: count } : {}),
+    ...counts,
     average_sale: num(m.averageInvoiceValue),
     expenses_total: num(m.operatingExpenses),
     cost_of_goods: num(m.cogs),
@@ -172,8 +195,8 @@ async function summary(ctx, q, links) {
   return {
     period: q.period.label,
     revenue_from: data.current?.revenueSource === 'invoices' ? 'payments on invoices' : 'completed sales',
-    current: shape(data.current, countNow),
-    previous: shape(data.previous, countBefore),
+    current: shape(data.current, countNow, soldNow),
+    previous: shape(data.previous, countBefore, soldBefore),
     money_owed_total: num(data.current?.totalOutstanding),
     currency: 'GHS',
     link: links.reports,
@@ -233,11 +256,40 @@ async function lowStock(ctx, q, links) {
   };
 }
 
-async function moneyOwed(ctx, q, links) {
+/** Who owes, one row for each customer, the most owed first: the report's own totals, with their invoices. */
+function owedByCustomer(data, links) {
+  const invoices = data?.invoices || [];
+  const rows = (data?.byCustomer || []).map((r) => (typeof r.toJSON === 'function' ? r.toJSON() : r));
+  return rows.map((r) => {
+    const theirs = invoices.filter((i) => (i.customerId || null) === (r.customerId || null));
+    const name = r.customer?.name || r.customer?.company || 'A customer';
+    const count = num(r.invoiceCount) || theirs.length;
+    const oldest = theirs.map((i) => i.dueDate).filter(Boolean).map((d) => new Date(d)).sort((a, b) => a - b)[0] || null;
+    const late = oldest && oldest.getTime() < Date.now() - DAY;
+    const what = count === 1 ? theirs[0]?.invoiceNumber || '1 invoice' : `${count} invoices`;
+    return {
+      label: clip(name, 60),
+      detail: `${money(r.totalOutstanding)} · ${what}${oldest ? ` · ${late ? 'was due' : 'due'} ${day(oldest)}` : ''}`,
+      customer: clip(name, 80),
+      phone: theirs[0]?.customer?.phone || null,
+      amount_due: num(r.totalOutstanding),
+      invoices: theirs.slice(0, 10).map((i) => i.invoiceNumber),
+      due_date: oldest ? oldest.toISOString().slice(0, 10) : null,
+      link: count === 1 && theirs[0] ? links.invoice(theirs[0].id) : links.invoices,
+    };
+  });
+}
+
+async function moneyOwed(ctx, q, links, client) {
   const { getOutstandingPaymentsReport } = controller('reportController');
   const body = await runHandler(getOutstandingPaymentsReport, asking(ctx, {}));
   const invoices = body?.data?.invoices || [];
   const today = Date.now();
+  // On WhatsApp "who owes me?" is answered with people; on a screen, with the invoices to open.
+  if (client === 'whatsapp') {
+    const people = owedByCustomer(body?.data, links);
+    return { total_amount: num(body?.data?.totalOutstanding), count: people.length, items: people.slice(0, limitOf(q)), link: links.invoices };
+  }
   const daysLate = (due) => (due ? Math.floor((today - new Date(due).getTime()) / DAY) : 0);
   return {
     total_amount: num(body?.data?.totalOutstanding),
@@ -403,7 +455,7 @@ async function expenses(ctx, q, links) {
   return {
     period: q.period?.label,
     total_amount: num(body?.data?.totalExpenses),
-    items: rows.slice(0, limitOf(q)).map((r) => ({ label: clip(r.category || 'Other', 60), detail: `${money(r.totalAmount)} · ${num(r.count)}`, category: r.category || 'Other', total: num(r.totalAmount), count: num(r.count), link: links.expenses })),
+    items: rows.slice(0, limitOf(q)).map((r) => ({ label: clip(r.category || 'Other', 60), detail: `${money(r.totalAmount)} · ${num(r.count)} expense${num(r.count) === 1 ? '' : 's'}`, category: r.category || 'Other', total: num(r.totalAmount), count: num(r.count), link: links.expenses })),
     link: links.expenses,
   };
 }
@@ -488,7 +540,7 @@ async function answerQuestion({ tenantId, userId, shopId, studioLocationId, clie
   const answer = ANSWERS[question?.kind];
   if (!answer) throw new AskError(`ABS doesn't answer "${question?.kind}" questions`);
   const ctx = await contextFor({ tenantId, userId, shopId, studioLocationId });
-  return answer(ctx, question, LINKS[client === 'app' ? 'app' : 'web']);
+  return answer(ctx, question, LINKS[client === 'app' ? 'app' : 'web'], client);
 }
 
 module.exports = { answerQuestion, contextFor, datesOf, AskError, LINKS, _private: { runHandler, runMiddleware, asking } };

@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSettingsOnboardingBanner } from '../../hooks/useSettingsOnboardingBanner';
 import { useSimpleMode } from '../../hooks/useSimpleMode';
+import absWhatsAppService from '../../services/absWhatsAppService';
 import SettingsSimpleModeSection from '../../components/settings/sections/SettingsSimpleModeSection';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,7 +17,7 @@ import {
 } from '../../utils/settingsRoutes';
 
 /** Settings cards shown in Simple Mode (until "Show advanced features" is on). */
-const SIMPLE_MODE_SETTINGS_SLUGS = new Set(['profile', 'organization', 'invoices-receipts', 'inventory', 'payments', 'billing']);
+const SIMPLE_MODE_SETTINGS_SLUGS = new Set(['profile', 'abs-whatsapp', 'organization', 'invoices-receipts', 'inventory', 'payments', 'billing']);
 
 /**
  * Settings hub card grid grouped by You / Business / Channels.
@@ -27,13 +29,22 @@ const SettingsHub = () => {
   const { showOnboardingBanner } = useSettingsOnboardingBanner();
   const { isSimple, isRestricted } = useSimpleMode();
 
+  const { data: absWhatsApp } = useQuery({
+    queryKey: ['abs-whatsapp', activeTenant?.id],
+    queryFn: absWhatsAppService.getStatus,
+    enabled: Boolean(isManager && activeTenant?.id),
+    retry: false,
+  });
+  const hasAbsWhatsApp = absWhatsApp?.available === true;
+
   const visibleCards = useMemo(
     () => getVisibleSettingsCards({
       isManager,
       hasFeature,
       businessType: activeTenant?.businessType,
+      hasAbsWhatsApp,
     }).filter((card) => !isRestricted || SIMPLE_MODE_SETTINGS_SLUGS.has(card.slug)),
-    [isManager, hasFeature, activeTenant?.businessType, isRestricted]
+    [isManager, hasFeature, activeTenant?.businessType, isRestricted, hasAbsWhatsApp]
   );
 
   const groups = useMemo(() => groupSettingsCards(visibleCards), [visibleCards]);

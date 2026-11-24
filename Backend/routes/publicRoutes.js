@@ -115,7 +115,9 @@ const {
   guestCheckoutLimiter,
   registrationLimiter,
   marketerWriteLimiter,
+  whatsappUnlockLimiter,
 } = require('../middleware/rateLimiter');
+const { checkUnlock, unlock } = require('../controllers/whatsappAssistantController');
 
 const router = express.Router();
 const publicMarketplaceHomeCache = cacheMiddleware(45, generatePublicCacheKey('public-marketplace'), {
@@ -197,6 +199,10 @@ router.post('/quotes/view/:token/respond', respondToQuoteByToken);
 
 // Customer job tracking (no login)
 router.get('/jobs/track/:token', getJobTrackByToken);
+
+// ABS on WhatsApp: the page where the PIN is entered (a one-time link sent in the chat)
+router.get('/whatsapp-unlock/:token', whatsappUnlockLimiter, checkUnlock);
+router.post('/whatsapp-unlock/:token', whatsappUnlockLimiter, unlock);
 router.get('/track/:tenantSlug/branding', publicTrackBrandingLimiter, getPublicTrackBranding);
 router.post('/track/:tenantSlug/lookup', publicTrackingLookupLimiter, lookupPublicTracking);
 

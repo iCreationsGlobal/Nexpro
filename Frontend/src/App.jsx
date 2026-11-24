@@ -43,6 +43,7 @@ const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const PayInvoice = lazy(() => import('./pages/PayInvoice'));
 const ViewQuote = lazy(() => import('./pages/ViewQuote'));
 const TrackJob = lazy(() => import('./pages/TrackJob'));
+const WhatsAppUnlock = lazy(() => import('./pages/WhatsAppUnlock'));
 const TenantTrackLookup = lazy(() => import('./pages/TenantTrackLookup'));
 const PublicFeedback = lazy(() => import('./pages/PublicFeedback'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
@@ -78,6 +79,7 @@ const SettingsInvoicesReceiptsPage = lazy(() => import('./pages/settings/Setting
 const SettingsPaymentsPage = lazy(() => import('./pages/settings/SettingsPaymentsPage'));
 const SettingsSabitoPartnersPage = lazy(() => import('./pages/settings/SettingsSabitoPartnersPage'));
 const SettingsWhatsAppPage = lazy(() => import('./pages/settings/SettingsWhatsAppPage'));
+const SettingsAbsWhatsAppPage = lazy(() => import('./pages/settings/SettingsAbsWhatsAppPage'));
 const SettingsEmailPage = lazy(() => import('./pages/settings/SettingsEmailPage'));
 const SettingsDeliveryRulesPage = lazy(() => import('./pages/settings/SettingsDeliveryRulesPage'));
 const SettingsNotificationsPage = lazy(() => import('./pages/settings/SettingsNotificationsPage'));
@@ -320,6 +322,7 @@ function AppContent() {
           <Route path="/pay-invoice/:token" element={<PayInvoice />} />
             <Route path="/view-quote/:token" element={<ViewQuote />} />
             <Route path="/track-job/:token" element={<TrackJob />} />
+            <Route path="/wa/:token" element={<WhatsAppUnlock />} />
             <Route path="/track/:tenantSlug" element={<TenantTrackLookup />} />
             <Route path="/feedback/:tenantSlug" element={<PublicFeedback />} />
             <Route path="/review/:tenantSlug" element={<PublicFeedback />} />
@@ -441,6 +444,7 @@ function AppContent() {
             <Route path="payments" element={<RequireWorkspaceManager><SettingsPaymentsPage /></RequireWorkspaceManager>} />
             <Route path="sabito-partners" element={<RequireWorkspaceManager><SettingsSabitoPartnersPage /></RequireWorkspaceManager>} />
             <Route path="whatsapp" element={<RequireWorkspaceManager><SettingsWhatsAppPage /></RequireWorkspaceManager>} />
+            <Route path="abs-whatsapp" element={<RequireWorkspaceManager><SettingsAbsWhatsAppPage /></RequireWorkspaceManager>} />
             <Route path="email" element={<RequireWorkspaceManager><SettingsEmailPage /></RequireWorkspaceManager>} />
             <Route path="delivery-rules" element={<RequireWorkspaceManager><SettingsDeliveryRulesPage /></RequireWorkspaceManager>} />
             </Route>

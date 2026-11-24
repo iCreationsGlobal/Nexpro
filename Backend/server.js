@@ -290,6 +290,7 @@ app.use('/api/shops', shopRoutes);
 app.use('/api/studio-locations', studioLocationRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/lynk', require('./routes/lynkRoutes'));
+app.use('/api/whatsapp-assistant', require('./routes/whatsappAssistantRoutes'));
 app.use('/api/rentals', rentalRoutes);
 app.use('/api/merchandise', merchandiseRoutes);
 app.use('/api/store', storeRoutes);

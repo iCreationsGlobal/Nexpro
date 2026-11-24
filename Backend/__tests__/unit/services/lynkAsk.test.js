@@ -2,7 +2,7 @@ const crypto = require('crypto');
 
 jest.mock('../../../models', () => ({
   User: { findByPk: jest.fn() },
-  Sale: { findAll: jest.fn() },
+  Sale: { findAll: jest.fn(), count: jest.fn() },
   Invoice: { findAll: jest.fn() },
   Customer: { findAll: jest.fn() },
   LynkAiSession: { findOne: jest.fn() },
@@ -25,7 +25,7 @@ jest.mock('../../../controllers/saleController', () => ({ getSales: jest.fn(), g
 jest.mock('../../../controllers/invoiceController', () => ({ getInvoice: jest.fn(), getInvoices: jest.fn() }));
 jest.mock('../../../services/lynkAi', () => ({ startAiSession: jest.fn() }));
 
-const { User, LynkAiSession } = require('../../../models');
+const { User, Sale, LynkAiSession } = require('../../../models');
 const { shopContext } = require('../../../middleware/shopContext');
 const reports = require('../../../controllers/reportController');
 const salesController = require('../../../controllers/saleController');
@@ -79,6 +79,49 @@ describe('answers to Lynk AI, from ABS\'s own reports', () => {
     expect(web.items[1]).toMatchObject({ amount_due: 300, days_overdue: 0, detail: 'GH₵300 due' });
     const app = await answerQuestion({ ...SESSION, client: 'app' }, { kind: 'money_owed' });
     expect(app.items[0].link).toBe('/invoice/inv-42');
+  });
+
+  it('on WhatsApp the summary also says what was sold and to how many', async () => {
+    const kpis = { totalRevenue: 60, averageInvoiceValue: 20, operatingExpenses: 0, cogs: 36, grossProfit: 24, netProfit: 24, newCustomers: 0 };
+    reports.getOverviewExtendedKpis.mockImplementation(answers({ data: { current: kpis, previous: kpis } }));
+    reports.getProductSalesReport.mockImplementation(async (req, res) => res.json({ data: { totalQuantitySold: req.query.startDate === '2026-10-19' ? 6 : 4 } }));
+    salesController.getSales.mockImplementation(answers({ summary: { completedCount: 3 } }));
+    Sale.count.mockResolvedValue(2);
+    const a = await answerQuestion({ ...SESSION, client: 'whatsapp' }, { kind: 'summary', period: thisWeek });
+    expect(a.current).toMatchObject({ sales_total: 60, items_sold: 6, customers: 2 });
+    expect(a.previous).toMatchObject({ items_sold: 4, customers: 2 });
+    expect(a.link).toBe('/reports/overview');
+    const { where, distinct, col } = Sale.count.mock.calls[0][0];
+    expect({ distinct, col }).toEqual({ distinct: true, col: 'customerId' });
+    expect(where).toMatchObject({ tenantId: 't1', status: 'completed', deletedAt: null });
+    expect(where.createdAt).toBeTruthy();
+    // Not on a screen, where it isn't shown.
+    jest.clearAllMocks();
+    User.findByPk.mockResolvedValue({ id: 'u1', role: 'owner', isActive: true });
+    expect((await answerQuestion(SESSION, { kind: 'summary', period: thisWeek })).current.items_sold).toBeUndefined();
+    expect(Sale.count).not.toHaveBeenCalled();
+  });
+
+  it('on WhatsApp who owes is people, with the report\'s own totals', async () => {
+    const due = (days) => new Date(Date.now() + days * 86_400_000).toISOString();
+    reports.getOutstandingPaymentsReport.mockImplementation(answers({ data: {
+      totalOutstanding: 1860,
+      invoices: [
+        { id: 'i1', customerId: 'c1', invoiceNumber: 'INV-1', balance: 850, dueDate: '2026-01-05T00:00:00Z', customer: { name: 'Adwoa', phone: '0244' } },
+        { id: 'i2', customerId: 'c1', invoiceNumber: 'INV-2', balance: 400, dueDate: due(5), customer: { name: 'Adwoa', phone: '0244' } },
+        { id: 'i3', customerId: 'c2', invoiceNumber: 'INV-3', balance: 610, dueDate: null, customer: { company: 'Kwame Ltd' } },
+      ],
+      byCustomer: [
+        { toJSON: () => ({ customerId: 'c1', totalOutstanding: '1250.00', invoiceCount: '2', customer: { name: 'Adwoa' } }) },
+        { customerId: 'c2', totalOutstanding: '610', invoiceCount: '1', customer: { company: 'Kwame Ltd' } },
+      ],
+    } }));
+    const a = await answerQuestion({ ...SESSION, client: 'whatsapp' }, { kind: 'money_owed' });
+    expect(a).toMatchObject({ total_amount: 1860, count: 2 });
+    expect(a.items).toEqual([
+      expect.objectContaining({ label: 'Adwoa', detail: 'GH₵1,250 · 2 invoices · was due 5 Jan 2026', amount_due: 1250, phone: '0244', invoices: ['INV-1', 'INV-2'], link: '/invoices' }),
+      expect.objectContaining({ label: 'Kwame Ltd', detail: 'GH₵610 · INV-3', amount_due: 610, link: '/invoices?openInvoiceId=i3' }),
+    ]);
   });
 
   it('a record is the one the person has open, through ABS\'s own loader (its own access rules)', async () => {

@@ -527,6 +527,9 @@ const migrate = async () => {
     // Sign in with Apple: users.apple_id
     await require('./add-apple-id-to-users').up();
 
+    // ABS on WhatsApp: phones connected to ABS users, and messages already received
+    await require('./create-whatsapp-assistant')({ closeConnection: false });
+
     console.log('\n✅ Database migration completed successfully!');
     console.log('📊 Incremental schema updates applied.');
     console.log('👤 User model has been enhanced with new fields.');

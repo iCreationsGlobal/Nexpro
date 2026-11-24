@@ -1,6 +1,8 @@
 const { Customer, Tenant, SabitoTenantMapping } = require('../models');
 const { verifySabitoWebhook } = require('../middleware/webhookAuth');
 const whatsappService = require('../services/whatsappService');
+const { isAbsNumber } = require('../services/absWhatsApp');
+const { receive: receiveForAssistant } = require('../services/whatsappAssistant');
 const paystackService = require('../services/paystackService');
 const { handlePaystackTransferWebhook } = require('../services/marketplacePayoutService');
 const {
@@ -110,17 +112,16 @@ exports.handleWhatsAppWebhook = async (req, res) => {
     if (req.method === 'POST') {
       const signature = req.headers['x-hub-signature-256'];
       const appSecret = process.env.WHATSAPP_APP_SECRET;
-      
-      // Verify signature if app secret is configured
-      if (appSecret && signature) {
+
+      // Meta always signs what it sends: with the secret set, anything unsigned is refused too.
+      if (appSecret) {
         const rawBody =
           req.rawBody && Buffer.isBuffer(req.rawBody)
             ? req.rawBody.toString('utf8')
             : JSON.stringify(req.body);
-        const isValid = whatsappService.verifyWebhookSignature(signature, rawBody, appSecret);
-        
-        if (!isValid) {
-          console.error('[WhatsApp Webhook] Invalid signature');
+
+        if (!whatsappService.verifyWebhookSignature(signature, rawBody, appSecret)) {
+          console.error('[WhatsApp Webhook] Missing or invalid signature');
           return res.status(401).json({
             success: false,
             message: 'Invalid webhook signature'
@@ -135,6 +136,16 @@ exports.handleWhatsAppWebhook = async (req, res) => {
       } catch (handlerErr) {
         console.error('[WhatsApp Webhook] handleWebhook failed:', handlerErr?.message || handlerErr);
         return res.status(200).json({ success: true, message: 'Webhook acknowledged' });
+      }
+
+      // Messages to ABS's own number are an owner asking about their business (only when it's set up, which needs
+      // the app secret, so they're signed). Answered after Meta is, as Meta waits only a few seconds.
+      const toAbs = results.filter((result) => result.type === 'message' && isAbsNumber(result.phoneNumberId));
+      if (toAbs.length) {
+        results = results.filter((result) => !toAbs.includes(result));
+        const answering = receiveForAssistant(toAbs);
+        // A serverless function stops once it has answered (the demo API).
+        if (process.env.VERCEL) await answering;
       }
 
       // Process webhook results (update message status, handle incoming messages, etc.)

@@ -236,6 +236,17 @@ const guestCheckoutLimiter = rateLimit({
   validate: false,
 });
 
+/** The PIN page of ABS on WhatsApp, per link (which also ends after 5 wrong PINs). */
+const whatsappUnlockLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => String(req.params?.token || 'none').slice(0, 64),
+  handler: createErrorHandler('Too many tries. Please wait a few minutes and try again.'),
+  validate: false,
+});
+
 const publicRentalAvailabilityLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -266,4 +277,5 @@ module.exports = {
   publicRentalAvailabilityLimiter,
   guestCheckoutLimiter,
   marketerWriteLimiter,
+  whatsappUnlockLimiter,
 };

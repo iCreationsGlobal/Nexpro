@@ -26,6 +26,7 @@ export const SETTINGS_GROUPS = {
  * @property {string} [legacyTab] - Legacy ?tab= value when not migrated
  * @property {string} [legacySubtab]
  * @property {boolean} [comingSoon]
+ * @property {boolean} [needsAbsWhatsApp] - Only once ABS on WhatsApp is switched on
  */
 
 /** @type {SettingsHubCard[]} */
@@ -50,6 +51,15 @@ export const SETTINGS_HUB_CARDS = [
     subtitle: 'In-app and email notification preferences',
     group: 'you',
     migrated: true,
+  },
+  {
+    slug: 'abs-whatsapp',
+    title: 'ABS on WhatsApp',
+    subtitle: 'Ask about your business by text or voice note',
+    group: 'you',
+    migrated: true,
+    managerOnly: true,
+    needsAbsWhatsApp: true,
   },
   {
     slug: 'organization',
@@ -305,10 +315,12 @@ export const getSettingsCardHref = (card) => {
  * @param {boolean} options.isManager
  * @param {(key: string) => boolean} [options.hasFeature]
  * @param {string} [options.businessType]
+ * @param {boolean} [options.hasAbsWhatsApp]
  * @returns {SettingsHubCard[]}
  */
-export const getVisibleSettingsCards = ({ isManager, hasFeature, businessType }) => {
+export const getVisibleSettingsCards = ({ isManager, hasFeature, businessType, hasAbsWhatsApp = false }) => {
   return SETTINGS_HUB_CARDS.filter((card) => {
+    if (card.needsAbsWhatsApp && !hasAbsWhatsApp) return false;
     if (card.slug === 'billing' && !isPricingUiEnabled()) return false;
     if (card.managerOnly && !isManager) return false;
     if (card.featureKey && typeof hasFeature === 'function' && !hasFeature(card.featureKey)) {
